@@ -11,7 +11,8 @@ layout of this one.
 2. [Connected apps](#2-connected-apps): how a device connects to one store on
    a self-hosted monokulo.
 3. [Push](#3-push): a reusable `push` crate, Web Push everywhere, UnifiedPush,
-   and a relay for APNs and FCM that is a mode of monokulo itself.
+   and a `push-relay` crate for APNs and FCM that runs embedded in monokulo
+   or as its own binary.
 4. [The Live Activity](#4-the-live-activity) and what drives it.
 5. [Battery and latency](#5-battery-and-latency).
 6. [Monokulo code layout](#6-monokulo-code-layout), settings and migrations.
@@ -145,7 +146,7 @@ wait for a push.
 - **One transport** in monokulo: Web Push (RFC 8030), encrypted (RFC 8291,
   `aes128gcm`) and signed (VAPID, RFC 8292).
 - UnifiedPush works with no relay at all; APNs and FCM go through a relay
-  that is a mode of the same monokulo binary.
+  (`push-relay`), embedded in monokulo or standalone.
 - The relay learns as little as possible: no store, no device-to-store link,
   ciphertext for every ordinary notification.
 
@@ -157,7 +158,7 @@ kinds of endpoint all accept the same request:
 | Endpoint | Who runs it | Delivers to |
 | --- | --- | --- |
 | UnifiedPush distributor (ntfy, NextPush, …) | The user, or a public instance | Android app via its distributor |
-| `https://relay.monokular.app/v1/push/{handle}` | The project (relay mode) | APNs (iOS) or FCM (Android with Google services) |
+| `https://relay.monokular.app/v1/push/{handle}` | The project (standalone `monokulo-push-relay`) | APNs (iOS) or FCM (Android with Google services) |
 | A browser's push service | Browser vendor | A future web app or admin page |
 
 So monokulo only ever does "encrypt, sign, POST to endpoint". Whether that
@@ -191,10 +192,24 @@ For `encrypted`, the iOS Notification Service Extension and the Android
 receiver decrypt with the subscription's private key, which never leaves the
 device.
 
+### Two crates: `push` and `push-relay`
+
+Push is split like the engine: a library monokulo always uses, and a relay
+that runs embedded in monokulo or on its own, the way the engine runs inside
+monokulo by default and as `monokulo-engine` when separate.
+
+| Crate | Kind | Used by |
+| --- | --- | --- |
+| `push` | library | Every monokulo (sending), `push-relay` (VAPID checks), tests |
+| `push-relay` | library + binary `monokulo-push-relay` | Monokulo (embedded, cargo feature `relay`, on by default), or standalone |
+
+Keeping them apart means a monokulo built with `--no-default-features`
+drops the relay's server code, APNs/FCM clients and OAuth entirely, and
+another Rust sender only takes the small crate.
+
 ### The `push` crate (`crates/push`)
 
-A library with no monokulo types, so the relay and any future Rust service
-can use it.
+A library with no monokulo types and no server code.
 
 ```text
 crates/push/src/
@@ -206,15 +221,25 @@ crates/push/src/
   send.rs           Sender: build the request, POST with a shared reqwest::Client,
                     map the response (201 sent, 404/410 gone, 413 too big,
                     429/5xx retry with Retry-After)
-  relay/            feature "relay"
-    mod.rs          axum Router: /v1/register, /v1/unregister, /v1/push/{handle}
-    handles.rs      HandleStore trait (+ an in-memory one for tests)
-    apns.rs         APNs provider: HTTP/2, token (.p8) auth, push types alert/background/liveactivity
-    fcm.rs          FCM HTTP v1 provider: service-account OAuth, data messages
-    limits.rs       per-VAPID-key and per-handle token buckets
 ```
 
-Monokulo doesn't depend on `push/relay`; only relay mode does.
+### The `push-relay` crate (`crates/push-relay`)
+
+```text
+crates/push-relay/src/
+  lib.rs            RelayConfig, Relay::new(config, store), Relay::router() -> axum::Router,
+                    run(config) for the standalone binary; the settings declarations
+  routes.rs         /v1/register, /v1/unregister, /v1/push/{handle}
+  handles.rs        HandleStore trait; SqliteHandleStore (rusqlite); an in-memory one for tests
+  apns.rs           APNs provider: HTTP/2, token (.p8) auth, push types alert/background/liveactivity
+  fcm.rs            FCM HTTP v1 provider: service-account OAuth, data messages
+  limits.rs         per-VAPID-key and per-handle token buckets
+  main.rs           `monokulo-push-relay`: read settings, open the store, serve
+```
+
+The library interface is small on purpose: a config, a store, a router.
+Monokulo and the standalone binary both build a `Relay` the same way and
+differ only in who owns the listener.
 
 ### Crates
 
@@ -282,28 +307,53 @@ Answers back to monokulo: `201`; `404`/`410` when APNs/FCM say the token is
 dead (the relay deletes the handle; monokulo deletes the target); `429`
 with `Retry-After`.
 
-### Relay mode
+### Running the relay
 
-```sh
-monokulo relay --options relay.toml
-# env (secrets only):
-#   MONOKULO_RELAY_APNS_KEY        (.p8 contents)
-#   MONOKULO_RELAY_FCM_CREDENTIALS (service-account JSON)
+**Embedded** (in every release build of monokulo, off unless turned on):
+
+```toml
+[relay]
+enabled = true                 # default false: only useful with APNs/FCM keys
+listen = "0.0.0.0:8443"        # its own listener by default, so its limits and logs
+                               # stay apart from the store pages
+public_url = "https://relay.example.org"
 ```
 
-Settings (in the registry, like every other setting): `relay.listen`,
-`relay.public_url`, `relay.apps` (bundle ID / package name / team ID / key ID
-per app), `relay.limits.*`, `relay.handle_ttl_days`. Invalid values stop the
-process, as everywhere else in monokulo.
+**Standalone:**
 
-The relay keeps only `handles(id, platform, app, token, vapid_public_key,
-created_at, last_used_at)`. No payloads are stored and no request bodies are
-logged.
+```sh
+monokulo-push-relay --options relay.toml
+```
 
-The project runs the official relay for the official Monokular builds.
-Anyone shipping their own app runs their own relay with their own APNs/FCM
-keys; their app registers there and hands monokulo that endpoint, with no
-change to monokulo.
+Both read the same settings, declared once in `push-relay` and registered
+by both binaries (the same pattern as the engine's `--engine-…` settings in
+monokulo, so they appear on monokulo's admin page when embedded):
+`relay.enabled` (embedded only), `relay.listen`, `relay.public_url`,
+`relay.apps` (bundle ID / package name / team ID / key ID per app),
+`relay.limits.*`, `relay.handle_ttl_days`, `relay.store_path`. Invalid
+values stop the process, as everywhere else in monokulo. Secrets come only
+from the environment, in both cases:
+
+```text
+MONOKULO_RELAY_APNS_KEY         (.p8 contents)
+MONOKULO_RELAY_FCM_CREDENTIALS  (service-account JSON)
+```
+
+**Storage:** the relay always keeps its own SQLite file (`relay.store_path`),
+even when embedded, never tables in monokulo's database. It never touches
+store data, and moving from embedded to standalone is a matter of copying
+that file. It holds only `handles(id, platform, app, token,
+vapid_public_key, created_at, last_used_at)`. No payloads are stored and no
+request bodies are logged.
+
+**Who runs what:** the project runs the official relay **standalone**, so it
+can be deployed and scaled on its own schedule. Embedding suits a small
+operator shipping their own app with their own APNs/FCM keys: one process,
+one upgrade. Either way their app registers with that relay and hands
+monokulo the endpoint, with no change to monokulo.
+
+**Release artifacts:** `monokulo` (relay included), `monokulo-engine` and
+`monokulo-push-relay`, all from the workspace version as today.
 
 ### UnifiedPush
 
@@ -433,7 +483,9 @@ Rules:
 ## 6. Monokulo code layout
 
 ```text
-crates/push/                    new crate (§3): Web Push, VAPID, relay (feature)
+crates/push/                    new library (§3): Web Push, VAPID, RFC 8291
+crates/push-relay/              new library + `monokulo-push-relay` binary (§3)
+crates/monokulo/                depends on push; on push-relay behind feature "relay" (default)
 crates/monokulo/src/
   apps/                         connected apps
     mod.rs                      AppConnection, scopes, connect tokens (generalised from http::connect)
@@ -446,7 +498,8 @@ crates/monokulo/src/
   http/apps.rs                  /api/v1/apps/{connect,events,push-targets}
   http/square.rs                OAuth callback, webhook endpoint
   views/connected_apps.rs       the Connected apps card and Connect an app page
-  relay.rs                      `monokulo relay`: settings, wiring push::relay to rusqlite
+  relay.rs                      (feature "relay") registers push-relay's settings and, when
+                                relay.enabled, starts a Relay on its own listener
 ```
 
 ### Migrations
@@ -459,7 +512,7 @@ before running it on a production instance):
 - `push_targets`, `push_deliveries`
 - `square_accounts` (encrypted tokens), `square_locations`, `square_payments` (dedupe by event and payment id)
 - `vapid_keys` (encrypted private key)
-- relay mode only: `relay_handles`
+- none for the relay: its handles live in its own SQLite file (§3)
 
 ### Settings (registry)
 
@@ -467,7 +520,8 @@ before running it on a production instance):
 - `integrations.square.enabled`, `integrations.square.application_id`,
   `integrations.square.environment`; secret `MONOKULO_SQUARE_APP_SECRET`
   (env only)
-- `relay.*` (relay mode only, §3)
+- `relay.*` (declared in push-relay, registered by monokulo when built with
+  the relay, §3)
 
 ### Tests
 
@@ -560,8 +614,8 @@ Choices:
    events.
 5. **Push targets and delivery** in monokulo; UnifiedPush end to end with
    ntfy.
-6. **Relay mode**: APNs (alert, liveactivity) and FCM; the official relay
-   deployed.
+6. **`push-relay`**: APNs (alert, liveactivity) and FCM, the standalone
+   binary and the embedded mount; the official relay deployed standalone.
 7. **Monokular Android** (UnifiedPush first, then FCM, then overlay and Live
    Updates).
 8. **Monokular iOS** (iPad Slide Over first; iPhone Live Activity once the
