@@ -157,7 +157,7 @@ kinds of endpoint all accept the same request:
 | Endpoint | Who runs it | Delivers to |
 | --- | --- | --- |
 | UnifiedPush distributor (ntfy, NextPush, …) | The user, or a public instance | Android app via its distributor |
-| `https://relay.monokular.app/wp/{handle}` | The project (relay mode) | APNs (iOS) or FCM (Android with Google services) |
+| `https://relay.monokular.app/v1/push/{handle}` | The project (relay mode) | APNs (iOS) or FCM (Android with Google services) |
 | A browser's push service | Browser vendor | A future web app or admin page |
 
 So monokulo only ever does "encrypt, sign, POST to endpoint". Whether that
@@ -207,7 +207,7 @@ crates/push/src/
                     map the response (201 sent, 404/410 gone, 413 too big,
                     429/5xx retry with Retry-After)
   relay/            feature "relay"
-    mod.rs          axum Router: /v1/register, /v1/unregister, /wp/{handle}
+    mod.rs          axum Router: /v1/register, /v1/unregister, /v1/push/{handle}
     handles.rs      HandleStore trait (+ an in-memory one for tests)
     apns.rs         APNs provider: HTTP/2, token (.p8) auth, push types alert/background/liveactivity
     fcm.rs          FCM HTTP v1 provider: service-account OAuth, data messages
@@ -248,7 +248,7 @@ POST /v1/register
   "token": "<APNs/FCM device or activity token>",
   "app": "monokular",                   // picks the bundle ID / FCM project
   "vapid_public_key": "BJ…" }           // the store's monokulo
-→ 201 { "endpoint": "https://relay.monokular.app/wp/ph_7f3k…",
+→ 201 { "endpoint": "https://relay.monokular.app/v1/push/ph_7f3k…",
         "expires_at": … }
 ```
 
@@ -260,7 +260,7 @@ POST /v1/register
 Delivery, from monokulo (plain Web Push):
 
 ```http
-POST /wp/ph_7f3k…
+POST /v1/push/ph_7f3k…
 Authorization: vapid t=<JWT>, k=<public key>
 Content-Encoding: aes128gcm          (encrypted kind)  |  application/json (live-activity kind)
 TTL: 1800
