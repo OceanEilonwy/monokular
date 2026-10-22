@@ -14,8 +14,8 @@
 //!   "currency": "USD"
 //! }"##).unwrap();
 //!
-//! let param = orf_codec::query::to_param(&receipt).unwrap(); // "orf=<digits>"
-//! let uri = format!("pay:example?amount=9&{param}");         // the app's own URI
+//! // The payment URI comes from elsewhere; the receipt is added to it here.
+//! let uri = orf_codec::query::append("pay:example?amount=9", &receipt).unwrap();
 //! assert_eq!(orf_codec::query::from_uri(&uri).unwrap(), Some(receipt));
 //! ```
 //!
@@ -24,8 +24,9 @@
 //! - [`encode_text`] / [`decode_text`]: the same as decimal digits, which go
 //!   into a URI unescaped and pack densely into a QR code's numeric mode.
 //!   Making the QR code is up to the app.
-//! - [`query`]: the digits as an `orf=` query parameter, which the app adds
-//!   to its payment URI, and reading it back out of any URI.
+//! - [`query`]: the digits as an `orf=` query parameter: added to a payment
+//!   URI the app already has ([`query::append`]), and read back out of any
+//!   URI.
 //!
 //! Every ORF 0.1 document round-trips exactly, except what it can't
 //! represent and refuses with an [`EncodeError`]: unknown fields, fractional
@@ -50,6 +51,8 @@ pub enum EncodeError {
     Amount { field: String, value: f64 },
     #[error("compressing the text: {0}")]
     Compress(std::io::Error),
+    #[error("the URI already has an orf parameter")]
+    HasReceipt,
 }
 
 #[derive(Debug, thiserror::Error)]

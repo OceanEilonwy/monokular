@@ -6,8 +6,8 @@ parameter of a payment URI, so a wallet can keep it with the payment.
 
 ```rust
 let receipt: orf_codec::Receipt = serde_json::from_str(orf_json)?;
-let param = orf_codec::query::to_param(&receipt)?;    // "orf=<digits>"
-let uri = format!("{payment_uri}&{param}");            // the app's own URI
+// `payment_uri` comes from the payment server, without the receipt.
+let uri = orf_codec::query::append(&payment_uri, &receipt)?;
 // … the app turns `uri` into a QR code; a wallet scans it …
 let back = orf_codec::query::from_uri(&uri)?;          // Some(receipt)
 assert_eq!(back, Some(receipt));
@@ -15,8 +15,13 @@ assert_eq!(back, Some(receipt));
 
 The library knows nothing about payment URIs, currencies or QR codes. It
 returns bytes (`encode`), decimal digits (`encode_text`) or an `orf=<digits>`
-query parameter (`query::to_param`); the app adds that to its own payment
-URI and makes the code. Digits are used because they need no escaping in a URI and a QR code's
+query parameter (`query::to_param`), or adds that parameter to a payment URI
+it is given (`query::append`); the app makes the code.
+
+This lets the receipt be built where the sale happens. In Monokular the
+payment server sends the till a plain payment URI and never sees the items;
+the till device appends the receipt, so the QR code is the only way the
+items leave it. Digits are used because they need no escaping in a URI and a QR code's
 numeric mode packs them at 3.33 bits each.
 
 ## The query parameter
