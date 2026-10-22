@@ -1,0 +1,23 @@
+# Gradle / Android
+.gradle/
+build/
+local.properties
+*.apk
+*.aab
+.kotlin/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Xcode
+ios/*.xcodeproj/
+ios/*.xcworkspace/
+DerivedData/
+xcuserdata/
+*.ipa
+
+# Editors and OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
