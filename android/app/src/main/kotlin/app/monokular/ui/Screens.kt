@@ -222,17 +222,20 @@ fun TillScreen(
     sales: List<TillSale>,
     problem: String?,
     signInAgain: Boolean,
+    disconnected: Boolean,
     onSettings: () -> Unit,
     onRefund: (String) -> Unit,
     onDismiss: (String) -> Unit,
     onSignIn: () -> Unit,
+    onForget: () -> Unit,
 ) = Page {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         Mark(36)
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(storeName, fontWeight = FontWeight.SemiBold)
             val status = when {
-                !running -> "Shift stopped"
+                disconnected -> "Disconnected"
+                !running -> "Not watching"
                 live -> "Watching for Monero sales"
                 else -> "Reconnecting…"
             }
@@ -242,6 +245,11 @@ fun TillScreen(
             }
         }
         TextButton(onClick = onSettings) { Text("Settings") }
+    }
+    if (disconnected) {
+        Problem("The store disconnected this device. Connect it again with a new code from the store's settings.")
+        Button(onClick = onForget, modifier = Modifier.fillMaxWidth()) { Text("Connect again") }
+        return@Page
     }
     Problem(problem)
     if (signInAgain) Button(onClick = onSignIn, modifier = Modifier.fillMaxWidth()) { Text("Sign in to Square again") }

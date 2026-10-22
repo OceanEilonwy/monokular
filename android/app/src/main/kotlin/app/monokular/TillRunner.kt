@@ -25,6 +25,8 @@ data class RunnerState(
     val running: Boolean = false,
     /** The store's event stream is open. */
     val live: Boolean = false,
+    /** The store disconnected this device: its key no longer works. */
+    val disconnected: Boolean = false,
     val till: TillState = TillState(),
 )
 
@@ -102,8 +104,9 @@ class TillRunner(private val graph: Graph) {
                 }
             } catch (e: MonokuloException) {
                 if (e.status == 401) {
-                    // The store disconnected this device.
-                    mutable.update { it.copy(live = false) }
+                    // The store disconnected this device: stop asking.
+                    mutable.update { it.copy(live = false, disconnected = true) }
+                    job?.cancel()
                     return
                 }
             } catch (_: Exception) {

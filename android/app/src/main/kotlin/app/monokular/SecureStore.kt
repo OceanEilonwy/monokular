@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import androidx.core.content.edit
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -30,14 +31,14 @@ class SecureStore(context: Context) {
 
     fun put(name: String, value: String?) {
         if (value == null) {
-            prefs.edit().remove(name).apply()
+            prefs.edit { remove(name) }
             return
         }
         val cipher = Cipher.getInstance(TRANSFORMATION)
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val sealed = cipher.iv + cipher.doFinal(value.toByteArray(Charsets.UTF_8))
         // commit, not apply: a spent Square refresh token must never be the one left on disk.
-        prefs.edit().putString(name, Base64.encodeToString(sealed, Base64.NO_WRAP)).commit()
+        prefs.edit(commit = true) { putString(name, Base64.encodeToString(sealed, Base64.NO_WRAP)) }
     }
 
     private fun key(): SecretKey {

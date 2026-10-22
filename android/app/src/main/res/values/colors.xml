@@ -1,7 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Monokulo's palette: warm paper, ink, one orange. -->
+    <!-- Monokulo's palette: warm paper and ink (the launcher icon's background and ring). -->
     <color name="paper">#FFF4F1EA</color>
     <color name="ink">#FF1A1917</color>
-    <color name="orange">#FFFF6600</color>
 </resources>

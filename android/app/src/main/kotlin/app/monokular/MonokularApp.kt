@@ -38,7 +38,7 @@ class Graph(app: Application) {
         applicationId = BuildConfig.SQUARE_APPLICATION_ID,
         sandbox = BuildConfig.SQUARE_SANDBOX,
         redirectUri = BuildConfig.SQUARE_REDIRECT_URI,
-        baseUrl = if (BuildConfig.DEBUG) stores.squareBaseUrl else null,
+        baseUrl = if (BuildConfig.DEBUG) stores.squareBaseUrl ?: BuildConfig.SQUARE_BASE_URL.ifEmpty { null } else null,
     )
 
     fun squareAuth() = SquareAuth(http, squareConfig(), stores.tokens)

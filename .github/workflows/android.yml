@@ -3,9 +3,9 @@ name: Android
 on:
   push:
     branches: [main]
-    paths: ["android/**", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.*", ".github/workflows/android.yml"]
   pull_request:
-    paths: ["android/**", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.*", ".github/workflows/android.yml"]
 
 permissions:
   contents: read
@@ -29,8 +29,23 @@ jobs:
       # Validates the wrapper jar and caches Gradle's dependencies and build cache.
       - uses: gradle/actions/setup-gradle@v6
       # The AndroidX libraries in use compile against Android 17 (API 37.2).
-      - name: Install Android SDK platform
-        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.2" > /dev/null
+      - name: Install Android SDK platform and NDK
+        run: yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-37.2" "ndk;27.0.12077973" > /dev/null
+      # The receipt module builds orf-codec-ffi from Rust (docs/decisions/android.md 8).
+      - name: Rust for Android
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/bin/cargo-ndk
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: android-rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      - name: cargo-ndk
+        run: command -v cargo-ndk || cargo install cargo-ndk --version 4.1.2 --locked
       - name: Build, lint and test
         run: ./gradlew build
       - uses: actions/upload-artifact@v7
