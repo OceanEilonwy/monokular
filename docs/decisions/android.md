@@ -79,3 +79,35 @@ what else was possible, so any of them can be reversed knowingly.
 20. **`Square-Version: 2026-09-16`**, the version Square's reference shows.
 21. **Refunds use `monokular-refund-<payment id>` as their idempotency
     key**, so a retried refund refunds once.
+22. **Connecting confirms the host first, then shows the store.** The design
+    has the confirm screen show the store and wallet before connecting, but
+    Monokulo only says which store a code is for when it's redeemed. So the
+    app asks "Connect to pay.yourshop.com?", redeems, then shows store,
+    server, wallet and network with "Wrong store: disconnect". A preview
+    endpoint would need a code that can be read without being spent.
+23. **The till runs in a `specialUse` foreground service** during a shift
+    (Android 14+ needs a type; `dataSync` is capped at 6 hours a day on
+    Android 15). Play needs the subtype explained; the manifest says it.
+    Its notification is the current sale (`setRequestPromotedOngoing`, a
+    Live Update on Android 16+).
+24. **Secrets are AES-GCM encrypted with an Android Keystore key** and kept
+    in app preferences, written with `commit` so a spent Square refresh
+    token is never the one left on disk. No extra library (Tink,
+    EncryptedSharedPreferences) is needed for this.
+25. **The QR scanner is CameraX with ZXing**, not ML Kit, so the app has no
+    Google Play services dependency and can go on F-Droid. Codes are drawn
+    with ZXing's `QR_COMPACT`, which switches modes inside a code so a
+    receipt's digits pack in numeric mode.
+26. **Debug builds** (`app.monokular.debug`) take connect codes over plain
+    http, return from Square on `monokular-debug://square`, and can point at
+    a stand-in Square: for running against Monokulo on the developer's
+    machine. Release builds take only https and the `monokular.app` App
+    Link.
+27. **The Square application id is a build property**
+    (`-Pmonokular.square.applicationId=…`), defaulting to a placeholder,
+    because the project's Square application doesn't exist yet.
+28. **Push isn't wired up yet.** Monokulo has no push targets and there's no
+    Bell, so the app relies on its foreground service and the event stream
+    during a shift. The UnifiedPush module from the first PR is unchanged.
+29. **A till without Square** ("Not now") still runs: it shows the sales
+    other tills make, from the event stream, without receipts.

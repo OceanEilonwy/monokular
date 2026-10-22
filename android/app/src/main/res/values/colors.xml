@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Monokulo's palette: warm paper, ink, one orange. -->
+    <color name="paper">#FFF4F1EA</color>
+    <color name="ink">#FF1A1917</color>
+    <color name="orange">#FFFF6600</color>
+</resources>

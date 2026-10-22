@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Debug builds only: Square's sign-in comes back on a custom scheme, so a
+     stand-in Square on the developer's machine can return to the app, and a
+     Monokulo there can be reached over plain http. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application android:usesCleartextTraffic="true">
+        <activity android:name=".MainActivity" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="monokular-debug" android:host="square" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
