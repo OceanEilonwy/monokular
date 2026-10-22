@@ -1,0 +1,185 @@
+openapi: 3.1.0
+info:
+  title: Monokulo for connected apps
+  version: 0.1.0
+  description: |
+    What a connected app (Monokular) uses of a store's Monokulo: connecting
+    with a code from the dashboard, making orders with its own key, and
+    following them. Monokulo is the source of truth: its Pages site
+    documents the same (docs/apps), from OceanEilonwy/monokulo#140.
+    `{endpoint}` is the `endpoint` the connect call returned.
+servers:
+  - url: "{endpoint}"
+    variables:
+      endpoint:
+        default: https://pay.example
+paths:
+  /apps/connect:
+    post:
+      summary: Redeem a connect code for a key of the app's own (once, within 10 minutes)
+      parameters:
+        - $ref: "#/components/parameters/Client"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, slug]
+              properties:
+                token: { type: string, pattern: "^ct_[0-9a-f]{64}$" }
+                slug: { type: string, pattern: "^[a-z][a-z0-9-]{1,31}$" }
+                name: { type: string, maxLength: 40 }
+                device_name: { type: string, maxLength: 40 }
+                platform: { type: string, examples: [android, ios] }
+      responses:
+        "200":
+          description: Connected
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Connected" }
+        "400": { description: The slug breaks the rules, $ref: "#/components/responses/Error" }
+        "401": { description: Unknown, spent or expired code }
+        "503": { description: The instance has no public address yet; the code is still good, $ref: "#/components/responses/Error" }
+  /pay/{public_key}/orders:
+    post:
+      summary: Make an order (the shop plugins' order API)
+      parameters:
+        - $ref: "#/components/parameters/PublicKey"
+        - $ref: "#/components/parameters/Client"
+      security: [{ appKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [amount, currency]
+              properties:
+                amount: { type: string, examples: ["24.50"] }
+                currency: { type: string, examples: [USD, XMR] }
+                merchant_order_id: { type: string, maxLength: 120 }
+                show_merchant_order_id: { type: boolean }
+                idempotency_key: { type: string, maxLength: 100 }
+              description: |
+                Monokular never sends `description`: anyone with the payment
+                link can read it, and it would carry what was bought.
+      responses:
+        "200":
+          description: The order (the same one again for a repeated idempotency key)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Order" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { description: The key isn't this store's, or the app was disconnected }
+        "409": { $ref: "#/components/responses/Error" }
+  /pay/{public_key}/orders/{order_id}/status:
+    get:
+      summary: An order's current state
+      parameters:
+        - $ref: "#/components/parameters/PublicKey"
+        - { name: order_id, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Its state
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/OrderStatus" }
+  /pay/{public_key}/events:
+    get:
+      summary: Server-sent events for every order the store's apps make
+      description: |
+        `ready` first; then one event per change, named after `SaleEvent.event`
+        with the JSON as data; `lagged` when the stream fell behind (re-read
+        the status of the orders on screen). A comment every 25 s.
+      parameters:
+        - $ref: "#/components/parameters/PublicKey"
+      security: [{ appKey: [] }]
+      responses:
+        "200":
+          description: The stream
+          content:
+            text/event-stream:
+              schema: { $ref: "#/components/schemas/SaleEvent" }
+        "401": { description: No key, or not this store's }
+  /pay/{public_key}/app:
+    delete:
+      summary: Disconnect this app; its key stops working at once
+      parameters:
+        - $ref: "#/components/parameters/PublicKey"
+      security: [{ appKey: [] }]
+      responses:
+        "204": { description: Disconnected }
+        "401": { description: Not an app key of this store }
+components:
+  securitySchemes:
+    appKey: { type: http, scheme: bearer, description: "The app's ak_… key" }
+  parameters:
+    PublicKey: { name: public_key, in: path, required: true, schema: { type: string } }
+    Client:
+      name: Monokulo-Client
+      in: header
+      schema: { type: string, examples: ["monokular/0.1.0"] }
+  responses:
+    Error:
+      description: What went wrong, to show
+      content:
+        application/json:
+          schema: { type: object, properties: { error: { type: string } } }
+  schemas:
+    Connected:
+      type: object
+      required: [public_key, app_key, endpoint, app_id, device_name, store]
+      properties:
+        public_key: { type: string }
+        app_key: { type: string, pattern: "^ak_" }
+        endpoint: { type: string, format: uri }
+        onion_endpoint: { type: string }
+        app_id: { type: string }
+        device_name: { type: string }
+        store:
+          type: object
+          properties: { name: { type: string }, base_currency: { type: string } }
+        wallet:
+          type: object
+          properties:
+            name: { type: string }
+            network: { type: string, enum: [mainnet, stagenet, testnet] }
+            address_short: { type: string }
+    Order:
+      type: object
+      required: [order_id, address, xmr_amount_piconero, amount, currency, expires_at]
+      properties:
+        order_id: { type: string }
+        address: { type: string }
+        xmr_amount_piconero: { type: integer }
+        amount: { type: string }
+        currency: { type: string }
+        merchant_order_id: { type: string }
+        show_merchant_order_id: { type: boolean }
+        expires_at: { type: integer }
+    OrderStatus:
+      type: object
+      required: [status, confirmations, confirmations_required, is_terminal]
+      properties:
+        status: { type: string, enum: [pending, unconfirmed, confirming, paid, overpaid, partial, expired, cancelled] }
+        confirmations: { type: integer }
+        confirmations_required: { type: integer }
+        is_terminal: { type: boolean }
+        error: { type: [string, "null"] }
+    SaleEvent:
+      type: object
+      required: [event, order_id, amount, currency, address, xmr_amount_piconero, expires_at, device_name, at]
+      properties:
+        event:
+          type: string
+          enum: [sale.waiting, sale.seen, sale.confirming, sale.paid, sale.partial, sale.expired, sale.double_spend]
+        order_id: { type: string }
+        amount: { type: string }
+        currency: { type: string }
+        address: { type: string }
+        xmr_amount_piconero: { type: integer }
+        merchant_order_id: { type: string }
+        expires_at: { type: integer }
+        device_name: { type: string }
+        at: { type: integer }
