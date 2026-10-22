@@ -1,31 +1,33 @@
 # orf-codec
 
 A compact encoding of [Open Receipt Format](https://github.com/openreceiptformat/orf-spec)
-(ORF 0.1) receipts, small enough to carry a whole receipt inside a Monero
-payment URI, so a wallet can keep it with the payment.
+(ORF 0.1) receipts, small enough to carry a whole receipt in one query
+parameter of a payment URI, so a wallet can keep it with the payment.
 
 ```rust
 let receipt: orf_codec::Receipt = serde_json::from_str(orf_json)?;
-let digits = orf_codec::encode_text(&receipt)?;                  // for the URI
-let uri = orf_codec::uri::build(address, piconero, Some(&digits));
+let param = orf_codec::query::to_param(&receipt)?;    // "orf=<digits>"
+let uri = format!("{payment_uri}&{param}");            // the app's own URI
 // … the app turns `uri` into a QR code; a wallet scans it …
-let back = orf_codec::decode_text(&orf_codec::uri::parse(&uri)?.receipt.unwrap())?;
-assert_eq!(back, receipt);
+let back = orf_codec::query::from_uri(&uri)?;          // Some(receipt)
+assert_eq!(back, Some(receipt));
 ```
 
-The library knows nothing about QR codes. It returns bytes (`encode`) or
-decimal digits (`encode_text`); the app that shows the payment makes the
-code. Digits are used because they need no escaping in a URI and a QR code's
+The library knows nothing about payment URIs, currencies or QR codes. It
+returns bytes (`encode`), decimal digits (`encode_text`) or an `orf=<digits>`
+query parameter (`query::to_param`); the app adds that to its own payment
+URI and makes the code. Digits are used because they need no escaping in a URI and a QR code's
 numeric mode packs them at 3.33 bits each.
 
-## The URI
+## The query parameter
 
 ```text
-monero:<address>?tx_amount=<XMR>&orf=<digits>
+<the app's payment URI>&orf=<digits>
 ```
 
 `orf` is one extra query parameter. Wallets that don't know it ignore it and
-still pay.
+still pay. `query::from_uri` reads it from any URI's query, whatever the
+scheme.
 
 ## What round-trips
 

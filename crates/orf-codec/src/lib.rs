@@ -1,6 +1,6 @@
 //! A compact encoding of [Open Receipt Format](https://github.com/openreceiptformat/orf-spec)
-//! (ORF 0.1) receipts, small enough to carry a whole receipt inside a Monero
-//! payment URI.
+//! (ORF 0.1) receipts, small enough to carry a whole receipt in one query
+//! parameter of a payment URI.
 //!
 //! ```
 //! let receipt: orf_codec::Receipt = serde_json::from_str(r##"{
@@ -14,10 +14,9 @@
 //!   "currency": "USD"
 //! }"##).unwrap();
 //!
-//! let text = orf_codec::encode_text(&receipt).unwrap();     // digits, for the URI
-//! let uri = orf_codec::uri::build("8Bx…", 52_113_000_000, Some(&text));
-//! let parsed = orf_codec::uri::parse(&uri).unwrap();
-//! assert_eq!(orf_codec::decode_text(parsed.receipt.as_deref().unwrap()).unwrap(), receipt);
+//! let param = orf_codec::query::to_param(&receipt).unwrap(); // "orf=<digits>"
+//! let uri = format!("pay:example?amount=9&{param}");         // the app's own URI
+//! assert_eq!(orf_codec::query::from_uri(&uri).unwrap(), Some(receipt));
 //! ```
 //!
 //! - [`encode`] / [`decode`]: a receipt to and from compact bytes ([`codec`]
@@ -25,7 +24,8 @@
 //! - [`encode_text`] / [`decode_text`]: the same as decimal digits, which go
 //!   into a URI unescaped and pack densely into a QR code's numeric mode.
 //!   Making the QR code is up to the app.
-//! - [`uri`]: Monero payment URIs with the receipt in an `orf` parameter.
+//! - [`query`]: the digits as an `orf=` query parameter, which the app adds
+//!   to its payment URI, and reading it back out of any URI.
 //!
 //! Every ORF 0.1 document round-trips exactly, except what it can't
 //! represent and refuses with an [`EncodeError`]: unknown fields, fractional
@@ -36,7 +36,7 @@ mod bits;
 pub mod codec;
 mod digits;
 mod model;
-pub mod uri;
+pub mod query;
 
 pub use codec::{Codec, DEFAULT_DICTIONARY, FORMAT};
 pub use digits::{from_digits, to_digits};
@@ -70,14 +70,15 @@ pub enum DecodeError {
     Json(serde_json::Error),
 }
 
-/// A receipt as compact bytes, with the default dictionary.
+/// A receipt as compact bytes, with the default dictionary. The first call
+/// prepares the dictionary (about 2 ms); later calls reuse it.
 pub fn encode(receipt: &Receipt) -> Result<Vec<u8>, EncodeError> {
-    Codec::default().encode(receipt)
+    Codec::shared().encode(receipt)
 }
 
 /// A receipt back from compact bytes, with the default dictionary.
 pub fn decode(bytes: &[u8]) -> Result<Receipt, DecodeError> {
-    Codec::default().decode(bytes)
+    Codec::shared().decode(bytes)
 }
 
 /// A receipt as decimal digits: [`encode`], then [`to_digits`].

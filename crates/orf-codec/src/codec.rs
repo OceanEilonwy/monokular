@@ -17,11 +17,13 @@
 //! for when the receipt says otherwise, so every document round-trips exactly.
 
 use std::io;
+use std::sync::OnceLock;
 
 use serde_json::{Map, Number, Value};
 use time::format_description::FormatItem;
 use time::macros::format_description;
 use time::{OffsetDateTime, UtcOffset};
+use zstd::dict::{DecoderDictionary, EncoderDictionary};
 use zstd::zstd_safe::{CParameter, DParameter, FrameFormat};
 
 use crate::bits::{Reader, Writer};
@@ -37,19 +39,28 @@ const SEP: char = '\n';
 const DATETIME: &[FormatItem<'static>] = format_description!("[year]-[month]-[day]T[hour]:[minute]:[second]");
 const OFFSET: &[FormatItem<'static>] = format_description!("[offset_hour sign:mandatory]:[offset_minute]");
 
-/// An encoder and decoder bound to one compression dictionary.
+/// zstd's compression level. Above 19 makes no difference to receipts, but
+/// costs nothing once the dictionary is prepared.
+const LEVEL: i32 = 22;
+
+/// An encoder and decoder bound to one compression dictionary. Making one
+/// prepares the dictionary, which takes about 2 ms; encoding and decoding
+/// with it then take microseconds, so make it once and keep it.
 pub struct Codec<'d> {
     dict_id: u8,
-    dict: &'d [u8],
+    encoder: EncoderDictionary<'d>,
+    decoder: DecoderDictionary<'d>,
 }
 
 /// The dictionary shipped with this crate: trained on public domain menus
 /// (NYPL), CC0 labels (Wikidata) and generated item names.
 pub const DEFAULT_DICTIONARY: &[u8] = include_bytes!("../dict/receipts-open-64k.zdict");
 
-impl Default for Codec<'static> {
-    fn default() -> Self {
-        Codec { dict_id: 0, dict: DEFAULT_DICTIONARY }
+impl Codec<'static> {
+    /// The codec for the default dictionary, prepared on first use and shared.
+    pub fn shared() -> &'static Codec<'static> {
+        static SHARED: OnceLock<Codec<'static>> = OnceLock::new();
+        SHARED.get_or_init(|| Codec::prepare(0, DEFAULT_DICTIONARY))
     }
 }
 
@@ -59,7 +70,15 @@ impl<'d> Codec<'d> {
     /// and experiments until a format version adds them.
     pub fn with_dictionary(id: u8, dict: &'d [u8]) -> Self {
         assert!(id < 16, "dictionary ids are four bits");
-        Codec { dict_id: id, dict }
+        Codec::prepare(id, dict)
+    }
+
+    fn prepare(dict_id: u8, dict: &'d [u8]) -> Self {
+        Codec {
+            dict_id,
+            encoder: EncoderDictionary::new(dict, LEVEL),
+            decoder: DecoderDictionary::new(dict),
+        }
     }
 
     pub fn encode(&self, r: &Receipt) -> Result<Vec<u8>, EncodeError> {
@@ -70,7 +89,7 @@ impl<'d> Codec<'d> {
         let mut out = vec![(FORMAT << 4) | self.dict_id];
         leb128(&mut out, numbers.len());
         out.extend_from_slice(&numbers);
-        out.extend_from_slice(&compress(text.as_bytes(), self.dict).map_err(EncodeError::Compress)?);
+        out.extend_from_slice(&compress(text.as_bytes(), &self.encoder).map_err(EncodeError::Compress)?);
         Ok(out)
     }
 
@@ -84,7 +103,7 @@ impl<'d> Codec<'d> {
         }
         let (len, used) = read_leb128(rest)?;
         let numbers = rest.get(used..used + len).ok_or(DecodeError::Truncated)?;
-        let text = decompress(&rest[used + len..], self.dict).map_err(DecodeError::Decompress)?;
+        let text = decompress(&rest[used + len..], &self.decoder).map_err(DecodeError::Decompress)?;
         let text = String::from_utf8(text).map_err(|_| DecodeError::Corrupt("text isn't UTF-8"))?;
         let mut d = Dec { bits: Reader::new(numbers), text: text.split(SEP) };
         let r = d.receipt()?;
@@ -95,8 +114,8 @@ impl<'d> Codec<'d> {
     }
 }
 
-fn compress(text: &[u8], dict: &[u8]) -> io::Result<Vec<u8>> {
-    let mut c = zstd::bulk::Compressor::with_dictionary(22, dict)?;
+fn compress(text: &[u8], dict: &EncoderDictionary) -> io::Result<Vec<u8>> {
+    let mut c = zstd::bulk::Compressor::with_prepared_dictionary(dict)?;
     for p in [
         CParameter::Format(FrameFormat::Magicless),
         CParameter::ChecksumFlag(false),
@@ -111,8 +130,8 @@ fn compress(text: &[u8], dict: &[u8]) -> io::Result<Vec<u8>> {
 /// Receipts are small; this caps what a malicious payload can make us allocate.
 const MAX_TEXT: usize = 1 << 20;
 
-fn decompress(data: &[u8], dict: &[u8]) -> io::Result<Vec<u8>> {
-    let mut d = zstd::bulk::Decompressor::with_dictionary(dict)?;
+fn decompress(data: &[u8], dict: &DecoderDictionary) -> io::Result<Vec<u8>> {
+    let mut d = zstd::bulk::Decompressor::with_prepared_dictionary(dict)?;
     d.set_parameter(DParameter::Format(FrameFormat::Magicless))?;
     d.decompress(data, MAX_TEXT)
 }

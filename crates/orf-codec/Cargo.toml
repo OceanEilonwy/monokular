@@ -1,7 +1,7 @@
 [package]
 name = "orf-codec"
 version = "0.1.0"
-description = "A compact encoding of Open Receipt Format (ORF 0.1) receipts, for carrying a whole receipt inside a payment URI"
+description = "A compact encoding of Open Receipt Format (ORF 0.1) receipts, for carrying a whole receipt in one query parameter of a payment URI"
 edition.workspace = true
 license.workspace = true
 repository.workspace = true

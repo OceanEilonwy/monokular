@@ -9,6 +9,7 @@
 //! cargo run --release -- decode '<uri>'   # decode a scanned payment URI
 //! ```
 
+mod monero;
 mod receipts;
 mod v1;
 
@@ -76,10 +77,10 @@ fn main() {
 /// Decodes a scanned payment URI with the shipped dictionary, prints the
 /// receipt, and says which known receipt it is, if any.
 fn decode(uri: &str) {
-    let parsed = orf_codec::uri::parse(uri).unwrap_or_else(|e| fail(&e.to_string()));
+    let parsed = monero::parse(uri).unwrap_or_else(|e| fail(e));
     println!("address:   {}", parsed.address);
     println!("tx_amount: {}", parsed.tx_amount.as_deref().unwrap_or("(none)"));
-    let Some(text) = parsed.receipt.as_deref() else { fail("this URI has no receipt (no orf= parameter)") };
+    let Some(text) = orf_codec::query::find(uri) else { fail("this URI has no receipt (no orf= parameter)") };
     let receipt = orf_codec::decode_text(text).unwrap_or_else(|e| fail(&e.to_string()));
     println!("receipt:   {} digits, decoded:\n{}", text.len(), serde_json::to_string_pretty(&receipt).unwrap());
 
@@ -139,7 +140,13 @@ fn evaluate() {
     let mut results = Vec::new();
     for (label, variant, size, dict) in &dicts {
         // Trained dictionaries go under an experimental id; the shipped one is id 0.
-        let codec = if label == SHIPPED { Codec::default() } else { Codec::with_dictionary(15, dict) };
+        let trained;
+        let codec = if label == SHIPPED {
+            Codec::shared()
+        } else {
+            trained = Codec::with_dictionary(15, dict);
+            &trained
+        };
         let mut by_cat: BTreeMap<String, Vec<(usize, i16, i16)>> = BTreeMap::new();
         for ((id, r), orf) in tests.iter().zip(&orfs) {
             let bytes = codec.encode(orf).unwrap_or_else(|e| fail(&format!("{id}: {e}")));
@@ -185,7 +192,7 @@ fn evaluate() {
         shown.push(json!({ "id": id, "category": cat, "receipt": receipt_json(r), "before": before, "after": after }));
     }
 
-    let baseline_uri = orf_codec::uri::build(&address, tests[0].1.piconero(), None);
+    let baseline_uri = monero::build(&address, tests[0].1.piconero());
     let baseline = QrCode::with_error_correction_level(baseline_uri.as_bytes(), EcLevel::M).unwrap();
     write_svg("out/baseline.svg", &baseline);
     let counts = |m: &BTreeMap<String, Vec<String>>| m.iter().map(|(k, v)| (k.clone(), json!(v.len()))).collect::<Map<_, _>>();
@@ -301,7 +308,7 @@ fn stats(xs: &[(usize, i16, i16)]) -> Value {
 /// The URI up to and including `orf=`, so the digits can go in their own
 /// QR segment.
 fn uri_prefix(address: &str, r: &Receipt) -> String {
-    format!("{}&{}=", orf_codec::uri::build(address, r.piconero(), None), orf_codec::uri::RECEIPT_PARAM)
+    format!("{}&{}=", monero::build(address, r.piconero()), orf_codec::query::PARAM)
 }
 
 fn qr_row(name: &str, prefix: &str, value: Segment) -> Value {
@@ -366,6 +373,6 @@ fn receipt_json(r: &Receipt) -> Value {
         "store": r.store, "ref": r.sale_ref,
         "items": r.items.iter().map(|i| json!([i.name, i.qty, i.cents])).collect::<Vec<_>>(),
         "subtotal": r.subtotal(), "tax": r.tax(), "tip": r.tip, "total": r.total(),
-        "xmr": orf_codec::uri::build("x", r.piconero(), None).trim_start_matches("monero:x?tx_amount=").to_string(),
+        "xmr": monero::xmr(r.piconero()),
     })
 }
