@@ -21,3 +21,6 @@ xcuserdata/
 *.iml
 .vscode/
 .DS_Store
+
+# Rust
+/target/
