@@ -1,10 +1,12 @@
 package app.monokular
 
+import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
@@ -63,10 +65,19 @@ class TillService : LifecycleService() {
         .setContentIntent(openApp())
         .build()
 
+    /** Shows [notification] as the till's one notification. Android 13+ asks the cashier first; without it the service runs silently. */
+    private fun show(notification: android.app.Notification) {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        NotificationManagerCompat.from(this).notify(ONGOING_ID, notification)
+    }
+
     private fun post(sale: app.monokular.sales.TillSale?) {
-        val manager = NotificationManagerCompat.from(this)
         if (sale == null) {
-            runCatching { manager.notify(ONGOING_ID, watching()) }
+            show(watching())
             return
         }
         val amount = "${sale.amount} ${sale.currency}"
@@ -87,7 +98,7 @@ class TillService : LifecycleService() {
             .setShortCriticalText(amount)
             .setContentIntent(openApp())
             .build()
-        runCatching { manager.notify(ONGOING_ID, notification) }
+        show(notification)
     }
 
     companion object {

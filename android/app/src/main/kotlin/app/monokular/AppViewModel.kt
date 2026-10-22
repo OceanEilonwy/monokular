@@ -161,6 +161,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         go(Screen.Welcome)
     }
 
+    /** The store disconnected this device: forget it and start again. */
+    fun forget() {
+        TillService.stop(getApplication())
+        graph.squareAuth().signOut()
+        stores.forgetAll()
+        go(Screen.Welcome)
+    }
+
     fun refund(orderId: String) = graph.runner.refund(orderId)
 
     fun dismiss(orderId: String) = graph.runner.dismiss(orderId)

@@ -9,14 +9,19 @@ arrives: in the Dynamic Island on iPhone, in Slide Over on iPad, and in a
 floating bubble or Live Update notification on Android.
 
 Monokulo is self-hosted, so Monokular always connects from a store's own
-Monokulo dashboard (Store settings › Connected apps), never to a central
-server.
+Monokulo dashboard (Store settings › Connections › Apps), never to a central
+server. The till holds the Square sign-in, and builds each receipt itself:
+what someone bought never reaches Monokulo.
 
 ## Status
 
-Design stage, with the Android project set up: it builds and has the connect
-link parser, the sale event model and UnifiedPush registration. iOS hasn't
-started.
+The Android app works end to end against Monokulo's connected-apps API
+(OceanEilonwy/monokulo#140) and a stand-in Square: connect from a store's
+code, sign in to Square, and each "Other: Monero" sale shows its code, with
+the receipt in it, until it's paid or refunded. It hasn't met real Square yet
+(the Square spike, design doc §10), push and the Monokular Bell aren't built,
+and iOS hasn't started. Choices made along the way are in
+[docs/decisions/android.md](docs/decisions/android.md).
 
 - [Design document](docs/design.md): the sale flow with Square, connected
   apps, push (Web Push, UnifiedPush and a relay for APNs/FCM), the Live
@@ -26,22 +31,48 @@ started.
 
 ## Building the Android app
 
-You need JDK 21 and the Android SDK with platform 37.2. Android Studio
-includes both: its bundled JDK is at `<android-studio>/jbr`.
+You need JDK 21, the Android SDK with platform 37.2 and NDK r27, and Rust
+with the Android targets and `cargo-ndk`: the receipt codec is the Rust crate
+`orf-codec`, built into the app. Android Studio includes the JDK: it's at
+`<android-studio>/jbr`.
 
 ```sh
 cd android
-echo "sdk.dir=$HOME/Android/Sdk" > local.properties   # once, not committed
-sdkmanager "platforms;android-37.2"                   # once, if missing
-./gradlew build                                       # compile, lint, test, assemble
-./gradlew :app:installDebug                           # onto a connected device
+echo "sdk.dir=$HOME/Android/Sdk" > local.properties    # once, not committed
+sdkmanager "platforms;android-37.2" "ndk;27.0.12077973" # once, if missing
+rustup target add aarch64-linux-android armv7-linux-androideabi x86_64-linux-android
+cargo install cargo-ndk --version 4.1.2 --locked       # once
+./gradlew build                                        # compile, lint, test, assemble
+./gradlew :app:installDebug                            # onto a connected device
 ```
+
+The Square application id is a build property:
+`-Pmonokular.square.applicationId=sq0idp-…` (a placeholder otherwise).
 
 | Module | What it is |
 | --- | --- |
-| `android/core` | Pure Kotlin, no Android: connect links, the `sale.*` event model. Tested on the JVM. |
-| `android/push` | UnifiedPush registration and the push service. |
-| `android/app` | The Compose app. |
+| `android/core` | Pure Kotlin, no Android: connect codes, the Monokulo client, sale events. |
+| `android/receipt` | ORF receipts in the payment code, through `crates/orf-codec-ffi` (UniFFI). |
+| `android/sales` | Square on the till (PKCE sign-in, Monero tenders, orders, refunds) and the till's sales. |
+| `android/push` | UnifiedPush registration and the push service (not wired up yet). |
+| `android/app` | The Compose app and the shift's foreground service. |
+
+### Running it end to end on an emulator
+
+A debug build talks to a Monokulo on your machine and a stand-in Square:
+
+```sh
+# In the monokulo repository: a Monokulo with an in-process engine, on :8737
+cargo run -p monokulo --example apps_dev_server
+# Here: a stand-in Square on :8738
+python3 -I tools/fake-square/fake_square.py
+# The app, pointed at it
+cd android && ./gradlew :app:installDebug -Pmonokular.square.baseUrl=http://10.0.2.2:8738
+
+curl -X POST localhost:8737/__dev/code    # a connect code: paste it in, or share it to the app
+curl -X POST localhost:8738/fake/sale -d '{"items":[["Flat white",2,450]]}'   # ring up a sale
+curl -X POST localhost:8737/__dev/orders/<order id>/paid                       # and pay it
+```
 
 Versions live in `android/gradle/libs.versions.toml`; each was released at
 least two weeks before it was added.

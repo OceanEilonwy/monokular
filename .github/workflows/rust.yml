@@ -29,8 +29,8 @@ jobs:
             target
           key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
-      # orf-codec's tests; receipt-qr needs a downloaded corpus to run, so it is only built.
+      # orf-codec's and its bindings' tests; receipt-qr needs a downloaded corpus to run, so it is only built.
       - name: Test
-        run: cargo test --locked -p orf-codec
+        run: cargo test --locked -p orf-codec -p orf-codec-ffi
       - name: Clippy
         run: cargo clippy --locked --workspace --all-targets -- -D warnings

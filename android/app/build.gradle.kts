@@ -21,6 +21,7 @@ android {
         buildConfigField("String", "SQUARE_APPLICATION_ID", "\"${providers.gradleProperty("monokular.square.applicationId").getOrElse("sq0idp-REPLACE-ME")}\"")
         buildConfigField("boolean", "SQUARE_SANDBOX", providers.gradleProperty("monokular.square.sandbox").getOrElse("false"))
         buildConfigField("String", "SQUARE_REDIRECT_URI", "\"https://monokular.app/square\"")
+        buildConfigField("String", "SQUARE_BASE_URL", "\"\"")
     }
 
     buildTypes {
@@ -29,6 +30,8 @@ android {
             // A debug build can talk to a Monokulo and a stand-in Square on
             // the developer's machine (docs/decisions/android.md).
             buildConfigField("String", "SQUARE_REDIRECT_URI", "\"monokular-debug://square\"")
+            // -Pmonokular.square.baseUrl=http://10.0.2.2:8738 for tools/fake-square.
+            buildConfigField("String", "SQUARE_BASE_URL", "\"${providers.gradleProperty("monokular.square.baseUrl").getOrElse("")}\"")
         }
         release {
             isMinifyEnabled = true

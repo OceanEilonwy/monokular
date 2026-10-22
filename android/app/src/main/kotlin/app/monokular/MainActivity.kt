@@ -13,6 +13,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.getValue
+import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.monokular.ui.ConfirmScreen
 import app.monokular.ui.ConnectedScreen
@@ -54,10 +55,12 @@ class MainActivity : ComponentActivity() {
                         sales = runner.till.sales,
                         problem = runner.till.problem,
                         signInAgain = runner.till.signInAgain,
+                        disconnected = runner.disconnected,
                         onSettings = { model.go(Screen.Settings) },
                         onRefund = model::refund,
                         onDismiss = model::dismiss,
                         onSignIn = ::signInToSquare,
+                        onForget = model::forget,
                     )
                     Screen.Settings -> SettingsScreen(
                         connection = model.connection,
@@ -102,11 +105,11 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isSquareRedirect(uri: Uri): Boolean {
-        val expected = Uri.parse(BuildConfig.SQUARE_REDIRECT_URI)
+        val expected = BuildConfig.SQUARE_REDIRECT_URI.toUri()
         return uri.scheme == expected.scheme && uri.host == expected.host && uri.path.orEmpty() == expected.path.orEmpty()
     }
 
     private fun signInToSquare() {
-        CustomTabsIntent.Builder().build().launchUrl(this, Uri.parse(model.squareSignInUrl()))
+        CustomTabsIntent.Builder().build().launchUrl(this, model.squareSignInUrl().toUri())
     }
 }
