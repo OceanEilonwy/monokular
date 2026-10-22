@@ -5,9 +5,9 @@ a wallet can save it next to the transaction. It compares two encodings and
 builds a page of real QR codes to test scanning on phones.
 
 ```sh
-./fetch-corpus.sh        # once: product names to train on (corpus/, not committed)
-cargo run --release      # encode, check round trips, print the table, write out/
-python3 page.py out out/receipt-qr-test.html
+./fetch-corpus.sh        # once: download sources, build corpus/train and corpus/test (not committed)
+cargo run --release      # train dictionaries, score them on held-out test receipts, write out/
+python3 -I page.py out out/receipt-qr-test.html
 ```
 
 ## Encodings
@@ -26,10 +26,20 @@ base-41 alphabet in QR alphanumeric mode.
 - The bytes are written as decimal digits for QR numeric mode
   (7 bytes to 17 digits).
 
-## Corpus and licence
+## Corpus and licences
 
-`fetch-corpus.sh` takes product names from Open Food Facts and Open Products
-Facts, which are under the Open Database License (ODbL). A dictionary trained
-on them may count as a derivative database, so before freezing one into a
-spec, check the ODbL's attribution and share-alike terms, or train on data
-under a more permissive licence.
+`fetch-corpus.sh` downloads the sources and `build_corpus.py` splits every
+real source by a hash of the name: 85% for training, 15% held out to build
+test receipts from, so no test name is trained on.
+
+| Source | Used for | Licence |
+| --- | --- | --- |
+| NYPL "What's on the Menu?" dishes | Training; restaurant test receipts | Public domain |
+| Wikidata labels (dishes, drinks, clothing, tools, fasteners, materials, medicines) | Training | CC0 |
+| Generated till-style names (`build_corpus.py`) | Training | Ours |
+| Open Food Facts, Open Products Facts | Training; grocery test receipts | ODbL (share-alike) |
+| Amazon Reviews 2023 item titles (McAuley Lab) | Training; hardware, clothing and pharmacy test receipts | Research dataset: confirm terms before shipping a dictionary trained on it |
+
+A dictionary is frozen into the format and shipped in every wallet, so its
+training data must allow that. Check the ODbL's share-alike terms and the
+Amazon dataset's terms before choosing one of those mixes for a spec.
