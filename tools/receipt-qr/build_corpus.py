@@ -88,24 +88,28 @@ def amazon_names(category: str):
 WIKIDATA_CLASSES = {
     "Q746549": "dish", "Q40050": "drink", "Q2095": "food", "Q11460": "clothing",
     "Q11451": "footwear", "Q39546": "tool", "Q1130322": "fastener",
-    "Q206615": "building material", "Q2424752": "product", "Q12140": "medication",
+    "Q206615": "building material", "Q12140": "medication",
 }
 
 
 def wikidata_names():
     out = []
     for qid in WIKIDATA_CLASSES:
-        query = f"""SELECT DISTINCT ?l WHERE {{
-          ?i wdt:P279* wd:{qid} . ?i rdfs:label ?l . FILTER(lang(?l) = "en") }} LIMIT 30000"""
-        url = "https://query.wikidata.org/sparql?" + urllib.parse.urlencode({"query": query, "format": "json"})
-        req = urllib.request.Request(url, headers={"User-Agent": "monokular-receipt-qr/0.1 (corpus build)"})
-        try:
-            with urllib.request.urlopen(req, timeout=120) as r:
-                rows = json.load(r)["results"]["bindings"]
-        except Exception as e:  # a timeout on one class shouldn't stop the rest
-            print(f"wikidata {qid}: {e}", file=sys.stderr)
-            continue
-        out += [n for b in rows if (n := clean(b["l"]["value"]))]
+        # Big classes time out at the query service; retry with a smaller limit.
+        for limit in (30000, 10000, 3000):
+            query = f"""SELECT DISTINCT ?l WHERE {{
+              ?i wdt:P279* wd:{qid} . ?i rdfs:label ?l . FILTER(lang(?l) = "en") }} LIMIT {limit}"""
+            url = "https://query.wikidata.org/sparql?" + urllib.parse.urlencode({"query": query, "format": "json"})
+            req = urllib.request.Request(url, headers={"User-Agent": "monokular-receipt-qr/0.1 (corpus build)"})
+            try:
+                with urllib.request.urlopen(req, timeout=120) as r:
+                    # Some labels hold raw control characters, which strict JSON refuses.
+                    rows = json.loads(r.read().decode("utf-8"), strict=False)["results"]["bindings"]
+            except Exception as e:
+                print(f"wikidata {qid} (limit {limit}): {e}", file=sys.stderr)
+                continue
+            out += [n for b in rows if (n := clean(b["l"]["value"]))]
+            break
     return out
 
 

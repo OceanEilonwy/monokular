@@ -73,7 +73,7 @@ def qr_card(d, title: str, label: str, extra: str = "") -> str:
 
 
 results = report["results"]
-best = next(r for r in results if r["label"] == report["best"])
+best = next(r for r in results if r["label"] == report["chosen"])
 before = min((r for r in results if r["variant"] == "food only (before)"), key=lambda r: r["mean_version_m"])
 
 # Per category: the best dictionary against the previous (food-only) one.
@@ -212,7 +212,7 @@ small {{ color: var(--muted); }}
   </header>
 
   <section class="block">
-    <h2>Per category, best dictionary ({html.escape(best['label'])})</h2>
+    <h2>Per category, chosen dictionary ({html.escape(best['label'])})</h2>
     <div class="table-box"><table>
       <thead><tr><th>Category</th><th class=n>Median, food-only dict</th><th class=n>Median</th><th class=n>90th pct</th><th class=n>Worst</th><th class=n>Median at L</th><th class=n>Median data</th></tr></thead>
       <tbody>{cat_rows}</tbody>

@@ -43,3 +43,16 @@ test receipts from, so no test name is trained on.
 A dictionary is frozen into the format and shipped in every wallet, so its
 training data must allow that. Check the ODbL's share-alike terms and the
 Amazon dataset's terms before choosing one of those mixes for a spec.
+
+## Chosen dictionary
+
+`dict/receipts-open-64k.zdict` (64 KB, checksum in `dict/SHA256SUMS`) is the
+dictionary chosen for the format. It is trained only on the open mix: NYPL
+menus (public domain), Wikidata labels (CC0) and the generated names (ours),
+so wallets can ship it without inheriting share-alike or research-only terms.
+
+On the held-out test receipts its median is QR version 11 to 13 per category
+(payment-only codes are version 8), about half a version behind the best mix,
+which also trains on Amazon titles. Every retraining downloads live data, so
+this committed file, not a rerun, is the reference: a new dictionary is a new
+format version.

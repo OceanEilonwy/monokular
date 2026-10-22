@@ -23,6 +23,11 @@ use serde_json::{Map, Value, json};
 use receipts::{Item, Receipt};
 
 const DICT_SIZES: [usize; 3] = [32 << 10, 64 << 10, 110 << 10];
+
+/// The dictionary chosen for the format: only public domain, CC0 and our own
+/// training data, so wallets can ship it, at a size wallets can carry. Within
+/// about half a QR version of the best mix (which needs Amazon's terms).
+const CHOSEN: (&str, usize) = ("open", 64 << 10);
 const TRAINING_SAMPLES: usize = 40_000;
 const RECEIPTS_PER_CATEGORY: usize = 40;
 
@@ -73,7 +78,7 @@ fn main() {
 
     // Train every variant at every size and score it on every test receipt.
     let mut results = Vec::new();
-    let mut best: Option<(f64, String, Vec<u8>)> = None;
+    let mut chosen: Option<(String, Vec<u8>)> = None;
     for (variant, sources) in VARIANTS {
         let samples = training_samples(sources, &train);
         for size in DICT_SIZES {
@@ -103,14 +108,14 @@ fn main() {
                 "variant": variant, "dict_bytes": size, "label": label,
                 "mean_version_m": mean_version, "categories": cats,
             }));
-            if best.as_ref().is_none_or(|b| mean_version < b.0) {
-                best = Some((mean_version, label, dict));
+            if (variant, size) == CHOSEN {
+                chosen = Some((label, dict));
             }
         }
     }
-    let (_, best_label, best_dict) = best.unwrap();
+    let (best_label, best_dict) = chosen.expect("the chosen variant is trained");
     fs::write("out/receipts.zdict", &best_dict).unwrap();
-    println!("best: {best_label}");
+    println!("chosen: {best_label}");
 
     // QR codes for the page: the hand-written receipts before and after, and
     // the median receipt of each test category.
@@ -143,7 +148,7 @@ fn main() {
     write_svg("out/baseline.svg", &baseline);
     let report = json!({
         "baseline": { "uri_chars": baseline_uri.len(), "qr_version_m": version_num(baseline.version()), "svg": "baseline.svg" },
-        "best": best_label,
+        "chosen": best_label,
         "training": train.iter().map(|(k, v)| (k.clone(), json!(v.len()))).collect::<Map<_, _>>(),
         "test": test.iter().map(|(k, v)| (k.clone(), json!(v.len()))).collect::<Map<_, _>>(),
         "receipts_per_category": RECEIPTS_PER_CATEGORY,
