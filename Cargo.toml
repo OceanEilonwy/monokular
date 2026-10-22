@@ -6,3 +6,12 @@ members = ["crates/*", "tools/receipt-qr"]
 edition = "2024"
 license = "GPL-3.0-only"
 repository = "https://github.com/OceanEilonwy/monokular"
+
+# orf-codec-ffi's library as the Android app ships it, once per ABI: small.
+# (Release builds for this machine keep the defaults: UniFFI's bindgen reads
+# its metadata from symbols that LTO and stripping remove.)
+[profile.android]
+inherits = "release"
+lto = true
+codegen-units = 1
+strip = true

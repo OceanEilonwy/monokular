@@ -5,24 +5,25 @@
 
 uniffi::setup_scaffolding!();
 
-/// Why a receipt couldn't be added or read.
+/// Why a receipt couldn't be added or read. (Each variant's field is
+/// `reason`, not `message`, which Kotlin's `Throwable` already has.)
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum OrfError {
     /// The JSON isn't an ORF 0.1 receipt.
-    #[error("not an ORF 0.1 receipt: {message}")]
-    Invalid { message: String },
+    #[error("not an ORF 0.1 receipt: {reason}")]
+    Invalid { reason: String },
     /// A receipt the format can't carry exactly (`orf_codec::EncodeError`),
     /// or a URI that already has one.
-    #[error("{message}")]
-    Unsupported { message: String },
+    #[error("{reason}")]
+    Unsupported { reason: String },
     /// A receipt in a URI that doesn't decode.
-    #[error("{message}")]
-    Damaged { message: String },
+    #[error("{reason}")]
+    Damaged { reason: String },
 }
 
 fn parse(receipt_json: &str) -> Result<orf_codec::Receipt, OrfError> {
     serde_json::from_str(receipt_json).map_err(|e| OrfError::Invalid {
-        message: e.to_string(),
+        reason: e.to_string(),
     })
 }
 
@@ -32,7 +33,7 @@ fn parse(receipt_json: &str) -> Result<orf_codec::Receipt, OrfError> {
 pub fn append_receipt(uri: String, receipt_json: String) -> Result<String, OrfError> {
     let receipt = parse(&receipt_json)?;
     orf_codec::query::append(&uri, &receipt).map_err(|e| OrfError::Unsupported {
-        message: e.to_string(),
+        reason: e.to_string(),
     })
 }
 
@@ -41,7 +42,7 @@ pub fn append_receipt(uri: String, receipt_json: String) -> Result<String, OrfEr
 #[uniffi::export]
 pub fn receipt_from_uri(uri: String) -> Result<Option<String>, OrfError> {
     let receipt = orf_codec::query::from_uri(&uri).map_err(|e| OrfError::Damaged {
-        message: e.to_string(),
+        reason: e.to_string(),
     })?;
     Ok(receipt.map(|r| serde_json::to_string(&r).expect("a receipt serialises")))
 }

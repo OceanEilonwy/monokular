@@ -39,3 +39,13 @@ what else was possible, so any of them can be reversed knowingly.
    generated Kotlin was the alternative.
 9. **NDK r27 (27.0.12077973), the current LTS**, over r30 which is also
    installed here.
+10. **`receipt` knows only ORF.** It turns a receipt into the code
+    (`ReceiptCode.of`); turning a Square order into a receipt lives with the
+    Square code in `sales`, so another POS adds its own mapping without
+    touching the codec module.
+11. **A `android` cargo profile** (LTO, one codegen unit, stripped) for the
+    libraries the app ships: about 1.2 to 1.6 MB per ABI. Host release
+    builds keep the defaults, because UniFFI's bindgen reads metadata from
+    symbols LTO and stripping remove.
+12. **`orf-codec-ffi`'s error field is `reason`**, not `message`, which
+    clashes with Kotlin's `Throwable.message` in the generated bindings.
