@@ -7,7 +7,8 @@ cashier takes a Monero sale. This document covers everything it needs from
 itself. Paths under `crates/` refer to the monokulo repository; §7 is the
 layout of this one.
 
-1. [The sale flow](#1-the-sale-flow) end to end, with Square.
+1. [The sale flow](#1-the-sale-flow) end to end, with Square, and the
+   receipt that stays on the till.
 2. [Connected apps](#2-connected-apps): how a device connects to one store on
    a self-hosted monokulo.
 3. [Push](#3-push): a reusable `push` crate, Web Push everywhere, UnifiedPush,
@@ -35,11 +36,13 @@ monokulo reconciles:
 ```text
 cashier: rings up in Square POS ─▶ taps "Other: Monero" ─▶ Square closes the sale
 Square ──payment.created webhook──▶ monokulo (integrations::square)
-monokulo: GET /v2/payments/{id} (amount, order_id, location_id)
-          GET /v2/orders/{order_id} (line items, optional)
+monokulo: GET /v2/payments/{id} (amount, order_id, location_id; never the order)
           creates the Monokulo order (engine) for that amount ─▶ an invoice
-          ─▶ push "sale.waiting" to every Monokular device at that location
-Monokular: shows amount + code (Live Activity / Slide Over / bubble / full screen)
+          ─▶ push "sale.waiting" (amount, plain payment URI, Square order_id)
+             to every Monokular device at that location
+Monokular: GET /v2/orders/{order_id} from Square with its own token
+          ─▶ ORF receipt ─▶ orf_codec::query::append(payment URI, receipt)
+          shows amount + code (Live Activity / Slide Over / bubble / full screen)
 customer pays ─▶ engine: order.unconfirmed ─▶ order.confirming ─▶ order.paid
 monokulo ─▶ push "sale.seen" / "sale.confirming" / "sale.paid"
 never paid ─▶ order.expired ─▶ push "sale.expired" ─▶ Monokular offers
@@ -54,8 +57,10 @@ Square specifics:
 
 | Item | Value |
 | --- | --- |
-| OAuth scopes | `PAYMENTS_READ`, `ORDERS_READ`, `MERCHANT_PROFILE_READ`; `PAYMENTS_WRITE` for refunds |
-| Tokens | Access token 30 days; refresh at least weekly (code-flow refresh tokens don't expire) |
+| Monokulo's OAuth scopes | `PAYMENTS_READ`, `MERCHANT_PROFILE_READ`; `PAYMENTS_WRITE` for refunds. **Never `ORDERS_READ`** (see below) |
+| Monokulo's tokens | Code flow with the app secret: access token 30 days; refresh at least weekly (code-flow refresh tokens don't expire) |
+| Monokular's OAuth scope | `ORDERS_READ` only, per device |
+| Monokular's tokens | PKCE flow (no secret on the device), same Square application as monokulo, redirect to an App Link / universal link on `monokular.app`; kept in the Keystore / Keychain. PKCE refresh tokens are single-use and expire (90 days at the time of writing): the app refreshes on every use and asks the cashier to sign in to Square again when one lapses |
 | Webhooks | `payment.created` (and `payment.updated`), per application; verify `x-square-hmacsha256-signature`; dedupe by `event_id`; Square retries for 24 h |
 | Filter | Payments at a location the store has linked whose Other tender name is the configured one (default "Monero") |
 | Routing | Location (and, if Square gives it, `device_details`) → the Monokular devices of that store at that location |
@@ -68,6 +73,37 @@ whether `RefundPayment` accepts it.
 POS integrations are a module boundary of their own (`integrations::square`
 first). A later POS adds a sibling module that turns its own events into the
 same "sale" shape; nothing below it changes.
+
+### The receipt stays on the till
+
+The payment code can carry the whole receipt, so the customer's wallet keeps
+it with the payment (`orf-codec`, in this repository: an Open Receipt Format
+document, compacted into one `orf=<digits>` query parameter). What someone
+bought must not reach monokulo, the relay, or anything else between the till
+and the customer. So:
+
+1. **Monokulo never sees the items.** It reads only the Square payment
+   (amount, ids, location) and doesn't hold `ORDERS_READ`. Its events and
+   pushes carry the amount, the plain payment URI and the Square `order_id`,
+   never line items.
+2. **The device fetches the order from Square itself.** Square POS has no
+   on-device API for other apps, so Monokular calls
+   `GET /v2/orders/{order_id}` with its own `ORDERS_READ` token (above).
+   The items travel Square ─▶ device ─▶ QR code, and Square has them anyway.
+3. **`orf-codec` runs in the apps**, through UniFFI bindings to the Rust crate
+   (Kotlin and Swift), so there is one implementation of the format and its
+   dictionary (§7).
+4. **The app appends the receipt** with `orf_codec::query::append(uri,
+   &receipt)`, which adds `?orf=` or `&orf=` correctly and refuses a URI that
+   already has one. Monokulo's URI is never rebuilt by hand. `orf-codec` knows
+   nothing about Monero.
+5. **Without order access, the code still works.** If the device has no
+   Square token, the order can't be read, or the receipt doesn't encode, the
+   app shows the plain payment URI. Paying never depends on the receipt.
+
+Only the app's own screens show the receipt code. Anything drawn from a push
+(the Live Activity's "Show code in island", §4) uses the plain payment URI,
+because that content comes through the relay.
 
 ---
 
@@ -112,7 +148,9 @@ POST https://pay.yourshop.com/api/v1/apps/connect
 → 201 { "app_connection_id": "ac_…", "app_key": "ak_…" (secret, shown once),
         "store": { "id", "name", "base_currency" },
         "wallet": { "name", "address_short" },
-        "vapid_public_key": "BJ…" (this instance's Web Push key, §3) }
+        "vapid_public_key": "BJ…" (this instance's Web Push key, §3),
+        "square": { "application_id", "environment" } (when Square is set up;
+                   public values the app needs for its own PKCE sign-in, §1) }
 ```
 
 The app keeps `app_key` in the Keychain / Android Keystore. Every later call
@@ -394,7 +432,9 @@ push_targets(id, app_connection_id, kind encrypted|live-activity,
 | `sale.double_spend` | `order.double_spend_detected` | high | "Payment reversed" | phase expired |
 
 Payloads use the same body versioning as webhooks (`api_version`) so a
-connected app can rely on them.
+connected app can rely on them. `sale.waiting` carries the plain payment URI
+and the POS's order reference (Square `order_id`) so the device can build the
+receipt; no event carries line items (§1).
 
 ### Delivery path
 
@@ -434,7 +474,7 @@ through the relay): location label, store name.
 | `xmr` | "0.1421" | Second line |
 | `expiresAt` | timestamp | A countdown iOS draws itself (`Text(timerInterval:)`), and `stale-date` |
 | `waitingCount` | 2 | "+1 more" when sales overlap |
-| `paymentURI` | `monero:…` | **Only** when the device has "Show code in island" on |
+| `paymentURI` | `monero:…` | **Only** when the device has "Show code in island" on; the plain URI, never the receipt (§1) |
 
 **Show code in island** is a per-device setting, off by default. Turning it
 on explains that the payment address of each sale then passes through the
@@ -491,8 +531,9 @@ crates/monokulo/src/
     mod.rs                      AppConnection, scopes, connect tokens (generalised from http::connect)
     events.rs                   the sale.* event model, shared by SSE and push
   integrations/
-    mod.rs                      the "sale" a POS integration produces
-    square/                     OAuth, webhook receiver + signature check, API client, location linking
+    mod.rs                      the "sale" a POS integration produces (amount and ids, no items)
+    square/                     OAuth, webhook receiver + signature check, payments API client,
+                                location linking; no orders client (§1)
   push/                         monokulo's side of push: push_targets, push_deliveries,
                                 fan-out from webhooks::subscriber, the delivery worker
   http/apps.rs                  /api/v1/apps/{connect,events,push-targets}
@@ -510,7 +551,7 @@ before running it on a production instance):
 
 - `app_connections`, `app_connect_tokens`
 - `push_targets`, `push_deliveries`
-- `square_accounts` (encrypted tokens), `square_locations`, `square_payments` (dedupe by event and payment id)
+- `square_accounts` (encrypted tokens), `square_locations`, `square_payments` (dedupe by event and payment id; ids and amounts only)
 - `vapid_keys` (encrypted private key)
 - none for the relay: its handles live in its own SQLite file (§3)
 
@@ -535,9 +576,9 @@ POS payments). APNs and FCM are faked behind their provider traits; one
 
 ## 7. The Monokular repository
 
-A separate public repository, `monokular`, holding both apps and their
-shared contract. The apps are native (SwiftUI, Jetpack Compose); what they
-share is the contract and test vectors, not code.
+A separate public repository, `monokular`, holding both apps, their shared
+contract and the receipt codec. The apps are native (SwiftUI, Jetpack
+Compose); what they share is the contract, test vectors and `orf-codec`.
 
 GitHub description:
 
@@ -546,6 +587,11 @@ GitHub description:
 ```text
 monokular/
   README.md
+  Cargo.toml                    Rust workspace
+  crates/
+    orf-codec/                  ORF receipts to and from `orf=<digits>` (library, no Monero, no QR)
+    orf-codec-ffi/              UniFFI bindings: a Kotlin package and a Swift package
+  tools/receipt-qr/             corpus, dictionary training and QR size measurements
   protocol/                     the contract with monokulo
     openapi.yaml                /api/v1/apps/* (connect, events, push-targets) and the relay's /v1/register
     events.schema.json          sale.* payloads and the Live Activity content state
@@ -556,7 +602,8 @@ monokular/
     Packages/MonokularKit/      SwiftPM package, no UIKit; builds and tests on Linux CI too
       Sources/
         Model/                  Store, Sale, SalePhase, Event decoding
-        API/                    connect, SSE client, push-target registration
+        API/                    connect, SSE client, push-target registration, Square orders (PKCE)
+        Receipt/                Square order ─▶ ORF, then orf-codec through its Swift bindings
         Crypto/                 RFC 8291 decrypt (swift-crypto, which is CryptoKit's API off Apple platforms)
         Links/                  connect-link parsing
       Tests/                    runs protocol/vectors
@@ -573,12 +620,15 @@ monokular/
     settings.gradle.kts
     core/                       pure Kotlin (JVM): model, API, SSE, RFC 8291 decrypt, links; runs protocol/vectors
     push/                       UnifiedPush connector, FCM fallback, registration with monokulo
+    receipt/                    Square orders (PKCE sign-in, ORDERS_READ), Square order ─▶ ORF,
+                                orf-codec through its Kotlin bindings (native library per ABI)
     overlay/                    the bubble and floating panel (display over other apps)
     notifications/              Live Update / ongoing notifications and their progress
     app/                        Compose UI: onboarding, sale, settings; foreground service
   docs/
     architecture.md  release.md
   .github/workflows/
+    rust.yml                    orf-codec tests and clippy
     core.yml                    MonokularKit on Linux (swift test) + android core (JVM tests)
     ios.yml                     macos runner: XcodeGen, build, UI snapshots, development .ipa artifact
     android.yml                 ubuntu: build, unit tests, debug APK artifact
@@ -595,8 +645,10 @@ Choices:
 - **monokulo is the source of truth for the contract:** its xtask writes
   `protocol/vectors/` from the real Rust code, and both apps' tests read
   them. Changing an event shape breaks the app tests, not a till.
-- A shared Rust core via UniFFI is possible later if the cores drift; it
-  isn't worth the build complexity for this amount of logic.
+- **The receipt codec is shared Rust, through UniFFI.** A bit-exact format
+  with a trained zstd dictionary shouldn't be written twice. The rest of the
+  core stays native: a shared Rust core for it isn't worth the build
+  complexity for this amount of logic.
 
 ---
 
@@ -611,13 +663,14 @@ Choices:
    connect page and link, `/api/v1/apps/connect` and `/events`; the
    WooCommerce connection moves in.
 4. **`integrations::square`**: OAuth, webhook, invoice creation, `sale.*`
-   events.
+   events. Payments only: no `ORDERS_READ`, no items stored or sent.
 5. **Push targets and delivery** in monokulo; UnifiedPush end to end with
    ntfy.
 6. **`push-relay`**: APNs (alert, liveactivity) and FCM, the standalone
    binary and the embedded mount; the official relay deployed standalone.
 7. **Monokular Android** (UnifiedPush first, then FCM, then overlay and Live
-   Updates).
+   Updates). The receipt: `orf-codec-ffi` Kotlin bindings, Square PKCE
+   sign-in, order ─▶ ORF, `query::append`, the plain-code fallback.
 8. **Monokular iOS** (iPad Slide Over first; iPhone Live Activity once the
    relay is up).
 
@@ -636,6 +689,15 @@ Mac.
   Android talk to the relay's FCM path directly?
 - iPadOS 26.1: the exact steps to put an app in Slide Over, for onboarding
   copy.
-- `monokular.app`: the domain for links and the relay.
+- `monokular.app`: the domain for links, the Square sign-in redirect and the
+  relay.
+- Square PKCE: confirm the refresh token lifetime and single-use rule, and
+  that a mobile redirect to an App Link / universal link is accepted.
+- `ORDERS_READ` on a device can read every order of the merchant, not only
+  Monokular's sales: acceptable for a till the merchant controls, but say so
+  on the sign-in screen.
+- The island's code (when on) carries no receipt, because it comes through
+  the relay. Is that clear enough to cashiers, or should the island say "Open
+  for receipt code"?
 - App Store review of a crypto-payments companion; Google Play's "display
   over other apps" declaration.
