@@ -1,4 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Monokular</string>
+    <string name="channel_shift">Watching for sales</string>
+    <string name="channel_sales">Monero sales</string>
+    <string name="watching_title">Watching for Monero sales</string>
+    <string name="sale_waiting">Monero sale · %1$s</string>
+    <string name="sale_waiting_text">Tap to show the customer the code</string>
+    <string name="sale_seen">Payment seen · %1$s</string>
+    <string name="sale_seen_text">Waiting for the network to confirm it</string>
+    <string name="sale_paid">Paid · %1$s</string>
+    <string name="sale_paid_text">%1$s XMR received</string>
 </resources>

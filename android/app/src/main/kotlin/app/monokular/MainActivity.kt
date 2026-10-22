@@ -1,90 +1,112 @@
 package app.monokular
 
+import android.Manifest
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawingPadding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.runtime.Composable
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.activity.viewModels
+import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.dp
-import app.monokular.core.ConnectLink
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.monokular.ui.ConfirmScreen
+import app.monokular.ui.ConnectedScreen
+import app.monokular.ui.LocationsScreen
+import app.monokular.ui.MonokularTheme
+import app.monokular.ui.ScanScreen
+import app.monokular.ui.SettingsScreen
+import app.monokular.ui.SquareScreen
+import app.monokular.ui.TillScreen
+import app.monokular.ui.WelcomeScreen
 
 class MainActivity : ComponentActivity() {
-    private var link by mutableStateOf<ConnectLink?>(null)
+    private val model: AppViewModel by viewModels()
+    private val notifications = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        link = intent.connectLink()
-        setContent { MonokularTheme { Welcome(link) } }
+        handle(intent)
+        if (Build.VERSION.SDK_INT >= 33) notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
+        setContent {
+            MonokularTheme {
+                val screen by model.screen.collectAsStateWithLifecycle()
+                val busy by model.busy.collectAsStateWithLifecycle()
+                val problem by model.problem.collectAsStateWithLifecycle()
+                val runner by model.runner.collectAsStateWithLifecycle()
+                BackHandler(enabled = screen is Screen.Scan || screen is Screen.Confirm || screen is Screen.Settings) { model.goHome() }
+                when (val s = screen) {
+                    Screen.Welcome -> WelcomeScreen(onConnect = { model.go(Screen.Scan) })
+                    Screen.Scan -> ScanScreen(onCode = model::onCode, onBack = model::goHome)
+                    is Screen.Confirm -> ConfirmScreen(s.code, busy, problem, { model.connect(s.code) }, model::goHome)
+                    is Screen.Connected -> ConnectedScreen(s.connection, onNext = model::goHome, onWrong = model::disconnect)
+                    Screen.Square -> SquareScreen(busy, problem, onSignIn = ::signInToSquare, onSkip = model::withoutSquare)
+                    is Screen.Locations -> LocationsScreen(s.locations, model::chooseLocation)
+                    Screen.Till -> TillScreen(
+                        storeName = model.connection?.store?.name ?: "",
+                        running = runner.running,
+                        live = runner.live,
+                        sales = runner.till.sales,
+                        problem = runner.till.problem,
+                        signInAgain = runner.till.signInAgain,
+                        onSettings = { model.go(Screen.Settings) },
+                        onRefund = model::refund,
+                        onDismiss = model::dismiss,
+                        onSignIn = ::signInToSquare,
+                    )
+                    Screen.Settings -> SettingsScreen(
+                        connection = model.connection,
+                        location = model.location,
+                        squareSignedIn = model.squareSignedIn,
+                        shiftOn = model.shiftOn,
+                        debug = model.debug,
+                        squareBaseUrl = model.squareBaseUrl,
+                        onShift = { model.setShift(it); model.go(Screen.Settings) },
+                        onSquare = { model.go(Screen.Square) },
+                        onSignOutSquare = model::signOutOfSquare,
+                        onDisconnect = model::disconnect,
+                        onSquareBaseUrl = { model.squareBaseUrl = it },
+                        onBack = model::goHome,
+                    )
+                }
+            }
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (model.connection != null && model.shiftOn) model.restartIfStopped()
+        model.wake()
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        link = intent.connectLink()
+        handle(intent)
     }
 
-    private fun Intent.connectLink(): ConnectLink? = dataString?.let(ConnectLink::parse)
-}
-
-/** Monokulo's palette: warm paper, ink, one orange primary. */
-@Composable
-fun MonokularTheme(content: @Composable () -> Unit) {
-    val light = lightColorScheme(
-        primary = Color(0xFFFF6600), onPrimary = Color(0xFF111111),
-        background = Color(0xFFF4F1EA), onBackground = Color(0xFF1A1917),
-        surface = Color(0xFFF4F1EA), onSurface = Color(0xFF1A1917),
-        onSurfaceVariant = Color(0xFF5A564C),
-    )
-    val dark = darkColorScheme(
-        primary = Color(0xFFFF6600), onPrimary = Color(0xFF111111),
-        background = Color(0xFF1E1E1E), onBackground = Color(0xFFD4D4D4),
-        surface = Color(0xFF1E1E1E), onSurface = Color(0xFFD4D4D4),
-        onSurfaceVariant = Color(0xFF9D9D9D),
-    )
-    MaterialTheme(colorScheme = if (isSystemInDarkTheme()) dark else light, content = content)
-}
-
-@Composable
-fun Welcome(link: ConnectLink?) {
-    Surface(Modifier.fillMaxSize()) {
-        Column(
-            Modifier.safeDrawingPadding().padding(24.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text("Monokular", style = MaterialTheme.typography.headlineLarge)
-            if (link == null) {
-                Text(
-                    "Open your store in Monokulo, go to Settings › Connected apps and choose " +
-                        "Connect an app › Monokular.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            } else {
-                Text("Connect to ${link.host}?", style = MaterialTheme.typography.titleMedium)
+    private fun handle(intent: Intent?) {
+        when (intent?.action) {
+            Intent.ACTION_VIEW -> {
+                val uri = intent.data ?: return
+                if (isSquareRedirect(uri)) model.onSquareRedirect(uri)
+            }
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)?.let { text ->
+                text.split(Regex("\\s+")).firstOrNull { model.onCode(it) }
             }
         }
     }
-}
 
-@Preview
-@Composable
-private fun WelcomePreview() {
-    MonokularTheme { Welcome(link = null) }
+    private fun isSquareRedirect(uri: Uri): Boolean {
+        val expected = Uri.parse(BuildConfig.SQUARE_REDIRECT_URI)
+        return uri.scheme == expected.scheme && uri.host == expected.host && uri.path.orEmpty() == expected.path.orEmpty()
+    }
+
+    private fun signInToSquare() {
+        CustomTabsIntent.Builder().build().launchUrl(this, Uri.parse(model.squareSignInUrl()))
+    }
 }
