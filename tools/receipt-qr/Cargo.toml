@@ -1,11 +1,10 @@
 [package]
 name = "receipt-qr"
 version = "0.1.0"
-edition = "2024"
+edition.workspace = true
 publish = false
 description = "Prototype: a full receipt inside a Monero payment QR code"
 
-[workspace]
 
 [dependencies]
 ciborium = "0.2"
@@ -14,7 +13,8 @@ qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-zstd = { version = "0.13", features = ["experimental", "zdict_builder"] }
+orf-codec = { path = "../../crates/orf-codec" }
+zstd = { version = "0.13", features = ["zdict_builder"] }
 
 [profile.release]
 debug = false

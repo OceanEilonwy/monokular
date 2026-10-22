@@ -13,7 +13,7 @@ CATS = ["hand", "restaurant", "grocery", "hardware", "clothing", "pharmacy"]
 CAT_NAMES = {"hand": "Hand-written (5)", "restaurant": "Restaurant", "grocery": "Grocery",
              "hardware": "Hardware", "clothing": "Clothing", "pharmacy": "Pharmacy"}
 LICENCE = {
-    "food only (before)": "ODbL",
+    "food only": "ODbL",
     "open": "Public domain, CC0, ours",
     "open + food": "+ ODbL",
     "all": "+ Amazon (terms to confirm)",
@@ -74,7 +74,7 @@ def qr_card(d, title: str, label: str, extra: str = "") -> str:
 
 results = report["results"]
 best = next(r for r in results if r["label"] == report["chosen"])
-before = min((r for r in results if r["variant"] == "food only (before)"), key=lambda r: r["mean_version_m"])
+before = min((r for r in results if r["variant"] == "food only"), key=lambda r: r["mean_version_m"])
 
 # Per category: the best dictionary against the previous (food-only) one.
 cat_rows = "".join(
@@ -102,7 +102,7 @@ for s in report["shown"]:
     a = s["after"]
     extra = (
         f"<div><dt>Receipt data</dt><dd>{a['payload_bytes']} B</dd></div>"
-        f"<div><dt>Numbers / text</dt><dd>{a['numbers_bytes']} / {a['text_compressed_bytes']} B</dd></div>"
+        f"<div><dt>Whole URI</dt><dd>{a['uri_chars']} chars</dd></div>"
     )
     r = s["receipt"]
     cards = ""
@@ -116,7 +116,9 @@ for s in report["shown"]:
            if s["before"] else f"{len(r['items'])} items, names from the held-out test set · version {a['qr_version_m']}")
     sections.append(f"""<section class="case">
   <header class="case-head"><h2>{html.escape(title)}</h2><p>{sub}</p></header>
-  <div class="case-body">{receipt_html(r)}{cards}</div>
+  <div class="case-body">{receipt_html(r)}{cards}
+    <details class="uri"><summary>URI in the code</summary><code>{html.escape(a['uri'])}</code></details>
+  </div>
 </section>""")
 
 train_counts = report["training"]
@@ -172,6 +174,9 @@ tr.best td {{ background: var(--best); font-weight: 700; }}
 .case-body {{ display: grid; grid-template-columns: minmax(240px, 1fr) auto auto; gap: 20px; align-items: start; }}
 @media (max-width: 1100px) {{ .case-body {{ grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }} .paper {{ grid-column: 1 / -1; }} }}
 @media (max-width: 700px) {{ .case-body {{ grid-template-columns: minmax(0, 1fr); }} }}
+.uri {{ grid-column: 1 / -1; font-size: 14px; min-width: 0; }}
+.uri summary {{ cursor: pointer; color: var(--accent-text); font-weight: 700; }}
+.uri code {{ display: block; margin-top: 8px; font-family: var(--font-mono); font-size: 12px; word-break: break-all; color: var(--muted); }}
 .paper {{ background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 16px; font-family: var(--font-mono); font-size: 13px; min-width: 0; }}
 .paper-head {{ display: flex; justify-content: space-between; gap: 8px; padding-bottom: 8px; border-bottom: 1px dashed var(--line); margin-bottom: 4px; }}
 .paper-scroll {{ max-height: 360px; overflow: auto; }}
@@ -200,7 +205,7 @@ small {{ color: var(--muted); }}
 <div class="wrap">
   <header class="intro">
     <h1>Receipt QR scan test</h1>
-    <p class="muted">Each code is a real Monero payment URI with the whole receipt in one extra parameter: bit-packed numbers, item text compressed with zstd and a trained dictionary, written as digits for QR numeric mode. A payment-only code is version {base['qr_version_m']}.</p>
+    <p class="muted">Each code is a real Monero payment URI with the whole receipt as an Open Receipt Format document in one extra parameter, <code>orf=</code>, encoded by the <code>orf-codec</code> library: bit-packed numbers, text compressed with zstd and its shipped dictionary, written as digits. A payment-only code is version {base['qr_version_m']}. To check a scan, copy the URI your phone shows and run <code>cargo run --release -p receipt-qr -- decode '&lt;URI&gt;'</code>.</p>
     <p class="muted">Test receipts use only names held out of training: restaurant dishes from NYPL menus, grocery from Open Food Facts, and hardware, clothing and pharmacy from Amazon product titles cut to till length. {report['receipts_per_category']} receipts per category, 1 to 25 items, mostly small baskets.</p>
     <p class="warn"><strong>Don't pay any of these.</strong> The address is a made-up placeholder and the amounts are examples. A plain camera app shows the URI text.</p>
     <div class="controls">

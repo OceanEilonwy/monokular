@@ -18,7 +18,8 @@ pub struct Receipt {
     pub time: u64,
     pub currency: String,
     pub items: Vec<Item>,
-    /// Tax rate in basis points (888 = 8.88%); tax is floor(subtotal × rate).
+    /// Tax rate in basis points (888 = 8.88%); tax is subtotal × rate,
+    /// rounded half away from zero, as `orf-codec` derives it.
     pub tax_bp: u64,
     pub tip: u64,
 }
@@ -28,15 +29,58 @@ impl Receipt {
         self.items.iter().map(|i| i.qty as u64 * i.cents).sum()
     }
     pub fn tax(&self) -> u64 {
-        self.subtotal() * self.tax_bp / 10_000
+        (self.subtotal() * self.tax_bp + 5_000) / 10_000
     }
     pub fn total(&self) -> u64 {
         self.subtotal() + self.tax() + self.tip
     }
+    /// As an ORF 0.1 receipt, the way a till would send it to Monokulo.
+    pub fn to_orf(&self) -> orf_codec::Receipt {
+        let money = |cents: u64| cents as f64 / 100.0;
+        let time = time_rfc3339(self.time);
+        let mut json = serde_json::json!({
+            "orf_version": "0.1.0",
+            "receipt": { "receipt_id": self.sale_ref, "issue_timestamp": time, "receipt_type": "sale" },
+            "merchant": { "legal_name": self.store, "country_code": "US" },
+            "line_items": self.items.iter().map(|i| serde_json::json!({
+                "description": i.name, "quantity": i.qty, "unit_price": money(i.cents),
+                "line_total": money(i.qty as u64 * i.cents),
+            })).collect::<Vec<_>>(),
+            "total": money(self.total()),
+            "currency": self.currency,
+        });
+        if self.tax_bp != 0 {
+            json["tax"] = serde_json::json!({ "tax_lines": [
+                { "rate": self.tax_bp as f64 / 10_000.0, "tax_amount": money(self.tax()) }
+            ] });
+        }
+        if self.tip != 0 {
+            json["extensions"] = serde_json::json!({ "tip": { "amount": money(self.tip) } });
+        }
+        serde_json::from_value(json).expect("a valid ORF receipt")
+    }
+
     /// At a rate of $172.70 per XMR, in piconero.
     pub fn piconero(&self) -> u64 {
         self.total() * 1_000_000_000_000 / 17_270
     }
+}
+
+/// Unix seconds as RFC 3339 in UTC, e.g. 2025-10-19T16:07:00Z.
+fn time_rfc3339(unix: u64) -> String {
+    let days = unix / 86_400;
+    let secs = unix % 86_400;
+    // Civil date from days since 1970-01-01 (Howard Hinnant's algorithm).
+    let z = days as i64 + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1_460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    let y = yoe + era * 400 + (m <= 2) as i64;
+    format!("{y:04}-{m:02}-{d:02}T{:02}:{:02}:{:02}Z", secs / 3600, secs / 60 % 60, secs % 60)
 }
 
 fn it(name: &str, qty: u32, cents: u64) -> Item {

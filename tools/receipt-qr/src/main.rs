@@ -1,18 +1,21 @@
 //! Prototype: how big does a Monero payment QR get when it carries the whole
-//! receipt? Trains zstd dictionaries on several mixes of the corpus, encodes
-//! test receipts built only from held-out names, and reports QR versions per
-//! category. Also writes before/after codes for the hand-written receipts.
+//! receipt? Encodes with `orf-codec`, trains zstd dictionaries on several
+//! mixes of the corpus to compare against its shipped one, and scores them
+//! on test receipts built only from held-out names.
 //!
-//! Run `./fetch-corpus.sh` once, then `cargo run --release`. Writes
-//! `out/report.json`, `out/receipts.json` and SVGs; `page.py` builds the page.
+//! ```sh
+//! ./fetch-corpus.sh                       # once
+//! cargo run --release                     # evaluate, write out/
+//! cargo run --release -- decode '<uri>'   # decode a scanned payment URI
+//! ```
 
 mod receipts;
 mod v1;
-mod v2;
 
 use std::collections::BTreeMap;
-use std::fs;
+use std::{env, fs, process};
 
+use orf_codec::Codec;
 use qrcode::bits::Bits;
 use qrcode::{EcLevel, QrCode, Version};
 use rand::rngs::StdRng;
@@ -23,21 +26,18 @@ use serde_json::{Map, Value, json};
 use receipts::{Item, Receipt};
 
 const DICT_SIZES: [usize; 3] = [32 << 10, 64 << 10, 110 << 10];
-
-/// The dictionary chosen for the format: only public domain, CC0 and our own
-/// training data, so wallets can ship it, at a size wallets can carry. Within
-/// about half a QR version of the best mix (which needs Amazon's terms).
-const CHOSEN: (&str, usize) = ("open", 64 << 10);
 const TRAINING_SAMPLES: usize = 40_000;
 const RECEIPTS_PER_CATEGORY: usize = 40;
 
-/// Dictionary variants: which training sources each one mixes.
+/// Dictionary variants: which training sources each one mixes. `orf-codec`
+/// ships the "open" mix at 64 KB, trained by this tool on 2026-10-22.
 const VARIANTS: [(&str, &[&str]); 4] = [
-    ("food only (before)", &["off"]),
+    ("food only", &["off"]),
     ("open", &["nypl", "wikidata", "synthetic"]),
     ("open + food", &["nypl", "wikidata", "synthetic", "off"]),
     ("all", &["nypl", "wikidata", "synthetic", "off", "amazon_tools", "amazon_clothing", "amazon_health", "amazon_grocery"]),
 ];
+const SHIPPED: &str = "shipped (open, 64k)";
 
 /// Test categories: held-out names, typical prices in cents, tax and tip.
 struct Category {
@@ -62,79 +62,121 @@ enum Segment<'a> {
 }
 
 fn main() {
-    let train = load_dir("corpus/train");
-    let test = load_dir("corpus/test");
-    fs::create_dir_all("out").unwrap();
-    let address = fake_subaddress();
-
-    let mut tests: Vec<(String, Receipt)> = receipts::samples()
-        .into_iter()
-        .map(|(slug, r)| (format!("hand/{slug}"), r))
-        .collect();
-    for cat in &CATEGORIES {
-        let names = test.get(cat.name).unwrap_or_else(|| panic!("corpus/test/{}.txt missing", cat.name));
-        tests.extend(test_receipts(cat, names));
+    let args: Vec<String> = env::args().skip(1).collect();
+    match args.as_slice() {
+        [] => evaluate(),
+        [cmd, uri] if cmd == "decode" => decode(uri),
+        _ => {
+            eprintln!("usage: receipt-qr [decode '<monero: URI>']");
+            process::exit(2);
+        }
     }
+}
 
-    // Train every variant at every size and score it on every test receipt.
-    let mut results = Vec::new();
-    let mut chosen: Option<(String, Vec<u8>)> = None;
-    for (variant, sources) in VARIANTS {
-        let samples = training_samples(sources, &train);
-        for size in DICT_SIZES {
-            let refs: Vec<&[u8]> = samples.iter().map(|s| s.as_bytes()).collect();
-            let dict = zstd::dict::from_samples(&refs, size).expect("dictionary training");
-            let label = format!("{variant}, {}k", size >> 10);
-            let mut by_cat: BTreeMap<String, Vec<(usize, i16, i16)>> = BTreeMap::new();
-            for (id, r) in &tests {
-                let enc = v2::encode(r, &dict);
-                assert_eq!(&v2::decode(&enc.payload, &dict), r, "{id}: round trip");
-                let digits = v2::to_digits(&enc.payload);
-                assert_eq!(v2::from_digits(&digits), enc.payload, "{id}: digits round trip");
-                let prefix = uri_prefix(&address, r);
-                let m =smallest_qr(&prefix, &Segment::Numeric(&digits), EcLevel::M).1;
-                let l = smallest_qr(&prefix, &Segment::Numeric(&digits), EcLevel::L).1;
-                let cat = id.split('/').next().unwrap().to_string();
-                by_cat.entry(cat).or_default().push((enc.payload.len(), m, l));
-            }
-            let mean_version = by_cat.values().flatten().map(|x| x.1 as f64).sum::<f64>()
-                / by_cat.values().map(Vec::len).sum::<usize>() as f64;
-            let cats: Map<String, Value> = by_cat
-                .iter()
-                .map(|(cat, xs)| (cat.clone(), stats(xs)))
-                .collect();
-            println!("{label:<28} mean QR version {mean_version:.2}");
-            results.push(json!({
-                "variant": variant, "dict_bytes": size, "label": label,
-                "mean_version_m": mean_version, "categories": cats,
-            }));
-            if (variant, size) == CHOSEN {
-                chosen = Some((label, dict));
+/// Decodes a scanned payment URI with the shipped dictionary, prints the
+/// receipt, and says which known receipt it is, if any.
+fn decode(uri: &str) {
+    let parsed = orf_codec::uri::parse(uri).unwrap_or_else(|e| fail(&e.to_string()));
+    println!("address:   {}", parsed.address);
+    println!("tx_amount: {}", parsed.tx_amount.as_deref().unwrap_or("(none)"));
+    let Some(text) = parsed.receipt.as_deref() else { fail("this URI has no receipt (no orf= parameter)") };
+    let receipt = orf_codec::decode_text(text).unwrap_or_else(|e| fail(&e.to_string()));
+    println!("receipt:   {} digits, decoded:\n{}", text.len(), serde_json::to_string_pretty(&receipt).unwrap());
+
+    let known = known_receipts();
+    match known.iter().find(|(_, r)| orf_codec::encode_text(&r.to_orf()).ok().as_deref() == Some(text)) {
+        Some((id, _)) => println!("\nmatches {id} exactly: the scan read every digit correctly"),
+        None => println!("\ndecoded cleanly, but it isn't one of this tool's {} test receipts", known.len()),
+    }
+}
+
+fn fail(msg: &str) -> ! {
+    eprintln!("error: {msg}");
+    process::exit(1);
+}
+
+/// The hand-written receipts, plus the generated test receipts when the
+/// corpus is on disk.
+fn known_receipts() -> Vec<(String, Receipt)> {
+    let mut all: Vec<(String, Receipt)> =
+        receipts::samples().into_iter().map(|(slug, r)| (format!("hand/{slug}"), r)).collect();
+    if let Ok(test) = try_load_dir("corpus/test") {
+        for cat in &CATEGORIES {
+            if let Some(names) = test.get(cat.name) {
+                all.extend(test_receipts(cat, names));
             }
         }
     }
-    let (best_label, best_dict) = chosen.expect("the chosen variant is trained");
-    fs::write("out/receipts.zdict", &best_dict).unwrap();
-    println!("chosen: {best_label}");
+    all
+}
 
-    // QR codes for the page: the hand-written receipts before and after, and
-    // the median receipt of each test category.
+fn evaluate() {
+    let train = try_load_dir("corpus/train").unwrap_or_else(|e| fail(&e));
+    let tests = known_receipts();
+    if tests.len() == receipts::samples().len() {
+        fail("corpus/test is missing: run ./fetch-corpus.sh first");
+    }
+    fs::create_dir_all("out").unwrap();
+    let address = fake_subaddress();
+    let orfs: Vec<orf_codec::Receipt> = tests.iter().map(|(_, r)| r.to_orf()).collect();
+
+    // Every variant and size, plus the dictionary the library ships.
+    let mut dicts: Vec<(String, String, usize, Vec<u8>)> = vec![(
+        SHIPPED.into(),
+        "open".into(),
+        orf_codec::DEFAULT_DICTIONARY.len(),
+        orf_codec::DEFAULT_DICTIONARY.to_vec(),
+    )];
+    for (variant, sources) in VARIANTS {
+        let samples = training_samples(sources, &train);
+        let refs: Vec<&[u8]> = samples.iter().map(|s| s.as_bytes()).collect();
+        for size in DICT_SIZES {
+            let dict = zstd::dict::from_samples(&refs, size).expect("dictionary training");
+            dicts.push((format!("{variant}, {}k", size >> 10), variant.into(), size, dict));
+        }
+    }
+
+    let mut results = Vec::new();
+    for (label, variant, size, dict) in &dicts {
+        // Trained dictionaries go under an experimental id; the shipped one is id 0.
+        let codec = if label == SHIPPED { Codec::default() } else { Codec::with_dictionary(15, dict) };
+        let mut by_cat: BTreeMap<String, Vec<(usize, i16, i16)>> = BTreeMap::new();
+        for ((id, r), orf) in tests.iter().zip(&orfs) {
+            let bytes = codec.encode(orf).unwrap_or_else(|e| fail(&format!("{id}: {e}")));
+            assert_eq!(&codec.decode(&bytes).expect("decodes"), orf, "{id}: round trip");
+            let digits = orf_codec::to_digits(&bytes);
+            let prefix = uri_prefix(&address, r);
+            let m = smallest_qr(&prefix, &Segment::Numeric(&digits), EcLevel::M).1;
+            let l = smallest_qr(&prefix, &Segment::Numeric(&digits), EcLevel::L).1;
+            let cat = id.split('/').next().unwrap().to_string();
+            by_cat.entry(cat).or_default().push((bytes.len(), m, l));
+        }
+        let n: usize = by_cat.values().map(Vec::len).sum();
+        let mean = by_cat.values().flatten().map(|x| x.1 as f64).sum::<f64>() / n as f64;
+        println!("{label:<24} mean QR version {mean:.2}");
+        let cats: Map<String, Value> = by_cat.iter().map(|(c, xs)| (c.clone(), stats(xs))).collect();
+        results.push(json!({
+            "variant": variant, "dict_bytes": size, "label": label,
+            "mean_version_m": mean, "categories": cats,
+        }));
+    }
+
+    // QR codes for the page, made exactly as an app would: the library's
+    // digits in a monero: URI.
     let mut shown = Vec::new();
     for (id, r) in &tests {
         let cat = id.split('/').next().unwrap();
         let is_hand = cat == "hand";
-        if !is_hand && !is_median_of(id, &tests, &best_dict) {
+        if !is_hand && !is_median_of(id, &tests) {
             continue;
         }
         let slug = id.replace('/', "-");
         let prefix = uri_prefix(&address, r);
-        let enc = v2::encode(r, &best_dict);
-        let digits = v2::to_digits(&enc.payload);
+        let bytes = orf_codec::encode(&r.to_orf()).unwrap();
+        let digits = orf_codec::to_digits(&bytes);
         let mut after = qr_row(&format!("{slug}-v2"), &prefix, Segment::Numeric(&digits));
-        after["payload_bytes"] = json!(enc.payload.len());
-        after["numbers_bytes"] = json!(enc.bits_bytes);
-        after["text_bytes"] = json!(enc.text_bytes);
-        after["text_compressed_bytes"] = json!(enc.text_compressed);
+        after["payload_bytes"] = json!(bytes.len());
+        after["uri"] = json!(format!("{prefix}{digits}"));
         let before = if is_hand {
             qr_row(&format!("{slug}-v1"), &prefix, Segment::Alphanumeric(&v1::encode(r, false)))
         } else {
@@ -143,14 +185,15 @@ fn main() {
         shown.push(json!({ "id": id, "category": cat, "receipt": receipt_json(r), "before": before, "after": after }));
     }
 
-    let baseline_uri = format!("monero:{address}?tx_amount={}", xmr(tests[0].1.piconero()));
+    let baseline_uri = orf_codec::uri::build(&address, tests[0].1.piconero(), None);
     let baseline = QrCode::with_error_correction_level(baseline_uri.as_bytes(), EcLevel::M).unwrap();
     write_svg("out/baseline.svg", &baseline);
+    let counts = |m: &BTreeMap<String, Vec<String>>| m.iter().map(|(k, v)| (k.clone(), json!(v.len()))).collect::<Map<_, _>>();
     let report = json!({
         "baseline": { "uri_chars": baseline_uri.len(), "qr_version_m": version_num(baseline.version()), "svg": "baseline.svg" },
-        "chosen": best_label,
-        "training": train.iter().map(|(k, v)| (k.clone(), json!(v.len()))).collect::<Map<_, _>>(),
-        "test": test.iter().map(|(k, v)| (k.clone(), json!(v.len()))).collect::<Map<_, _>>(),
+        "chosen": SHIPPED,
+        "training": counts(&train),
+        "test": counts(&try_load_dir("corpus/test").unwrap()),
         "receipts_per_category": RECEIPTS_PER_CATEGORY,
         "results": results,
         "shown": shown,
@@ -158,26 +201,26 @@ fn main() {
     fs::write("out/report.json", serde_json::to_string_pretty(&report).unwrap()).unwrap();
 }
 
-fn load_dir(dir: &str) -> BTreeMap<String, Vec<String>> {
-    fs::read_dir(dir)
-        .unwrap_or_else(|_| panic!("{dir} is missing: run ./fetch-corpus.sh first"))
+fn try_load_dir(dir: &str) -> Result<BTreeMap<String, Vec<String>>, String> {
+    let entries = fs::read_dir(dir).map_err(|_| format!("{dir} is missing: run ./fetch-corpus.sh first"))?;
+    Ok(entries
         .map(|e| e.unwrap().path())
         .filter(|p| p.extension().is_some_and(|x| x == "txt"))
         .map(|p| {
             let names = fs::read_to_string(&p).unwrap().lines().map(str::to_string).collect();
             (p.file_stem().unwrap().to_string_lossy().into_owned(), names)
         })
-        .collect()
+        .collect())
 }
 
-/// Synthetic receipt texts in the layout the encoder compresses: a store line,
-/// a reference line, then 1 to 25 names, all from one source (a real receipt
+/// Synthetic receipt texts in the layout `orf-codec` compresses: the store,
+/// the reference, then 1 to 25 names, all from one source (a real receipt
 /// comes from one kind of shop).
 fn training_samples(sources: &[&str], train: &BTreeMap<String, Vec<String>>) -> Vec<String> {
     let mut rng = StdRng::seed_from_u64(42);
     let pools: Vec<&Vec<String>> = sources
         .iter()
-        .map(|s| train.get(*s).unwrap_or_else(|| panic!("corpus/train/{s}.txt missing")))
+        .map(|s| train.get(*s).unwrap_or_else(|| fail(&format!("corpus/train/{s}.txt missing"))))
         .collect();
     (0..TRAINING_SAMPLES)
         .map(|_| {
@@ -226,14 +269,14 @@ fn test_receipts(cat: &Category, names: &[String]) -> Vec<(String, Receipt)> {
         .collect()
 }
 
-/// The test receipt whose QR version is the category's median, so the page
+/// The test receipt whose encoded size is its category's median, so the page
 /// shows a typical one.
-fn is_median_of(id: &str, tests: &[(String, Receipt)], dict: &[u8]) -> bool {
+fn is_median_of(id: &str, tests: &[(String, Receipt)]) -> bool {
     let cat = id.split('/').next().unwrap();
     let mut sized: Vec<(usize, &str)> = tests
         .iter()
         .filter(|(i, _)| i.starts_with(&format!("{cat}/")))
-        .map(|(i, r)| (v2::encode(r, dict).payload.len(), i.as_str()))
+        .map(|(i, r)| (orf_codec::encode(&r.to_orf()).unwrap().len(), i.as_str()))
         .collect();
     sized.sort();
     sized[sized.len() / 2].1 == id
@@ -255,13 +298,10 @@ fn stats(xs: &[(usize, i16, i16)]) -> Value {
     })
 }
 
+/// The URI up to and including `orf=`, so the digits can go in their own
+/// QR segment.
 fn uri_prefix(address: &str, r: &Receipt) -> String {
-    format!("monero:{address}?tx_amount={}&r=", xmr(r.piconero()))
-}
-
-fn xmr(piconero: u64) -> String {
-    let s = format!("{}.{:012}", piconero / 1_000_000_000_000, piconero % 1_000_000_000_000);
-    s.trim_end_matches('0').trim_end_matches('.').to_string()
+    format!("{}&{}=", orf_codec::uri::build(address, r.piconero(), None), orf_codec::uri::RECEIPT_PARAM)
 }
 
 fn qr_row(name: &str, prefix: &str, value: Segment) -> Value {
@@ -278,8 +318,8 @@ fn qr_row(name: &str, prefix: &str, value: Segment) -> Value {
     })
 }
 
-/// The URI as two QR segments: byte mode for `monero:<address>?…&r=`, then
-/// the packed receipt in the mode that suits it.
+/// The URI as two QR segments: byte mode for `monero:<address>?…&orf=`, then
+/// the receipt in the mode that suits it.
 fn smallest_qr(prefix: &str, value: &Segment, ec: EcLevel) -> (QrCode, i16) {
     for v in 1..=40 {
         let mut bits = Bits::new(Version::Normal(v));
@@ -326,6 +366,6 @@ fn receipt_json(r: &Receipt) -> Value {
         "store": r.store, "ref": r.sale_ref,
         "items": r.items.iter().map(|i| json!([i.name, i.qty, i.cents])).collect::<Vec<_>>(),
         "subtotal": r.subtotal(), "tax": r.tax(), "tip": r.tip, "total": r.total(),
-        "xmr": xmr(r.piconero()),
+        "xmr": orf_codec::uri::build("x", r.piconero(), None).trim_start_matches("monero:x?tx_amount=").to_string(),
     })
 }
