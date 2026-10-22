@@ -49,3 +49,33 @@ what else was possible, so any of them can be reversed knowingly.
     symbols LTO and stripping remove.
 12. **`orf-codec-ffi`'s error field is `reason`**, not `message`, which
     clashes with Kotlin's `Throwable.message` in the generated bindings.
+13. **A Square "Other: Monero" tender is read as an `EXTERNAL` payment whose
+    `external_details.source` is the tender's name** (case-insensitive),
+    status `COMPLETED`. Square's docs don't say how Point of Sale's custom
+    Other tenders appear in the Payments API: the Square spike must check
+    this first. If they don't appear as payments, `SquareSource` changes to
+    searching orders' tenders; nothing else does.
+14. **The idempotency key is `sq:` plus the first 40 hex digits of SHA-256
+    of Square's payment id.** Every till finding the sale gets the same
+    order, and Monokulo never learns Square's id.
+15. **The payments cursor looks back 2 minutes** past the last handled sale
+    (Square can list a payment late) and remembers the last 500 handled
+    ids, so the overlap never makes a second order.
+16. **A sale is handled once it has its Monokulo order**, not when it's
+    found: a failure (Monokulo down) is retried on the next tick.
+17. **Receipts from Square orders:** the time in the location's own time
+    zone, cut to whole seconds (the codec refuses fractions); the unit price
+    is the one that makes quantity × price the line's gross total when it
+    exists in whole cents, else the list price; tips and discounts go in
+    `extensions` (`tip`, `discount`); line breaks in names become spaces;
+    a variation is shown unless it's Square's default "Regular".
+18. **A till shows only its own sales when Square names the device**
+    (`device_details.device_id` matching the till's chosen device);
+    otherwise every Monokular at the location shows every sale.
+19. **Square tokens are refreshed when less than a day is left.** PKCE
+    refresh tokens are single-use, so the new one is saved before anything
+    else; a refresh Square refuses (4xx) clears the sign-in and asks the
+    cashier to sign in again.
+20. **`Square-Version: 2026-09-16`**, the version Square's reference shows.
+21. **Refunds use `monokular-refund-<payment id>` as their idempotency
+    key**, so a retried refund refunds once.
