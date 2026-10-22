@@ -4,38 +4,50 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 
-/** Where a sale's payment is (`docs/design.md` §3, the `sale.*` events). */
-@Serializable
+/** Where a sale's payment is. */
 enum class SalePhase {
-    @SerialName("waiting") Waiting,
-    @SerialName("seen") Seen,
-    @SerialName("confirming") Confirming,
-    @SerialName("paid") Paid,
-    @SerialName("partial") Partial,
-    @SerialName("expired") Expired,
-    @SerialName("double_spend") DoubleSpend,
+    Waiting, Seen, Confirming, Paid, Partial, Expired, DoubleSpend;
+
+    /** Nothing more will happen to it. */
+    val isFinal: Boolean get() = this == Paid || this == Expired || this == DoubleSpend
+
+    companion object {
+        /** The phase a `sale.*` event name puts a sale in, or null for another event. */
+        fun ofEvent(name: String): SalePhase? = when (name) {
+            "sale.waiting" -> Waiting
+            "sale.seen" -> Seen
+            "sale.confirming" -> Confirming
+            "sale.paid" -> Paid
+            "sale.partial" -> Partial
+            "sale.expired" -> Expired
+            "sale.double_spend" -> DoubleSpend
+            else -> null
+        }
+    }
 }
 
-/** One `sale.*` event, as the SSE stream and decrypted pushes carry it. */
+/**
+ * One `sale.*` event from the store's event stream (`GET /pay/{pk}/events`):
+ * an order a connected app made, and what just happened to it. Never
+ * anything about what was bought.
+ */
 @Serializable
 data class SaleEvent(
-    @SerialName("api_version") val apiVersion: Int,
-    @SerialName("event_id") val eventId: String,
-    val phase: SalePhase,
-    @SerialName("sale_id") val saleId: String,
-    /** The POS's own reference, e.g. "#1042". */
-    val ref: String,
-    /** The amount in the store's currency, already formatted for display. */
+    val event: String,
+    @SerialName("order_id") val orderId: String,
     val amount: String,
-    /** The XMR amount, formatted. */
-    val xmr: String,
-    /** When the payment code expires, in seconds since the epoch. */
+    val currency: String,
+    val address: String,
+    @SerialName("xmr_amount_piconero") val piconero: Long,
+    @SerialName("merchant_order_id") val merchantOrderId: String? = null,
     @SerialName("expires_at") val expiresAt: Long,
-    /** The `monero:` URI to show as a QR code. */
-    @SerialName("payment_uri") val paymentUri: String,
+    @SerialName("device_name") val deviceName: String = "",
+    val at: Long,
 ) {
+    val phase: SalePhase? get() = SalePhase.ofEvent(event)
+
     companion object {
-        private val json = Json { ignoreUnknownKeys = true }
+        internal val json = Json { ignoreUnknownKeys = true }
 
         fun decode(text: String): SaleEvent = json.decodeFromString(serializer(), text)
     }
