@@ -348,6 +348,7 @@ private fun ColumnScope.Ended(sale: TillSale, actions: TillActions, paid: Boolea
             sale.refunded -> "The Square sale is refunded."
             sale.found == null -> "Another till took this sale: refund it in Square there if the customer isn't paying."
             sale.phase == SalePhase.DoubleSpend -> "The payment was reversed on the network. Square has already recorded this sale as Monero, so refund it there."
+            sale.phase == SalePhase.Cancelled -> "The order was cancelled in Monokulo. Square has already recorded this sale as Monero, so refund it there."
             else -> "The code expired. Square has already recorded this sale as Monero, so refund it there if the customer isn't paying."
         }
         Text(text, fontSize = 16.sp, lineHeight = 22.sp, color = mk.muted, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 320.dp))

@@ -33,6 +33,7 @@ object SaleText {
         SalePhase.Confirming -> "Confirming"
         SalePhase.Paid -> "Paid"
         SalePhase.Expired -> if (sale.refunded) "Refunded in Square" else "No payment yet"
+        SalePhase.Cancelled -> if (sale.refunded) "Refunded in Square" else "Cancelled"
         SalePhase.DoubleSpend -> "Payment reversed"
     }
 
@@ -42,7 +43,7 @@ object SaleText {
         SalePhase.Seen -> 2
         SalePhase.Confirming -> 3
         SalePhase.Paid -> 4
-        SalePhase.Expired, SalePhase.DoubleSpend -> 0
+        SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend -> 0
     }
 
     val steps = listOf("Waiting", "Seen", "Confirming", "Paid")
@@ -64,7 +65,7 @@ object TillFocus {
         val open = sales.filter { it.orderId !in closed }
         return open.firstOrNull { it.orderId == focus }
             ?: open.firstOrNull { !it.phase.isFinal }
-            ?: open.firstOrNull { (it.phase == SalePhase.Expired || it.phase == SalePhase.DoubleSpend) && it.found != null && !it.refunded }
+            ?: open.firstOrNull { it.phase.isUnpaid && it.found != null && !it.refunded }
     }
 }
 

@@ -3,6 +3,7 @@ package app.monokular.sales
 import app.monokular.core.AppIdentity
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloApi
+import app.monokular.core.Order
 import app.monokular.core.SaleEvent
 import app.monokular.core.SalePhase
 import app.monokular.receipt.Receipt
@@ -170,5 +171,43 @@ class TillTest {
         till.refund("ord_1")
         assertEquals(listOf("pay_monero"), source.refunded)
         assertTrue(till.sales.value.sales.single().refunded)
+    }
+
+    @Test
+    fun `a cancelled order ends its sale unpaid, and can be refunded`() = runBlocking {
+        val source = FakeSource(listOf(sale))
+        val till = Till(source, monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", Order.phaseOf("cancelled"))
+        val shown = till.sales.value.sales.single()
+        assertEquals(SalePhase.Cancelled, shown.phase)
+        assertTrue(shown.phase.isFinal && shown.phase.isUnpaid)
+        till.refund("ord_1")
+        assertEquals(listOf("pay_monero"), source.refunded)
+    }
+
+    @Test
+    fun `no rate or a busy engine says so at the till, and the next check asks again with the same key`() = runBlocking {
+        val source = FakeSource(listOf(sale))
+        val till = Till(source, monokulo, connection)
+        fun unavailable(name: String, title: String) = MockResponse.Builder().code(503)
+            .setHeader("Content-Type", "application/problem+json").setHeader("Retry-After", "30")
+            .body("""{"type":"https://docs.monokulo.com/problems/$name","title":"$title","status":503,"detail":"no order was made","retry_after":30}""")
+            .build()
+        server.enqueue(unavailable("rates-unavailable", "No exchange rate"))
+        till.check()
+        assertEquals("Monokulo has no exchange rate right now, so there's no payment code yet. Trying again shortly.", till.sales.value.problem)
+        server.enqueue(unavailable("engine-unavailable", "Payment engine unavailable"))
+        till.check()
+        assertEquals("Monokulo's payment engine is busy, so there's no payment code yet. Trying again shortly.", till.sales.value.problem)
+        assertTrue(source.handledIds.isEmpty(), "no order was made, so the sale is still to do")
+        server.enqueue(order())
+        till.check()
+        assertEquals(null, till.sales.value.problem)
+        assertEquals(1, till.sales.value.sales.size)
+        server.takeRequest()
+        val keys = List(3) { Regex("\"idempotency_key\":\"([^\"]+)\"").find(server.takeRequest().body!!.utf8())!!.groupValues[1] }
+        assertEquals(List(3) { Till.idempotencyKey(sale) }, keys)
     }
 }
