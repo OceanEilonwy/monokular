@@ -59,9 +59,9 @@ till:    woken by a timer or the Monokular Bell (§3)
          GET Square payments since its cursor, at its location
          ─▶ a new payment whose Other tender is "Monero"
          GET /v2/orders/{order_id} (line items, for the receipt)
-         POST monokulo {endpoint}/pay/{public_key}/orders   (§2: the plugins' order API)
+         POST monokulo /api/v1/orders   (§2: the create-order form, with the app's key)
               { amount, currency, merchant_order_id, idempotency_key }
-         ◀─ { order_id, address, xmr_amount_piconero, expires_at }
+         ◀─ 201 { order_id, status, address, xmr_amount_piconero, expires_at, _links.self }
          payment URI = monero:{address}?tx_amount={XMR}
          orf_codec::query::append(payment URI, receipt) (§4)
          shows amount + code (Slide Over / bubble / app; Live Activity on iPhone)
@@ -108,17 +108,19 @@ wake-ups and the screens don't change.
 Monokulo already connects **shop plugins** (`http::connect`, the Shop plugins
 page on the Pages site): any plugin names itself with a slug and a name,
 monokulo keeps no list of them, and the plugin then makes orders with
-`POST /pay/{public_key}/orders`. Connected apps follow the same rules and use
-the same order API, but they connect differently, because a till isn't a
-shop:
+Monokulo's HTTP API (`/api/v1`). Connected apps follow the same rules and use
+the same API, but they connect differently, because a till isn't a shop.
+Monokulo's docs (`/api/` and `/apps/`) and its OpenAPI document are the
+source of truth; the app's contract test runs against that document,
+generated from a pinned Monokulo commit (§9).
 
 | | Shop plugin | Connected app |
 | --- | --- | --- |
 | Names itself | slug + name (`plugins::PluginSlug`, `PluginName`) | The same types and rules: `monokular`, "Monokular" |
 | Per store | One: connecting a plugin closes the active one | Many, one per device |
 | Starts from | The shop: the browser goes to `/connect/{slug}?site_url=…`, and the shop's host finds the store | The store's dashboard: a single-use connect code |
-| Credentials | The store's `public_key` + `secret_token` | The store's `public_key` + the device's own `app_key`, revocable on its own |
-| Makes orders | `POST /pay/{pk}/orders` | The same |
+| Credentials | The store's secret key (`sk_…`) | The device's own `app_key` (`ak_…`), revocable on its own |
+| Makes orders | The `create-order` form, `POST /api/v1/orders` | The same |
 | Hears about them | Signed webhooks to the shop | SSE and Web Push (§5): a till can't take webhooks |
 
 The plugin flow can't be reused as it is: a till has no shop host, and
@@ -151,79 +153,108 @@ https://pay.yourshop.com/apps/connect#token=ct_…
 
 ### Redeeming
 
-The app shows the store, host and wallet first (the confirm screen), then:
-
 ```http
 POST https://pay.yourshop.com/apps/connect
 Monokulo-Client: monokular/1.0.0
 { "token": "ct_…", "slug": "monokular", "name": "Monokular",
   "device_name": "Front Counter iPad", "platform": "android" }
-→ 201 { "public_key": "pk_…", "app_key": "ak_…" (secret, shown once),
-        "endpoint": "https://pay.yourshop.com",
-        "onion_endpoint": "http://….onion" (only when the instance has one),
-        "store": { "name", "base_currency" },
-        "wallet": { "name", "address", "address_short" },
-        "vapid_public_key": "BJ…" (this instance's Web Push key, §5) }
+→ 200 { "app_key": "ak_…" (secret, shown once), "api": "/api/v1" }
 ```
 
 `slug` and `name` are parsed with the plugins' types, so the same rules hold
 (a lowercase letter then 1 to 31 lowercase letters, digits or hyphens, not
 one of monokulo's own sources; a name of at most 40 characters with no
 invisible formatting). The path is `/apps/connect`, outside
-`/connect/{slug}`, so no plugin slug can collide with it. The app keeps
-`app_key` in the Keychain / Android Keystore and sends it, with
-`Monokulo-Client: {slug}/{version}`, on every later call to `endpoint`.
-Disconnecting (either side) deletes the connection, its key and its push
-targets. Square sign-in is a separate step in the app (§1) and has nothing to
-do with monokulo.
+`/connect/{slug}`, so no plugin slug can collide with it. A `503` with
+`{"error": …}` means the Monokulo has no public address yet (the code is
+still good); anything else is a `401`.
+
+The answer is the key and the API's entry, nothing else. `api` is a path:
+the app resolves it against the address it redeemed the code at, so a till
+that connected over an onion address stays on it, and keeps exactly two
+things: `app_key` (Keychain / Android Keystore) and that absolute entry.
+Every later request carries `Authorization: Bearer ak_…` and
+`Monokulo-Client: {slug}/{version}`.
+
+The app then reads the entry (`GET /api/v1`, once per run) and follows its
+links: `mk:store` (`GET /api/v1/store`: name, base currency, and the wallet
+as name, network and whole address), `mk:app` (`GET /api/v1/app`: this
+device's name as the merchant set it), `mk:orders`, `mk:events`, and the
+forms `create-order` and `disconnect`. Every link is relative and resolved
+against the URL the app actually called. A link or form the key may not
+use is left out; the app doesn't try it.
+
+**The store's details are read live, never saved** (decision 50): after
+connecting (the confirm screen, "Connected to …", is drawn from that read),
+each time Settings opens, and at app start (the base currency, the store's
+name for the till and its notification). They're held in memory for the
+run, so a screen shows the last read while the next is under way. The
+wallet address is shortened on the device (first 8, "…", last 8); Settings
+copies the whole of it.
+
+Errors are `application/problem+json`; the app shows `detail`. A `401` on
+any call means the store disconnected this device. Disconnecting (either
+side) deletes the connection, its key and its push targets: the app uses
+the `disconnect` form (`DELETE /api/v1/app`). Square sign-in is a separate
+step in the app (§1) and has nothing to do with monokulo.
+
+**Upgrading.** The first app saved `public_key`, `endpoint`,
+`onion_endpoint`, `app_id`, `device_name`, `store` and `wallet` with the
+key. A saved connection with no `api` is read as its key at its
+`endpoint`'s origin plus `/api/v1`, rewritten in the new form at once, and
+the rest is dropped: the till carries on without connecting again.
 
 ### Making an order
 
-The plugins' order API, with the app's key:
+The `create-order` form, with the app's key:
 
 ```http
-POST {endpoint}/pay/{public_key}/orders
+POST https://pay.yourshop.com/api/v1/orders
 Authorization: Bearer ak_…
 Monokulo-Client: monokular/1.0.0
 { "amount": "24.50", "currency": "USD",
   "merchant_order_id": "#1042",         (Square's receipt number, or omitted)
   "idempotency_key": "sq:9f2c…" }       (a retry or a second till gets the same order)
-→ 201 { "order_id", "address", "xmr_amount_piconero", "amount", "currency",
-        "merchant_order_id", "show_merchant_order_id", "expires_at" }
+→ 201 Location: /api/v1/orders/order_…
+      { "order_id", "status", "is_final", "address", "xmr_amount_piconero",
+        "amount", "currency", "merchant_order_id", "expires_at", …,
+        "_links": { "self", "mk:order-events", "mk:checkout", … } }
 ```
 
 - **The app never sends `description`.** It is the API's only free-text
   field, and anyone with the payment link can read it, so it must never
   carry items (§4).
-- The order's source is the app's slug, so the dashboard shows it as the
-  app's, with the device's name.
-- The response mirrors the engine's, with no payment URI. The app builds
-  the plain one, `monero:{address}?tx_amount={XMR}`, and appends the receipt
-  to it (§4).
-
-What monokulo adds: `/pay/{pk}/orders` (and the routes below) accept an
-app key as well as the store's secret, and record the app as the order's
-source.
+- The order is recorded as made with the app's key, so the dashboard shows
+  it as the app's, with the device's name.
+- The order carries no payment URI. The app builds the plain one,
+  `monero:{address}?tx_amount={XMR}`, and appends the receipt to it (§4).
+- The app keeps the order's `self` link, and reads the order there again
+  when its event stream reopens. A sale another till made reaches it only
+  as a sale event, which has no link: that one is read at `mk:orders` plus
+  its id.
 
 ### What a connected app can do
 
-Make orders, read its store's orders' status, and subscribe to pushes. Never
+Make orders, read its store, its orders and its own connection, follow the
+store's sale events, disconnect itself, and subscribe to pushes. Never
 wallet changes, refunds or spending, and never the store's settings. The list
 is shown on both the web connect page and the app's confirm screen.
 
 ### Live data while the app is open
 
 ```http
-GET {endpoint}/pay/{public_key}/events    (SSE, Authorization: Bearer ak_…)
+GET https://pay.yourshop.com/api/v1/events    (mk:events: SSE, Authorization: Bearer ak_…)
 ```
 
-The store-wide stream of the same "sale" events as the pushes (§5), plus a
-heartbeat comment every 25 s; the existing per-order
-`/pay/{pk}/orders/{id}/events` stays for one order's page. Used whenever the
-app is in the foreground, so on-screen updates never wait for a push. Because
-every till at a store gets `sale.waiting` when any of them makes an order, a
-device without a Square sign-in (a second iPhone, say) still shows the
-store's sales, without receipts.
+The store-wide stream of the same "sale" events as the pushes (§5): `ready`
+first, `lagged` when some were missed, and a comment every 25 s. After
+`ready` or `lagged` the app reads the orders on screen again. One order's
+own stream (`mk:order-events`) is there for a page showing one order; the
+app doesn't need it. Used whenever the app is in the foreground, so
+on-screen updates never wait for a push. Because every till at a store gets
+`sale.waiting` when any of them makes an order, a device without a Square
+sign-in (a second iPhone, say) still shows the store's sales, without
+receipts.
 
 ---
 
@@ -608,8 +639,9 @@ push_targets(id, app_connection_id, kind encrypted|live-activity,
 ```
 
 - Registered by the app with its key:
-  `PUT {endpoint}/pay/{public_key}/push-targets/{client_id}` (idempotent;
-  the app picks `client_id` per subscription).
+  a `PUT` of the API's, found from its entry like everything else, per
+  `client_id` (idempotent; the app picks `client_id` per subscription).
+  `/api/v1` has no push-targets resource yet.
 - Removed when the connection is disconnected, when the endpoint answers
   404/410, or after a run of failures (the same give-up rule as webhooks).
 - `events` filters by event name; Monokular subscribes to `sale.*`.
@@ -740,8 +772,8 @@ crates/monokulo/src/
   push/                         monokulo's side of push: push_targets, push_deliveries,
                                 fan-out from webhooks::subscriber, the delivery worker
   http/apps.rs                  /apps/connect (the page and the redeem call)
-  http/pay.rs                   /pay/{pk}/orders and friends accept an app key; new
-                                /pay/{pk}/events and /pay/{pk}/push-targets/{client_id}
+  api/v1/                       the HTTP API: the entry, store, orders, order, events, app;
+                                an app's key (ak_) is taken wherever the store's secret is
   views/connected_apps.rs       the Connected apps card and Connect an app page
   relay.rs                      (feature "relay") registers push-relay's settings and, when
                                 relay.enabled, starts a Relay on its own listener
@@ -772,7 +804,7 @@ In-process like the rest of monokulo: a test UnifiedPush endpoint and a test
 relay run on the test's own axum router; `push::encrypt::decrypt` checks
 what arrived. APNs and FCM are faked behind their provider traits; one
 `over_http` test per provider talks to a local HTTP/2 stub. App keys on
-`/pay/{pk}/orders` are tested for idempotency across two apps, the app
+`/api/v1/orders` are tested for idempotency across two apps, the app
 recorded as the source, and a disconnected app's key refused.
 
 ---
@@ -798,9 +830,10 @@ monokular/
     monokular-bell/             the Bell (§3): library + `monokular-bell` binary
   tools/receipt-qr/             corpus, dictionary training and QR size measurements
   protocol/                     the contract with monokulo and the Bell
-    openapi.yaml                /apps/connect and the /pay/{pk} routes apps use (orders,
-                                status, events, push-targets), the relay's /v1/register,
-                                the Bell's /v1/*
+                                (Monokulo's own OpenAPI document isn't kept here: it is
+                                generated from the commit in android/gradle.properties'
+                                `monokulo.sha` by tools/monokulo-openapi/ for the contract
+                                test, as Monokulo never commits it either)
     events.schema.json          sale.* payloads, dings and the Live Activity content state
     vectors/                    JSON test vectors generated by monokulo's xtask:
                                 connect links, RFC 8291 payloads (keys, ciphertext, plaintext), events
@@ -875,8 +908,8 @@ Choices:
    polling every 2 s on one application. Record the responses into
    `protocol/square/`.
 2. **Connected apps** in monokulo: tables, the Connected apps card, the
-   connect page and code, `/apps/connect`, app keys on `/pay/{pk}/orders`,
-   and `/pay/{pk}/events`.
+   connect page and code, `/apps/connect`, and app keys on the HTTP API
+   (`/api/v1`: orders, the store's events, the app's own connection).
 3. **Monokular Android, timer only:** connect, Square sign-in, the payments
    cursor, making orders, the receipt (`orf-codec-ffi` Kotlin bindings,
    `query::append`, the plain-code fallback), SSE, the foreground service.

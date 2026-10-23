@@ -240,19 +240,74 @@ wins; nothing here changes what goes over the wire.
     reconnects and resyncs it, because the order response carries no
     status; changing that would change the API, so it's left.
 49. **The wallet address in Settings can be copied** (replaces the end of
-    decision 44). Monokulo's `POST /apps/connect` now sends the wallet's
-    whole primary address as `wallet.address` beside `address_short`
-    (OceanEilonwy/monokulo#143). The row still shows the short form, as
-    the mockup does, and the Copy icon after it copies the whole address:
-    a 48 dp button, "Copy wallet address" to TalkBack, that reaches into
-    the row's padding so the row stays as tall as the others. The field is
-    optional: a connection saved before it, or made with an older
-    Monokulo, has no address, and the row shows the short form with no
-    Copy until the till connects again; nothing forces a reconnect. It is
-    kept with the rest of the connection in the encrypted store. The copy
-    goes through the same helper as the sale notification's "Copy
-    address": an "Address copied" toast before Android 13, Android's own
-    clipboard preview from 13 on, and the clip isn't marked
-    `EXTRA_IS_SENSITIVE`. A receiving address is meant to be shared and
-    isn't a secret like a key, and hiding it from the preview would stop
-    the cashier checking what was copied.
+    decision 44). Settings reads the store from Monokulo as it opens
+    (`GET /api/v1/store`, decision 50), whose wallet carries its whole
+    primary address. The row shows it shortened on the device, first 8
+    characters, "…", last 8, as the mockup does, and the Copy icon after it
+    copies the whole address: a 48 dp button, "Copy wallet address" to
+    TalkBack, that reaches into the row's padding so the row stays as tall
+    as the others. Until the first read of the run answers there's no
+    wallet row, so nothing to copy; a store without a wallet has none
+    either. The copy goes through the same helper as the sale
+    notification's "Copy address": an "Address copied" toast before
+    Android 13, Android's own clipboard preview from 13 on, and the clip
+    isn't marked `EXTRA_IS_SENSITIVE`. A receiving address is meant to be
+    shared and isn't a secret like a key, and hiding it from the preview
+    would stop the cashier checking what was copied.
+
+## App: Monokulo's HTTP API (2026-10-23)
+
+Monokulo replaced the `/pay/{pk}/…` routes with its HTTP API (`/api/v1`,
+HAL-FORMS, problem+json), and `POST /apps/connect` now answers only the
+key and the API's entry. Checked against Monokulo
+f7fb5c9bee755abc07dbac34dfec5f5043b6a66f.
+
+50. **The store's details are read live, never saved.** The connection the
+    app keeps is the `ak_` key and the API's entry, nothing else. The
+    store's name, base currency and wallet (`GET /api/v1/store`) and this
+    device's name (`GET /api/v1/app`) are read after connecting (the
+    "Connected to …" screen is drawn from that read, with Continue waiting
+    for it and Try again if it fails), each time Settings opens, and at app
+    start (the till's and its notification's store name, and the base
+    currency the notifications step shows). They're held in memory for the
+    run (`LiveStore`), so Settings shows the last read, with "Reading…"
+    where there's none yet, while the next is under way. Monokulo's docs
+    ask for exactly this, since the merchant can rename the store or move
+    it to another wallet at any time; a saved copy would show the old
+    wallet as where payments go. The cost is a read per Settings visit and
+    blank rows when the store can't be reached; keeping a "last seen" copy
+    on the device was the alternative, and isn't worth showing a wallet
+    that may no longer be the one.
+51. **The app follows the API's links and forms.** It reads the entry once
+    a run and finds the store, orders, events and its own connection there,
+    and makes orders and disconnects with the `create-order` and
+    `disconnect` forms; a link or form the entry leaves out isn't tried.
+    Links resolve against the URL the app actually called, so an onion
+    connection stays on the onion host. An order's `self` link is kept
+    with the sale and used to read it again after the event stream
+    reopens; a sale another till made comes only as a sale event, which
+    has no link, so it is read at `mk:orders` plus its id. The order now
+    carries its status, so a sale a restarted till re-finds no longer shows
+    as waiting until the stream resyncs (the gap decision 48 left). One
+    order's own stream (`mk:order-events`) isn't used: the store-wide
+    stream already brings every sale's changes.
+52. **A connection saved by the old app carries on.** It has `endpoint`
+    and the `ak_` key (with `public_key`, `store`, `wallet` and the rest):
+    the app reads it as the key at the endpoint's origin plus `/api/v1`,
+    and rewrites it in the new form the first time it's read, dropping the
+    rest. No reconnect, and no other path to the old routes; the old
+    `onion_endpoint` was never used, so a till that connected over the
+    clearnet address stays on it.
+53. **The client is checked against Monokulo's own OpenAPI document,
+    generated, not committed.** Monokulo generates it from its code and a
+    test's real exchanges (`cargo xtask api openapi`) and never commits
+    it, so this repo doesn't either: `protocol/openapi.yaml` is gone, and
+    core's `monokuloOpenApi` Gradle task fetches Monokulo at the commit in
+    `android/gradle.properties` (`monokulo.sha`) and generates it before
+    core's tests (`tools/monokulo-openapi/generate.sh`). The contract test
+    answers the client with Monokulo's recorded examples and checks what it
+    sends against the schemas; `-Pmonokulo.openapi=FILE` uses a document
+    already generated. The cost is building Monokulo's tests (Rust nightly)
+    with the app; CI caches it per commit. Bumping `monokulo.sha` is how
+    the app moves to a newer Monokulo. `POST /apps/connect` isn't in the
+    document (it isn't part of the API), so the unit tests cover it alone.
