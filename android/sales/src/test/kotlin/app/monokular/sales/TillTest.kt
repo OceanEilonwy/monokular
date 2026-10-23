@@ -50,17 +50,22 @@ class TillTest {
     fun start() {
         server.start()
         monokulo = MonokuloApi(OkHttpClient(), AppIdentity("monokular", "Monokular", "0.1.0", "android", "Pixel"))
-        connection = Connection(
-            "pk_1", "ak_1", server.url("/").toString().trimEnd('/'), null, "app_1", "Front",
-            Connection.Store("Bakery", "USD"),
+        connection = Connection("ak_1", server.url("/api/v1").toString())
+        // The API's entry, which the client reads before its first order.
+        server.enqueue(
+            MockResponse.Builder().code(200).body(
+                """{"_links":{"self":{"href":"/api/v1"}},
+                   "_templates":{"create-order":{"method":"POST","target":"/api/v1/orders","properties":[]}}}""",
+            ).build(),
         )
     }
 
     @AfterTest fun stop() = server.close()
 
-    private fun order() = MockResponse.Builder().code(200).body(
-        """{"order_id":"ord_1","address":"8Bx","xmr_amount_piconero":80000000000,"amount":"13.88","currency":"USD",
-           "merchant_order_id":"bP9m","expires_at":1761312000}""",
+    private fun order() = MockResponse.Builder().code(201).body(
+        """{"order_id":"ord_1","status":"pending","is_final":false,"address":"8Bx","xmr_amount_piconero":80000000000,
+           "amount":"13.88","currency":"USD","merchant_order_id":"bP9m","expires_at":1761312000,
+           "_links":{"self":{"href":"/api/v1/orders/ord_1"}}}""",
     ).build()
 
     @Test
@@ -75,7 +80,11 @@ class TillTest {
         assertTrue(shown.code.uri.startsWith("monero:8Bx?tx_amount=0.08&orf="), shown.code.uri)
         assertEquals(listOf("pay_monero"), source.handledIds)
         assertEquals("8Bx", shown.address, "Copy address copies the order's address")
-        val sent = server.takeRequest().body!!.utf8()
+        assertEquals(server.url("/api/v1/orders/ord_1").toString(), shown.url, "it is read again at its self link")
+        assertEquals("/api/v1", server.takeRequest().url.encodedPath)
+        val create = server.takeRequest()
+        assertEquals("/api/v1/orders", create.url.encodedPath)
+        val sent = create.body!!.utf8()
         assertTrue(sent.contains(""""amount":"13.88"""") && sent.contains(""""merchant_order_id":"bP9m""""), sent)
         assertTrue(sent.contains(""""idempotency_key":"${Till.idempotencyKey(sale)}""""), sent)
         assertFalse(sent.contains("Flat white"), "nothing bought goes to Monokulo: $sent")
@@ -85,7 +94,8 @@ class TillTest {
     fun `a sale whose order fails is tried again, and only marked handled once it has one`() = runBlocking {
         val source = FakeSource(listOf(sale))
         val till = Till(source, monokulo, connection)
-        server.enqueue(MockResponse.Builder().code(503).body("""{"error":"engine down"}""").build())
+        server.enqueue(MockResponse.Builder().code(503).setHeader("Content-Type", "application/problem+json")
+            .body("""{"type":"https://docs.monokulo.com/problems/engine-unavailable","title":"Payment engine unavailable","status":503,"detail":"engine down"}""").build())
         till.check()
         assertTrue(till.sales.value.sales.isEmpty())
         assertNotNull(till.sales.value.problem)
@@ -108,7 +118,7 @@ class TillTest {
         assertFalse(shown.code.hasReceipt)
         assertEquals("monero:8Bx?tx_amount=0.08", shown.code.uri)
         assertEquals(listOf("pay_monero", "pay_2"), source.handledIds)
-        assertEquals(1, server.requestCount)
+        assertEquals(2, server.requestCount, "the entry, then one order")
     }
 
     @Test

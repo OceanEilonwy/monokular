@@ -55,6 +55,7 @@ class TillRunner(private val graph: Graph) {
     fun start() {
         if (job?.isActive == true) return
         val connection = graph.stores.connection ?: return
+        graph.store.read(connection)
         val location = graph.stores.location
         val source: SaleSource = if (location != null && graph.squareAuth().signedIn) {
             SquareSource(graph.squareApi(), graph.squareConfig(), location, graph.stores.cursor)
@@ -75,6 +76,12 @@ class TillRunner(private val graph: Graph) {
         job?.cancel()
         job = null
         mutable.update { it.copy(running = false, live = false) }
+    }
+
+    /** The store disconnected this device (it answered 401): stop asking. */
+    fun disconnected() {
+        mutable.update { it.copy(live = false, disconnected = true) }
+        job?.cancel()
     }
 
     /** Check the POS now (the app came to the front). */
@@ -104,9 +111,7 @@ class TillRunner(private val graph: Graph) {
                 }
             } catch (e: MonokuloException) {
                 if (e.status == 401) {
-                    // The store disconnected this device: stop asking.
-                    mutable.update { it.copy(live = false, disconnected = true) }
-                    job?.cancel()
+                    disconnected()
                     return
                 }
             } catch (_: Exception) {
@@ -117,11 +122,11 @@ class TillRunner(private val graph: Graph) {
         }
     }
 
-    /** Re-reads the status of the sales on screen, after the stream (re)opens. */
+    /** Re-reads the sales on screen, after the stream (re)opens. */
     private suspend fun resync(till: Till) {
         val connection = graph.stores.connection ?: return
         for (sale in till.sales.value.sales.filterNot { it.phase.isFinal }) {
-            runCatching { graph.monokulo.status(connection, sale.orderId) }
+            runCatching { graph.monokulo.order(connection, sale.orderId, sale.url) }
                 .onSuccess { till.onStatus(sale.orderId, it.phase) }
         }
     }

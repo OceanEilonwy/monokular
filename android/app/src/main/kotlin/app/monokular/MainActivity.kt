@@ -63,6 +63,7 @@ class MainActivity : ComponentActivity() {
                 val closed by model.closed.collectAsStateWithLifecycle()
                 val focus by model.focus.collectAsStateWithLifecycle()
                 val bubbleWanted by model.bubbleWanted.collectAsStateWithLifecycle()
+                val store by model.store.collectAsStateWithLifecycle()
                 // Read so that coming back from Android's settings recomposes.
                 @Suppress("UNUSED_VARIABLE") val tick = resumed.intValue
                 BackHandler(enabled = screen != Screen.Welcome && screen != Screen.Till && screen != Screen.Square) { model.back() }
@@ -70,7 +71,10 @@ class MainActivity : ComponentActivity() {
                     Screen.Welcome -> WelcomeScreen(onStart = { model.go(Screen.Scan) })
                     Screen.Scan -> ScanScreen(onCode = model::onCode, onBack = model::back)
                     is Screen.Confirm -> ConfirmScreen(s.code, model.deviceName, busy, problem, { model.connect(s.code) }, model::back)
-                    is Screen.Connected -> ConnectedScreen(s.connection, onNext = { model.go(Screen.Square) }, onWrong = model::disconnect)
+                    is Screen.Connected -> ConnectedScreen(
+                        s.connection, store,
+                        onNext = { model.go(Screen.Square) }, onRetry = model::readStore, onWrong = model::disconnect,
+                    )
                     Screen.Square -> SquareScreen(
                         location = model.location,
                         signedIn = model.squareSignedIn,
@@ -89,7 +93,7 @@ class MainActivity : ComponentActivity() {
                     is Screen.Locations -> LocationsScreen(s.locations, model::chooseLocation, model::back)
                     Screen.Alerts -> AlertsScreen(
                         place = model.location?.name,
-                        currency = model.location?.currency ?: model.connection?.store?.baseCurrency ?: "USD",
+                        currency = model.location?.currency ?: store.store?.baseCurrency ?: "USD",
                         allowed = model.notificationsAllowed(),
                         onAllow = ::allowNotifications,
                         onSkip = { model.go(Screen.Float) },
@@ -103,7 +107,7 @@ class MainActivity : ComponentActivity() {
                         onBack = model::back,
                     )
                     Screen.Ready -> ReadyScreen(
-                        store = model.connection?.store?.name.orEmpty(),
+                        store = store.store?.name.orEmpty(),
                         location = model.location?.name,
                         alerts = model.notificationsAllowed(),
                         bubble = bubbleWanted && model.overlayAllowed(),
@@ -111,7 +115,7 @@ class MainActivity : ComponentActivity() {
                     )
                     Screen.Till -> TillScreen(
                         status = TillStatus(
-                            store = model.connection?.store?.name.orEmpty(),
+                            store = store.store?.name,
                             location = model.location?.name,
                             running = runner.running,
                             live = runner.live,
@@ -124,7 +128,7 @@ class MainActivity : ComponentActivity() {
                         focus = focus,
                         actions = TillActions(
                             onShowing = model::showing,
-                            onSettings = { model.go(Screen.Settings) },
+                            onSettings = model::openSettings,
                             onOpen = model::open,
                             onClose = model::close,
                             onRefund = model::refund,
@@ -139,6 +143,7 @@ class MainActivity : ComponentActivity() {
                     Screen.Settings -> SettingsScreen(
                         SettingsState(
                             connection = model.connection,
+                            store = store,
                             location = model.location,
                             squareSignedIn = model.squareSignedIn,
                             tenderName = model.tenderName,

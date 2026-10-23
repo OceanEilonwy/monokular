@@ -30,12 +30,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.monokular.StoreNow
 import app.monokular.core.Connection
 import app.monokular.sales.SquareLocation
 
 /** Settings' state. */
 data class SettingsState(
     val connection: Connection?,
+    /** The store as last read: shown while Settings reads it again. */
+    val store: StoreNow,
     val location: SquareLocation?,
     val squareSignedIn: Boolean,
     val tenderName: String,
@@ -77,8 +80,10 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions) = Page(
     val connection = s.connection
     SectionLabel("Store")
     if (connection != null) {
-        val host = connection.endpoint.substringAfter("://").substringBefore('/')
-        val wallet = connection.wallet
+        val store = s.store.store
+        val wallet = store?.wallet
+        val unknown = if (s.store.reading) "Reading…" else "—"
+        Notice(s.store.problem, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
         Group(
             rows = listOfNotNull(
                 {
@@ -89,12 +94,12 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions) = Page(
                     ) {
                         Logo(40.dp)
                         Column(Modifier.weight(1f)) {
-                            Text(connection.store.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
+                            Text(store?.name ?: unknown, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                if (connection.endpoint.startsWith("https://")) {
+                                if (connection.encrypted) {
                                     Icon(MkIcons.Lock, contentDescription = "Encrypted", tint = mk.paid, modifier = Modifier.size(11.dp))
                                 }
-                                Muted(host)
+                                Muted(connection.host)
                             }
                         }
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -106,26 +111,21 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions) = Page(
                 wallet?.let { { FactRow("Payments go to", it.name) } },
                 wallet?.let {
                     {
-                        // The short form, with Copy for the whole address when Monokulo sent it.
-                        val whole = it.address
+                        // The short form, with Copy for the whole address.
                         FactRow(
                             "Wallet address", it.addressShort, mono = true,
-                            trailing = if (whole != null) {
-                                {
-                                    RoundIconButton(
-                                        MkIcons.Copy, "Copy wallet address", { a.onCopyAddress(whole) },
-                                        Modifier.intoRowPadding(), iconSize = 20.dp,
-                                    )
-                                }
-                            } else {
-                                null
+                            trailing = {
+                                RoundIconButton(
+                                    MkIcons.Copy, "Copy wallet address", { a.onCopyAddress(it.address) },
+                                    Modifier.intoRowPadding(), iconSize = 20.dp,
+                                )
                             },
                         )
                     }
                 },
                 wallet?.let { { FactRow("Network", it.network.replaceFirstChar(Char::uppercase)) } },
-                { FactRow("Base currency", connection.store.baseCurrency) },
-                { FactRow("This device", connection.deviceName) },
+                { FactRow("Base currency", store?.baseCurrency ?: unknown) },
+                { FactRow("This device", s.store.device?.deviceName ?: unknown) },
             ),
         )
         Footnote("To change the wallet, open the store's settings in your Monokulo dashboard. Monokular can't change it.")

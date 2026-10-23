@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import app.monokular.core.Amounts
 import app.monokular.core.ConnectCode
+import app.monokular.StoreNow
 import app.monokular.core.Connection
 import app.monokular.overlay.BubbleFace
 import app.monokular.sales.SquareLocation
@@ -265,26 +266,36 @@ fun ConfirmScreen(code: ConnectCode, deviceName: String, busy: Boolean, problem:
     Notice(problem, Modifier.padding(16.dp))
 }
 
-/** Step 3, after: the store, its wallet and this device, to check before going on. */
+/**
+ * Step 3, after: the store, its wallet and this device, read from the store
+ * just now (never saved: decision 50), to check before going on.
+ */
 @Composable
-fun ConnectedScreen(connection: Connection, onNext: () -> Unit, onWrong: () -> Unit) = Page(
+fun ConnectedScreen(connection: Connection, now: StoreNow, onNext: () -> Unit, onRetry: () -> Unit, onWrong: () -> Unit) = Page(
     bottom = {
-        PrimaryButton("Continue", onNext, Modifier.fillMaxWidth())
+        val store = now.store
+        if (store == null && !now.reading) {
+            PrimaryButton("Try again", onRetry, Modifier.fillMaxWidth())
+        } else {
+            PrimaryButton("Continue", onNext, Modifier.fillMaxWidth(), enabled = store != null)
+        }
         LinkButton("Wrong store: disconnect", onWrong)
         StepLabel(3)
     },
 ) {
-    val host = connection.endpoint.substringAfter("://").substringBefore('/')
-    SheetTop("Connected to ${connection.store.name}", host, connection.endpoint.startsWith("https://"))
+    val store = now.store
+    SheetTop(store?.let { "Connected to ${it.name}" } ?: "Connected", connection.host, connection.encrypted)
+    Notice(now.problem, Modifier.padding(16.dp))
     SectionLabel("This device takes payments for")
-    val wallet = connection.wallet
+    val wallet = store?.wallet
+    val reading = if (now.reading) "Reading…" else "—"
     Group(
         rows = listOfNotNull(
-            { FactRow("Store", connection.store.name) },
+            { FactRow("Store", store?.name ?: reading) },
             wallet?.let { { FactRow("Payments go to", it.name) } },
             wallet?.let { { FactRow("Wallet address", it.addressShort, mono = true) } },
             wallet?.let { { FactRow("Network", it.network.replaceFirstChar(Char::uppercase)) } },
-            { FactRow("Device name", connection.deviceName) },
+            { FactRow("Device name", now.device?.deviceName ?: reading) },
         ),
     )
     Footnote("Check this is the store you meant: payments go to its wallet. $CAN_DO")

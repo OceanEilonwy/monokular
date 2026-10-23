@@ -27,7 +27,7 @@ enum class SalePhase {
 }
 
 /**
- * One `sale.*` event from the store's event stream (`GET /pay/{pk}/events`):
+ * One `sale.*` event from the store's event stream (`GET /api/v1/events`):
  * an order a connected app made, and what just happened to it. Never
  * anything about what was bought.
  */

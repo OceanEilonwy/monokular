@@ -48,6 +48,9 @@ class Graph(app: Application) {
 
     val runner = TillRunner(this)
 
+    /** The store as last read, this session only. */
+    val store = LiveStore(monokulo, onDisconnected = runner::disconnected)
+
     /** Monokular's own screen is showing: the bubble steps aside. */
     val appVisible = MutableStateFlow(false)
 
