@@ -28,9 +28,13 @@ data class TillSale(
     /** Unix seconds. */
     val expiresAt: Long,
     val xmr: String,
+    /** The address the customer pays: what "Copy address" copies. */
+    val address: String,
     /** The POS sale this till found, when it found it: what a refund needs. */
     val found: FoundSale? = null,
     val refunded: Boolean = false,
+    /** The device that made the order, for a sale another till found. */
+    val deviceName: String? = null,
 )
 
 /** What the till shows: its sales, newest first, and the last thing that went wrong. */
@@ -134,15 +138,19 @@ class Till(
     }
 
     private fun add(order: Order, code: PaymentCode, found: FoundSale) {
+        // Another till may have made this order already, and the store's events
+        // may have moved it on (paid, even): keep what they said.
+        val known = state.value.sales.firstOrNull { it.orderId == order.orderId }?.phase
         val sale = TillSale(
             orderId = order.orderId,
             amount = order.amount,
             currency = order.currency,
             reference = order.merchantOrderId,
             code = code,
-            phase = SalePhase.Waiting,
+            phase = known ?: SalePhase.Waiting,
             expiresAt = order.expiresAt,
             xmr = PaymentUri.xmr(order.piconero),
+            address = order.address,
             found = found,
         )
         state.update { s -> s.copy(sales = listOf(sale) + s.sales.filterNot { it.orderId == order.orderId }) }
@@ -157,6 +165,8 @@ class Till(
         phase = SalePhase.Waiting,
         expiresAt = expiresAt,
         xmr = PaymentUri.xmr(piconero),
+        address = address,
+        deviceName = deviceName.ifBlank { null },
     )
 
     companion object {

@@ -74,6 +74,7 @@ class TillTest {
         assertTrue(shown.code.hasReceipt, shown.code.why ?: "")
         assertTrue(shown.code.uri.startsWith("monero:8Bx?tx_amount=0.08&orf="), shown.code.uri)
         assertEquals(listOf("pay_monero"), source.handledIds)
+        assertEquals("8Bx", shown.address, "Copy address copies the order's address")
         val sent = server.takeRequest().body!!.utf8()
         assertTrue(sent.contains(""""amount":"13.88"""") && sent.contains(""""merchant_order_id":"bP9m""""), sent)
         assertTrue(sent.contains(""""idempotency_key":"${Till.idempotencyKey(sale)}""""), sent)
@@ -124,9 +125,27 @@ class TillTest {
         assertEquals("ord_2", theirs.orderId)
         assertFalse(theirs.code.hasReceipt)
         assertEquals("monero:8Cy?tx_amount=0.03", theirs.code.uri)
+        assertEquals("8Cy", theirs.address)
+        assertEquals("Back", theirs.deviceName, "another till's sale says which device made it")
         // An update for a sale never seen here is ignored.
         till.onEvent(event("sale.paid", "ord_3"))
         assertEquals(2, till.sales.value.sales.size)
+    }
+
+    @Test
+    fun `a sale another till already made keeps the phase the store's events gave it`() = runBlocking {
+        val source = FakeSource(listOf(sale), receipt)
+        val till = Till(source, monokulo, connection)
+        // The other till's order arrives over the stream first, and is paid.
+        till.onEvent(SaleEvent("sale.waiting", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "Back", 1))
+        till.onEvent(SaleEvent("sale.paid", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "Back", 2))
+        // Then this till finds the same Square sale and gets the same order back.
+        server.enqueue(order())
+        till.check()
+        val shown = till.sales.value.sales.single()
+        assertEquals(SalePhase.Paid, shown.phase)
+        assertNotNull(shown.found, "now this till can refund it too")
+        Unit
     }
 
     @Test
