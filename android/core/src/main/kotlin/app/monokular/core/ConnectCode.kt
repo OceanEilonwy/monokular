@@ -12,15 +12,22 @@ import java.net.URI
  * never sends to a server.
  */
 data class ConnectCode(
-    /** The store's Monokulo, `https://host[:port]`: where the token is redeemed. */
-    val baseUrl: String,
+    /**
+     * Where the token is redeemed: the link without its `#` part,
+     * `https://host[:port][/prefix]/apps/connect`. A Monokulo served under
+     * a path (`https://example.com/monokulo`) keeps it here.
+     */
+    val connectUrl: String,
     val token: String,
 ) {
     /** The host shown on the confirm screen. */
-    val host: String get() = URI(baseUrl).authority
+    val host: String get() = URI(connectUrl).authority
+
+    /** Whether the way there is encrypted: https, or Tor to an onion address. */
+    val encrypted: Boolean get() = connectUrl.startsWith("https://") || Tor.isOnion(connectUrl)
 
     companion object {
-        private const val PATH = "/apps/connect"
+        private const val ROUTE = "/apps/connect"
         private val TOKEN = Regex("ct_[0-9a-f]{64}")
 
         /**
@@ -37,14 +44,15 @@ data class ConnectCode(
                 else -> false
             }
             if (!secure || uri.rawUserInfo != null || uri.rawQuery != null) return null
-            if (uri.rawPath != PATH) return null
+            val path = uri.rawPath ?: return null
+            if (!path.endsWith(ROUTE) || path.removeSuffix(ROUTE).let { it.isNotEmpty() && !it.startsWith("/") }) return null
             val token = uri.rawFragment
                 ?.split('&')
                 ?.firstNotNullOfOrNull { it.removePrefix("token=").takeIf { v -> v != it } }
                 ?.takeIf { TOKEN.matches(it) }
                 ?: return null
             val port = if (uri.port == -1) "" else ":${uri.port}"
-            return ConnectCode("${uri.scheme.lowercase()}://$host$port", token)
+            return ConnectCode("${uri.scheme.lowercase()}://$host$port$path", token)
         }
     }
 }

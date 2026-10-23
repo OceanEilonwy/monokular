@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.longOrNull
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.MediaType.Companion.toMediaType
@@ -25,11 +26,18 @@ import okhttp3.sse.EventSources
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * A Monokulo answer that wasn't a success: its status and what it said
- * (a problem's `detail`, else its `title`). A 401 means the store
- * disconnected this device.
+ * A Monokulo answer that wasn't a success: its status and what its
+ * problem (`application/problem+json`) said, its `detail` else its
+ * `title`. A 401 means the store disconnected this device.
  */
-class MonokuloException(val status: Int, message: String) : Exception(message)
+class MonokuloException(
+    val status: Int,
+    message: String,
+    /** The problem's name, the end of its `type` (`invalid-connect-code`), when it was one. */
+    val problem: String? = null,
+    /** Seconds to wait before asking again, for `rate-limited`. */
+    val retryAfter: Long? = null,
+) : Exception(message)
 
 /** What the app says about itself when it connects and on every request. */
 data class AppIdentity(
@@ -57,17 +65,18 @@ sealed interface StreamEvent {
  * A store's Monokulo, as a connected app uses it: `POST /apps/connect`,
  * then Monokulo's HTTP API from its entry, following its links and forms
  * (Monokulo's docs, `/api/` and `/apps/`). Every call runs on
- * [Dispatchers.IO].
+ * [Dispatchers.IO]. [now] is the clock the entry is kept by.
  */
 class MonokuloApi(
     private val http: OkHttpClient,
     private val identity: AppIdentity,
+    private val now: () -> Long = System::currentTimeMillis,
 ) {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
     private val jsonType = "application/json".toMediaType()
 
-    /** Each connection's entry, read once: its links and forms don't change while the app runs. */
-    private val entries = ConcurrentHashMap<Connection, Entry>()
+    /** Each key's entry, kept as its `Cache-Control` says, by key and where it was read. */
+    private val entries = ConcurrentHashMap<String, Kept>()
 
     @Serializable
     private data class Redeem(
@@ -79,7 +88,11 @@ class MonokuloApi(
     )
 
     @Serializable
-    private data class Redeemed(@SerialName("app_key") val appKey: String, val api: String)
+    private data class Redeemed(
+        @SerialName("app_key") val appKey: String,
+        val api: String,
+        @SerialName("onion_api") val onionApi: String? = null,
+    )
 
     @Serializable
     private data class NewOrder(
@@ -96,42 +109,53 @@ class MonokuloApi(
     /** The API's entry: where things are, for this key. */
     private data class Entry(
         val store: HttpUrl?,
-        val orders: HttpUrl?,
         val events: HttpUrl?,
         val app: HttpUrl?,
+        val onionApi: HttpUrl?,
         val createOrder: Form?,
         val disconnect: Form?,
     )
 
-    /** Redeems [code], once, for this device's key and where the store's API is. */
+    /** An entry as read, its `ETag`, and until when (ms) it may be used without asking. */
+    private data class Kept(val entry: Entry, val etag: String?, val freshUntil: Long)
+
+    /**
+     * Redeems [code], once, at the link's own address, for this device's
+     * key, where the store's API is, and where it is on the onion address
+     * when the store has one. Going over Tor is left for the caller to
+     * choose ([Connection.tor]).
+     */
     suspend fun connect(code: ConnectCode): Connection {
         val body = json.encodeToString(
             Redeem.serializer(),
             Redeem(code.token, identity.slug, identity.name, identity.deviceName, identity.platform),
         )
         val request = Request.Builder()
-            .url("${code.baseUrl}/apps/connect")
+            .url(code.connectUrl)
             .header("Monokulo-Client", identity.client)
             .post(body.toRequestBody(jsonType))
             .build()
         return call(request) { text, used ->
             val redeemed = json.decodeFromString(Redeemed.serializer(), text)
             val api = used.resolve(redeemed.api) ?: throw MonokuloException(0, "The store's answer didn't say where its API is.")
-            Connection(redeemed.appKey, api.toString())
+            Connection(redeemed.appKey, api.toString(), redeemed.onionApi?.let(used::resolve)?.toString())
         }
     }
 
     /** The store as it is now: its name, base currency and wallet. */
-    suspend fun store(connection: Connection): Store {
-        val url = entry(connection).store ?: throw notAllowed("read the store")
-        return call(keyed(connection, url).get().build()) { text, _ -> json.decodeFromString(Store.serializer(), text) }
+    suspend fun store(connection: Connection): Store = followed(connection) { entry ->
+        val url = entry.store ?: throw notAllowed("read the store")
+        call(keyed(connection, url).get().build()) { text, _ -> json.decodeFromString(Store.serializer(), text) }
     }
 
     /** This device's connection as the store has it: its name, above all. */
-    suspend fun app(connection: Connection): AppConnection {
-        val url = entry(connection).app ?: throw notAllowed("read its connection")
-        return call(keyed(connection, url).get().build()) { text, _ -> json.decodeFromString(AppConnection.serializer(), text) }
+    suspend fun app(connection: Connection): AppConnection = followed(connection) { entry ->
+        val url = entry.app ?: throw notAllowed("read its connection")
+        call(keyed(connection, url).get().build()) { text, _ -> json.decodeFromString(AppConnection.serializer(), text) }
     }
+
+    /** The entry on the store's onion address (`mk:onion-api`), or null while it has none. */
+    suspend fun onionApi(connection: Connection): String? = entry(connection).onionApi?.toString()
 
     /**
      * Makes an order with the `create-order` form. [idempotencyKey] makes a
@@ -145,40 +169,40 @@ class MonokuloApi(
         currency: String,
         merchantOrderId: String?,
         idempotencyKey: String,
-    ): Order {
-        val form = entry(connection).createOrder ?: throw notAllowed("make orders")
+    ): Order = followed(connection) { entry ->
+        val form = entry.createOrder ?: throw notAllowed("make orders")
         val body = json.encodeToString(
             NewOrder.serializer(),
             NewOrder(amount, currency, merchantOrderId, idempotencyKey = idempotencyKey),
         ).toRequestBody(jsonType)
-        return call(keyed(connection, form.target).method(form.method, body).build(), ::order)
+        call(keyed(connection, form.target).method(form.method, body).build(), ::order)
     }
 
-    /**
-     * Reads an order again: at [Order.url] for one this device made, else
-     * by its id among the store's orders (a sale event carries no link).
-     */
-    suspend fun order(connection: Connection, orderId: String, url: String? = null): Order {
-        val at = url?.takeIf { it.isNotEmpty() }?.toHttpUrl()
-            ?: entry(connection).orders?.newBuilder()?.addPathSegment(orderId)?.build()
-            ?: throw notAllowed("read orders")
-        return call(keyed(connection, at).get().build(), ::order)
+    /** Reads an order again at [url]: its `self` link, or the `mk:order` link of a sale event. */
+    suspend fun order(connection: Connection, url: String): Order = try {
+        call(keyed(connection, url.toHttpUrl()).get().build(), ::order)
+    } catch (e: MonokuloException) {
+        if (e.status in STALE) entries.remove(keyOf(connection))
+        throw e
     }
 
     /** Disconnects this device with the `disconnect` form: its key stops working at once. */
     suspend fun disconnect(connection: Connection) {
-        val form = entry(connection).disconnect ?: throw notAllowed("disconnect itself")
         try {
-            call(keyed(connection, form.target).method(form.method, null).build()) { _, _ -> }
+            followed(connection) { entry ->
+                val form = entry.disconnect ?: throw notAllowed("disconnect itself")
+                call(keyed(connection, form.target).method(form.method, null).build()) { _, _ -> }
+            }
         } finally {
-            entries.remove(connection)
+            entries.remove(keyOf(connection))
         }
     }
 
     /**
      * The store's sale events (`mk:events`), for as long as it's collected.
      * Ends with a [MonokuloException] when the stream fails; the caller
-     * reconnects.
+     * reconnects, reading the entry again first if the stream answered
+     * 401, 404 or 405.
      */
     fun events(connection: Connection): Flow<StreamEvent> = callbackFlow {
         val url = entry(connection).events ?: throw notAllowed("follow the store's sales")
@@ -190,7 +214,7 @@ class MonokuloApi(
                     "lagged" -> StreamEvent.Lagged
                     null -> null
                     else -> if (SalePhase.ofEvent(type) != null) {
-                        runCatching { StreamEvent.Sale(SaleEvent.decode(data)) }.getOrNull()
+                        runCatching { StreamEvent.Sale(SaleEvent.decode(data, url)) }.getOrNull()
                     } else {
                         null
                     }
@@ -203,40 +227,81 @@ class MonokuloApi(
             }
 
             override fun onFailure(eventSource: EventSource, t: Throwable?, response: Response?) {
-                val status = response?.code ?: 0
-                val said = response?.let { errorOf(it) }
-                close(MonokuloException(status, said ?: t?.message ?: "the event stream failed"))
+                val failed = response?.let(::failure)
+                if (failed != null && failed.status in STALE) entries.remove(keyOf(connection))
+                close(failed ?: MonokuloException(0, t?.message ?: "the event stream failed"))
             }
         }
         val source = EventSources.createFactory(http).newEventSource(request, listener)
         awaitClose { source.cancel() }
     }
 
-    /** The entry for [connection], read the first time it's needed. */
-    private suspend fun entry(connection: Connection): Entry {
-        entries[connection]?.let { return it }
-        val request = keyed(connection, connection.api.toHttpUrl()).get().build()
-        val entry = call(request) { text, used ->
-            val body = json.parseToJsonElement(text).jsonObject
-            val links = body["_links"] as? JsonObject
-            val templates = body["_templates"] as? JsonObject
-            fun link(rel: String) = (links?.get(rel) as? JsonObject)?.text("href")?.let(used::resolve)
-            fun form(name: String) = (templates?.get(name) as? JsonObject)?.let { form ->
-                val target = form.text("target")?.let(used::resolve) ?: return@let null
-                Form(form.text("method")?.uppercase() ?: "POST", target)
-            }
-            Entry(
-                store = link("mk:store"),
-                orders = link("mk:orders"),
-                events = link("mk:events"),
-                app = link("mk:app"),
-                createOrder = form("create-order"),
-                disconnect = form("disconnect"),
-            )
+    /**
+     * Runs [use] with the entry; when something followed from it answers
+     * 401, 404 or 405, reads the entry again and tries once more (the key
+     * changed, or the API moved on). The entry itself answering 401 is the
+     * store having disconnected this device.
+     */
+    private suspend fun <T> followed(connection: Connection, use: suspend (Entry) -> T): T {
+        val entry = entry(connection)
+        return try {
+            use(entry)
+        } catch (e: MonokuloException) {
+            if (e.status !in STALE) throw e
+            entries.remove(keyOf(connection))
+            use(entry(connection))
         }
-        entries[connection] = entry
-        return entry
     }
+
+    private fun keyOf(connection: Connection) = "${connection.appKey} ${connection.entry}"
+
+    /**
+     * The entry for [connection]: the copy kept while it's fresh, else read
+     * again, with its `ETag` so an unchanged one is a `304` with no body.
+     */
+    private suspend fun entry(connection: Connection): Entry {
+        val key = keyOf(connection)
+        val kept = entries[key]
+        if (kept != null && now() < kept.freshUntil) return kept.entry
+        val request = keyed(connection, connection.entry.toHttpUrl()).get()
+            .apply { kept?.etag?.let { header("If-None-Match", it) } }
+            .build()
+        return withContext(Dispatchers.IO) {
+            send(request).use { response ->
+                if (response.code == 304 && kept != null) {
+                    entries[key] = kept.copy(freshUntil = now() + maxAge(response))
+                    return@use kept.entry
+                }
+                if (!response.isSuccessful) throw failure(response)
+                val entry = readEntry(response.body.string(), response.request.url)
+                entries[key] = Kept(entry, response.header("ETag"), now() + maxAge(response))
+                entry
+            }
+        }
+    }
+
+    private fun readEntry(text: String, used: HttpUrl): Entry {
+        val body = json.parseToJsonElement(text).jsonObject
+        val links = body["_links"] as? JsonObject
+        val templates = body["_templates"] as? JsonObject
+        fun link(rel: String) = (links?.get(rel) as? JsonObject)?.text("href")?.let(used::resolve)
+        fun form(name: String) = (templates?.get(name) as? JsonObject)?.let { form ->
+            val target = form.text("target")?.let(used::resolve) ?: return@let null
+            Form(form.text("method")?.uppercase() ?: "POST", target)
+        }
+        return Entry(
+            store = link("mk:store"),
+            events = link("mk:events"),
+            app = link("mk:app"),
+            onionApi = link("mk:onion-api"),
+            createOrder = form("create-order"),
+            disconnect = form("disconnect"),
+        )
+    }
+
+    /** How long (ms) an answer may be kept: its `max-age`, else not at all. */
+    private fun maxAge(response: Response): Long =
+        response.cacheControl.maxAgeSeconds.takeIf { it > 0 && !response.cacheControl.noStore }?.times(1000L) ?: 0L
 
     private fun order(text: String, used: HttpUrl): Order {
         val body = json.parseToJsonElement(text).jsonObject
@@ -258,17 +323,42 @@ class MonokuloApi(
 
     /** Runs [request]; [read] gets the body and the URL it came from, which links resolve against. */
     private suspend fun <T> call(request: Request, read: (String, HttpUrl) -> T): T = withContext(Dispatchers.IO) {
-        http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) {
-                throw MonokuloException(response.code, errorOf(response) ?: "HTTP ${response.code}")
-            }
+        send(request).use { response ->
+            if (!response.isSuccessful) throw failure(response)
             read(response.body.string(), response.request.url)
         }
     }
 
-    /** What an error said: a problem's `detail` or `title`, or `/apps/connect`'s `error`. */
-    private fun errorOf(response: Response): String? = runCatching {
-        val body = json.parseToJsonElement(response.peekBody(4096).string()).jsonObject
-        body.text("detail") ?: body.text("title") ?: body.text("error")
-    }.getOrNull()
+    /**
+     * Sends [request], and once more with a proof of work when Monokulo
+     * answers `challenge-required` (a busy Monokulo asks one of anyone).
+     */
+    private fun send(request: Request): Response {
+        val response = http.newCall(request).execute()
+        if (response.code != 429) return response
+        val challenge = runCatching {
+            val body = json.parseToJsonElement(response.peekBody(PROBLEM_BYTES).string()).jsonObject
+            body["challenge"] as? JsonObject
+        }.getOrNull()
+        val token = challenge?.text("challenge") ?: return response
+        val difficulty = challenge["difficulty"]?.jsonPrimitive?.longOrNull?.toInt() ?: return response
+        response.close()
+        return http.newCall(request.newBuilder().header("Monokulo-Proof", Proof.solve(token, difficulty)).build()).execute()
+    }
+
+    /** What a failed answer said, as its problem has it (RFC 9457). */
+    private fun failure(response: Response): MonokuloException {
+        val body = runCatching { json.parseToJsonElement(response.peekBody(PROBLEM_BYTES).string()).jsonObject }.getOrNull()
+        val said = body?.text("detail") ?: body?.text("title") ?: "HTTP ${response.code}"
+        val type = body?.text("type")?.substringAfterLast('/')
+        val retryAfter = body?.get("retry_after")?.let { runCatching { it.jsonPrimitive.longOrNull }.getOrNull() }
+            ?: response.header("Retry-After")?.toLongOrNull()
+        return MonokuloException(response.code, said, type, retryAfter)
+    }
+
+    private companion object {
+        /** What something followed from the entry answers when the entry should be read again. */
+        val STALE = setOf(401, 404, 405)
+        const val PROBLEM_BYTES = 16_384L
+    }
 }

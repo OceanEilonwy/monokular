@@ -24,6 +24,8 @@ import kotlinx.coroutines.launch
 data class StoreNow(
     val store: Store? = null,
     val device: AppConnection? = null,
+    /** The entry on the store's onion address (`mk:onion-api`), while it has one. */
+    val onionApi: String? = null,
     /** A read is under way. */
     val reading: Boolean = false,
     /** Why the last read failed, if it did. */
@@ -35,6 +37,8 @@ class LiveStore(
     private val monokulo: MonokuloApi,
     /** The store answered 401: it disconnected this device. */
     private val onDisconnected: () -> Unit,
+    /** Where the store's onion entry is now, or null for none: kept with the connection. */
+    private val onOnionApi: (String?) -> Unit = {},
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val state = MutableStateFlow(StoreNow())
@@ -49,8 +53,10 @@ class LiveStore(
                 // coroutineScope, so a failed read lands in the catch below rather than the scope.
                 state.value = coroutineScope {
                     val device = async { monokulo.app(connection) }
-                    StoreNow(monokulo.store(connection), device.await())
+                    val onion = async { monokulo.onionApi(connection) }
+                    StoreNow(monokulo.store(connection), device.await(), onion.await())
                 }
+                onOnionApi(state.value.onionApi)
             } catch (e: MonokuloException) {
                 if (e.status == 401) onDisconnected()
                 state.update { it.copy(reading = false, problem = e.message ?: "The store didn't answer.") }

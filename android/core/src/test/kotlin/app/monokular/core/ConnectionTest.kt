@@ -17,29 +17,28 @@ class ConnectionTest {
     }
 
     @Test
-    fun `a connection the old app saved carries on at its endpoint's API`() {
-        val saved = """{"public_key":"pk_1","app_key":"ak_x","endpoint":"https://pay.example","onion_endpoint":"http://abc.onion",
-            "app_id":"app_1","device_name":"Front counter","store":{"name":"Bakery","base_currency":"USD"},
-            "wallet":{"name":"Shop","network":"mainnet","address_short":"4Ad…7s","address":"4Adxyz"}}"""
-        assertEquals(Connection("ak_x", "https://pay.example/api/v1"), Connection.restore(saved))
+    fun `a connection kept before Monokulo gave onion addresses carries on, off Tor`() {
+        val kept = Connection.restore("""{"app_key":"ak_x","api":"https://pay.example/api/v1"}""")!!
+        assertNull(kept.onionApi)
+        assertFalse(kept.tor)
+        assertEquals("https://pay.example/api/v1", kept.entry)
     }
 
     @Test
-    fun `an old endpoint keeps its port, and loses any path`() {
-        assertEquals(
-            "http://10.0.2.2:8080/api/v1",
-            Connection.restore("""{"app_key":"ak_x","endpoint":"http://10.0.2.2:8080/"}""")?.api,
-        )
-        assertEquals(
-            "https://pay.example/api/v1",
-            Connection.restore("""{"app_key":"ak_x","endpoint":"https://pay.example/pay"}""")?.api,
-        )
+    fun `the onion entry and the choice of Tor are kept with it`() {
+        val onion = "http://2gzyxa5ihm7nsggfxnu52rck2vv4rvmdlkiu3zzui5du4xyclen53wid.onion/api/v1"
+        val connection = Connection("ak_x", "https://pay.example/api/v1", onion, tor = true)
+        assertEquals(connection, Connection.restore(Connection.save(connection)))
+        assertEquals(onion, connection.entry)
+        assertTrue(connection.overTor)
+        assertFalse(connection.copy(tor = false).overTor)
+        assertTrue(Connection("ak_x", onion).overTor, "connected at the onion address")
     }
 
     @Test
     fun `nothing usable restores nothing`() {
         assertNull(Connection.restore("not json"))
-        assertNull(Connection.restore("""{"endpoint":"https://pay.example"}"""))
+        assertNull(Connection.restore("""{"api":"https://pay.example/api/v1"}"""))
         assertNull(Connection.restore("""{"app_key":"ak_x"}"""))
     }
 

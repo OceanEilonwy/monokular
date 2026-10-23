@@ -35,7 +35,7 @@ data class TillSale(
     val refunded: Boolean = false,
     /** The device that made the order, for a sale another till found. */
     val deviceName: String? = null,
-    /** Where to read the order again: its `self` link, for an order this till made. */
+    /** Where to read the order again: its `self` link, or its sale event's `mk:order`. */
     val url: String? = null,
 )
 
@@ -106,7 +106,7 @@ class Till(
         val phase = event.phase ?: return
         state.update { s ->
             if (s.sales.any { it.orderId == event.orderId }) {
-                s.copy(sales = s.sales.map { if (it.orderId == event.orderId) it.copy(phase = phase) else it })
+                s.copy(sales = s.sales.map { if (it.orderId == event.orderId) it.copy(phase = phase, url = it.url ?: event.orderUrl) else it })
             } else if (phase == SalePhase.Waiting) {
                 // Another till's sale: shown with the plain code (no receipt here).
                 val uri = PaymentUri.build(event.address, event.piconero)
@@ -170,6 +170,7 @@ class Till(
         xmr = PaymentUri.xmr(piconero),
         address = address,
         deviceName = deviceName.ifBlank { null },
+        url = orderUrl,
     )
 
     companion object {

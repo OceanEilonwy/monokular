@@ -17,6 +17,7 @@ import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.produceState
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.monokular.notify.SaleNotifications
@@ -140,37 +141,42 @@ class MainActivity : ComponentActivity() {
                             onStartShift = { model.setShift(true) },
                         ),
                     )
-                    Screen.Settings -> SettingsScreen(
-                        SettingsState(
-                            connection = model.connection,
-                            store = store,
-                            location = model.location,
-                            squareSignedIn = model.squareSignedIn,
-                            tenderName = model.tenderName,
-                            live = runner.live,
-                            shiftOn = model.shiftOn,
-                            alerts = model.notificationsAllowed(),
-                            bubbleWanted = bubbleWanted,
-                            bubbleAllowed = model.overlayAllowed(),
-                            debug = model.debug,
-                            squareBaseUrl = model.squareBaseUrl,
-                        ),
-                        SettingsActions(
-                            onShift = { model.setShift(it); model.go(Screen.Settings) },
-                            onAlerts = ::openNotificationSettings,
-                            onBubble = { on ->
-                                model.setBubble(on)
-                                if (on && !model.overlayAllowed()) openOverlaySettings()
-                            },
-                            onSquare = { model.go(Screen.Square) },
-                            onChangeLocation = model::changeLocation,
-                            onSignOutSquare = model::signOutOfSquare,
-                            onDisconnect = model::disconnect,
-                            onSquareBaseUrl = { model.squareBaseUrl = it },
-                            onCopyAddress = { SaleNotifications.copyAddress(this, it) },
-                            onBack = model::goHome,
-                        ),
-                    )
+                    Screen.Settings -> {
+                        val torRunning by produceState<Boolean?>(null, store) { value = model.torRunning() }
+                        SettingsScreen(
+                            SettingsState(
+                                connection = model.connection,
+                                store = store,
+                                location = model.location,
+                                squareSignedIn = model.squareSignedIn,
+                                tenderName = model.tenderName,
+                                live = runner.live,
+                                shiftOn = model.shiftOn,
+                                alerts = model.notificationsAllowed(),
+                                bubbleWanted = bubbleWanted,
+                                bubbleAllowed = model.overlayAllowed(),
+                                debug = model.debug,
+                                squareBaseUrl = model.squareBaseUrl,
+                                torRunning = torRunning,
+                            ),
+                            SettingsActions(
+                                onShift = { model.setShift(it); model.go(Screen.Settings) },
+                                onAlerts = ::openNotificationSettings,
+                                onBubble = { on ->
+                                    model.setBubble(on)
+                                    if (on && !model.overlayAllowed()) openOverlaySettings()
+                                },
+                                onSquare = { model.go(Screen.Square) },
+                                onChangeLocation = model::changeLocation,
+                                onSignOutSquare = model::signOutOfSquare,
+                                onDisconnect = model::disconnect,
+                                onSquareBaseUrl = { model.squareBaseUrl = it },
+                                onCopyAddress = { SaleNotifications.copyAddress(this, it) },
+                                onTor = model::setTor,
+                                onBack = model::goHome,
+                            ),
+                        )
+                    }
                 }
             }
         }
