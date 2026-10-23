@@ -108,7 +108,8 @@ what else was possible, so any of them can be reversed knowingly.
     because the project's Square application doesn't exist yet.
 28. **Push isn't wired up yet.** Monokulo has no push targets and there's no
     Bell, so the app relies on its foreground service and the event stream
-    during a shift. The UnifiedPush module from the first PR is unchanged.
+    during a shift. The UnifiedPush module from the first PR, which nothing
+    called, was removed (decision 56).
 29. **A till without Square** ("Not now") still runs: it shows the sales
     other tills make, from the event stream, without receipts.
 
@@ -278,26 +279,28 @@ f7fb5c9bee755abc07dbac34dfec5f5043b6a66f.
     blank rows when the store can't be reached; keeping a "last seen" copy
     on the device was the alternative, and isn't worth showing a wallet
     that may no longer be the one.
-51. **The app follows the API's links and forms.** It reads the entry once
-    a run and finds the store, orders, events and its own connection there,
+51. **The app follows the API's links and forms.** It reads the entry
+    (kept as decision 54 says) and finds the store, events and its own
+    connection there,
     and makes orders and disconnects with the `create-order` and
     `disconnect` forms; a link or form the entry leaves out isn't tried.
     Links resolve against the URL the app actually called, so an onion
     connection stays on the onion host. An order's `self` link is kept
     with the sale and used to read it again after the event stream
-    reopens; a sale another till made comes only as a sale event, which
-    has no link, so it is read at `mk:orders` plus its id. The order now
+    reopens; a sale another till made comes only as a sale event, and is
+    read again at the event's `mk:order` link. The app builds no path. The
+    order now
     carries its status, so a sale a restarted till re-finds no longer shows
     as waiting until the stream resyncs (the gap decision 48 left). One
     order's own stream (`mk:order-events`) isn't used: the store-wide
     stream already brings every sale's changes.
-52. **A connection saved by the old app carries on.** It has `endpoint`
-    and the `ak_` key (with `public_key`, `store`, `wallet` and the rest):
-    the app reads it as the key at the endpoint's origin plus `/api/v1`,
-    and rewrites it in the new form the first time it's read, dropping the
-    rest. No reconnect, and no other path to the old routes; the old
-    `onion_endpoint` was never used, so a till that connected over the
-    clearnet address stays on it.
+52. **A connection saved by the first app isn't read any more.** That
+    form (`endpoint`, `public_key`, `store`, `wallet`, …) predates the API
+    and was never released; reading it as the key at the endpoint's
+    `/api/v1` was interim code, removed with the final API (2026-10-24).
+    Such a till shows Welcome and connects again. A connection saved by
+    the app on main before then (`app_key` and `api`) carries on unchanged
+    (decision 55).
 53. **The client is checked against Monokulo's own OpenAPI document,
     generated, not committed.** Monokulo generates it from its code and a
     test's real exchanges (`cargo xtask api openapi`) and never commits
@@ -307,7 +310,51 @@ f7fb5c9bee755abc07dbac34dfec5f5043b6a66f.
     core's tests (`tools/monokulo-openapi/generate.sh`). The contract test
     answers the client with Monokulo's recorded examples and checks what it
     sends against the schemas; `-Pmonokulo.openapi=FILE` uses a document
-    already generated. The cost is building Monokulo's tests (Rust nightly)
-    with the app; CI caches it per commit. Bumping `monokulo.sha` is how
-    the app moves to a newer Monokulo. `POST /apps/connect` isn't in the
-    document (it isn't part of the API), so the unit tests cover it alone.
+    already generated. Generating it needs only Rust (`cargo xtask api
+    openapi` builds Monokulo's library and one example, no Node, no
+    browser code; rustup installs the toolchain Monokulo names); CI caches
+    the build per commit. Bumping `monokulo.sha` is how the app moves to a
+    newer Monokulo. The document now has the app handshake with its
+    problems, the entry as each key sees it, and the event stream's events
+    (`x-events`) with a recorded stream, so the contract test answers all
+    of them from Monokulo's own recordings and builds none of its own.
+
+## App: the final API (2026-10-24)
+
+Checked against Monokulo 3b0cc7c73160611bd8e1a4dd44624d0d9f59820f, which
+has every fix the app was waiting for; the interim code is gone.
+
+54. **The entry is kept as Monokulo says, per key.** `GET /api/v1`
+    answers `Cache-Control: private, max-age=3600`, `Vary: Authorization`
+    and an `ETag`. The client keeps it per key and entry address for
+    `max-age`, so making an order is one request; once it has expired it
+    asks again with `If-None-Match` and keeps its copy for another
+    `max-age` on a `304`. Anything followed from it that answers `401`,
+    `404` or `405` drops the copy, and the store, app, order and
+    disconnect calls read the entry again and try once more. An unknown
+    key is `401` at the entry, which is how the app hears it was
+    disconnected. Errors are read only as problems (`type`, `detail`);
+    `POST /apps/connect`'s are told apart by `type` (`invalid-connect-code`,
+    `rate-limited` with how long to wait, and the rest by their `detail`),
+    and a `challenge-required` is solved and sent again with
+    `Monokulo-Proof`. The connect link is redeemed at its own address,
+    path and all, so a Monokulo served under a path works end to end.
+55. **Tor, through Orbot, preferred when it's there.** A Monokulo with an
+    onion address gives `onion_api` in the handshake and `mk:onion-api` in
+    the entry; the app keeps it with the connection, with a `tor` switch.
+    Monokular has no Tor of its own: onion addresses go through Orbot's
+    SOCKS proxy (`127.0.0.1:9050`, which resolves the name), everything
+    else straight out, and plain http is allowed to `.onion` only. On
+    connecting, the app goes over Tor when the store has an onion address
+    and Orbot is running; Settings offers "Reach the store over Tor"
+    whenever the store has one, and says when Orbot isn't running. Over
+    Tor the app reads the onion entry and follows its relative links, so
+    nothing goes to the web address. A till that connected at an onion
+    address is always on Tor. A till connected before this keeps its
+    `app_key` and `api`, carries on off Tor, and learns the onion entry
+    from `mk:onion-api` the next time it reads the store; a store that no
+    longer has one takes it off Tor. Embedding Tor (tor-android or Arti)
+    was the alternative: tens of megabytes and a second Tor beside the
+    Orbot a privacy-minded merchant already runs.
+56. **The UnifiedPush module is gone.** Nothing called it: Monokulo has
+    no push targets yet (decision 28). It comes back, wired up, with them.
