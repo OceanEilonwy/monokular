@@ -218,8 +218,9 @@ wins; nothing here changes what goes over the wire.
     Store (with "Online"), Square (account, location, payment type, sign
     out), then Shift, Alerts and Bubble in place of the Dynamic Island,
     and Wake-ups. "New sale alerts" opens Android's notification settings
-    (an app can't turn its own permission off); the wallet address isn't
-    copyable, because Monokulo only gives the app its short form.
+    (an app can't turn its own permission off). The wallet address was
+    first shown without Copy, because Monokulo gave the app only its short
+    form; decision 49 replaces that.
 45. **Wide windows split the sale in two** (840 dp and up: the code on
     one side; amount, status, progress and buttons on the other); a
     narrow split-screen or free-form window gets the phone layout, with
@@ -238,3 +239,20 @@ wins; nothing here changes what goes over the wire.
     (decision 15) still shows it as waiting until the event stream
     reconnects and resyncs it, because the order response carries no
     status; changing that would change the API, so it's left.
+49. **The wallet address in Settings can be copied** (replaces the end of
+    decision 44). Monokulo's `POST /apps/connect` now sends the wallet's
+    whole primary address as `wallet.address` beside `address_short`
+    (OceanEilonwy/monokulo#143). The row still shows the short form, as
+    the mockup does, and the Copy icon after it copies the whole address:
+    a 48 dp button, "Copy wallet address" to TalkBack, that reaches into
+    the row's padding so the row stays as tall as the others. The field is
+    optional: a connection saved before it, or made with an older
+    Monokulo, has no address, and the row shows the short form with no
+    Copy until the till connects again; nothing forces a reconnect. It is
+    kept with the rest of the connection in the encrypted store. The copy
+    goes through the same helper as the sale notification's "Copy
+    address": an "Address copied" toast before Android 13, Android's own
+    clipboard preview from 13 on, and the clip isn't marked
+    `EXTRA_IS_SENSITIVE`. A receiving address is meant to be shared and
+    isn't a secret like a key, and hiding it from the preview would stop
+    the cashier checking what was copied.

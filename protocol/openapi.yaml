@@ -146,6 +146,11 @@ components:
             name: { type: string }
             network: { type: string, enum: [mainnet, stagenet, testnet] }
             address_short: { type: string }
+            address:
+              type: string
+              description: >-
+                The wallet's primary address, whole. A Monokulo from before it
+                was added sends only address_short.
     Order:
       type: object
       required: [order_id, address, xmr_amount_piconero, amount, currency, expires_at]

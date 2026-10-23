@@ -162,6 +162,7 @@ class MainActivity : ComponentActivity() {
                             onSignOutSquare = model::signOutOfSquare,
                             onDisconnect = model::disconnect,
                             onSquareBaseUrl = { model.squareBaseUrl = it },
+                            onCopyAddress = { SaleNotifications.copyAddress(this, it) },
                             onBack = model::goHome,
                         ),
                     )

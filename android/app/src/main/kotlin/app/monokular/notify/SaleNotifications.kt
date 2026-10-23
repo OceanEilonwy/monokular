@@ -235,7 +235,12 @@ class SaleNotifications(private val context: Context) {
 
         private fun idOf(sale: TillSale) = 1000 + (sale.orderId.hashCode() and 0x7FFFFF)
 
-        /** Copies [address] for the customer, saying so where Android doesn't (before 13). */
+        /**
+         * Copies [address] (a sale's, for the customer, or the store wallet's
+         * from Settings), saying so where Android doesn't (before 13). Not
+         * marked sensitive: a receiving address is for sharing, and Android's
+         * preview lets the cashier check what was copied.
+         */
         fun copyAddress(context: Context, address: String) {
             val clipboard = context.getSystemService(ClipboardManager::class.java)
             clipboard.setPrimaryClip(ClipData.newPlainText("Monero address", address))

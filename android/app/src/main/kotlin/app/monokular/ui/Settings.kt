@@ -24,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -57,6 +58,8 @@ class SettingsActions(
     val onSignOutSquare: () -> Unit,
     val onDisconnect: () -> Unit,
     val onSquareBaseUrl: (String) -> Unit,
+    /** Copies the store wallet's whole address. */
+    val onCopyAddress: (String) -> Unit,
     val onBack: () -> Unit,
 )
 
@@ -101,7 +104,25 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions) = Page(
                     }
                 },
                 wallet?.let { { FactRow("Payments go to", it.name) } },
-                wallet?.let { { FactRow("Wallet address", it.addressShort, mono = true) } },
+                wallet?.let {
+                    {
+                        // The short form, with Copy for the whole address when Monokulo sent it.
+                        val whole = it.address
+                        FactRow(
+                            "Wallet address", it.addressShort, mono = true,
+                            trailing = if (whole != null) {
+                                {
+                                    RoundIconButton(
+                                        MkIcons.Copy, "Copy wallet address", { a.onCopyAddress(whole) },
+                                        Modifier.intoRowPadding(), iconSize = 20.dp,
+                                    )
+                                }
+                            } else {
+                                null
+                            },
+                        )
+                    }
+                },
                 wallet?.let { { FactRow("Network", it.network.replaceFirstChar(Char::uppercase)) } },
                 { FactRow("Base currency", connection.store.baseCurrency) },
                 { FactRow("This device", connection.deviceName) },
@@ -175,3 +196,15 @@ private fun ActionRow(label: String, onClick: () -> Unit, color: androidx.compos
     Modifier.fillMaxWidth().heightIn(min = 48.dp).clickable(role = Role.Button, onClick = onClick).padding(horizontal = 16.dp),
     contentAlignment = Alignment.CenterStart,
 ) { Text(label, fontSize = 17.sp, color = color) }
+
+/**
+ * Lets a 48 dp button reach into its row's padding (10 dp above and below,
+ * 12 of the 16 dp at the end), so the row keeps the height of the rows
+ * around it and the icon lines up with their values. It still takes taps
+ * across all 48 dp.
+ */
+private fun Modifier.intoRowPadding() = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints)
+    val vertical = 10.dp.roundToPx()
+    layout(placeable.width - 12.dp.roundToPx(), placeable.height - 2 * vertical) { placeable.place(0, -vertical) }
+}
