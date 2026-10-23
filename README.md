@@ -58,7 +58,6 @@ The Square application id is a build property:
 | `android/core` | Pure Kotlin, no Android: connect codes, the Monokulo client, sale events. |
 | `android/receipt` | ORF receipts in the payment code, through `crates/orf-codec-ffi` (UniFFI). |
 | `android/sales` | Square on the till (PKCE sign-in, Monero tenders, orders, refunds) and the till's sales. |
-| `android/push` | UnifiedPush registration and the push service (not wired up yet). |
 | `android/app` | The Compose app, the shift's foreground service, its notifications and the bubble over other apps. |
 
 ### Running it end to end on an emulator
