@@ -52,6 +52,9 @@ class MonokuloContractTest {
     /** Which recorded problem `POST /apps/connect` answers with, by name; null for its success. */
     @Volatile private var connectProblem: String? = null
 
+    /** Whether the Monokulo answering has an onion address: picks the `-with-onion` examples. */
+    @Volatile private var onion = false
+
     /** What went wrong answering, rethrown after the test so it isn't lost as a 500. */
     @Volatile private var failure: Throwable? = null
 
@@ -84,12 +87,18 @@ class MonokuloContractTest {
     private fun operation(method: String, path: String): JsonObject? =
         template(path)?.let { paths[it]?.jsonObject?.get(method.lowercase()) as? JsonObject }
 
-    /** A response's content type and its recorded example: as an app's key sees it, where Monokulo recorded one per key. */
-    private fun recorded(response: JsonObject): Pair<String, JsonElement?>? {
+    /**
+     * A response's content type and its recorded example, as [key] (`ak`, or
+     * `no-key` for the handshake) sees it: `ak` from a Monokulo without an
+     * onion address, `ak-with-onion` from one with ([onion]; a route whose
+     * answer doesn't change with it has only the first).
+     */
+    private fun recorded(response: JsonObject, key: String): Pair<String, JsonElement?>? {
         val (type, content) = (response["content"] as? JsonObject)?.entries?.firstOrNull() ?: return null
         val media = content.jsonObject
         val example = media["example"] ?: (media["examples"] as? JsonObject)?.let { examples ->
-            (examples["ak"] ?: examples.values.first()).jsonObject["value"]
+            val named = (if (onion) examples["$key-with-onion"] else null) ?: examples[key]
+            assertNotNull(named, "Monokulo recorded no $key example; it has ${examples.keys}").jsonObject["value"]
         }
         return type to example
     }
@@ -124,7 +133,7 @@ class MonokuloContractTest {
             assertNotNull(op["responses"]!!.jsonObject["304"], "Monokulo answers 304 here")
             return MockResponse.Builder().code(304).setHeader("ETag", ETAG).setHeader("Cache-Control", "private, max-age=3600").build()
         }
-        val (type, example) = recorded(response) ?: return MockResponse.Builder().code(code).build()
+        val (type, example) = recorded(response, if (path == "/apps/connect") "no-key" else "ak") ?: return MockResponse.Builder().code(code).build()
         return MockResponse.Builder().code(code).apply {
             if ("ETag" in headers) setHeader("ETag", ETAG)
             if ("Cache-Control" in headers) setHeader("Cache-Control", "private, max-age=3600")
@@ -152,7 +161,17 @@ class MonokuloContractTest {
     private fun code() = ConnectCode(server.url("/apps/connect").toString(), "ct_" + "0".repeat(63) + "1")
 
     @Test
-    fun `connecting sends what the handshake takes and keeps the key, the entry and the onion entry`() = runBlocking {
+    fun `connecting sends what the handshake takes and keeps the key and the entry`() = runBlocking {
+        val connection = api.connect(code())
+        assertTrue(connection.appKey.startsWith("ak_"))
+        assertEquals(server.url("/api/v1").toString(), connection.api)
+        assertEquals(null, connection.onionApi, "a Monokulo without an onion address names none")
+        assertEquals(listOf("POST /apps/connect"), seen)
+    }
+
+    @Test
+    fun `connecting to a Monokulo with an onion address keeps its onion entry too`() = runBlocking {
+        onion = true
         val connection = api.connect(code())
         assertTrue(connection.appKey.startsWith("ak_"))
         assertEquals(server.url("/api/v1").toString(), connection.api)
@@ -182,9 +201,12 @@ class MonokuloContractTest {
     }
 
     @Test
-    fun `the entry an app's key reads links the onion entry`() = runBlocking {
-        val onion = assertNotNull(api.onionApi(connection()))
-        assertTrue(Tor.isOnion(onion), onion)
+    fun `the entry an app's key reads links the onion entry only when there is one`() = runBlocking {
+        assertEquals(null, api.onionApi(connection()))
+        onion = true
+        val api = MonokuloApi(OkHttpClient(), AppIdentity("monokular", "Monokular", "0.1.0", "android", "Pixel 8"))
+        val linked = assertNotNull(api.onionApi(connection()))
+        assertTrue(Tor.isOnion(linked), linked)
     }
 
     @Test
@@ -193,7 +215,7 @@ class MonokuloContractTest {
         assertTrue(order.address.isNotEmpty() && order.piconero > 0 && order.expiresAt > 0)
         assertTrue(order.paymentUri.startsWith("monero:${order.address}?tx_amount="))
         assertNotNull(template(order.url.toHttpUrl().encodedPath), "its self link is a route")
-        assertTrue(api.order(connection(), order.url).orderId.isNotEmpty())
+        assertEquals(order.orderId, api.order(connection(), order.url).orderId, "the order made is the one read")
     }
 
     @Test
@@ -207,7 +229,9 @@ class MonokuloContractTest {
         val sale = assertIs<StreamEvent.Sale>(events[1]).event
         val url = assertNotNull(sale.orderUrl, "a sale event links its order")
         assertNotNull(template(url.toHttpUrl().encodedPath), "its mk:order link is a route")
-        assertTrue(api.order(connection(), url).orderId.isNotEmpty())
+        val order = api.order(connection(), url)
+        assertEquals(sale.orderId, order.orderId, "the event's order is the one it links")
+        assertEquals(api.createOrder(connection(), "24.50", "USD", "#1042", "sq:abc").orderId, order.orderId, "and the one an app made")
     }
 
     @Test
