@@ -7,6 +7,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_PROMOTED_NOTIFICATIONS" />
+    <!-- The bubble over Square (docs/design.md §9 "overlay"). The cashier allows it in setup, or not. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+
+    <!-- "Back to Square" opens Square Point of Sale when it's installed. -->
+    <queries>
+        <package android:name="com.squareup" />
+    </queries>
 
     <uses-feature android:name="android.hardware.camera" android:required="false" />
 
@@ -43,6 +50,20 @@
             </intent-filter>
         </activity>
 
+        <!-- A sale notification's "Show code": the bubble's panel, or the app. -->
+        <activity
+            android:name=".notify.ShowCodeActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- A sale notification's "Copy address". -->
+        <receiver
+            android:name=".notify.CopyReceiver"
+            android:exported="false" />
+
         <!-- Watches the POS during a shift (docs/design.md §3). -->
         <service
             android:name=".TillService"
@@ -50,7 +71,7 @@
             android:foregroundServiceType="specialUse">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Point-of-sale companion: watches the store's till for Monero sales during the cashier's shift and shows the customer's payment code as they come in." />
+                android:value="Point-of-sale companion: watches the store's till for Monero sales during the cashier's shift, and shows the customer's payment code in its notification and in a bubble over the point-of-sale app as they come in." />
         </service>
     </application>
 </manifest>

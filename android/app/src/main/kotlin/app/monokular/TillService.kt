@@ -1,124 +1,104 @@
 package app.monokular
 
-import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
-import androidx.core.app.NotificationCompat
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import app.monokular.core.SalePhase
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
+import app.monokular.notify.SaleNotifications
+import app.monokular.overlay.Overlay
+import app.monokular.sales.TillSale
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
  * Keeps the till running during a shift (`docs/design.md` §3, §7): a
- * foreground service with an ongoing notification, which becomes the
- * current sale while one is waiting.
+ * foreground service whose ongoing notification is the current sale, and
+ * which holds the bubble over other apps.
  */
 class TillService : LifecycleService() {
     private val graph get() = (application as MonokularApp).graph
+    private lateinit var notes: SaleNotifications
+    private lateinit var overlay: Overlay
 
     override fun onCreate() {
         super.onCreate()
-        channels(this)
+        notes = SaleNotifications(this).also { it.channels() }
         ServiceCompat.startForeground(
             this,
-            ONGOING_ID,
+            SaleNotifications.ONGOING_ID,
             watching(),
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0,
         )
         graph.runner.start()
+        overlay = Overlay(this, graph, lifecycleScope, onCopy = { SaleNotifications.copyAddress(this, it.address) }, onFullScreen = ::openSale)
+        overlay.start()
+        val changes = PhaseChanges()
+        var posted: List<Any?>? = null
+        val alerted = mutableSetOf<String>()
         lifecycleScope.launch {
-            graph.runner.state
-                .map { s -> s.till.sales.firstOrNull { !it.phase.isFinal || it.phase == SalePhase.Paid } }
-                .distinctUntilChanged()
-                .collect { sale -> post(sale) }
+            combine(graph.runner.state, graph.permissions) { state, _ -> state }.collect { state ->
+                val sales = state.till.sales
+                for (sale in changes.next(sales)) {
+                    when (sale.phase) {
+                        SalePhase.Paid -> {
+                            notes.paid(sale, quiet = graph.appVisible.value)
+                            overlay.paid()
+                        }
+                        SalePhase.Expired, SalePhase.DoubleSpend -> notes.unpaid(sale, quiet = graph.appVisible.value)
+                        else -> Unit
+                    }
+                }
+                val current = sales.firstOrNull { !it.phase.isFinal }
+                val key = listOf(current?.orderId, current?.phase, notes.allowed())
+                if (key == posted) return@collect
+                posted = key
+                if (current == null) {
+                    notes.ongoing(watching())
+                } else {
+                    // A heads-up once per sale, when it first appears; not again when an older one comes back to the top.
+                    val alert = current.phase == SalePhase.Waiting && alerted.add(current.orderId)
+                    notes.ongoing(notes.sale(current, graph.stores.location?.name, alert))
+                }
+            }
         }
     }
 
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        super.onStartCommand(intent, flags, startId)
+        if (intent?.action == ACTION_SHOW_CODE && !overlay.showCode()) {
+            graph.runner.state.value.till.sales.firstOrNull { !it.phase.isFinal }?.let(::openSale)
+        }
+        return START_STICKY
+    }
+
     override fun onDestroy() {
+        overlay.stop()
         graph.runner.stop()
         super.onDestroy()
     }
 
-    private fun openApp(): PendingIntent = PendingIntent.getActivity(
-        this, 0,
-        Intent(this, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP),
-        PendingIntent.FLAG_IMMUTABLE,
-    )
+    private fun watching() = notes.watching(graph.stores.connection?.store?.name.orEmpty(), graph.stores.location?.name)
 
-    private fun watching() = NotificationCompat.Builder(this, CHANNEL_SHIFT)
-        .setSmallIcon(R.drawable.ic_launcher_monochrome)
-        .setContentTitle(getString(R.string.watching_title))
-        .setContentText(graph.stores.connection?.store?.name ?: "")
-        .setOngoing(true)
-        .setContentIntent(openApp())
-        .build()
-
-    /** Shows [notification] as the till's one notification. Android 13+ asks the cashier first; without it the service runs silently. */
-    private fun show(notification: android.app.Notification) {
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
-        NotificationManagerCompat.from(this).notify(ONGOING_ID, notification)
-    }
-
-    private fun post(sale: app.monokular.sales.TillSale?) {
-        if (sale == null) {
-            show(watching())
-            return
-        }
-        val amount = "${sale.amount} ${sale.currency}"
-        val (title, text) = when (sale.phase) {
-            SalePhase.Paid -> getString(R.string.sale_paid, amount) to getString(R.string.sale_paid_text, sale.xmr)
-            SalePhase.Seen, SalePhase.Confirming -> getString(R.string.sale_seen, amount) to getString(R.string.sale_seen_text)
-            else -> getString(R.string.sale_waiting, amount) to getString(R.string.sale_waiting_text)
-        }
-        val alert = sale.phase == SalePhase.Waiting || sale.phase == SalePhase.Paid
-        val notification = NotificationCompat.Builder(this, if (alert) CHANNEL_SALES else CHANNEL_SHIFT)
-            .setSmallIcon(R.drawable.ic_launcher_monochrome)
-            .setContentTitle(title)
-            .setContentText(text)
-            .setOngoing(true)
-            .setOnlyAlertOnce(false)
-            .setCategory(NotificationCompat.CATEGORY_STATUS)
-            .setRequestPromotedOngoing(true)
-            .setShortCriticalText(amount)
-            .setContentIntent(openApp())
-            .build()
-        show(notification)
+    /** Opens Monokular full screen on [sale] (from the bubble's panel: an app showing an overlay may start activities). */
+    private fun openSale(sale: TillSale) {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(MainActivity.EXTRA_ORDER, sale.orderId),
+        )
     }
 
     companion object {
-        private const val ONGOING_ID = 1
-        private const val CHANNEL_SHIFT = "shift"
-        private const val CHANNEL_SALES = "sales"
+        const val ACTION_SHOW_CODE = "app.monokular.SHOW_CODE"
 
         fun start(context: Context) =
             ContextCompat.startForegroundService(context, Intent(context, TillService::class.java))
 
         fun stop(context: Context) = context.stopService(Intent(context, TillService::class.java))
-
-        private fun channels(context: Context) {
-            val manager = context.getSystemService(NotificationManager::class.java)
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_SHIFT, context.getString(R.string.channel_shift), NotificationManager.IMPORTANCE_LOW),
-            )
-            manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_SALES, context.getString(R.string.channel_sales), NotificationManager.IMPORTANCE_HIGH),
-            )
-        }
     }
 }
