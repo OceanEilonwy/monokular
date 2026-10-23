@@ -3,9 +3,9 @@ name: Android
 on:
   push:
     branches: [main]
-    paths: ["android/**", "crates/**", "Cargo.*", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.*", "tools/monokulo-openapi/**", ".github/workflows/android.yml"]
   pull_request:
-    paths: ["android/**", "crates/**", "Cargo.*", ".github/workflows/android.yml"]
+    paths: ["android/**", "crates/**", "Cargo.*", "tools/monokulo-openapi/**", ".github/workflows/android.yml"]
 
 permissions:
   contents: read
@@ -44,6 +44,21 @@ jobs:
             ~/.cargo/git
             target
           key: android-rust-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+      # Core's contract test builds Monokulo's OpenAPI document at the pinned
+      # commit (docs/decisions/android.md 53): Monokulo builds on nightly.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+      - name: Rust for Monokulo
+        run: rustup toolchain install nightly --profile minimal --target wasm32-unknown-unknown
+      - name: Pinned Monokulo commit
+        id: monokulo
+        run: echo "sha=$(sed -n 's/^monokulo.sha=//p' gradle.properties)" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v6
+        with:
+          path: android/build/monokulo-src
+          key: monokulo-src-${{ runner.os }}-${{ steps.monokulo.outputs.sha }}
+          restore-keys: monokulo-src-${{ runner.os }}-
       - name: cargo-ndk
         run: command -v cargo-ndk || cargo install cargo-ndk --version 4.1.2 --locked
       - name: Build, lint and test

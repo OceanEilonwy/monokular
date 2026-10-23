@@ -39,9 +39,10 @@ class SaleEventTest {
             "unconfirmed" to SalePhase.Seen,
             "confirming" to SalePhase.Confirming,
             "overpaid" to SalePhase.Paid,
+            "paid" to SalePhase.Paid,
             "partial" to SalePhase.Partial,
-            "cancelled" to SalePhase.Expired,
-        ).forEach { (status, phase) -> assertEquals(phase, OrderStatus(status).phase, status) }
+            "expired" to SalePhase.Expired,
+        ).forEach { (status, phase) -> assertEquals(phase, Order.phaseOf(status), status) }
     }
 
     @Test

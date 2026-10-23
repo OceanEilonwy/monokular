@@ -62,6 +62,23 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     val bubbleWanted get() = graph.bubbleWanted
 
     val connection: Connection? get() = stores.connection
+
+    /** The store as last read, this session only (decision 50). */
+    val store get() = graph.store.now
+
+    init {
+        // On app start: the store's name and base currency, read live.
+        graph.store.read(stores.connection)
+    }
+
+    /** Reads the store again: its name, wallet and this device's name can change at any time. */
+    fun readStore() = graph.store.read(stores.connection)
+
+    /** Settings, with the store read again as it opens. */
+    fun openSettings() {
+        readStore()
+        go(Screen.Settings)
+    }
     val location: SquareLocation? get() = stores.location
     val squareSignedIn: Boolean get() = graph.squareAuth().signedIn
     val shiftOn: Boolean get() = stores.shiftOn
@@ -115,6 +132,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val connection = graph.monokulo.connect(code)
             stores.forgetAll()
             stores.connection = connection
+            graph.store.forget()
+            graph.store.read(connection)
             go(Screen.Connected(connection))
         } catch (e: MonokuloException) {
             problem.value = when (e.status) {
@@ -219,6 +238,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         TillService.stop(getApplication())
         graph.squareAuth().signOut()
         stores.forgetAll()
+        graph.store.forget()
         closed.value = emptySet()
         go(Screen.Welcome)
     }

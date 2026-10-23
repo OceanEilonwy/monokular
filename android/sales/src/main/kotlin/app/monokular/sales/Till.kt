@@ -35,6 +35,8 @@ data class TillSale(
     val refunded: Boolean = false,
     /** The device that made the order, for a sale another till found. */
     val deviceName: String? = null,
+    /** Where to read the order again: its `self` link, for an order this till made. */
+    val url: String? = null,
 )
 
 /** What the till shows: its sales, newest first, and the last thing that went wrong. */
@@ -139,15 +141,16 @@ class Till(
 
     private fun add(order: Order, code: PaymentCode, found: FoundSale) {
         // Another till may have made this order already, and the store's events
-        // may have moved it on (paid, even): keep what they said.
+        // may have moved it on (paid, even): keep what they said, else the order's own.
         val known = state.value.sales.firstOrNull { it.orderId == order.orderId }?.phase
         val sale = TillSale(
             orderId = order.orderId,
-            amount = order.amount,
-            currency = order.currency,
+            amount = order.amount ?: decimalAmount(found.amountMinor, found.currency),
+            currency = order.currency ?: found.currency,
             reference = order.merchantOrderId,
             code = code,
-            phase = known ?: SalePhase.Waiting,
+            phase = known ?: order.phase,
+            url = order.url,
             expiresAt = order.expiresAt,
             xmr = PaymentUri.xmr(order.piconero),
             address = order.address,

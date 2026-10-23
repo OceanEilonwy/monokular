@@ -2,41 +2,45 @@ package app.monokular.core
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.Transient
 
-/** An order, as `POST /pay/{pk}/orders` answered it. */
+/**
+ * An order, as the API answers it: made with the `create-order` form, or
+ * read at its `self` link.
+ */
 @Serializable
 data class Order(
     @SerialName("order_id") val orderId: String,
+    /** `pending`, `unconfirmed`, `confirming`, `paid`, `partial`, `overpaid` or `expired`. */
+    val status: String = "pending",
+    @SerialName("is_final") val isFinal: Boolean = false,
+    /** The subaddress to pay: this order's alone. */
     val address: String,
     @SerialName("xmr_amount_piconero") val piconero: Long,
-    val amount: String,
-    val currency: String,
+    /** The price it was made with; null for an order Monokulo has no record of. */
+    val amount: String? = null,
+    val currency: String? = null,
     @SerialName("merchant_order_id") val merchantOrderId: String? = null,
     @SerialName("expires_at") val expiresAt: Long,
+    /** Its `self` link, absolute: where to read it again. */
+    @Transient val url: String = "",
 ) {
     /** The plain payment URI, which the receipt is appended to. */
     val paymentUri: String get() = PaymentUri.build(address, piconero)
-}
 
-/** An order's state, as `GET /pay/{pk}/orders/{id}/status` answers it. */
-@Serializable
-data class OrderStatus(
-    val status: String,
-    val confirmations: Long = 0,
-    @SerialName("confirmations_required") val confirmationsRequired: Long = 0,
-    @SerialName("is_terminal") val isTerminal: Boolean = false,
-    val error: String? = null,
-) {
     /** The phase it puts a sale in. */
-    val phase: SalePhase
-        get() = when (status) {
+    val phase: SalePhase get() = phaseOf(status)
+
+    companion object {
+        fun phaseOf(status: String): SalePhase = when (status) {
             "unconfirmed" -> SalePhase.Seen
             "confirming" -> SalePhase.Confirming
             "paid", "overpaid" -> SalePhase.Paid
             "partial" -> SalePhase.Partial
-            "expired", "cancelled" -> SalePhase.Expired
+            "expired" -> SalePhase.Expired
             else -> SalePhase.Waiting
         }
+    }
 }
 
 /** Monero payment URIs: `monero:<address>?tx_amount=<XMR>`. */

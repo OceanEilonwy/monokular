@@ -41,7 +41,7 @@ class TillService : LifecycleService() {
         var posted: List<Any?>? = null
         val alerted = mutableSetOf<String>()
         lifecycleScope.launch {
-            combine(graph.runner.state, graph.permissions) { state, _ -> state }.collect { state ->
+            combine(graph.runner.state, graph.permissions, graph.store.now) { state, _, _ -> state }.collect { state ->
                 val sales = state.till.sales
                 for (sale in changes.next(sales)) {
                     when (sale.phase) {
@@ -54,7 +54,7 @@ class TillService : LifecycleService() {
                     }
                 }
                 val current = sales.firstOrNull { !it.phase.isFinal }
-                val key = listOf(current?.orderId, current?.phase, notes.allowed())
+                val key = listOf(current?.orderId, current?.phase, notes.allowed(), graph.store.now.value.store?.name)
                 if (key == posted) return@collect
                 posted = key
                 if (current == null) {
@@ -82,7 +82,7 @@ class TillService : LifecycleService() {
         super.onDestroy()
     }
 
-    private fun watching() = notes.watching(graph.stores.connection?.store?.name.orEmpty(), graph.stores.location?.name)
+    private fun watching() = notes.watching(graph.store.now.value.store?.name.orEmpty(), graph.stores.location?.name)
 
     /** Opens Monokular full screen on [sale] (from the bubble's panel: an app showing an overlay may start activities). */
     private fun openSale(sale: TillSale) {

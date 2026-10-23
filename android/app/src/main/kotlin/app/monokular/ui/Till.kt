@@ -72,7 +72,8 @@ fun secondsLeft(expiresAt: Long): Long {
 
 /** What the till screen needs to know about the shift. */
 data class TillStatus(
-    val store: String,
+    /** The store's name as last read; null until the first read answers. */
+    val store: String?,
     val location: String?,
     val running: Boolean,
     val live: Boolean,

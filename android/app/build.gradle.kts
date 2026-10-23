@@ -67,4 +67,5 @@ dependencies {
     debugImplementation(libs.compose.ui.tooling)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
 }
