@@ -48,7 +48,6 @@ android {
 
 dependencies {
     implementation(project(":sales"))
-    implementation(project(":push"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.browser)
