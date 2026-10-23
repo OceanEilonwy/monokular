@@ -111,3 +111,130 @@ what else was possible, so any of them can be reversed knowingly.
     during a shift. The UnifiedPush module from the first PR is unchanged.
 29. **A till without Square** ("Not now") still runs: it shows the sales
     other tills make, from the event stream, without receipts.
+
+## App: matching the design (2026-10-23)
+
+Made while bringing the app to the design mockups (the Android, onboarding,
+settings and shared-pieces boards), again without the owner to ask. Where
+the mockups' notes are older than `docs/design.md` (Square webhooks to
+Monokulo, the `monokular.app/connect#host=` link), the design document
+wins; nothing here changes what goes over the wire.
+
+30. **Colours are the mockups' own, by role** (`ui/Theme.kt`): ground
+    `#f4f1ea`, ink `#1a1917`, muted `#5a564c`, cards white, accent
+    `#ff6600` with `#111111` on it, link `#b34700`, outline `#8c8577`,
+    paid `#1a7f37`. The mockups are light only; dark mode keeps the same
+    roles on a warm dark ground (`#1c1b19`), each text pair at least 4.5:1.
+    The QR card and the bubble keep their light colours in both: they sit
+    over another app, or face a customer's camera.
+31. **Manrope is bundled** as a font resource (its variable TTF from
+    google/fonts, 165 KB, SIL OFL 1.1; the licence ships in
+    `assets/licenses/`), used for display type only, Roboto for the rest,
+    as in the mockups. No downloadable fonts, so no Google Play services
+    and nothing fetched at run time.
+32. **The logo and the loading mark are drawn in Compose from the web's
+    SVG paths** (`ui/Mark.kt`), not a vector drawable, so the ring's colour
+    and the idle bubble's greyscale are parameters. The loading mark's
+    glints follow the web's keyframes (4.2 s, the core 0.7 s) and stand
+    still when Android's animations are off (animator scale 0), as
+    `prefers-reduced-motion` does on the web. The bubble's pulse does too.
+33. **"Sale #1042" is Square's receipt number** (the order's
+    `merchant_order_id`), with a `#` added when Square's has none; with no
+    number it's "Monero sale". "Square · Front Counter" is this till's
+    Square location; a sale another till found says "From" and that
+    device's name, from the event.
+34. **Amounts are formatted for the till's locale** ("$24.50"), and the
+    XMR amount is shown exactly, not rounded to 4 places as in the mockups:
+    a customer typing it by hand must send exactly that.
+35. **The bubble is an overlay window in the till's service**
+    (`overlay/`), shown during a shift when Android allows "display over
+    other apps" and the cashier didn't choose notifications only, and
+    hidden while Monokular itself is on screen. It's a Compose view in a
+    `TYPE_APPLICATION_OVERLAY` window; touches are handled in screen
+    coordinates (the window moves under the finger), a drag snaps to the
+    nearer side with the amount on the inside, and the side and height are
+    remembered. TalkBack hears one button named as in the mockups' aria
+    labels ("Monokular, new sale, tap to show the code"), announced when it
+    changes. design.md lists `overlay/` and `notifications/` as Gradle
+    modules; they're packages in `app` for now, because they share the
+    theme and live in the app's service.
+36. **The panel over Square**: on a phone it fills the screen with the
+    mockup's scrim (a tap on it minimises, as does the bubble docked above
+    it); on a window 600 dp or wider it floats top right with no scrim,
+    like AndTabFloat, so Square stays usable beside it. It shows the sale
+    the bubble is about: the newest still waiting, or the one just paid
+    while it shows as paid (5 s), then the next one waiting. Android 12+
+    lets overlays cover neither the status bar nor the navigation bar, so
+    the scrim stops short of them.
+37. **The notification follows the mockups**: a progress style with four
+    segments (Waiting, Seen, Confirming, Paid), "Show code" and "Full
+    screen" while waiting (AndSale), "Show code" and "Copy address" once
+    seen (AndShade), the code as its large icon, the code's countdown in
+    its header, and the amount as the Live Update chip's text. Android
+    draws its own chip and can't put labels under the segments; the text
+    says where the payment is instead. It's private on the lock screen,
+    where a public version shows only the amount. A heads-up comes once
+    per sale, never again when an older sale comes back to the top.
+38. **"Show code" goes through a tiny activity** (`ShowCodeActivity`)
+    that opens the panel or the app and finishes: a service action would
+    leave the notification shade open over the panel, and starting the
+    app from a service is a notification trampoline Android 12+ blocks.
+39. **Paid and "No payment yet" are notifications of their own**
+    (AndPaid: "The notification is replaced by a short 'Paid' one"): the
+    shift's ongoing notification goes back to watching, a "Paid · Sale
+    #1042" one appears for 5 minutes, and a "No payment yet" one stays
+    until it's opened. Both are silent while Monokular is on screen
+    saying the same thing.
+40. **Setup follows the six onboarding steps**, adapted to Android:
+    1 Welcome, 2 connect a store (the camera, or "Paste the link": the
+    dashboard's code is a link on the store's own host, which Android
+    can't open in the app), 3 the server then the store (decision 22), 4
+    Square, 5 alerts (Android 13's notification permission) and then the
+    bubble (AndPermission, with "Open settings" and "Use notifications
+    only"), 6 Ready, whose "Start Monokular" starts the shift. The steps
+    carry the mockups' "Step n of 6"; AndPermission has none, as drawn.
+41. **The Square step watches for a test sale** as the mockup does: the
+    till starts watching once a location is chosen, Continue waits for the
+    test sale and "Skip the test" goes on without it. The test sale stays
+    in the shift's list but isn't put full screen when setup ends. The
+    mockup's path in Square ("Settings › Checkout › Payment types") is its
+    own guess, still to check in Square POS.
+42. **The till's screen is the sale full screen (AndFull), else the idle
+    pane (AndTabSplit's Monokular side)** with this shift's sales under
+    it. Close puts a sale back in that list; a paid sale shows "Paid" and
+    returns to watching after 5 s (the iPad flow's note); an unpaid one
+    (PhoneUnpaid) waits for "Refund the Square sale" or Done. Sales that
+    ended while the cashier was elsewhere don't come back full screen,
+    except an unpaid one that still needs refunding. "Back to Square"
+    opens Square Point of Sale (`com.squareup`) when it's installed, else
+    steps back to whatever was behind Monokular. The overflow menu has
+    "Copy the XMR amount" and Settings; the mockup doesn't say what it
+    holds.
+43. **PhoneUnpaid's "Show a new code" isn't built.** A new code for the
+    same Square sale needs a second order for one Square payment, which
+    the idempotency key (decision 14) exists to prevent; the cashier
+    rings the sale up again instead. Done takes its place.
+44. **Settings follow PhoneSettings where Android has the same thing**:
+    Store (with "Online"), Square (account, location, payment type, sign
+    out), then Shift, Alerts and Bubble in place of the Dynamic Island,
+    and Wake-ups. "New sale alerts" opens Android's notification settings
+    (an app can't turn its own permission off); the wallet address isn't
+    copyable, because Monokulo only gives the app its short form.
+45. **Wide windows split the sale in two** (840 dp and up: the code on
+    one side; amount, status, progress and buttons on the other); a
+    narrow split-screen or free-form window gets the phone layout, with
+    the code sized to the window and everything scrolling when it's short.
+46. **"Back to Square" isn't shown in split screen**, where Square is
+    already beside Monokular and stepping back would only hide it.
+47. **AndPermission's label says "choose Monokular and turn this on"**:
+    since Android 11 the "display over other apps" intent opens the list
+    of apps, not Monokular's own page, so the cashier has to find it.
+48. **A sale this till finds that another till already made keeps the
+    phase the store's events gave it.** Found while testing two tills at
+    one location: the second till's Square check gets the same order back
+    (decision 14) and showed it as waiting again, though it was paid. Now
+    it keeps the phase it had and only gains what a refund needs. A till
+    that restarts and re-finds a sale from its 2-minute look-back
+    (decision 15) still shows it as waiting until the event stream
+    reconnects and resyncs it, because the order response carries no
+    status; changing that would change the API, so it's left.

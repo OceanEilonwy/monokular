@@ -16,12 +16,16 @@ what someone bought never reaches Monokulo.
 ## Status
 
 The Android app works end to end against Monokulo's connected-apps API
-(OceanEilonwy/monokulo#140) and a stand-in Square: connect from a store's
-code, sign in to Square, and each "Other: Monero" sale shows its code, with
-the receipt in it, until it's paid or refunded. It hasn't met real Square yet
-(the Square spike, design doc §10), push and the Monokular Bell aren't built,
-and iOS hasn't started. Choices made along the way are in
-[docs/decisions/android.md](docs/decisions/android.md).
+(OceanEilonwy/monokulo#140) and a stand-in Square, and follows the design
+mockups: setup in six steps (connect from a store's code, sign in to Square,
+alerts and the bubble), a floating bubble over Square that lights up with a
+sale and opens its code over it, a Live Update notification with the
+payment's progress, and the sale full screen in the app, with the receipt
+in the code, until it's paid or refunded. It hasn't met real Square yet
+(the Square spike, design doc §10), push and the Monokular Bell aren't
+built, and iOS hasn't started. Choices made along the way are in
+[docs/decisions/android.md](docs/decisions/android.md); screenshots are in
+[docs/screenshots/android](docs/screenshots/android).
 
 - [Design document](docs/design.md): the sale flow with Square, connected
   apps, push (Web Push, UnifiedPush and a relay for APNs/FCM), the Live
@@ -55,7 +59,7 @@ The Square application id is a build property:
 | `android/receipt` | ORF receipts in the payment code, through `crates/orf-codec-ffi` (UniFFI). |
 | `android/sales` | Square on the till (PKCE sign-in, Monero tenders, orders, refunds) and the till's sales. |
 | `android/push` | UnifiedPush registration and the push service (not wired up yet). |
-| `android/app` | The Compose app and the shift's foreground service. |
+| `android/app` | The Compose app, the shift's foreground service, its notifications and the bubble over other apps. |
 
 ### Running it end to end on an emulator
 
