@@ -44,8 +44,8 @@ data class ConnectCode(
                 else -> false
             }
             if (!secure || uri.rawUserInfo != null || uri.rawQuery != null) return null
-            val path = uri.rawPath ?: return null
-            if (!path.endsWith(ROUTE) || path.removeSuffix(ROUTE).let { it.isNotEmpty() && !it.startsWith("/") }) return null
+            // `/apps/connect`, after the Monokulo's own path when it's served under one.
+            val path = uri.rawPath?.takeIf { it.endsWith(ROUTE) } ?: return null
             val token = uri.rawFragment
                 ?.split('&')
                 ?.firstNotNullOfOrNull { it.removePrefix("token=").takeIf { v -> v != it } }
