@@ -2,27 +2,39 @@ package app.monokular
 
 import android.app.Application
 import android.net.Uri
+import android.provider.Settings
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import app.monokular.core.ConnectCode
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloException
+import app.monokular.notify.SaleNotifications
 import app.monokular.sales.Pkce
 import app.monokular.sales.SquareException
 import app.monokular.sales.SquareLocation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Where the app is. */
+/** Where the app is. Setup follows the design's six onboarding steps. */
 sealed interface Screen {
+    /** 1: what Monokular does. */
     data object Welcome : Screen
+    /** 2: scan or paste the store's connect code. */
     data object Scan : Screen
+    /** 3: connect to the server, then check the store it is. */
     data class Confirm(val code: ConnectCode) : Screen
     data class Connected(val connection: Connection) : Screen
+    /** 4: Square's sign-in and location. */
     data object Square : Screen
     data class Locations(val locations: List<SquareLocation>) : Screen
+    /** 5: notifications, then the bubble over other apps. */
+    data object Alerts : Screen
+    data object Float : Screen
+    /** 6: start the shift. */
+    data object Ready : Screen
     data object Till : Screen
     data object Settings : Screen
 }
@@ -40,23 +52,37 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** What went wrong last, to show. */
     val problem = MutableStateFlow<String?>(null)
 
+    /** Sales the cashier closed (or that closed themselves once paid): the till shows its idle screen past them. */
+    val closed = MutableStateFlow(emptySet<String>())
+
+    /** The sale on screen, or opened from the list or a notification. */
+    val focus = MutableStateFlow<String?>(null)
+
     val runner get() = graph.runner.state
+    val bubbleWanted get() = graph.bubbleWanted
 
     val connection: Connection? get() = stores.connection
     val location: SquareLocation? get() = stores.location
     val squareSignedIn: Boolean get() = graph.squareAuth().signedIn
     val shiftOn: Boolean get() = stores.shiftOn
     val debug: Boolean get() = BuildConfig.DEBUG
+    val deviceName: String get() = graph.identity.deviceName
+    val tenderName: String get() = graph.squareConfig().tenderName
     var squareBaseUrl: String?
         get() = stores.squareBaseUrl
         set(value) {
             stores.squareBaseUrl = value
         }
 
+    fun overlayAllowed(): Boolean = Settings.canDrawOverlays(getApplication())
+
+    fun notificationsAllowed(): Boolean = SaleNotifications(getApplication()).allowed()
+
     private fun home(): Screen = when {
         stores.connection == null -> Screen.Welcome
+        stores.setupDone -> Screen.Till
         stores.location == null && !stores.withoutSquare -> Screen.Square
-        else -> Screen.Till
+        else -> Screen.Alerts
     }
 
     fun go(screen: Screen) {
@@ -65,6 +91,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun goHome() = go(home())
+
+    /** One step back in setup, or home from elsewhere. */
+    fun back() = when (screenState.value) {
+        Screen.Scan -> go(Screen.Welcome)
+        is Screen.Confirm -> go(Screen.Scan)
+        is Screen.Locations -> go(Screen.Square)
+        Screen.Alerts -> go(Screen.Square)
+        Screen.Float -> go(Screen.Alerts)
+        Screen.Ready -> go(Screen.Float)
+        else -> goHome()
+    }
 
     /** A scanned or pasted code; false when it isn't one. */
     fun onCode(text: String): Boolean {
@@ -111,16 +148,35 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** The Square locations, to change this till's. */
+    fun changeLocation() = work {
+        try {
+            go(Screen.Locations(graph.squareApi().locations()))
+        } catch (e: SquareException) {
+            problem.value = e.message
+        }
+    }
+
     fun chooseLocation(location: SquareLocation) {
         stores.location = location
         stores.withoutSquare = false
+        // The till starts watching now, so setup can show the test sale.
         restart()
-        go(Screen.Till)
+        go(if (stores.setupDone) Screen.Till else Screen.Square)
     }
 
     fun withoutSquare() {
         stores.withoutSquare = true
         restart()
+        go(if (stores.setupDone) Screen.Till else Screen.Alerts)
+    }
+
+    fun setBubble(on: Boolean) = graph.setBubble(on)
+
+    /** Setup's last step: the shift starts, and the till takes over. */
+    fun startShift() {
+        stores.setupDone = true
+        setShift(true)
         go(Screen.Till)
     }
 
@@ -155,10 +211,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             // The store may already have disconnected it: forget it either way.
             runCatching { graph.monokulo.disconnect(connection) }
         }
-        TillService.stop(getApplication())
-        graph.squareAuth().signOut()
-        stores.forgetAll()
-        go(Screen.Welcome)
+        forget()
     }
 
     /** The store disconnected this device: forget it and start again. */
@@ -166,14 +219,40 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         TillService.stop(getApplication())
         graph.squareAuth().signOut()
         stores.forgetAll()
+        closed.value = emptySet()
         go(Screen.Welcome)
     }
 
     fun refund(orderId: String) = graph.runner.refund(orderId)
 
-    fun dismiss(orderId: String) = graph.runner.dismiss(orderId)
+    /** The cashier closed a sale's full screen (it stays in the shift's list). */
+    fun close(orderId: String) {
+        closed.update { it + orderId }
+        if (focus.value == orderId) focus.value = null
+    }
+
+    /** What the till screen shows now, so it stays there through Paid. */
+    fun showing(orderId: String?) {
+        if (orderId != null) focus.value = orderId
+    }
+
+    /** Shows a sale full screen again (from the list, a notification or the bubble's panel). */
+    fun open(orderId: String) {
+        closed.update { it - orderId }
+        focus.value = orderId
+        if (stores.setupDone && screenState.value !is Screen.Till) go(Screen.Till)
+    }
 
     fun wake() = graph.runner.wake()
+
+    fun setVisible(visible: Boolean) {
+        graph.appVisible.value = visible
+    }
+
+    /** Back from Android's settings or a permission prompt: let the service look again. */
+    fun permissionsMayHaveChanged() {
+        graph.permissions.value++
+    }
 
     private fun work(block: suspend () -> Unit) {
         if (busy.value) return

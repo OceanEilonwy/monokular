@@ -7,6 +7,7 @@ import app.monokular.core.MonokuloApi
 import app.monokular.sales.SquareApi
 import app.monokular.sales.SquareAuth
 import app.monokular.sales.SquareConfig
+import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
 import java.util.concurrent.TimeUnit
 
@@ -46,4 +47,18 @@ class Graph(app: Application) {
     fun squareApi() = SquareApi(http, squareConfig(), squareAuth())
 
     val runner = TillRunner(this)
+
+    /** Monokular's own screen is showing: the bubble steps aside. */
+    val appVisible = MutableStateFlow(false)
+
+    /** The cashier wants the bubble (it shows only once Android allows it, too). */
+    val bubbleWanted = MutableStateFlow(stores.bubbleOn)
+
+    /** Bumped when the app comes back to the front, so the service sees permissions granted meanwhile. */
+    val permissions = MutableStateFlow(0)
+
+    fun setBubble(on: Boolean) {
+        stores.bubbleOn = on
+        bubbleWanted.value = on
+    }
 }

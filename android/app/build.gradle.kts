@@ -65,4 +65,6 @@ dependencies {
     implementation(libs.zxing.core)
     implementation(libs.okhttp)
     debugImplementation(libs.compose.ui.tooling)
+    testImplementation(libs.kotlin.test.junit)
+    testImplementation(libs.junit)
 }

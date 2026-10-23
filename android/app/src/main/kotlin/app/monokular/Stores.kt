@@ -41,6 +41,25 @@ class Stores(private val secure: SecureStore) {
         get() = secure.get("shift.on") != "false"
         set(value) = secure.put("shift.on", value.toString())
 
+    /** The cashier went through setup to the end (OnbReady's "Start Monokular"). */
+    var setupDone: Boolean
+        get() = secure.get("setup.done") == "true"
+        set(value) = secure.put("setup.done", value.toString().takeIf { value })
+
+    /** Show the bubble over other apps when allowed; false when the cashier chose notifications only. */
+    var bubbleOn: Boolean
+        get() = secure.get("bubble.on") != "false"
+        set(value) = secure.put("bubble.on", value.toString())
+
+    /** Where the cashier left the bubble: which side, and how far down (px). */
+    var bubbleOnLeft: Boolean
+        get() = secure.get("bubble.left") == "true"
+        set(value) = secure.put("bubble.left", value.toString())
+
+    var bubbleY: Int?
+        get() = secure.get("bubble.y")?.toIntOrNull()
+        set(value) = secure.put("bubble.y", value?.toString())
+
     /** A Square sign-in under way, kept in case Android ends the app meanwhile. */
     var pendingSignIn: Pkce?
         get() = read("square.pending", PkceState.serializer())?.let { Pkce(it.verifier, it.state) }
@@ -71,6 +90,7 @@ class Stores(private val secure: SecureStore) {
     /** Forgets the store and everything about this till's Square. */
     fun forgetAll() {
         connection = null
+        setupDone = false
         location = null
         withoutSquare = false
         pendingSignIn = null
