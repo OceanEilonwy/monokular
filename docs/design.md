@@ -158,31 +158,46 @@ POST https://pay.yourshop.com/apps/connect
 Monokulo-Client: monokular/1.0.0
 { "token": "ct_…", "slug": "monokular", "name": "Monokular",
   "device_name": "Front Counter iPad", "platform": "android" }
-→ 200 { "app_key": "ak_…" (secret, shown once), "api": "/api/v1" }
+→ 200 { "app_key": "ak_…" (secret, shown once), "api": "/api/v1",
+        "onion_api": "http://….onion/api/v1" (only while the Monokulo has an onion address) }
 ```
+
+The app sends it to the link's own address, the code's link without its
+`#` part, so a Monokulo served under a path
+(`https://example.com/monokulo/apps/connect#token=…`) is reached under it,
+and its `api` (`/monokulo/api/v1`) carries the path too.
 
 `slug` and `name` are parsed with the plugins' types, so the same rules hold
 (a lowercase letter then 1 to 31 lowercase letters, digits or hyphens, not
 one of monokulo's own sources; a name of at most 40 characters with no
 invisible formatting). The path is `/apps/connect`, outside
-`/connect/{slug}`, so no plugin slug can collide with it. A `503` with
-`{"error": …}` means the Monokulo has no public address yet (the code is
-still good); anything else is a `401`.
+`/connect/{slug}`, so no plugin slug can collide with it. Every error is a
+problem (`application/problem+json`): `invalid-connect-code` (401: used,
+expired or unknown, ask for a new one), `no-public-address` (503: the code
+is still good), `invalid-request`, `unsupported-media-type`, `too-large`,
+`rate-limited` (429, wait `retry_after` seconds), `challenge-required` (429:
+the app solves the proof of work and sends it again with `Monokulo-Proof`)
+and `internal`. The app tells them apart by `type` and shows `detail`.
 
 The answer is the key and the API's entry, nothing else. `api` is a path:
 the app resolves it against the address it redeemed the code at, so a till
-that connected over an onion address stays on it, and keeps exactly two
-things: `app_key` (Keychain / Android Keystore) and that absolute entry.
+that connected over an onion address stays on it, and keeps `app_key`
+(Keychain / Android Keystore), that absolute entry, the onion entry when
+there is one, and whether it goes over Tor (decision 55).
 Every later request carries `Authorization: Bearer ak_…` and
 `Monokulo-Client: {slug}/{version}`.
 
-The app then reads the entry (`GET /api/v1`, once per run) and follows its
-links: `mk:store` (`GET /api/v1/store`: name, base currency, and the wallet
-as name, network and whole address), `mk:app` (`GET /api/v1/app`: this
-device's name as the merchant set it), `mk:orders`, `mk:events`, and the
-forms `create-order` and `disconnect`. Every link is relative and resolved
-against the URL the app actually called. A link or form the key may not
-use is left out; the app doesn't try it.
+The app then reads the entry (`GET /api/v1`) and follows its links:
+`mk:store` (`GET /api/v1/store`: name, base currency, and the wallet as
+name, network and whole address), `mk:app` (`GET /api/v1/app`: this
+device's name as the merchant set it), `mk:events`, `mk:onion-api`, and the
+forms `create-order` and `disconnect`. Every link is relative (but the
+onion one) and resolved against the URL the app actually called; the app
+builds no path. A link or form the key may not use is left out; the app
+doesn't try it. The entry is kept per key as its `Cache-Control` says
+(`private, max-age=3600`), asked again with `If-None-Match` once it
+expires, and read again at once when anything followed from it answers
+`401`, `404` or `405` (decision 54).
 
 **The store's details are read live, never saved** (decision 50): after
 connecting (the confirm screen, "Connected to …", is drawn from that read),
@@ -192,17 +207,19 @@ run, so a screen shows the last read while the next is under way. The
 wallet address is shortened on the device (first 8, "…", last 8); Settings
 copies the whole of it.
 
-Errors are `application/problem+json`; the app shows `detail`. A `401` on
-any call means the store disconnected this device. Disconnecting (either
-side) deletes the connection, its key and its push targets: the app uses
+Errors are `application/problem+json`; the app shows `detail`. A `401` at
+the entry means the store disconnected this device (an unknown key is a
+`401` on every route, the entry included). Disconnecting (either side)
+deletes the connection, its key and its push targets: the app uses
 the `disconnect` form (`DELETE /api/v1/app`). Square sign-in is a separate
 step in the app (§1) and has nothing to do with monokulo.
 
-**Upgrading.** The first app saved `public_key`, `endpoint`,
-`onion_endpoint`, `app_id`, `device_name`, `store` and `wallet` with the
-key. A saved connection with no `api` is read as its key at its
-`endpoint`'s origin plus `/api/v1`, rewritten in the new form at once, and
-the rest is dropped: the till carries on without connecting again.
+**Upgrading.** A till that connected before Monokulo gave `onion_api`
+kept only `app_key` and `api`. It carries on as it is, off Tor, and
+learns the onion entry from the entry's `mk:onion-api` the next time it
+reads the store; Settings then offers Tor. The first app's saved form
+(`endpoint`, `public_key`, …), from before the API, was never released
+and isn't read: such a till connects again.
 
 ### Making an order
 
@@ -230,8 +247,8 @@ Monokulo-Client: monokular/1.0.0
   `monero:{address}?tx_amount={XMR}`, and appends the receipt to it (§4).
 - The app keeps the order's `self` link, and reads the order there again
   when its event stream reopens. A sale another till made reaches it only
-  as a sale event, which has no link: that one is read at `mk:orders` plus
-  its id.
+  as a sale event, which links its order (`mk:order`): that one is read
+  there.
 
 ### What a connected app can do
 
@@ -248,7 +265,8 @@ GET https://pay.yourshop.com/api/v1/events    (mk:events: SSE, Authorization: Be
 
 The store-wide stream of the same "sale" events as the pushes (§5): `ready`
 first, `lagged` when some were missed, and a comment every 25 s. After
-`ready` or `lagged` the app reads the orders on screen again. One order's
+`ready` or `lagged` the app reads the orders on screen again, each at its
+link. One order's
 own stream (`mk:order-events`) is there for a page showing one order; the
 app doesn't need it. Used whenever the app is in the foreground, so
 on-screen updates never wait for a push. Because every till at a store gets
