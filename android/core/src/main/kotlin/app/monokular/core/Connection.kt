@@ -31,5 +31,11 @@ data class Connection(
         val name: String,
         val network: String,
         @SerialName("address_short") val addressShort: String,
+        /**
+         * The primary address, whole, for copying. A connection saved
+         * before Monokulo sent it, or made with a Monokulo that doesn't,
+         * has none: the app shows the short form and nothing to copy.
+         */
+        val address: String? = null,
     )
 }

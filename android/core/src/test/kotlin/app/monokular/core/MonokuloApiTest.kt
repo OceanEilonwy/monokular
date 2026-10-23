@@ -13,6 +13,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 /** The client against a stand-in Monokulo answering as `protocol/openapi.yaml` says. */
@@ -45,11 +46,27 @@ class MonokuloApiTest {
         val connection = api.connect(ConnectCode(base(), token))
         assertEquals("ak_x", connection.appKey)
         assertEquals("mainnet", connection.wallet?.network)
+        assertNull(connection.wallet?.address, "an older Monokulo sends only the short form")
         val request = server.takeRequest()
         assertEquals("/apps/connect", request.url.encodedPath)
         assertEquals("monokular/0.1.0", request.headers["Monokulo-Client"])
         val sent = request.body!!.utf8()
         assertTrue(sent.contains(""""token":"$token"""") && sent.contains(""""device_name":"Pixel 8""""), sent)
+    }
+
+    @Test
+    fun `connecting keeps the wallet's whole address when the store sends it`() = runBlocking {
+        val address = "4" + "A".repeat(93) + "Q2"
+        server.enqueue(
+            MockResponse.Builder().code(200).body(
+                """{"public_key":"pk_1","app_key":"ak_x","endpoint":"https://pay.example","app_id":"app_1",
+                   "device_name":"Front counter","store":{"name":"Bakery","base_currency":"USD"},
+                   "wallet":{"name":"Shop","network":"mainnet","address":"$address","address_short":"4AAA…AAQ2"}}""",
+            ).build(),
+        )
+        val wallet = api.connect(ConnectCode(base(), token)).wallet!!
+        assertEquals(address, wallet.address)
+        assertEquals("4AAA…AAQ2", wallet.addressShort)
     }
 
     @Test

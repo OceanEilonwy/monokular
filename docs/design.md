@@ -162,7 +162,7 @@ Monokulo-Client: monokular/1.0.0
         "endpoint": "https://pay.yourshop.com",
         "onion_endpoint": "http://….onion" (only when the instance has one),
         "store": { "name", "base_currency" },
-        "wallet": { "name", "address_short" },
+        "wallet": { "name", "address", "address_short" },
         "vapid_public_key": "BJ…" (this instance's Web Push key, §5) }
 ```
 
