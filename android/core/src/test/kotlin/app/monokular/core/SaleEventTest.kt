@@ -34,6 +34,7 @@ class SaleEventTest {
             "sale.double_spend" to SalePhase.DoubleSpend,
         ).forEach { (name, phase) -> assertEquals(phase, SalePhase.ofEvent(name)) }
         assertNull(SalePhase.ofEvent("ready"))
+        assertNull(SalePhase.ofEvent("sale.cancelled"), "Monokulo never sends one: only the POS cancels, and only its own orders")
     }
 
     @Test
@@ -46,6 +47,7 @@ class SaleEventTest {
             "paid" to SalePhase.Paid,
             "partial" to SalePhase.Partial,
             "expired" to SalePhase.Expired,
+            "cancelled" to SalePhase.Cancelled,
         ).forEach { (status, phase) -> assertEquals(phase, Order.phaseOf(status), status) }
     }
 

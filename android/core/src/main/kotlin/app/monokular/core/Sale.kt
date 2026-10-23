@@ -12,10 +12,20 @@ import okhttp3.HttpUrl
 
 /** Where a sale's payment is. */
 enum class SalePhase {
-    Waiting, Seen, Confirming, Paid, Partial, Expired, DoubleSpend;
+    Waiting, Seen, Confirming, Paid, Partial, Expired, DoubleSpend,
+
+    /**
+     * Cancelled at the store's POS. Only the POS cancels, and only its own
+     * orders, so an app's never is: but one read back still shows as ended
+     * unpaid, like [Expired].
+     */
+    Cancelled;
 
     /** Nothing more will happen to it. */
-    val isFinal: Boolean get() = this == Paid || this == Expired || this == DoubleSpend
+    val isFinal: Boolean get() = this == Paid || isUnpaid
+
+    /** It ended without being paid: expired, cancelled or reversed. */
+    val isUnpaid: Boolean get() = this == Expired || this == Cancelled || this == DoubleSpend
 
     companion object {
         /** The phase a `sale.*` event name puts a sale in, or null for another event. */

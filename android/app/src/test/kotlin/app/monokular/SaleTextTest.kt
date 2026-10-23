@@ -48,12 +48,14 @@ class SaleTextTest {
     @Test
     fun `the four steps follow the payment, and an unpaid end is none of them`() {
         assertEquals(
-            listOf(1, 1, 2, 3, 4, 0, 0),
-            listOf(SalePhase.Waiting, SalePhase.Partial, SalePhase.Seen, SalePhase.Confirming, SalePhase.Paid, SalePhase.Expired, SalePhase.DoubleSpend)
+            listOf(1, 1, 2, 3, 4, 0, 0, 0),
+            listOf(SalePhase.Waiting, SalePhase.Partial, SalePhase.Seen, SalePhase.Confirming, SalePhase.Paid, SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend)
                 .map(SaleText::step),
         )
         assertEquals("No payment yet", SaleText.status(sale(phase = SalePhase.Expired)))
         assertEquals("Refunded in Square", SaleText.status(sale(phase = SalePhase.Expired).copy(refunded = true)))
+        assertEquals("Cancelled", SaleText.status(sale(phase = SalePhase.Cancelled)))
+        assertEquals("Refunded in Square", SaleText.status(sale(phase = SalePhase.Cancelled).copy(refunded = true)))
         assertEquals("29:05", SaleText.clock(29 * 60 + 5))
     }
 
@@ -100,6 +102,8 @@ class SaleTextTest {
         assertEquals(null, TillFocus.pick(listOf(paid), emptySet(), focus = null))
         assertEquals("x", TillFocus.pick(listOf(paid, expired), emptySet(), focus = null)?.orderId)
         assertEquals(null, TillFocus.pick(listOf(expired.copy(refunded = true)), emptySet(), focus = null))
+        val cancelled = sale("c", phase = SalePhase.Cancelled)
+        assertEquals("c", TillFocus.pick(listOf(paid, cancelled), emptySet(), focus = null)?.orderId, "a cancelled sale still needs refunding")
     }
 
     @Test

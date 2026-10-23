@@ -49,7 +49,7 @@ class TillService : LifecycleService() {
                             notes.paid(sale, quiet = graph.appVisible.value)
                             overlay.paid()
                         }
-                        SalePhase.Expired, SalePhase.DoubleSpend -> notes.unpaid(sale, quiet = graph.appVisible.value)
+                        SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend -> notes.unpaid(sale, quiet = graph.appVisible.value)
                         else -> Unit
                     }
                 }

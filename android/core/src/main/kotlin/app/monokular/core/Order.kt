@@ -11,7 +11,7 @@ import kotlinx.serialization.Transient
 @Serializable
 data class Order(
     @SerialName("order_id") val orderId: String,
-    /** `pending`, `unconfirmed`, `confirming`, `paid`, `partial`, `overpaid` or `expired`. */
+    /** `pending`, `unconfirmed`, `confirming`, `paid`, `partial`, `overpaid`, `expired` or `cancelled`. */
     val status: String = "pending",
     @SerialName("is_final") val isFinal: Boolean = false,
     /** The subaddress to pay: this order's alone. */
@@ -38,6 +38,7 @@ data class Order(
             "paid", "overpaid" -> SalePhase.Paid
             "partial" -> SalePhase.Partial
             "expired" -> SalePhase.Expired
+            "cancelled" -> SalePhase.Cancelled
             else -> SalePhase.Waiting
         }
     }

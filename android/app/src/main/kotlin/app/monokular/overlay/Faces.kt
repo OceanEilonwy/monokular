@@ -177,7 +177,7 @@ fun SalePanel(
                     Text("Paid", style = display(28), modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
                     Text("${SaleText.xmr(sale)} received", fontSize = 15.sp, color = mk.muted)
                 }
-                SalePhase.Expired, SalePhase.DoubleSpend -> {
+                SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend -> {
                     Box(Modifier.size(88.dp).clip(CircleShape).background(mk.warnGround), contentAlignment = Alignment.Center) {
                         Icon(MkIcons.Clock, contentDescription = null, tint = mk.warn, modifier = Modifier.size(44.dp))
                     }
