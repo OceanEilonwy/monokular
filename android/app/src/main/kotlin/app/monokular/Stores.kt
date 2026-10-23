@@ -22,19 +22,9 @@ class Stores(private val secure: SecureStore) {
     private fun <T> write(name: String, serializer: KSerializer<T>, value: T?) =
         secure.put(name, value?.let { json.encodeToString(serializer, it) })
 
-    /**
-     * The store's key and API, nothing else about it (decision 50). One the
-     * old app saved is rewritten as the new one the first time it's read:
-     * its key at its endpoint's API, without the store and wallet it kept.
-     */
+    /** The store's key and API, nothing else about it (decision 50). */
     var connection: Connection?
-        get() {
-            val saved = secure.get("connection") ?: return null
-            val connection = Connection.restore(saved) ?: return null
-            val now = Connection.save(connection)
-            if (now != saved) secure.put("connection", now)
-            return connection
-        }
+        get() = secure.get("connection")?.let(Connection::restore)
         set(value) = secure.put("connection", value?.let(Connection::save))
 
     /** The Square location this till watches. */

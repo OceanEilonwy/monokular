@@ -51,9 +51,9 @@ class TillTest {
         server.start()
         monokulo = MonokuloApi(OkHttpClient(), AppIdentity("monokular", "Monokular", "0.1.0", "android", "Pixel"))
         connection = Connection("ak_1", server.url("/api/v1").toString())
-        // The API's entry, which the client reads before its first order.
+        // The API's entry, which the client reads before its first order and keeps for an hour.
         server.enqueue(
-            MockResponse.Builder().code(200).body(
+            MockResponse.Builder().code(200).setHeader("Cache-Control", "private, max-age=3600").body(
                 """{"_links":{"self":{"href":"/api/v1"}},
                    "_templates":{"create-order":{"method":"POST","target":"/api/v1/orders","properties":[]}}}""",
             ).build(),
@@ -127,7 +127,8 @@ class TillTest {
         val till = Till(source, monokulo, connection)
         server.enqueue(order())
         till.check()
-        fun event(name: String, order: String) = SaleEvent(name, order, "5.00", "USD", "8Cy", 30000000000, null, 99, "Back", 1)
+        fun event(name: String, order: String) =
+            SaleEvent(name, order, "5.00", "USD", "8Cy", 30000000000, null, 99, "Back", 1, orderUrl = "https://pay.example/monokulo/api/v1/orders/$order")
         till.onEvent(event("sale.paid", "ord_1"))
         assertEquals(SalePhase.Paid, till.sales.value.sales.single().phase)
         till.onEvent(event("sale.waiting", "ord_2"))
@@ -137,6 +138,7 @@ class TillTest {
         assertEquals("monero:8Cy?tx_amount=0.03", theirs.code.uri)
         assertEquals("8Cy", theirs.address)
         assertEquals("Back", theirs.deviceName, "another till's sale says which device made it")
+        assertEquals("https://pay.example/monokulo/api/v1/orders/ord_2", theirs.url, "read again at its event's mk:order link")
         // An update for a sale never seen here is ignored.
         till.onEvent(event("sale.paid", "ord_3"))
         assertEquals(2, till.sales.value.sales.size)

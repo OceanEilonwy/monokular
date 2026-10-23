@@ -258,7 +258,7 @@ fun ConfirmScreen(code: ConnectCode, deviceName: String, busy: Boolean, problem:
         StepLabel(3)
     },
 ) {
-    val secure = code.baseUrl.startsWith("https://")
+    val secure = code.encrypted
     SheetTop("Connect to this store?", code.host, secure)
     SectionLabel("This device will take payments for")
     Group(rows = listOf({ FactRow("Server", code.host) }, { FactRow("Device name", deviceName) }))

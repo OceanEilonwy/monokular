@@ -126,7 +126,8 @@ class TillRunner(private val graph: Graph) {
     private suspend fun resync(till: Till) {
         val connection = graph.stores.connection ?: return
         for (sale in till.sales.value.sales.filterNot { it.phase.isFinal }) {
-            runCatching { graph.monokulo.order(connection, sale.orderId, sale.url) }
+            val url = sale.url ?: continue
+            runCatching { graph.monokulo.order(connection, url) }
                 .onSuccess { till.onStatus(sale.orderId, it.phase) }
         }
     }

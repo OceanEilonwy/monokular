@@ -8,15 +8,18 @@ import androidx.lifecycle.viewModelScope
 import app.monokular.core.ConnectCode
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloException
+import app.monokular.core.Tor
 import app.monokular.notify.SaleNotifications
 import app.monokular.sales.Pkce
 import app.monokular.sales.SquareException
 import app.monokular.sales.SquareLocation
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Where the app is. Setup follows the design's six onboarding steps. */
 sealed interface Screen {
@@ -129,15 +132,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun connect(code: ConnectCode) = work {
         try {
-            val connection = graph.monokulo.connect(code)
+            val redeemed = graph.monokulo.connect(code)
+            // Over Tor when the store has an onion address and Orbot is running (decision 55).
+            val connection = redeemed.copy(tor = redeemed.onionApi != null && withContext(Dispatchers.IO) { Tor.running() })
             stores.forgetAll()
             stores.connection = connection
             graph.store.forget()
             graph.store.read(connection)
             go(Screen.Connected(connection))
         } catch (e: MonokuloException) {
-            problem.value = when (e.status) {
-                401 -> "That code has been used or has expired. Show a new one on the store's settings."
+            problem.value = when (e.problem) {
+                "invalid-connect-code" -> "That code has been used or has expired. Show a new one on the store's settings."
+                "rate-limited" -> "The store is busy. Try again in ${e.retryAfter ?: 60} seconds."
                 else -> e.message ?: "The store didn't answer."
             }
         }
@@ -216,6 +222,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             TillService.start(getApplication())
         }
     }
+
+    /** Reach the store over Tor, at its onion address, or not (decision 55). */
+    fun setTor(on: Boolean) {
+        val connection = stores.connection ?: return
+        val onion = connection.onionApi ?: graph.store.now.value.onionApi ?: return
+        stores.connection = connection.copy(onionApi = onion, tor = on)
+        graph.store.read(stores.connection)
+        restart()
+        go(Screen.Settings)
+    }
+
+    /** Whether Orbot's proxy answers: Settings says so beside the Tor switch. */
+    suspend fun torRunning(): Boolean = withContext(Dispatchers.IO) { Tor.running() }
 
     fun signOutOfSquare() {
         graph.squareAuth().signOut()

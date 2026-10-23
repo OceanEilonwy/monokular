@@ -1,12 +1,13 @@
 package app.monokular.core
 
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import mockwebserver3.Dispatcher
@@ -21,6 +22,8 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -29,8 +32,10 @@ import kotlin.test.fail
  * The client against Monokulo's own OpenAPI document, generated from the
  * pinned Monokulo commit (`monokulo.sha` in `gradle.properties`) by the
  * `monokuloOpenApi` task, never committed. A stand-in answers each request
- * with the example Monokulo recorded for that route from a real exchange,
- * so a renamed route, link, form or field fails here.
+ * with what Monokulo recorded for that route from a real exchange (the
+ * entry and each resource as an app's key sees them, the app handshake
+ * and its problems, the event stream), so a renamed route, link, form,
+ * field or event fails here.
  */
 class MonokuloContractTest {
     private val openapi: JsonObject = run {
@@ -39,9 +44,13 @@ class MonokuloContractTest {
         Json.parseToJsonElement(File(path).readText()).jsonObject
     }
     private val paths = openapi["paths"]!!.jsonObject
+    private val schemas = openapi["components"]!!.jsonObject["schemas"]!!.jsonObject
     private val server = MockWebServer()
     private val api = MonokuloApi(OkHttpClient(), AppIdentity("monokular", "Monokular", "0.1.0", "android", "Pixel 8"))
     private val seen = CopyOnWriteArrayList<String>()
+
+    /** Which recorded problem `POST /apps/connect` answers with, by name; null for its success. */
+    @Volatile private var connectProblem: String? = null
 
     /** What went wrong answering, rethrown after the test so it isn't lost as a 500. */
     @Volatile private var failure: Throwable? = null
@@ -75,73 +84,55 @@ class MonokuloContractTest {
     private fun operation(method: String, path: String): JsonObject? =
         template(path)?.let { paths[it]?.jsonObject?.get(method.lowercase()) as? JsonObject }
 
-    /** An operation's success status and its recorded example body, if it has one. */
-    private fun success(op: JsonObject): Pair<Int, JsonElement?> {
+    /** A response's content type and its recorded example: as an app's key sees it, where Monokulo recorded one per key. */
+    private fun recorded(response: JsonObject): Pair<String, JsonElement?>? {
+        val (type, content) = (response["content"] as? JsonObject)?.entries?.firstOrNull() ?: return null
+        val media = content.jsonObject
+        val example = media["example"] ?: (media["examples"] as? JsonObject)?.let { examples ->
+            (examples["ak"] ?: examples.values.first()).jsonObject["value"]
+        }
+        return type to example
+    }
+
+    private fun success(op: JsonObject): Pair<Int, JsonObject> {
         val (code, response) = op["responses"]!!.jsonObject.entries.first { it.key.startsWith("2") }
-        val example = (response.jsonObject["content"] as? JsonObject)?.values?.firstOrNull()?.jsonObject?.get("example")
-        return code.toInt() to example
+        return code.toInt() to response.jsonObject
     }
 
-    /** Every link or form ([part] `_links` or `_templates`) Monokulo's recorded examples carry, by name. */
-    private fun recorded(part: String): Map<String, JsonElement> = buildMap {
-        for (path in paths.values) for (op in path.jsonObject.values) {
-            val example = (op as? JsonObject)?.let { success(it).second } as? JsonObject ?: continue
-            (example[part] as? JsonObject)?.forEach { (name, value) -> putIfAbsent(name, value) }
+    /** The problem [name] as Monokulo recorded it for [op]. */
+    private fun problem(op: JsonObject, name: String): Pair<Int, JsonElement> {
+        for ((code, response) in op["responses"]!!.jsonObject) {
+            val examples = (response.jsonObject["content"] as? JsonObject)?.get("application/problem+json")
+                ?.jsonObject?.get("examples") as? JsonObject ?: continue
+            examples[name]?.let { return code.toInt() to it.jsonObject["value"]!! }
         }
-    }
-
-    /**
-     * The entry as an app's key sees it. Monokulo records the entry
-     * without a key, so each `mk:` link its schema lists is taken from
-     * another recorded answer that has it, else is the route whose
-     * description begins with the link's.
-     */
-    private fun entry(): JsonObject {
-        val root = openapi["components"]!!.jsonObject["schemas"]!!.jsonObject["Root"]!!.jsonObject
-        val rels = root["properties"]!!.jsonObject["_links"]!!.jsonObject["properties"]!!.jsonObject
-        val seen = recorded("_links")
-        val links = buildJsonObject {
-            for ((rel, schema) in rels) {
-                if (!rel.startsWith("mk:")) continue
-                seen[rel]?.let { put(rel, it); continue }
-                val said = schema.jsonObject["description"]!!.jsonPrimitive.content.lineSequence().first()
-                val path = paths.entries.firstOrNull { (_, item) ->
-                    val get = item.jsonObject["get"] as? JsonObject ?: return@firstOrNull false
-                    get["description"]?.jsonPrimitive?.content?.startsWith(said) == true ||
-                        get["summary"]?.jsonPrimitive?.content?.startsWith(said) == true ||
-                        responseSchemaSays(get, said)
-                }?.key ?: fail("no route is $rel ($said)")
-                put(rel, buildJsonObject { put("href", JsonPrimitive(path)) })
-            }
-        }
-        return buildJsonObject {
-            put("_links", links)
-            put("_templates", JsonObject(recorded("_templates")))
-        }
-    }
-
-    private fun responseSchemaSays(op: JsonObject, said: String): Boolean {
-        val content = (op["responses"]!!.jsonObject.entries.first { it.key.startsWith("2") }.value.jsonObject["content"] as? JsonObject)
-            ?.values?.firstOrNull()?.jsonObject ?: return false
-        val ref = content["schema"]?.jsonObject?.get("\$ref")?.jsonPrimitive?.content ?: return false
-        val schema = openapi["components"]!!.jsonObject["schemas"]!!.jsonObject[ref.substringAfterLast('/')]?.jsonObject
-        return schema?.get("description")?.jsonPrimitive?.content?.startsWith(said) == true
+        fail("Monokulo recorded no $name problem")
     }
 
     private fun answer(request: RecordedRequest): MockResponse {
         val path = request.url.encodedPath
         seen += "${request.method} $path"
         val op = operation(request.method, path) ?: return MockResponse.Builder().code(404).build()
-        if (path == "/api/v1") {
-            return MockResponse.Builder().code(200).setHeader("Content-Type", "application/prs.hal-forms+json")
-                .body(entry().toString()).build()
-        }
         if (request.method == "POST") checkSent(op, request.body!!.utf8())
-        val (code, example) = success(op)
+        connectProblem?.takeIf { path == "/apps/connect" }?.let { name ->
+            val (code, body) = problem(op, name)
+            return MockResponse.Builder().code(code).setHeader("Content-Type", "application/problem+json").body(body.toString()).build()
+        }
+        val (code, response) = success(op)
+        val headers = (response["headers"] as? JsonObject)?.keys.orEmpty()
+        if ("ETag" in headers && request.headers["If-None-Match"] == ETAG) {
+            assertNotNull(op["responses"]!!.jsonObject["304"], "Monokulo answers 304 here")
+            return MockResponse.Builder().code(304).setHeader("ETag", ETAG).setHeader("Cache-Control", "private, max-age=3600").build()
+        }
+        val (type, example) = recorded(response) ?: return MockResponse.Builder().code(code).build()
         return MockResponse.Builder().code(code).apply {
-            if (example != null) {
-                setHeader("Content-Type", "application/prs.hal-forms+json")
-                body(example.toString())
+            if ("ETag" in headers) setHeader("ETag", ETAG)
+            if ("Cache-Control" in headers) setHeader("Cache-Control", "private, max-age=3600")
+            setHeader("Content-Type", type)
+            when (example) {
+                null -> Unit
+                is JsonPrimitive -> body(example.content)
+                else -> body(example.toString())
             }
         }.build()
     }
@@ -150,7 +141,7 @@ class MonokuloContractTest {
     private fun checkSent(op: JsonObject, sent: String) {
         val ref = op["requestBody"]!!.jsonObject["content"]!!.jsonObject["application/json"]!!
             .jsonObject["schema"]!!.jsonObject["\$ref"]!!.jsonPrimitive.content
-        val schema = openapi["components"]!!.jsonObject["schemas"]!!.jsonObject[ref.substringAfterLast('/')]!!.jsonObject
+        val schema = schemas[ref.substringAfterLast('/')]!!.jsonObject
         val known = schema["properties"]!!.jsonObject.keys
         val required = (schema["required"] as? JsonArray)?.map { it.jsonPrimitive.content }.orEmpty()
         val fields = Json.parseToJsonElement(sent).jsonObject.keys
@@ -158,8 +149,31 @@ class MonokuloContractTest {
         assertTrue(fields.containsAll(required), "sent $fields; Monokulo needs $required")
     }
 
+    private fun code() = ConnectCode(server.url("/apps/connect").toString(), "ct_" + "0".repeat(63) + "1")
+
     @Test
-    fun `the store, its wallet and the app read as Monokulo writes them`() = runBlocking {
+    fun `connecting sends what the handshake takes and keeps the key, the entry and the onion entry`() = runBlocking {
+        val connection = api.connect(code())
+        assertTrue(connection.appKey.startsWith("ak_"))
+        assertEquals(server.url("/api/v1").toString(), connection.api)
+        val onion = assertNotNull(connection.onionApi, "Monokulo recorded the handshake with an onion address")
+        assertTrue(Tor.isOnion(onion), onion)
+        assertEquals(listOf("POST /apps/connect"), seen)
+    }
+
+    @Test
+    fun `the handshake's problems come back by name, with their detail`() = runBlocking {
+        for ((name, status) in listOf("invalid-connect-code" to 401, "no-public-address" to 503, "invalid-request" to 400)) {
+            connectProblem = name
+            val e = assertFailsWith<MonokuloException> { api.connect(code()) }
+            assertEquals(status, e.status)
+            assertEquals(name, e.problem)
+            assertTrue(e.message!!.isNotBlank())
+        }
+    }
+
+    @Test
+    fun `the store, its wallet and the app read as Monokulo writes them, from one entry`() = runBlocking {
         val store = api.store(connection())
         assertTrue(store.name.isNotEmpty() && store.baseCurrency.isNotEmpty())
         val app = api.app(connection())
@@ -168,23 +182,41 @@ class MonokuloContractTest {
     }
 
     @Test
+    fun `the entry an app's key reads links the onion entry`() = runBlocking {
+        val onion = assertNotNull(api.onionApi(connection()))
+        assertTrue(Tor.isOnion(onion), onion)
+    }
+
+    @Test
     fun `an order is made with the create-order form, read as Monokulo writes it, and read again at its self link`() = runBlocking {
         val order = api.createOrder(connection(), "24.50", "USD", "#1042", "sq:abc")
         assertTrue(order.address.isNotEmpty() && order.piconero > 0 && order.expiresAt > 0)
         assertTrue(order.paymentUri.startsWith("monero:${order.address}?tx_amount="))
         assertNotNull(template(order.url.toHttpUrl().encodedPath), "its self link is a route")
-        val again = api.order(connection(), order.orderId, order.url)
-        assertEquals(order.orderId, again.orderId)
-        val byId = api.order(connection(), order.orderId)
-        assertEquals(order.orderId, byId.orderId)
+        assertTrue(api.order(connection(), order.url).orderId.isNotEmpty())
     }
 
     @Test
-    fun `the event stream and disconnecting are where the entry says`() = runBlocking {
-        val events = entry()["_links"]!!.jsonObject["mk:events"]!!.jsonObject["href"]!!.jsonPrimitive.content
-        val stream = operation("GET", events)!!["responses"]!!.jsonObject["200"]!!.jsonObject["content"]!!.jsonObject
-        assertEquals(setOf("text/event-stream"), stream.keys)
+    fun `every sale event Monokulo sends has its phase, and links its order`() = runBlocking {
+        val stream = operation("GET", "/api/v1/events")!!["responses"]!!.jsonObject["200"]!!
+            .jsonObject["content"]!!.jsonObject["text/event-stream"]!!.jsonObject
+        val names = stream["x-events"]!!.jsonObject.keys
+        assertEquals(setOf("ready", "lagged"), names.filter { SalePhase.ofEvent(it) == null }.toSet(), "every other event is a sale's")
+        val events = api.events(connection()).take(2).toList()
+        assertEquals(StreamEvent.Ready, events[0])
+        val sale = assertIs<StreamEvent.Sale>(events[1]).event
+        val url = assertNotNull(sale.orderUrl, "a sale event links its order")
+        assertNotNull(template(url.toHttpUrl().encodedPath), "its mk:order link is a route")
+        assertTrue(api.order(connection(), url).orderId.isNotEmpty())
+    }
+
+    @Test
+    fun `disconnecting is the entry's disconnect form`() = runBlocking {
         api.disconnect(connection())
         assertEquals("DELETE /api/v1/app", seen.last())
+    }
+
+    private companion object {
+        const val ETAG = "\"entry-1\""
     }
 }

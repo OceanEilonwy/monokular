@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.Build
 import app.monokular.core.AppIdentity
 import app.monokular.core.MonokuloApi
+import app.monokular.core.Tor
 import app.monokular.sales.SquareApi
 import app.monokular.sales.SquareAuth
 import app.monokular.sales.SquareConfig
@@ -28,7 +29,10 @@ class Graph(app: Application) {
     )
 
     val http: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(15, TimeUnit.SECONDS)
+        // Onion addresses through Orbot's SOCKS proxy (decision 55); the rest straight out.
+        .proxySelector(Tor.Proxies())
+        // Tor takes longer to build a circuit.
+        .connectTimeout(30, TimeUnit.SECONDS)
         // The event stream sends a comment every 25 s; longer silence is a dead connection.
         .readTimeout(60, TimeUnit.SECONDS)
         .build()
@@ -49,7 +53,18 @@ class Graph(app: Application) {
     val runner = TillRunner(this)
 
     /** The store as last read, this session only. */
-    val store = LiveStore(monokulo, onDisconnected = runner::disconnected)
+    val store = LiveStore(monokulo, onDisconnected = runner::disconnected, onOnionApi = ::onionApi)
+
+    /**
+     * Keeps where the store's onion entry is with the connection: a till
+     * that connected before Monokulo gave it learns it here. One the store
+     * no longer has takes the till off Tor.
+     */
+    private fun onionApi(url: String?) {
+        val connection = stores.connection ?: return
+        if (connection.onionApi == url) return
+        stores.connection = connection.copy(onionApi = url, tor = connection.tor && url != null)
+    }
 
     /** Monokular's own screen is showing: the bubble steps aside. */
     val appVisible = MutableStateFlow(false)

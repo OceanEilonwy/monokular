@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.monokular.StoreNow
 import app.monokular.core.Connection
+import app.monokular.core.Tor
 import app.monokular.sales.SquareLocation
 
 /** Settings' state. */
@@ -49,6 +50,8 @@ data class SettingsState(
     val bubbleAllowed: Boolean,
     val debug: Boolean,
     val squareBaseUrl: String?,
+    /** Orbot's proxy answers; null while that's being checked. */
+    val torRunning: Boolean? = null,
 )
 
 /** What settings can do. */
@@ -63,6 +66,8 @@ class SettingsActions(
     val onSquareBaseUrl: (String) -> Unit,
     /** Copies the store wallet's whole address. */
     val onCopyAddress: (String) -> Unit,
+    /** Reach the store over Tor, or not. */
+    val onTor: (Boolean) -> Unit,
     val onBack: () -> Unit,
 )
 
@@ -129,6 +134,7 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions) = Page(
             ),
         )
         Footnote("To change the wallet, open the store's settings in your Monokulo dashboard. Monokular can't change it.")
+        TorSection(connection, s.store.onionApi, s.torRunning, a.onTor)
     }
 
     SectionLabel("Square")
@@ -188,6 +194,31 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions) = Page(
     Group(rows = listOf({ ActionRow("Disconnect this device", a.onDisconnect, mk.danger) }))
     Footnote("Removes Monokular from the store's Apps: its key stops working at once. Payments already made aren't affected.")
     Spacer(Modifier.height(32.dp))
+}
+
+/**
+ * Tor (decision 55): offered while the store has an onion address, through
+ * Orbot. A till that connected at the onion address is on Tor already.
+ */
+@Composable
+private fun TorSection(connection: Connection, onionApi: String?, running: Boolean?, onTor: (Boolean) -> Unit) {
+    val atOnion = Tor.isOnion(connection.api)
+    if (!atOnion && connection.onionApi == null && onionApi == null) return
+    SectionLabel("Tor")
+    if (atOnion) {
+        Group(rows = listOf({ FactRow("Over Tor", "Always") }))
+    } else {
+        Group(rows = listOf({ SwitchRow("Reach the store over Tor", connection.tor, onTor) }))
+    }
+    Footnote(
+        when {
+            connection.overTor && running == false ->
+                "Orbot isn't running, so Monokular can't reach the store. Open Orbot" + if (atOnion) "." else ", or turn this off."
+            atOnion -> "Monokular connected at the store's onion address, so it reaches the store through Orbot."
+            connection.tor -> "Monokular reaches the store at its onion address, through Orbot."
+            else -> "The store has an onion address. Turn this on to reach it over Tor, through the Orbot app."
+        },
+    )
 }
 
 /** A row that's a button: its label in [color]. */

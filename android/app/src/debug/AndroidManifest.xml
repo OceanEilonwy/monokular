@@ -1,9 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Debug builds only: Square's sign-in comes back on a custom scheme, so a
-     stand-in Square on the developer's machine can return to the app, and a
-     Monokulo there can be reached over plain http. -->
+     stand-in Square on the developer's machine can return to the app. A
+     Monokulo there is reached over plain http by the debug
+     network_security_config. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <application android:usesCleartextTraffic="true">
+    <application>
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.VIEW" />

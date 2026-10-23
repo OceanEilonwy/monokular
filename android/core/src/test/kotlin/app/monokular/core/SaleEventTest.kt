@@ -1,5 +1,6 @@
 package app.monokular.core
 
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
@@ -7,12 +8,15 @@ import kotlin.test.assertTrue
 
 class SaleEventTest {
     @Test
-    fun `an event from the stream decodes, ignoring fields it doesn't know`() {
+    fun `an event from the stream decodes, ignoring fields it doesn't know, its order link resolved`() {
         val event = SaleEvent.decode(
             """{"event":"sale.paid","order_id":"ord_1","amount":"24.50","currency":"USD",
                "address":"8Bx","xmr_amount_piconero":141900000000,"merchant_order_id":"#1042",
-               "expires_at":1761312000,"device_name":"Front counter","at":1761310260,"later":true}""",
+               "expires_at":1761312000,"device_name":"Front counter","at":1761310260,"later":true,
+               "_links":{"mk:order":{"href":"/monokulo/api/v1/orders/ord_1"}}}""",
+            "https://example.com/monokulo/api/v1/events".toHttpUrl(),
         )
+        assertEquals("https://example.com/monokulo/api/v1/orders/ord_1", event.orderUrl)
         assertEquals(SalePhase.Paid, event.phase)
         assertEquals("#1042", event.merchantOrderId)
         assertTrue(event.phase!!.isFinal)
