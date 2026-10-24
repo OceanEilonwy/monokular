@@ -1,6 +1,7 @@
 package app.monokular
 
 import app.monokular.core.MonokuloException
+import app.monokular.core.Problems
 import app.monokular.core.StreamEvent
 import app.monokular.sales.FoundSale
 import app.monokular.sales.SaleSource
@@ -27,6 +28,8 @@ data class RunnerState(
     val live: Boolean = false,
     /** The store disconnected this device: its key no longer works. */
     val disconnected: Boolean = false,
+    /** What the event stream's last failure said, while it's closed: `too-many-streams`, say. */
+    val streamProblem: String? = null,
     val till: TillState = TillState(),
 )
 
@@ -103,7 +106,7 @@ class TillRunner(private val graph: Graph) {
                     when (event) {
                         StreamEvent.Ready, StreamEvent.Lagged -> {
                             wait = 1.seconds
-                            mutable.update { it.copy(live = true) }
+                            mutable.update { it.copy(live = true, streamProblem = null) }
                             resync(till)
                         }
                         is StreamEvent.Sale -> till.onEvent(event.event)
@@ -114,6 +117,7 @@ class TillRunner(private val graph: Graph) {
                     disconnected()
                     return
                 }
+                if (e.problem != null) mutable.update { it.copy(streamProblem = Problems.say(e)) }
             } catch (_: Exception) {
             }
             mutable.update { it.copy(live = false) }

@@ -5,6 +5,7 @@ import app.monokular.core.MonokuloApi
 import app.monokular.core.MonokuloException
 import app.monokular.core.Order
 import app.monokular.core.PaymentUri
+import app.monokular.core.Problems
 import app.monokular.core.SaleEvent
 import app.monokular.core.SalePhase
 import app.monokular.receipt.PaymentCode
@@ -103,17 +104,13 @@ class Till(
     }
 
     /**
-     * What the till says when an order couldn't be made. No order was made,
-     * so the sale stays unhandled and the next check asks again with the
-     * same idempotency key.
+     * What the till says when an order couldn't be made: what Monokulo's
+     * problem means and who can fix it ([Problems]). No order was made, so
+     * the sale stays unhandled and the next check asks again with the same
+     * idempotency key.
      */
-    private fun creationProblem(e: Exception): String = when ((e as? MonokuloException)?.problem) {
-        "rates-unavailable" ->
-            "Monokulo has no exchange rate right now, so there's no payment code yet. Trying again shortly."
-        "engine-unavailable" ->
-            "Monokulo's payment engine is busy, so there's no payment code yet. Trying again shortly."
-        else -> "Couldn't make the payment code: ${e.message}"
-    }
+    private fun creationProblem(e: Exception): String =
+        if (e is MonokuloException) Problems.say(e) else "Couldn't make the payment code: ${e.message}"
 
     /** What the store's event stream said. */
     fun onEvent(event: SaleEvent) {

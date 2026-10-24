@@ -121,7 +121,7 @@ class MainActivity : ComponentActivity() {
                             running = runner.running,
                             live = runner.live,
                             disconnected = runner.disconnected,
-                            problem = runner.till.problem,
+                            problem = runner.till.problem ?: runner.streamProblem,
                             signInAgain = runner.till.signInAgain,
                         ),
                         sales = runner.till.sales,

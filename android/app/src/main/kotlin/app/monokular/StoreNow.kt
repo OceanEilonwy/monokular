@@ -4,6 +4,7 @@ import app.monokular.core.AppConnection
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloApi
 import app.monokular.core.MonokuloException
+import app.monokular.core.Problems
 import app.monokular.core.Store
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -59,7 +60,7 @@ class LiveStore(
                 onOnionApi(state.value.onionApi)
             } catch (e: MonokuloException) {
                 if (e.status == 401) onDisconnected()
-                state.update { it.copy(reading = false, problem = e.message ?: "The store didn't answer.") }
+                state.update { it.copy(reading = false, problem = Problems.say(e)) }
             } catch (e: Exception) {
                 state.update { it.copy(reading = false, problem = "Couldn't reach the store: ${e.message}") }
             }
