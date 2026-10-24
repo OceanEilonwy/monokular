@@ -236,6 +236,49 @@ class MonokuloContractTest {
         }
     }
 
+    /**
+     * Each route the app calls, as the stand-in sees it, and the call that
+     * reaches it through a client of its own (so the entry isn't kept).
+     */
+    private val routes: List<Triple<String, String, suspend (MonokuloApi) -> Unit>> = listOf(
+        Triple("POST", "/apps/connect") { it.connect(code()) },
+        Triple("GET", "/api/v1") { it.onionApi(connection()) },
+        Triple("GET", "/api/v1/store") { it.store(connection()) },
+        Triple("GET", "/api/v1/app") { it.app(connection()) },
+        Triple("DELETE", "/api/v1/app") { it.disconnect(connection()) },
+        Triple("POST", "/api/v1/orders") { it.createOrder(connection(), "24.50", "USD", "#1042", "sq:abc") },
+        Triple("GET", "/api/v1/orders/ord_1") { it.order(connection(), server.url("/api/v1/orders/ord_1").toString()) },
+        Triple("GET", "/api/v1/events") { it.events(connection()).take(1).toList() },
+    )
+
+    @Test
+    fun `every problem Monokulo lists for a route the app calls comes back by name, and the app has words for it`() = runBlocking {
+        var heard = 0
+        for ((method, path, call) in routes) {
+            val op = assertNotNull(operation(method, path), "Monokulo has no $method $path")
+            for ((code, response) in op["responses"]!!.jsonObject) {
+                val examples = (response.jsonObject["content"] as? JsonObject)?.get("application/problem+json")
+                    ?.jsonObject?.get("examples") as? JsonObject ?: continue
+                for ((name, example) in examples) {
+                    problems.clear()
+                    problems["$method $path"] = name
+                    val e = assertFailsWith<MonokuloException>("$method $path $name") {
+                        call(MonokuloApi(OkHttpClient(), AppIdentity("monokular", "Monokular", "0.1.0", "android", "Pixel 8")))
+                    }
+                    assertEquals(code.toInt(), e.status, "$method $path $name")
+                    assertEquals(name, e.problem, "$method $path")
+                    assertTrue(Problems.knows(name), "the app has no words for $name, which $method $path can answer")
+                    assertTrue(Problems.say(e).isNotBlank(), name)
+                    example.jsonObject["value"]!!.jsonObject["retry_after"]?.let {
+                        assertEquals(it.jsonPrimitive.content.toLong(), e.retryAfter, "$method $path $name waits as long as it says")
+                    }
+                    heard++
+                }
+            }
+        }
+        assertTrue(heard > 30, "heard only $heard problems")
+    }
+
     @Test
     fun `every sale event Monokulo sends has its phase, and links its order`() = runBlocking {
         val stream = operation("GET", "/api/v1/events")!!["responses"]!!.jsonObject["200"]!!

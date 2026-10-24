@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import app.monokular.core.ConnectCode
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloException
+import app.monokular.core.Problems
 import app.monokular.core.Tor
 import app.monokular.notify.SaleNotifications
 import app.monokular.sales.Pkce
@@ -141,11 +142,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             graph.store.read(connection)
             go(Screen.Connected(connection))
         } catch (e: MonokuloException) {
-            problem.value = when (e.problem) {
-                "invalid-connect-code" -> "That code has been used or has expired. Show a new one on the store's settings."
-                "rate-limited" -> "The store is busy. Try again in ${e.retryAfter ?: 60} seconds."
-                else -> e.message ?: "The store didn't answer."
-            }
+            problem.value = Problems.say(e)
         }
     }
 

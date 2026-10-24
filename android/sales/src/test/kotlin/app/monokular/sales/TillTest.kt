@@ -75,11 +75,7 @@ class TillTest {
      * lists one, and the example body.
      */
     private fun recordedOrderProblem(name: String): MockResponse {
-        val path = System.getProperty("monokulo.openapi")
-            ?: error("monokulo.openapi isn't set: run the tests with Gradle, which generates Monokulo's OpenAPI document")
-        val op = Json.parseToJsonElement(File(path).readText()).jsonObject["paths"]!!.jsonObject["/api/v1/orders"]!!
-            .jsonObject["post"]!!.jsonObject
-        for ((code, response) in op["responses"]!!.jsonObject) {
+        for ((code, response) in createOrder["responses"]!!.jsonObject) {
             val examples = (response.jsonObject["content"] as? JsonObject)?.get("application/problem+json")
                 ?.jsonObject?.get("examples") as? JsonObject ?: continue
             val body = examples[name]?.jsonObject?.get("value")?.jsonObject ?: continue
@@ -91,6 +87,41 @@ class TillTest {
             }.build()
         }
         error("Monokulo recorded no $name problem for POST /api/v1/orders")
+    }
+
+    /** `POST /api/v1/orders` in Monokulo's OpenAPI document at the pinned commit. */
+    private val createOrder: JsonObject by lazy {
+        val path = System.getProperty("monokulo.openapi")
+            ?: error("monokulo.openapi isn't set: run the tests with Gradle, which generates Monokulo's OpenAPI document")
+        Json.parseToJsonElement(File(path).readText()).jsonObject["paths"]!!.jsonObject["/api/v1/orders"]!!
+            .jsonObject["post"]!!.jsonObject
+    }
+
+    /** The name of every problem Monokulo recorded for `POST /api/v1/orders`. */
+    private fun recordedOrderProblems(): List<String> = createOrder["responses"]!!.jsonObject.values.flatMap { response ->
+        ((response.jsonObject["content"] as? JsonObject)?.get("application/problem+json")?.jsonObject?.get("examples") as? JsonObject)
+            ?.keys.orEmpty()
+    }
+
+    private val entry = MockResponse.Builder().code(200).setHeader("Cache-Control", "private, max-age=3600").body(
+        """{"_links":{"self":{"href":"/api/v1"}},"_templates":{"create-order":{"method":"POST","target":"/api/v1/orders","properties":[]}}}""",
+    ).build()
+
+    /**
+     * Answers the next order with the recorded problem [name], as often as
+     * the client asks: twice for `challenge-required` (it solves the
+     * challenge and asks again) and for `unauthorized` (it reads the entry
+     * again and retries).
+     */
+    private fun answerOrderWith(name: String) {
+        server.enqueue(recordedOrderProblem(name))
+        when (name) {
+            "challenge-required" -> server.enqueue(recordedOrderProblem(name))
+            "unauthorized" -> {
+                server.enqueue(entry)
+                server.enqueue(recordedOrderProblem(name))
+            }
+        }
     }
 
     private fun order() = MockResponse.Builder().code(201).body(
@@ -234,5 +265,66 @@ class TillTest {
         server.takeRequest()
         val keys = List(3) { Regex("\"idempotency_key\":\"([^\"]+)\"").find(server.takeRequest().body!!.utf8())!!.groupValues[1] }
         assertEquals(List(3) { Till.idempotencyKey(sale) }, keys)
+    }
+
+    @Test
+    fun `a store whose settings Monokulo can't read says so at the till, and who can fix it`() = runBlocking {
+        val source = FakeSource(listOf(sale))
+        val till = Till(source, monokulo, connection)
+        answerOrderWith("store-unavailable")
+        till.check()
+        assertEquals(
+            "Monokulo can't read this store's settings right now, so there's no payment code yet. " +
+                "Trying again shortly; if it keeps happening, ask Monokulo's admin to check its database.",
+            till.sales.value.problem,
+        )
+        assertTrue(source.handledIds.isEmpty(), "no order was made, so the sale is still to do")
+        server.enqueue(order())
+        till.check()
+        assertEquals(null, till.sales.value.problem)
+        assertEquals(1, till.sales.value.sales.size)
+    }
+
+    @Test
+    fun `a sale Monokulo can't price, or whose key it used for another order, tells the cashier to take another payment`() = runBlocking {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection)
+        answerOrderWith("invalid-amount")
+        till.check()
+        assertEquals(
+            "Monokulo can't price this sale (unknown currency: NOPE), so it has no payment code. Take another payment for it and refund it in the POS.",
+            till.sales.value.problem,
+        )
+        answerOrderWith("idempotency-conflict")
+        till.check()
+        assertEquals(
+            "Monokulo already has a different order for this POS sale, so it made no payment code. Take another payment for it and refund it in the POS.",
+            till.sales.value.problem,
+        )
+    }
+
+    @Test
+    fun `a busy store says how long it asked the till to wait`() = runBlocking {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection)
+        answerOrderWith("rate-limited")
+        till.check()
+        assertEquals("The store is busy and asked for 120 seconds' wait before the next try.", till.sales.value.problem)
+    }
+
+    @Test
+    fun `every problem making an order can answer has its own words at the till, and leaves the sale to do`() = runBlocking {
+        val source = FakeSource(listOf(sale))
+        val till = Till(source, monokulo, connection)
+        val names = recordedOrderProblems()
+        assertTrue(names.containsAll(listOf("store-unavailable", "rates-unavailable", "engine-unavailable", "forbidden", "internal")), "$names")
+        val said = mutableSetOf<String>()
+        for (name in names) {
+            answerOrderWith(name)
+            till.check()
+            val problem = assertNotNull(till.sales.value.problem, name)
+            assertFalse(problem.startsWith("Couldn't make the payment code"), "$name: $problem")
+            said += problem
+        }
+        assertTrue(source.handledIds.isEmpty(), "no order was made, so the sale is still to do")
+        assertTrue(said.size >= names.size - 2, "each problem says its own thing (the three bad-request ones share words): $said")
     }
 }
