@@ -49,8 +49,8 @@ class MonokuloContractTest {
     private val api = MonokuloApi(OkHttpClient(), AppIdentity("monokular", "Monokular", "0.1.0", "android", "Pixel 8"))
     private val seen = CopyOnWriteArrayList<String>()
 
-    /** Which recorded problem `POST /apps/connect` answers with, by name; null for its success. */
-    @Volatile private var connectProblem: String? = null
+    /** Which recorded problem each `METHOD path` answers with, by name; any other answers its success. */
+    private val problems = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     /** Whether the Monokulo answering has an onion address: picks the `-with-onion` examples. */
     @Volatile private var onion = false
@@ -108,14 +108,24 @@ class MonokuloContractTest {
         return code.toInt() to response.jsonObject
     }
 
-    /** The problem [name] as Monokulo recorded it for [op]. */
-    private fun problem(op: JsonObject, name: String): Pair<Int, JsonElement> {
+    /**
+     * The problem [name] as Monokulo recorded it for [op]: its status, the
+     * headers that response lists (`Retry-After` as the example's
+     * `retry_after`) and the example body.
+     */
+    private fun recordedProblem(op: JsonObject, name: String): MockResponse {
         for ((code, response) in op["responses"]!!.jsonObject) {
             val examples = (response.jsonObject["content"] as? JsonObject)?.get("application/problem+json")
                 ?.jsonObject?.get("examples") as? JsonObject ?: continue
-            examples[name]?.let { return code.toInt() to it.jsonObject["value"]!! }
+            val body = examples[name]?.jsonObject?.get("value")?.jsonObject ?: continue
+            val headers = (response.jsonObject["headers"] as? JsonObject)?.keys.orEmpty()
+            return MockResponse.Builder().code(code.toInt()).apply {
+                setHeader("Content-Type", "application/problem+json")
+                if ("Retry-After" in headers) body["retry_after"]?.let { setHeader("Retry-After", it.jsonPrimitive.content) }
+                body(body.toString())
+            }.build()
         }
-        fail("Monokulo recorded no $name problem")
+        fail("Monokulo recorded no $name problem for this route")
     }
 
     private fun answer(request: RecordedRequest): MockResponse {
@@ -123,10 +133,7 @@ class MonokuloContractTest {
         seen += "${request.method} $path"
         val op = operation(request.method, path) ?: return MockResponse.Builder().code(404).build()
         if (request.method == "POST") checkSent(op, request.body!!.utf8())
-        connectProblem?.takeIf { path == "/apps/connect" }?.let { name ->
-            val (code, body) = problem(op, name)
-            return MockResponse.Builder().code(code).setHeader("Content-Type", "application/problem+json").body(body.toString()).build()
-        }
+        problems["${request.method} $path"]?.let { name -> return recordedProblem(op, name) }
         val (code, response) = success(op)
         val headers = (response["headers"] as? JsonObject)?.keys.orEmpty()
         if ("ETag" in headers && request.headers["If-None-Match"] == ETAG) {
@@ -183,7 +190,7 @@ class MonokuloContractTest {
     @Test
     fun `the handshake's problems come back by name, with their detail`() = runBlocking {
         for ((name, status) in listOf("invalid-connect-code" to 401, "no-public-address" to 503, "invalid-request" to 400)) {
-            connectProblem = name
+            problems["POST /apps/connect"] = name
             val e = assertFailsWith<MonokuloException> { api.connect(code()) }
             assertEquals(status, e.status)
             assertEquals(name, e.problem)
@@ -216,6 +223,17 @@ class MonokuloContractTest {
         assertTrue(order.paymentUri.startsWith("monero:${order.address}?tx_amount="))
         assertNotNull(template(order.url.toHttpUrl().encodedPath), "its self link is a route")
         assertEquals(order.orderId, api.order(connection(), order.url).orderId, "the order made is the one read")
+    }
+
+    @Test
+    fun `making an order hears its recorded problems by name, with their detail`() = runBlocking {
+        for ((name, status) in listOf("rates-unavailable" to 503, "engine-unavailable" to 503, "idempotency-conflict" to 409)) {
+            problems["POST /api/v1/orders"] = name
+            val e = assertFailsWith<MonokuloException> { api.createOrder(connection(), "24.50", "USD", "#1042", "sq:abc") }
+            assertEquals(status, e.status, name)
+            assertEquals(name, e.problem)
+            assertTrue(e.message!!.isNotBlank(), name)
+        }
     }
 
     @Test
