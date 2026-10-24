@@ -181,8 +181,8 @@ class MonokuloApiTest {
     }
 
     @Test
-    fun `a store without a wallet says so`() = runBlocking {
-        routes["GET /api/v1/store"] = { hal("""{"name":"Bakery","base_currency":"EUR","wallet":null}""") }
+    fun `a store without a wallet says so, by leaving it out`() = runBlocking {
+        routes["GET /api/v1/store"] = { hal("""{"name":"Bakery","base_currency":"EUR"}""") }
         assertNull(api.store(connection()).wallet)
     }
 
@@ -245,6 +245,23 @@ class MonokuloApiTest {
         routes["GET /api/v1/orders/order_1"] = { hal(order("confirming")) }
         assertEquals(SalePhase.Confirming, api.order(connection(), "${base()}/api/v1/orders/order_1").phase)
         assertEquals(listOf("GET /api/v1/orders/order_1"), seen.map { it.line() }, "no entry needed")
+    }
+
+    @Test
+    fun `an order Monokulo has no price, reference or end for leaves them out, and reads as none`() = runBlocking {
+        routes["GET /api/v1/orders/order_2"] = {
+            hal("""{"order_id":"order_2","status":"pending","is_final":false,"address":"8Bx",
+                "xmr_amount_piconero":500000000000,"amount_received_piconero":0,"show_merchant_order_id":false,
+                "confirmations":0,"confirmations_required":10,"created_at":1,"expires_at":99,
+                "_links":{"self":{"href":"/api/v1/orders/order_2"}}}""")
+        }
+        val order = api.order(connection(), "${base()}/api/v1/orders/order_2")
+        assertEquals("order_2", order.orderId)
+        assertNull(order.amount)
+        assertNull(order.currency)
+        assertNull(order.merchantOrderId)
+        assertEquals(SalePhase.Waiting, order.phase)
+        assertEquals("monero:8Bx?tx_amount=0.5", order.paymentUri)
     }
 
     @Test

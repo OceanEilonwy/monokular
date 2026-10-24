@@ -3,6 +3,9 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+val monokuloOpenApi: String = providers.gradleProperty("monokulo.openapi").orNull
+    ?: File(rootDir, "core/build/monokulo/openapi-${providers.gradleProperty("monokulo.sha").get()}.json").absolutePath
+
 android {
     namespace = "app.monokular.sales"
     compileSdk = 37
@@ -18,6 +21,10 @@ android {
                 File(rootDir.parentFile, "target/release").absolutePath,
             )
             test.dependsOn(":receipt:cargoHost")
+            // Monokulo's OpenAPI document at monokulo.sha, as :core generates
+            // it, for the problems TillTest answers with.
+            test.dependsOn(":core:monokuloOpenApi")
+            test.systemProperty("monokulo.openapi", monokuloOpenApi)
         }
     }
 }

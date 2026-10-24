@@ -8,9 +8,14 @@ import app.monokular.core.SaleEvent
 import app.monokular.core.SalePhase
 import app.monokular.receipt.Receipt
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import mockwebserver3.MockResponse
 import mockwebserver3.MockWebServer
 import okhttp3.OkHttpClient
+import java.io.File
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -63,6 +68,31 @@ class TillTest {
 
     @AfterTest fun stop() = server.close()
 
+    /**
+     * The problem [name] as Monokulo recorded it for `POST /api/v1/orders`,
+     * from its OpenAPI document at the pinned commit (see :core's
+     * MonokuloContractTest): its status, `Retry-After` when the response
+     * lists one, and the example body.
+     */
+    private fun recordedOrderProblem(name: String): MockResponse {
+        val path = System.getProperty("monokulo.openapi")
+            ?: error("monokulo.openapi isn't set: run the tests with Gradle, which generates Monokulo's OpenAPI document")
+        val op = Json.parseToJsonElement(File(path).readText()).jsonObject["paths"]!!.jsonObject["/api/v1/orders"]!!
+            .jsonObject["post"]!!.jsonObject
+        for ((code, response) in op["responses"]!!.jsonObject) {
+            val examples = (response.jsonObject["content"] as? JsonObject)?.get("application/problem+json")
+                ?.jsonObject?.get("examples") as? JsonObject ?: continue
+            val body = examples[name]?.jsonObject?.get("value")?.jsonObject ?: continue
+            val headers = (response.jsonObject["headers"] as? JsonObject)?.keys.orEmpty()
+            return MockResponse.Builder().code(code.toInt()).apply {
+                setHeader("Content-Type", "application/problem+json")
+                if ("Retry-After" in headers) body["retry_after"]?.let { setHeader("Retry-After", it.jsonPrimitive.content) }
+                body(body.toString())
+            }.build()
+        }
+        error("Monokulo recorded no $name problem for POST /api/v1/orders")
+    }
+
     private fun order() = MockResponse.Builder().code(201).body(
         """{"order_id":"ord_1","status":"pending","is_final":false,"address":"8Bx","xmr_amount_piconero":80000000000,
            "amount":"13.88","currency":"USD","merchant_order_id":"bP9m","expires_at":1761312000,
@@ -95,8 +125,7 @@ class TillTest {
     fun `a sale whose order fails is tried again, and only marked handled once it has one`() = runBlocking {
         val source = FakeSource(listOf(sale))
         val till = Till(source, monokulo, connection)
-        server.enqueue(MockResponse.Builder().code(503).setHeader("Content-Type", "application/problem+json")
-            .body("""{"type":"https://docs.monokulo.com/problems/engine-unavailable","title":"Payment engine unavailable","status":503,"detail":"engine down"}""").build())
+        server.enqueue(recordedOrderProblem("engine-unavailable"))
         till.check()
         assertTrue(till.sales.value.sales.isEmpty())
         assertNotNull(till.sales.value.problem)
@@ -191,14 +220,10 @@ class TillTest {
     fun `no rate or a busy engine says so at the till, and the next check asks again with the same key`() = runBlocking {
         val source = FakeSource(listOf(sale))
         val till = Till(source, monokulo, connection)
-        fun unavailable(name: String, title: String) = MockResponse.Builder().code(503)
-            .setHeader("Content-Type", "application/problem+json").setHeader("Retry-After", "30")
-            .body("""{"type":"https://docs.monokulo.com/problems/$name","title":"$title","status":503,"detail":"no order was made","retry_after":30}""")
-            .build()
-        server.enqueue(unavailable("rates-unavailable", "No exchange rate"))
+        server.enqueue(recordedOrderProblem("rates-unavailable"))
         till.check()
         assertEquals("Monokulo has no exchange rate right now, so there's no payment code yet. Trying again shortly.", till.sales.value.problem)
-        server.enqueue(unavailable("engine-unavailable", "Payment engine unavailable"))
+        server.enqueue(recordedOrderProblem("engine-unavailable"))
         till.check()
         assertEquals("Monokulo's payment engine is busy, so there's no payment code yet. Trying again shortly.", till.sales.value.problem)
         assertTrue(source.handledIds.isEmpty(), "no order was made, so the sale is still to do")
