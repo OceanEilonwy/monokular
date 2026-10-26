@@ -129,10 +129,11 @@ class TillRunner(private val graph: Graph) {
     /** Re-reads the sales on screen, after the stream (re)opens. */
     private suspend fun resync(till: Till) {
         val connection = graph.stores.connection ?: return
-        for (sale in till.sales.value.sales.filterNot { it.phase.isFinal }) {
+        // An expired sale too, until Monokulo stops watching it for a late payment.
+        for (sale in till.sales.value.sales.filter { it.open }) {
             val url = sale.url ?: continue
             runCatching { graph.monokulo.order(connection, url) }
-                .onSuccess { till.onStatus(sale.orderId, it.phase) }
+                .onSuccess { till.onStatus(sale.orderId, it.phase, it.isFinal) }
         }
     }
 }

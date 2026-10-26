@@ -56,6 +56,7 @@ class SaleTextTest {
         assertEquals("Refunded in Square", SaleText.status(sale(phase = SalePhase.Expired).copy(refunded = true)))
         assertEquals("Cancelled", SaleText.status(sale(phase = SalePhase.Cancelled)))
         assertEquals("Refunded in Square", SaleText.status(sale(phase = SalePhase.Cancelled).copy(refunded = true)))
+        assertEquals("Paid after the refund", SaleText.status(sale(phase = SalePhase.Paid).copy(refunded = true)), "a late payment after the Square refund")
         assertEquals("29:05", SaleText.clock(29 * 60 + 5))
     }
 

@@ -258,7 +258,7 @@ private fun StatusPill(sale: TillSale) {
 /** A sale full screen, for the customer to scan (AndFull); paid (PhonePaid) or not (PhoneUnpaid) when it ends. */
 @Composable
 private fun SaleScreen(sale: TillSale, location: String?, actions: TillActions) {
-    if (sale.phase == SalePhase.Paid) {
+    if (sale.phase == SalePhase.Paid && !sale.refunded) {
         // Back to watching after a few seconds, as the design's paid panel does.
         LaunchedEffect(sale.orderId) {
             delay(5_000)
@@ -344,6 +344,7 @@ private fun ColumnScope.Ended(sale: TillSale, actions: TillActions, paid: Boolea
         )
         Text("${SaleText.amount(sale)} · ${SaleText.xmr(sale)}", style = display(22, 0.0), textAlign = TextAlign.Center)
         val text = when {
+            paid && sale.refunded -> "${SaleText.xmr(sale)} arrived after the Square sale was refunded. Ring the sale up in Square again, or return the payment."
             paid -> "${SaleText.xmr(sale)} received. Back to watching in a moment."
             sale.refunded -> "The Square sale is refunded."
             sale.found == null -> "Another till took this sale: refund it in Square there if the customer isn't paying."

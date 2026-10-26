@@ -31,7 +31,8 @@ object SaleText {
         SalePhase.Partial -> "Part paid"
         SalePhase.Seen -> "Seen on the network"
         SalePhase.Confirming -> "Confirming"
-        SalePhase.Paid -> "Paid"
+        // A late payment, after the cashier refunded the sale.
+        SalePhase.Paid -> if (sale.refunded) "Paid after the refund" else "Paid"
         SalePhase.Expired -> if (sale.refunded) "Refunded in Square" else "No payment yet"
         SalePhase.Cancelled -> if (sale.refunded) "Refunded in Square" else "Cancelled"
         SalePhase.DoubleSpend -> "Payment reversed"
