@@ -65,7 +65,7 @@ monokular.square.sandbox=true
 
 In the Developer Console, on the application's **OAuth** page for
 **Sandbox**, set the redirect URL to
-`https://oceaneilonwy.github.io/monokular/square/debug/` (trailing slash and
+`https://monokular.monokulo.com/square/debug/` (trailing slash and
 all). Square only sends a sign-in back to https; that page
 ([site/square/debug/](site/square/debug/index.html)) hands it to the debug
 build's `monokular-debug://square`. `-Pmonokular.square.redirectUri=…` names

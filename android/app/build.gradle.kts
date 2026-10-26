@@ -22,8 +22,8 @@ android {
         buildConfigField("boolean", "SQUARE_SANDBOX", providers.gradleProperty("monokular.square.sandbox").getOrElse("false"))
         // Where Square sends the sign-in back, and where it comes back into
         // the app: the same App Link in a release build.
-        buildConfigField("String", "SQUARE_REDIRECT_URI", "\"https://monokular.app/square\"")
-        buildConfigField("String", "SQUARE_RETURN_URI", "\"https://monokular.app/square\"")
+        buildConfigField("String", "SQUARE_REDIRECT_URI", "\"https://monokular.monokulo.com/square\"")
+        buildConfigField("String", "SQUARE_RETURN_URI", "\"https://monokular.monokulo.com/square\"")
         buildConfigField("String", "SQUARE_BASE_URL", "\"\"")
     }
 
@@ -40,7 +40,7 @@ android {
             // the scheme; the stand-in Square sends it to the scheme itself.
             // -Pmonokular.square.redirectUri=… names another such page.
             val squareRedirect = providers.gradleProperty("monokular.square.redirectUri")
-                .getOrElse(if (squareBase.isEmpty()) "https://oceaneilonwy.github.io/monokular/square/debug/" else "monokular-debug://square")
+                .getOrElse(if (squareBase.isEmpty()) "https://monokular.monokulo.com/square/debug/" else "monokular-debug://square")
             buildConfigField("String", "SQUARE_REDIRECT_URI", "\"$squareRedirect\"")
             buildConfigField("String", "SQUARE_RETURN_URI", "\"monokular-debug://square\"")
         }

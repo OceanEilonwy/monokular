@@ -41,7 +41,7 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="monokular.app" android:path="/square" />
+                <data android:scheme="https" android:host="monokular.monokulo.com" android:path="/square" />
             </intent-filter>
             <!-- A connect link shared from a browser or a message. -->
             <intent-filter>

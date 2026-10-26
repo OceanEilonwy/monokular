@@ -81,7 +81,7 @@ refund of a sale that never pays.
 | Item | Value |
 | --- | --- |
 | Square application | One, owned by the project. Tills use it unless they're connected to a self-hosted Bell, which brings its own (§3) |
-| Sign-in | OAuth with PKCE on the device: no secret anywhere. Redirect to `https://monokular.app/square`, an App Link / universal link, so Square hands the code straight back to the app |
+| Sign-in | OAuth with PKCE on the device: no secret anywhere. Redirect to `https://monokular.monokulo.com/square`, an App Link / universal link, so Square hands the code straight back to the app |
 | Scopes | `PAYMENTS_READ` (find sales), `ORDERS_READ` (items for the receipt), `MERCHANT_PROFILE_READ` (pick the till's location), `PAYMENTS_WRITE` (refund a sale that never pays) |
 | Tokens | Kept in the Keystore / Keychain, never sent to monokulo. PKCE refresh tokens are single-use and expire (90 days at the time of writing; the spike confirms): the app refreshes on every use and asks for a new sign-in when one lapses |
 | Finding sales | `ListPayments` for the till's location since a saved cursor (`begin_time`, plus payment ids already handled) |
@@ -334,7 +334,7 @@ Bell ──Web Push (empty, encrypted)──▶ each till registered for that lo
   so a burst collapses into one.
 - **One Square application per Bell.** Square sends webhooks to the
   application a merchant signed in through, so a Bell and the tills that use
-  it share one. The project's Bell (`bell.monokular.app`) uses the project's
+  it share one. The project's Bell (`bell.monokulo.com`) uses the project's
   application. A self-hosted Bell is configured with its own application,
   and tills that connect to it sign in to Square through that one (the app
   asks the cashier to sign in again when they switch).
@@ -348,7 +348,7 @@ Bell ──Web Push (empty, encrypted)──▶ each till registered for that lo
 Registration, from the app:
 
 ```http
-POST https://bell.monokular.app/v1/register
+POST https://bell.monokulo.com/v1/register
 { "square_access_token": "…",           (used once to confirm the merchant with
                                           GET /v2/merchants/me, never stored)
   "location_id": "L…",
@@ -373,7 +373,7 @@ environment only: `MONOKULAR_BELL_SQUARE_WEBHOOK_KEY` (the webhook signature
 key) and `MONOKULAR_BELL_VAPID_KEY`.
 
 In the app: **Settings › Wake-ups**: "Timer only" (default), "Monokular Bell
-(bell.monokular.app)", or "My own Bell" with a URL. The app reads
+(bell.monokulo.com)", or "My own Bell" with a URL. The app reads
 `/v1/info` and, if the Square application differs, asks for a new Square
 sign-in.
 
@@ -436,7 +436,7 @@ kinds of endpoint all accept the same request:
 | Endpoint | Who runs it | Delivers to |
 | --- | --- | --- |
 | UnifiedPush distributor (ntfy, NextPush, …) | The user, or a public instance | Android app via its distributor |
-| `https://relay.monokular.app/v1/push/{handle}` | The project (standalone `monokulo-push-relay`) | APNs (iOS) or FCM (Android with Google services) |
+| `https://relay.monokulo.com/v1/push/{handle}` | The project (standalone `monokulo-push-relay`) | APNs (iOS) or FCM (Android with Google services) |
 | A browser's push service | Browser vendor | A future web app or admin page |
 
 So a sender only ever does "encrypt, sign, POST to endpoint". Whether that
@@ -554,7 +554,7 @@ POST /v1/register
   "token": "<APNs/FCM device or activity token>",
   "app": "monokular",                   // picks the bundle ID / FCM project
   "vapid_public_key": "BJ…" }           // the sender: a monokulo or a Bell
-→ 201 { "endpoint": "https://relay.monokular.app/v1/push/ph_7f3k…",
+→ 201 { "endpoint": "https://relay.monokulo.com/v1/push/ph_7f3k…",
         "expires_at": … }
 ```
 
@@ -963,8 +963,10 @@ no Bell, no Mac for Android.
   cashiers, or should the island say "Open for receipt code"?
 - iPadOS 26.1: the exact steps to put an app in Slide Over, for onboarding
   copy.
-- `monokular.app`: the domain for the Square sign-in redirect, the relay and
-  the Bell (connect codes are on each store's own host).
+- The Bell's and the relay's hosts: `bell.monokulo.com` and
+  `relay.monokulo.com` are placeholders. The Square sign-in redirect and the
+  App Links are on `monokular.monokulo.com` (this repo's GitHub Pages);
+  connect codes are on each store's own host.
 - Publishing `push` to crates.io so the Bell needn't use a git dependency.
 - App Store review of a crypto-payments companion; Google Play's "display
   over other apps" declaration and its foreground service type for a shift.

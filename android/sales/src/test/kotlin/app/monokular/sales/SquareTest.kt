@@ -46,7 +46,7 @@ class SquareTest {
     @BeforeTest
     fun start() {
         server.start()
-        config = SquareConfig("sq0idp-app", sandbox = false, redirectUri = "https://monokular.app/square", baseUrl = server.url("/").toString().trimEnd('/'))
+        config = SquareConfig("sq0idp-app", sandbox = false, redirectUri = "https://monokular.monokulo.com/square", baseUrl = server.url("/").toString().trimEnd('/'))
         auth = SquareAuth(OkHttpClient(), config, tokens) { now }
     }
 
@@ -67,7 +67,7 @@ class SquareTest {
         assertTrue(url.contains("client_id=sq0idp-app"), url)
         assertTrue(url.contains("code_challenge=${pkce.challenge}"), url)
         assertTrue(url.contains("scope=PAYMENTS_READ%20ORDERS_READ%20MERCHANT_PROFILE_READ%20PAYMENTS_WRITE"), url)
-        assertTrue(url.contains("redirect_uri=https%3A%2F%2Fmonokular.app%2Fsquare"), url)
+        assertTrue(url.contains("redirect_uri=https%3A%2F%2Fmonokular.monokulo.com%2Fsquare"), url)
         assertTrue(url.contains("session=false"), url)
 
         // Another attempt's state is refused before Square is asked.
