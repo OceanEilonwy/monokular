@@ -71,7 +71,6 @@ object Fixed {
     val Track = Color(0xFFE4DFD5)
     val Outline = Color(0xFF8C8577)
     /** Over another app, behind the floating panel. */
-    val Scrim = Color(0x731A1917)
 }
 
 val LightTokens = Tokens(
