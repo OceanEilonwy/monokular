@@ -10,6 +10,7 @@ import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
@@ -67,6 +68,7 @@ class SquareTest {
         assertTrue(url.contains("code_challenge=${pkce.challenge}"), url)
         assertTrue(url.contains("scope=PAYMENTS_READ%20ORDERS_READ%20MERCHANT_PROFILE_READ%20PAYMENTS_WRITE"), url)
         assertTrue(url.contains("redirect_uri=https%3A%2F%2Fmonokular.app%2Fsquare"), url)
+        assertTrue(url.contains("session=false"), url)
 
         // Another attempt's state is refused before Square is asked.
         assertFailsWith<SquareException> { auth.finish(pkce, "other", "code", null) }
@@ -75,6 +77,14 @@ class SquareTest {
         assertEquals("EAAA1", tokens.tokens?.accessToken)
         val sent = server.takeRequest().body!!.utf8()
         assertTrue(sent.contains(""""code_verifier":"${pkce.verifier}"""") && !sent.contains("secret"), sent)
+    }
+
+    @Test
+    fun `the sandbox's sign-in leaves out session, which it doesn't support`() {
+        val sandbox = SquareAuth(OkHttpClient(), config.copy(sandbox = true), tokens) { now }
+        val url = sandbox.authorizeUrl(Pkce.create())
+        assertFalse(url.contains("session="), url)
+        assertTrue(url.contains("code_challenge_method=S256"), url)
     }
 
     @Test

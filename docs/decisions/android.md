@@ -375,3 +375,23 @@ has every fix the app was waiting for; the interim code is gone.
     Nothing else in the 204 commits since 1d39b92 changes what the app
     sends or reads: the new `send-test-webhook` form is for a shop's
     server (`sk_`) only, and the rest are wording and recorded examples.
+
+## App: Square's sandbox (2026-10-26)
+
+58. **A debug build's Square sign-in comes back through an https page.**
+    Square sends a sign-in back only to an https redirect URL (http only to
+    localhost, in the sandbox), so `monokular-debug://square` can't be
+    registered. A debug build registers
+    `https://oceaneilonwy.github.io/monokular/square/debug/` (this repo's
+    `site/`, on GitHub Pages) as its redirect URL, which opens the debug
+    scheme with the same query; the token exchange sends the same https
+    URL, as Square checks. The page loads nothing else and the code is no
+    use without the PKCE verifier, which stays on the device. Pointed at
+    the stand-in Square, a debug build still uses the scheme directly.
+    `SQUARE_RETURN_URI` is what the app accepts the sign-in on; a release
+    build's is its App Link, the same as its redirect URL. Monokulo's own
+    pages were the alternative and are ruled out: Monokulo has no Square
+    code (`docs/design.md` §1).
+59. **The sandbox's sign-in leaves out `session=false`,** which Square's
+    sandbox doesn't support; production keeps it, so each sign-in is the
+    seller's own.

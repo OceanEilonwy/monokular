@@ -20,7 +20,10 @@ android {
         // placeholder once the Square application exists.
         buildConfigField("String", "SQUARE_APPLICATION_ID", "\"${providers.gradleProperty("monokular.square.applicationId").getOrElse("sq0idp-REPLACE-ME")}\"")
         buildConfigField("boolean", "SQUARE_SANDBOX", providers.gradleProperty("monokular.square.sandbox").getOrElse("false"))
+        // Where Square sends the sign-in back, and where it comes back into
+        // the app: the same App Link in a release build.
         buildConfigField("String", "SQUARE_REDIRECT_URI", "\"https://monokular.app/square\"")
+        buildConfigField("String", "SQUARE_RETURN_URI", "\"https://monokular.app/square\"")
         buildConfigField("String", "SQUARE_BASE_URL", "\"\"")
     }
 
@@ -29,9 +32,17 @@ android {
             applicationIdSuffix = ".debug"
             // A debug build can talk to a Monokulo and a stand-in Square on
             // the developer's machine (docs/decisions/android.md).
-            buildConfigField("String", "SQUARE_REDIRECT_URI", "\"monokular-debug://square\"")
             // -Pmonokular.square.baseUrl=http://10.0.2.2:8738 for tools/fake-square.
-            buildConfigField("String", "SQUARE_BASE_URL", "\"${providers.gradleProperty("monokular.square.baseUrl").getOrElse("")}\"")
+            val squareBase = providers.gradleProperty("monokular.square.baseUrl").getOrElse("")
+            buildConfigField("String", "SQUARE_BASE_URL", "\"$squareBase\"")
+            // The sign-in comes back on the debug scheme. Square only sends
+            // it to https, so it goes through site/square/debug/, which opens
+            // the scheme; the stand-in Square sends it to the scheme itself.
+            // -Pmonokular.square.redirectUri=… names another such page.
+            val squareRedirect = providers.gradleProperty("monokular.square.redirectUri")
+                .getOrElse(if (squareBase.isEmpty()) "https://oceaneilonwy.github.io/monokular/square/debug/" else "monokular-debug://square")
+            buildConfigField("String", "SQUARE_REDIRECT_URI", "\"$squareRedirect\"")
+            buildConfigField("String", "SQUARE_RETURN_URI", "\"monokular-debug://square\"")
         }
         release {
             isMinifyEnabled = true
