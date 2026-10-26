@@ -166,7 +166,7 @@ class Overlay(
             compose {
                 val s by state.collectAsStateWithLifecycle()
                 androidx.compose.runtime.SideEffect { frame.describe(Bubble.label(s.look)) }
-                BubbleFace(s.look, s.sale?.let { SaleText.amount(it) }, pillOnLeft = !frame.dockedLeft)
+                BubbleFace(s.look)
             }.apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS },
         )
         runCatching { wm.addView(frame, params) }.onSuccess { bubble = frame }
@@ -256,10 +256,6 @@ private class BubbleFrame(
     /** Which side the window's x is measured from. */
     private var fromLeft = params.gravity and Gravity.HORIZONTAL_GRAVITY_MASK == Gravity.START
 
-    /** The side it's docked to, which the amount stays away from: changes only when it snaps. */
-    var dockedLeft by mutableStateOf(fromLeft)
-        private set
-
     init {
         isClickable = true
         isFocusable = true
@@ -335,7 +331,6 @@ private class BubbleFrame(
                 params.gravity = Gravity.TOP or if (left) Gravity.START else Gravity.END
                 params.x = 0
                 fromLeft = left
-                dockedLeft = left
                 runCatching { wm.updateViewLayout(this@BubbleFrame, params) }
                 onMoved(left, params.y)
             }

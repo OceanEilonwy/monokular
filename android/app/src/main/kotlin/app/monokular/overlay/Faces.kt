@@ -27,8 +27,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -67,33 +69,15 @@ import kotlinx.coroutines.delay
 
 /**
  * The bubble (the design's Bubble part), in each [look]: faded and grey
- * with nothing to do, white with a pulse and the amount beside it for a
- * sale, green with a tick once it's paid. Its colours are the design's
- * whatever the theme: it sits over another app.
+ * with nothing to do, white with a pulse for a sale, green with a tick
+ * once it's paid. Its colours are the design's whatever the theme: it sits
+ * over another app.
  */
 @Composable
-fun BubbleFace(look: BubbleLook, amount: String?, pillOnLeft: Boolean, pulse: Boolean = true) = Box(
+fun BubbleFace(look: BubbleLook, pulse: Boolean = true) = Box(
     Modifier.padding(12.dp).clearAndSetSemantics {},
     contentAlignment = Alignment.Center,
-) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        if (look == BubbleLook.Lit && amount != null && pillOnLeft) Pill(amount, Modifier.zIndex(0f), toward = 8)
-        Circle(look, pulse, Modifier.zIndex(1f))
-        if (look == BubbleLook.Lit && amount != null && !pillOnLeft) Pill(amount, Modifier.zIndex(0f), toward = -8)
-    }
-}
-
-/** The amount beside the lit bubble, tucked [toward] dp under it. */
-@Composable
-private fun Pill(amount: String, modifier: Modifier, toward: Int) = Box(
-    modifier
-        .offset(x = toward.dp)
-        .height(24.dp)
-        .clip(CircleShape)
-        .background(Fixed.Ink)
-        .padding(start = if (toward > 0) 10.dp else 17.dp, end = if (toward > 0) 17.dp else 9.dp),
-    contentAlignment = Alignment.Center,
-) { Text(amount, color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.Bold) }
+) { Circle(look, pulse, Modifier) }
 
 @Composable
 private fun Circle(look: BubbleLook, pulse: Boolean, modifier: Modifier) {
@@ -140,6 +124,19 @@ fun SalePanel(
     onFullScreen: () -> Unit,
 ) {
     if (sale.phase == SalePhase.Paid) LaunchedEffect(sale.orderId) { delay(5_000); onMinimise() }
+    // No Surface gives the overlay's window a text colour: the panel sets its own.
+    CompositionLocalProvider(LocalContentColor provides mk.ink) { PanelBody(sale, place, wide, onMinimise, onCopy, onFullScreen) }
+}
+
+@Composable
+private fun PanelBody(
+    sale: TillSale,
+    place: String,
+    wide: Boolean,
+    onMinimise: () -> Unit,
+    onCopy: () -> Unit,
+    onFullScreen: () -> Unit,
+) {
     Column(
         Modifier.then(if (wide) Modifier.width(360.dp) else Modifier.fillMaxWidth())
             .shadow(16.dp, RoundedCornerShape(32.dp))
@@ -215,8 +212,8 @@ fun SalePanel(
 }
 
 /**
- * The panel's window on a phone: Square dimmed behind it (a tap there
- * minimises it), the lit bubble docked above the panel.
+ * The panel's window on a phone: Square left as it is behind it (a tap
+ * there minimises it), the lit bubble docked above the panel.
  */
 @Composable
 fun PhonePanel(
@@ -227,13 +224,13 @@ fun PhonePanel(
     onCopy: () -> Unit,
     onFullScreen: () -> Unit,
 ) = Box(
-    Modifier.fillMaxSize().background(Fixed.Scrim)
+    Modifier.fillMaxSize()
         .clickable(onClickLabel = "Minimise", indication = null, interactionSource = null, onClick = onMinimise),
 ) {
     Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp), horizontalAlignment = Alignment.End) {
         Spacer(Modifier.height(4.dp))
         Box(Modifier.clickable(onClickLabel = "Minimise", onClick = onMinimise).semantics { contentDescription = "Minimise" }) {
-            BubbleFace(look, SaleText.amount(sale), pillOnLeft = true)
+            BubbleFace(look)
         }
         Box(Modifier.clickable(indication = null, interactionSource = null) { }) {
             SalePanel(sale, place, wide = false, onMinimise, onCopy, onFullScreen)

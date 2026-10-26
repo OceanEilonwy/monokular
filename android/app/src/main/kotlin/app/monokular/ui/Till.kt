@@ -22,8 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -87,7 +86,10 @@ class TillActions(
     val onShowing: (String?) -> Unit,
     val onSettings: () -> Unit,
     val onOpen: (String) -> Unit,
-    val onClose: (String) -> Unit,
+    /** Leaves a sale's full screen: it stays live, on the bubble and in the shift's list. */
+    val onBack: (String) -> Unit,
+    /** Takes a sale off this till altogether, whatever happens to its order. */
+    val onCloseSale: (String) -> Unit,
     val onRefund: (String) -> Unit,
     val onCopy: (TillSale) -> Unit,
     val onCopyXmr: (TillSale) -> Unit,
@@ -200,37 +202,34 @@ private fun IdleScreen(status: TillStatus, sales: List<TillSale>, actions: TillA
     }
 }
 
-/** The sale's top app bar: Close, the sale and where it's from, and More. */
+/** The sale's top app bar: Back to the till, the sale and where it's from, and Settings. */
 @Composable
 private fun SaleBar(sale: TillSale, location: String?, actions: TillActions) = Row(
-    Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp),
+    Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 16.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(4.dp),
 ) {
-    RoundIconButton(MkIcons.Close, "Close", { actions.onClose(sale.orderId) }, iconSize = 16.dp)
+    RoundIconButton(MkIcons.Back, "Back to the till", { actions.onBack(sale.orderId) }, iconSize = 22.dp)
     Column(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }) {
         Text(SaleText.title(sale), fontSize = 20.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         Text(SaleText.place(sale, location), fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
-    var menu by remember { mutableStateOf(false) }
-    Box {
-        RoundIconButton(MkIcons.More, "More options", { menu = true }, iconSize = 22.dp)
-        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }, containerColor = mk.card) {
-            DropdownMenuItem(text = { Text("Copy the XMR amount") }, onClick = { menu = false; actions.onCopyXmr(sale) })
-            DropdownMenuItem(text = { Text("Settings") }, onClick = { menu = false; actions.onSettings() })
-        }
-    }
+    RoundIconButton(MkIcons.Settings, "Settings", actions.onSettings, filled = true, iconSize = 20.dp)
 }
 
-/** The amount, and the XMR to pay under it. */
+/** The amount, and the XMR to pay under it, which copies itself when tapped ([onCopyXmr]). */
 @Composable
-private fun Amount(sale: TillSale, size: Int = 56, start: Boolean = false) = Column(
+private fun Amount(sale: TillSale, onCopyXmr: (TillSale) -> Unit, size: Int = 56, start: Boolean = false) = Column(
     horizontalAlignment = if (start) Alignment.Start else Alignment.CenterHorizontally,
-    modifier = Modifier.semantics(mergeDescendants = true) {},
 ) {
     val align = if (start) TextAlign.Start else TextAlign.Center
     Text(SaleText.amount(sale), style = display(size, -1.0), textAlign = align)
-    Text(SaleText.xmr(sale), fontSize = 18.sp, color = mk.muted, textAlign = align)
+    Text(
+        SaleText.xmr(sale), fontSize = 18.sp, color = mk.muted, textAlign = align,
+        modifier = Modifier.clip(RoundedCornerShape(8.dp))
+            .clickable(onClickLabel = "Copy the XMR amount") { onCopyXmr(sale) }
+            .padding(horizontal = 6.dp, vertical = 2.dp),
+    )
 }
 
 /** "Waiting for payment" with the loading mark, on its pill. */
@@ -262,7 +261,7 @@ private fun SaleScreen(sale: TillSale, location: String?, actions: TillActions) 
         // Back to watching after a few seconds, as the design's paid panel does.
         LaunchedEffect(sale.orderId) {
             delay(5_000)
-            actions.onClose(sale.orderId)
+            actions.onBack(sale.orderId)
         }
     }
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
@@ -284,7 +283,7 @@ private fun SaleScreen(sale: TillSale, location: String?, actions: TillActions) 
                             verticalArrangement = Arrangement.spacedBy(24.dp),
                             horizontalAlignment = Alignment.Start,
                         ) {
-                            Amount(sale, start = true)
+                            Amount(sale, actions.onCopyXmr, start = true)
                             StatusPill(sale)
                             ProgressSegments(SaleText.step(sale.phase), Modifier.fillMaxWidth())
                             Buttons(sale, actions)
@@ -296,7 +295,7 @@ private fun SaleScreen(sale: TillSale, location: String?, actions: TillActions) 
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.spacedBy(20.dp),
                         ) {
-                            Amount(sale)
+                            Amount(sale, actions.onCopyXmr)
                             Code(sale, min(min(this@BoxWithConstraints.maxWidth - 40.dp, 320.dp), maxOf(this@BoxWithConstraints.maxHeight - 360.dp, 200.dp)))
                             StatusPill(sale)
                         }
@@ -318,9 +317,39 @@ private fun Code(sale: TillSale, side: Dp) = QrCode(
 )
 
 @Composable
-private fun Buttons(sale: TillSale, actions: TillActions) = Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-    OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), height = 56.dp)
-    actions.onBackToSquare?.let { PrimaryButton("Back to Square", it, Modifier.weight(1f), height = 56.dp, size = 16) }
+private fun Buttons(sale: TillSale, actions: TillActions) = Column(
+    Modifier.fillMaxWidth(),
+    horizontalAlignment = Alignment.CenterHorizontally,
+    verticalArrangement = Arrangement.spacedBy(4.dp),
+) {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), height = 56.dp)
+        actions.onBackToSquare?.let { PrimaryButton("Back to Square", it, Modifier.weight(1f), height = 56.dp, size = 16) }
+    }
+    CloseSale(sale, actions)
+}
+
+/** "Close sale", after asking: the sale leaves this till, though its order carries on in Monokulo. */
+@Composable
+private fun CloseSale(sale: TillSale, actions: TillActions) {
+    var asking by remember { mutableStateOf(false) }
+    LinkButton("Close sale", { asking = true }, size = 16, color = mk.muted)
+    if (!asking) return
+    AlertDialog(
+        onDismissRequest = { asking = false },
+        containerColor = mk.card,
+        titleContentColor = mk.ink,
+        textContentColor = mk.muted,
+        title = { Text("Close this sale?") },
+        text = {
+            Text(
+                "Monokular stops showing it and takes it off this shift. If the customer pays anyway, Monokulo still records the payment." +
+                    if (sale.found != null && !sale.refunded) " Square has already recorded this sale as Monero: refund it there if the customer isn't paying." else "",
+            )
+        },
+        confirmButton = { LinkButton("Close sale", { asking = false; actions.onCloseSale(sale.orderId) }, color = mk.danger) },
+        dismissButton = { LinkButton("Keep it", { asking = false }) },
+    )
 }
 
 /** Paid, or ended without the money. */
@@ -357,9 +386,9 @@ private fun ColumnScope.Ended(sale: TillSale, actions: TillActions, paid: Boolea
     Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp).widthIn(max = 560.dp).fillMaxWidth().align(Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         if (!paid && sale.found != null && !sale.refunded) {
             PrimaryButton("Refund the Square sale", { actions.onRefund(sale.orderId) }, Modifier.fillMaxWidth())
-            OutlineButton("Done", { actions.onClose(sale.orderId) }, Modifier.fillMaxWidth(), height = 52.dp, size = 17)
+            OutlineButton("Done", { actions.onBack(sale.orderId) }, Modifier.fillMaxWidth(), height = 52.dp, size = 17)
         } else {
-            PrimaryButton("Done", { actions.onClose(sale.orderId) }, Modifier.fillMaxWidth())
+            PrimaryButton("Done", { actions.onBack(sale.orderId) }, Modifier.fillMaxWidth())
         }
     }
 }

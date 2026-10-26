@@ -267,6 +267,12 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (focus.value == orderId) focus.value = null
     }
 
+    /** The cashier closed the sale itself: off the screen, the bubble and the shift's list. */
+    fun closeSale(orderId: String) {
+        close(orderId)
+        graph.runner.dismiss(orderId)
+    }
+
     /** What the till screen shows now, so it stays there through Paid. */
     fun showing(orderId: String?) {
         if (orderId != null) focus.value = orderId

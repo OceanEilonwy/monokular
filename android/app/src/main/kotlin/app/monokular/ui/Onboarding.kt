@@ -506,11 +506,11 @@ fun FloatScreen(allowed: Boolean, onOpenSettings: () -> Unit, onNotificationsOnl
         horizontalArrangement = Arrangement.SpaceAround,
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            BubbleFace(BubbleLook.Idle, null, pillOnLeft = true, pulse = false)
+            BubbleFace(BubbleLook.Idle, pulse = false)
             Text("No sale", fontSize = 13.sp, color = Fixed.Muted)
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            BubbleFace(BubbleLook.Lit, Amounts.fiat("24.50", "USD"), pillOnLeft = true, pulse = true)
+            BubbleFace(BubbleLook.Lit, pulse = true)
             Text("New sale", fontSize = 13.sp, color = Fixed.Muted)
         }
     }
@@ -621,5 +621,5 @@ private fun PhoneTop(bubble: Boolean, modifier: Modifier) = Box(
             }
         }
     }
-    if (bubble) Box(Modifier.align(Alignment.TopEnd).padding(top = 64.dp)) { BubbleFace(BubbleLook.Idle, null, pillOnLeft = true, pulse = false) }
+    if (bubble) Box(Modifier.align(Alignment.TopEnd).padding(top = 64.dp)) { BubbleFace(BubbleLook.Idle, pulse = false) }
 }
