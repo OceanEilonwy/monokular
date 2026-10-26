@@ -224,7 +224,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun isSquareRedirect(uri: Uri): Boolean {
-        val expected = BuildConfig.SQUARE_REDIRECT_URI.toUri()
+        val expected = BuildConfig.SQUARE_RETURN_URI.toUri()
         return uri.scheme == expected.scheme && uri.host == expected.host && uri.path.orEmpty() == expected.path.orEmpty()
     }
 

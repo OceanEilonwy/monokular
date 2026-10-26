@@ -56,7 +56,8 @@ class SquareAuth(
     fun authorizeUrl(pkce: Pkce): String = "${config.connectBase}/oauth2/authorize".toHttpUrl().newBuilder()
         .addQueryParameter("client_id", config.applicationId)
         .addQueryParameter("scope", SquareConfig.SCOPES.joinToString(" "))
-        .addQueryParameter("session", "false")
+        // Signs the seller in afresh each time; the sandbox refuses it.
+        .apply { if (!config.sandbox) addQueryParameter("session", "false") }
         .addQueryParameter("state", pkce.state)
         .addQueryParameter("code_challenge", pkce.challenge)
         .addQueryParameter("code_challenge_method", "S256")

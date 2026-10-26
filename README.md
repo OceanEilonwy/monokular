@@ -51,7 +51,29 @@ cargo install cargo-ndk --version 4.1.2 --locked       # once
 ```
 
 The Square application id is a build property:
-`-Pmonokular.square.applicationId=sq0idp-…` (a placeholder otherwise).
+`-Pmonokular.square.applicationId=sq0idp-…` (a placeholder otherwise). It's
+public, so `~/.gradle/gradle.properties` is a good home for it; the
+application's secret is never used (the till signs in with PKCE).
+
+### Signing a debug build in to Square's sandbox
+
+```properties
+# ~/.gradle/gradle.properties
+monokular.square.applicationId=sandbox-sq0idb-…
+monokular.square.sandbox=true
+```
+
+In the Developer Console, on the application's **OAuth** page for
+**Sandbox**, set the redirect URL to
+`https://monokular.monokulo.com/square/debug/` (trailing slash and
+all). Square only sends a sign-in back to https; that page
+([site/square/debug/](site/square/debug/index.html)) hands it to the debug
+build's `monokular-debug://square`. `-Pmonokular.square.redirectUri=…` names
+another such page. Square's sandbox sign-in only works with the test
+seller's **Sandbox Square Dashboard** already open in the same browser:
+open it in Chrome on the phone (from the console's *Sandbox test accounts*)
+before tapping "Sign in to Square". The sandbox has no Point of Sale app, so
+it tests the sign-in and the API, not a real "Other: Monero" tender.
 
 | Module | What it is |
 | --- | --- |
