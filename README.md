@@ -75,6 +75,16 @@ open it in Chrome on the phone (from the console's *Sandbox test accounts*)
 before tapping "Sign in to Square". The sandbox has no Point of Sale app, so
 it tests the sign-in and the API, not a real "Other: Monero" tender.
 
+Ring up sandbox sales as the till would find them (an order paid by an
+`EXTERNAL` "Monero" payment) on a local page,
+[tools/square-sandbox](tools/square-sandbox/src/main.rs), using the
+Developer Console's sandbox access token for the same test seller the till
+signed in as. It lists the location's latest payments and refunds them too.
+
+```sh
+cargo run -p square-sandbox   # http://127.0.0.1:8739, then enter the token on the page
+```
+
 | Module | What it is |
 | --- | --- |
 | `android/core` | Pure Kotlin, no Android: connect codes, the Monokulo client, sale events. |
