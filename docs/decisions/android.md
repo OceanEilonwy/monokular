@@ -358,3 +358,20 @@ has every fix the app was waiting for; the interim code is gone.
     Orbot a privacy-minded merchant already runs.
 56. **The UnifiedPush module is gone.** Nothing called it: Monokulo has
     no push targets yet (decision 28). It comes back, wired up, with them.
+
+## App: following Monokulo dc7f085 (2026-10-26)
+
+57. **An expired sale is followed until Monokulo says it's final.**
+    Monokulo now keeps watching an expired or cancelled order for a
+    payment that arrives late, which turns it paid, and says so with
+    `is_final: false` meanwhile. Each till sale keeps the `is_final` it
+    last read (`settled`); after the stream reopens, the till reads again
+    every sale that isn't paid or settled, so a late payment made while
+    the stream was down still reaches the screen. A `sale.paid` for an
+    expired sale moves it to paid as any other event does. A sale the
+    cashier already refunded in Square that is then paid says "Paid after
+    the refund" and stays on screen, asking the cashier to ring it up
+    again or return the payment, instead of going back to watching.
+    Nothing else in the 204 commits since 1d39b92 changes what the app
+    sends or reads: the new `send-test-webhook` form is for a shop's
+    server (`sk_`) only, and the rest are wording and recorded examples.

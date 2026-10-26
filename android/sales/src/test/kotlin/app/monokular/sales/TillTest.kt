@@ -248,6 +248,24 @@ class TillTest {
     }
 
     @Test
+    fun `an expired sale stays open while Monokulo watches it, and a late payment pays it, refunded or not`() = runBlocking {
+        val source = FakeSource(listOf(sale))
+        val till = Till(source, monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Expired, settled = false)
+        assertTrue(till.sales.value.sales.single().open, "Monokulo still watches it for a late payment")
+        till.refund("ord_1")
+        till.onEvent(SaleEvent("sale.paid", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "Back", 2))
+        val shown = till.sales.value.sales.single()
+        assertEquals(SalePhase.Paid, shown.phase)
+        assertTrue(shown.refunded, "the till still knows the Square sale was refunded")
+        assertFalse(shown.open)
+        till.onStatus("ord_1", SalePhase.Expired, settled = true)
+        assertFalse(till.sales.value.sales.single().open, "nothing more will happen once Monokulo says it's final")
+    }
+
+    @Test
     fun `no rate or a busy engine says so at the till, and the next check asks again with the same key`() = runBlocking {
         val source = FakeSource(listOf(sale))
         val till = Till(source, monokulo, connection)

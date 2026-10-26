@@ -39,7 +39,16 @@ data class TillSale(
     val deviceName: String? = null,
     /** Where to read the order again: its `self` link, or its sale event's `mk:order`. */
     val url: String? = null,
-)
+    /**
+     * Monokulo said nothing more will happen to the order (`is_final`). An
+     * expired or cancelled order isn't, while Monokulo still watches it for
+     * a late payment that turns it paid.
+     */
+    val settled: Boolean = false,
+) {
+    /** Worth reading again: Monokulo may still move it on. */
+    val open: Boolean get() = !settled && phase != SalePhase.Paid
+}
 
 /** What the till shows: its sales, newest first, and the last thing that went wrong. */
 data class TillState(
@@ -128,9 +137,9 @@ class Till(
         }
     }
 
-    /** An order's phase, from its status (after the stream reconnects). */
-    fun onStatus(orderId: String, phase: SalePhase) {
-        state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(phase = phase) else it }) }
+    /** An order's phase, from its status, and whether it's [TillSale.settled] (after the stream reconnects). */
+    fun onStatus(orderId: String, phase: SalePhase, settled: Boolean = false) {
+        state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(phase = phase, settled = settled) else it }) }
     }
 
     /** Refunds the POS sale of an order that was never paid. */
@@ -162,6 +171,7 @@ class Till(
             code = code,
             phase = known ?: order.phase,
             url = order.url,
+            settled = known == null && order.isFinal,
             expiresAt = order.expiresAt,
             xmr = PaymentUri.xmr(order.piconero),
             address = order.address,
