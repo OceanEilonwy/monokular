@@ -44,7 +44,8 @@ code { font-size: 0.85em; color: var(--muted); word-break: break-all; }
 .wide { overflow-x: auto; }
 "#;
 
-pub fn index(page: &Index) -> Markup {
+/// The page around [body], with what just happened or went wrong.
+fn layout(notice: Option<&str>, error: Option<&str>, body: Markup) -> Markup {
     html! {
         (DOCTYPE)
         html lang="en" {
@@ -57,33 +58,71 @@ pub fn index(page: &Index) -> Markup {
             body { main {
                 h1 { "Square sandbox till" }
                 p.lede { "Rings up sales in Square's sandbox the way a cashier's \"Other: Monero\" tap would, for a Monokular till signed in as the same test seller." }
-                @if let Some(notice) = page.notice { p.notice role="status" { (notice) } }
-                @if let Some(error) = page.error { p.error role="alert" { (error) } }
-                @if page.locations.is_empty() && page.error.is_none() {
-                    p.error role="alert" { "The test seller has no active location." }
-                }
-                @if page.locations.len() > 1 {
-                    section {
-                        form.inline method="get" action="/" {
-                            div {
-                                label for="location" { "Location" }
-                                select #location name="location" {
-                                    @for l in page.locations {
-                                        option value=(l.id) selected[page.location.is_some_and(|c| c.id == l.id)] { (l.name) " (" (l.currency) ")" }
-                                    }
-                                }
-                            }
-                            button type="submit" { "Show" }
-                        }
-                    }
-                }
-                @if let Some(location) = page.location {
-                    (sale_form(location))
-                    (payments(location, page.payments))
-                }
+                @if let Some(notice) = notice { p.notice role="status" { (notice) } }
+                @if let Some(error) = error { p.error role="alert" { (error) } }
+                (body)
             } }
         }
     }
+}
+
+/// Before there's a token: where to enter one.
+pub fn token(notice: Option<&str>, error: Option<&str>) -> Markup {
+    layout(
+        notice,
+        error,
+        html! {
+            section {
+                h2 { "Sandbox access token" }
+                p.lede {
+                    "From the Square Developer Console: your application, then Credentials, then Sandbox. "
+                    "Use the test seller the till signed in as. It's kept in this program's memory only, "
+                    "until you forget it or stop the program."
+                }
+                form.inline method="post" action="/token" {
+                    div {
+                        label for="token" { "Token" }
+                        input #token name="token" type="password" autocomplete="off" spellcheck="false" required placeholder="EAAA…";
+                    }
+                    button.primary type="submit" { "Use it" }
+                }
+            }
+        },
+    )
+}
+
+pub fn index(page: &Index) -> Markup {
+    layout(
+        page.notice,
+        page.error,
+        html! {
+            @if page.locations.is_empty() && page.error.is_none() {
+                p.error role="alert" { "The test seller has no active location." }
+            }
+            @if page.locations.len() > 1 {
+                section {
+                    form.inline method="get" action="/" {
+                        div {
+                            label for="location" { "Location" }
+                            select #location name="location" {
+                                @for l in page.locations {
+                                    option value=(l.id) selected[page.location.is_some_and(|c| c.id == l.id)] { (l.name) " (" (l.currency) ")" }
+                                }
+                            }
+                        }
+                        button type="submit" { "Show" }
+                    }
+                }
+            }
+            @if let Some(location) = page.location {
+                (sale_form(location))
+                (payments(location, page.payments))
+            }
+            form method="post" action="/token/forget" {
+                button type="submit" { "Forget token" }
+            }
+        },
+    )
 }
 
 fn sale_form(location: &Location) -> Markup {

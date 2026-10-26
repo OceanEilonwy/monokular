@@ -5,12 +5,14 @@
 //! completed `EXTERNAL` payment whose source is the tender's name.
 //!
 //! ```sh
-//! SQUARE_SANDBOX_TOKEN=EAAA… cargo run -p square-sandbox   # then open http://127.0.0.1:8739
+//! cargo run -p square-sandbox   # then open http://127.0.0.1:8739
 //! ```
 //!
-//! `SQUARE_SANDBOX_TOKEN` is the sandbox access token from the Developer
-//! Console's Credentials page; `SQUARE_SANDBOX_PORT` picks the port. It
-//! listens on 127.0.0.1 only.
+//! The page asks for the sandbox access token (the Developer Console's
+//! Credentials page) and keeps it in memory only; `SQUARE_SANDBOX_TOKEN`
+//! gives it at start instead. `SQUARE_SANDBOX_PORT` picks the port. It
+//! listens on 127.0.0.1 only, and answers only requests for that address
+//! and forms posted from its own page.
 
 mod pages;
 mod square;
@@ -18,7 +20,10 @@ mod square;
 use std::sync::Arc;
 
 use axum::Router;
-use axum::extract::{Form, Path, Query, State};
+use axum::extract::{Form, Path, Query, Request, State};
+use axum::http::header::{HOST, ORIGIN};
+use axum::http::{Method, StatusCode};
+use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Redirect, Response};
 use axum::routing::{get, post};
 use maud::Markup;
@@ -80,16 +85,51 @@ mod money {
 
 struct App {
     square: Square,
+    /// The port it listens on, which its own pages' requests name.
+    port: u16,
 }
 
 type Shared = State<Arc<App>>;
 
 fn router(app: App) -> Router {
+    let app = Arc::new(app);
     Router::new()
         .route("/", get(index))
+        .route("/token", post(token))
+        .route("/token/forget", post(forget))
         .route("/sales", post(sale))
         .route("/payments/{id}/refund", post(refund))
-        .with_state(Arc::new(app))
+        .layer(middleware::from_fn_with_state(app.clone(), same_site))
+        .with_state(app)
+}
+
+/// Only requests for this machine's address, so another site's name
+/// pointed at 127.0.0.1 can't read the page, and only forms posted from
+/// the page itself, so another site can't replace the token or ring up a
+/// sale. A client that names no origin (curl) is taken at its word.
+async fn same_site(State(app): Shared, request: Request, next: Next) -> Response {
+    match refusal(&request, app.port) {
+        Some(why) => (StatusCode::FORBIDDEN, why).into_response(),
+        None => next.run(request).await,
+    }
+}
+
+/// Why [same_site] turns [request] away, if it does.
+fn refusal(request: &Request, port: u16) -> Option<&'static str> {
+    let header = |name: &str| request.headers().get(name).and_then(|v| v.to_str().ok());
+    let host = header(HOST.as_str()).unwrap_or_default();
+    let ours = [format!("127.0.0.1:{port}"), format!("localhost:{port}")];
+    if !ours.iter().any(|o| o == host) {
+        return Some("Open this page at http://127.0.0.1 with its port.");
+    }
+    if request.method() == Method::GET {
+        return None;
+    }
+    let from_here = match header(ORIGIN.as_str()) {
+        Some(origin) => origin == format!("http://{host}"),
+        None => header("sec-fetch-site").is_none_or(|site| site == "same-origin" || site == "none"),
+    };
+    (!from_here).then_some("Only this page's own forms may change anything.")
 }
 
 #[derive(Deserialize)]
@@ -100,6 +140,9 @@ struct Shown {
 }
 
 async fn index(State(app): Shared, Query(shown): Query<Shown>) -> Markup {
+    if !app.square.has_token() {
+        return pages::token(shown.notice.as_deref(), shown.error.as_deref());
+    }
     let mut error = shown.error;
     let locations = app.square.locations().await.unwrap_or_else(|e| {
         error.get_or_insert(e.to_string());
@@ -132,8 +175,11 @@ fn back(location: &str, said: Result<String, String>) -> Response {
         Ok(notice) => ("notice", notice),
         Err(error) => ("error", error),
     };
-    let query =
-        serde_urlencoded::to_string([("location", location), (key, text)]).unwrap_or_default();
+    let query = match location {
+        "" => serde_urlencoded::to_string([(key, text)]),
+        location => serde_urlencoded::to_string([("location", location), (key, text)]),
+    }
+    .unwrap_or_default();
     Redirect::to(&format!("/?{query}")).into_response()
 }
 
@@ -223,6 +269,27 @@ async fn sale(State(app): Shared, Form(fields): Form<Vec<(String, String)>>) -> 
 }
 
 #[derive(Deserialize)]
+struct TokenForm {
+    token: String,
+}
+
+async fn token(State(app): Shared, Form(form): Form<TokenForm>) -> Response {
+    let said = match form.token.trim() {
+        "" => Err("Enter the token.".to_owned()),
+        token => match app.square.use_token(token.to_owned()).await {
+            Ok(()) => Ok("Signed in to the sandbox.".to_owned()),
+            Err(e) => Err(format!("That token didn't work. {e}")),
+        },
+    };
+    back("", said)
+}
+
+async fn forget(State(app): Shared) -> Response {
+    app.square.set_token(None);
+    back("", Ok("Forgot the token.".to_owned()))
+}
+
+#[derive(Deserialize)]
 struct RefundForm {
     location: String,
 }
@@ -254,12 +321,9 @@ async fn refund(
 
 #[tokio::main]
 async fn main() {
-    let Ok(token) = std::env::var("SQUARE_SANDBOX_TOKEN") else {
-        eprintln!(
-            "Set SQUARE_SANDBOX_TOKEN to the sandbox access token from the Developer Console's Credentials page."
-        );
-        std::process::exit(2);
-    };
+    let token = std::env::var("SQUARE_SANDBOX_TOKEN")
+        .ok()
+        .filter(|t| !t.trim().is_empty());
     let port: u16 = match std::env::var("SQUARE_SANDBOX_PORT") {
         Ok(port) => port.parse().unwrap_or_else(|_| {
             eprintln!("SQUARE_SANDBOX_PORT must be a port number, not {port:?}.");
@@ -276,6 +340,7 @@ async fn main() {
     println!("Square sandbox till on http://127.0.0.1:{port}");
     let app = router(App {
         square: Square::new(SANDBOX, token),
+        port,
     });
     if let Err(e) = axum::serve(listener, app).await {
         eprintln!("The server stopped: {e}");
@@ -399,11 +464,13 @@ mod tests {
         (base, seen)
     }
 
-    async fn serve(base: String) -> String {
+    async fn serve(base: String, token: Option<&str>) -> String {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let url = format!("http://{}", listener.local_addr().unwrap());
+        let port = listener.local_addr().unwrap().port();
+        let url = format!("http://127.0.0.1:{port}");
         let app = router(App {
-            square: Square::new(base, "EAAA-test"),
+            square: Square::new(base, token.map(str::to_owned)),
+            port,
         });
         tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
         url
@@ -412,7 +479,7 @@ mod tests {
     #[tokio::test]
     async fn ringing_up_a_sale_over_http_makes_an_order_and_pays_it_with_the_named_other_tender() {
         let (square, seen) = stand_in().await;
-        let page = serve(square).await;
+        let page = serve(square, Some("EAAA-test")).await;
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()
@@ -476,7 +543,7 @@ mod tests {
     #[tokio::test]
     async fn a_refund_of_something_that_isn_t_a_payment_id_never_reaches_square_over_http() {
         let (square, seen) = stand_in().await;
-        let page = serve(square).await;
+        let page = serve(square, Some("EAAA-test")).await;
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .build()

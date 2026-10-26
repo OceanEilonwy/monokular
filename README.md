@@ -82,7 +82,7 @@ Developer Console's sandbox access token for the same test seller the till
 signed in as. It lists the location's latest payments and refunds them too.
 
 ```sh
-SQUARE_SANDBOX_TOKEN=EAAA… cargo run -p square-sandbox   # http://127.0.0.1:8739
+cargo run -p square-sandbox   # http://127.0.0.1:8739, then enter the token on the page
 ```
 
 | Module | What it is |

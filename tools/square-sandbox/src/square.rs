@@ -3,6 +3,7 @@
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
+use std::sync::RwLock;
 
 /// The API version every request asks for, as the till's (`SquareConfig.API_VERSION`).
 const VERSION: &str = "2026-09-16";
@@ -11,7 +12,8 @@ const VERSION: &str = "2026-09-16";
 pub struct Square {
     http: reqwest::Client,
     base: String,
-    token: String,
+    /// The sandbox access token, in memory only: from the environment or the page.
+    token: RwLock<Option<String>>,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -94,20 +96,53 @@ struct ErrorDetail {
 }
 
 impl Square {
-    pub fn new(base: impl Into<String>, token: impl Into<String>) -> Self {
+    pub fn new(base: impl Into<String>, token: Option<String>) -> Self {
         Square {
             http: reqwest::Client::new(),
             base: base.into(),
-            token: token.into(),
+            token: RwLock::new(token),
         }
+    }
+
+    pub fn has_token(&self) -> bool {
+        self.token
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_some()
+    }
+
+    /// Uses [token] from now on if Square takes it, else keeps the one before.
+    pub async fn use_token(&self, token: String) -> Result<(), SquareError> {
+        let before = self.set_token(Some(token));
+        match self.locations().await {
+            Ok(_) => Ok(()),
+            Err(e) => {
+                self.set_token(before);
+                Err(e)
+            }
+        }
+    }
+
+    /// Replaces the token, returning the one before.
+    pub fn set_token(&self, token: Option<String>) -> Option<String> {
+        std::mem::replace(
+            &mut *self.token.write().unwrap_or_else(|e| e.into_inner()),
+            token,
+        )
     }
 
     async fn send<T: DeserializeOwned>(
         &self,
         request: reqwest::RequestBuilder,
     ) -> Result<T, SquareError> {
+        let token = self
+            .token
+            .read()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+            .ok_or_else(|| SquareError("Enter the sandbox access token first.".into()))?;
         let response = request
-            .bearer_auth(&self.token)
+            .bearer_auth(token)
             .header("Square-Version", VERSION)
             .send()
             .await
