@@ -166,7 +166,8 @@ wins; nothing here changes what goes over the wire.
     the bubble is about: the newest still waiting, or the one just paid
     while it shows as paid (5 s), then the next one waiting. Android 12+
     lets overlays cover neither the status bar nor the navigation bar, so
-    the scrim stops short of them.
+    the scrim stops short of them. The till tweaks (65, 66, 74, 75) take
+    the scrim away and give the panel its grabber and its order page.
 37. **The notification follows the mockups**: a progress style with four
     segments (Waiting, Seen, Confirming, Paid), "Show code" and "Full
     screen" while waiting (AndSale), "Show code" and "Copy address" once
@@ -175,7 +176,8 @@ wins; nothing here changes what goes over the wire.
     draws its own chip and can't put labels under the segments; the text
     says where the payment is instead. It's private on the lock screen,
     where a public version shows only the amount. A heads-up comes once
-    per sale, never again when an older sale comes back to the top.
+    per sale, never again when an older sale comes back to the top. The
+    chip's text is gone since 68, and 78 has the notification's words now.
 38. **"Show code" goes through a tiny activity** (`ShowCodeActivity`)
     that opens the panel or the app and finishes: a service action would
     leave the notification shade open over the panel, and starting the
@@ -210,7 +212,10 @@ wins; nothing here changes what goes over the wire.
     opens Square Point of Sale (`com.squareup`) when it's installed, else
     steps back to whatever was behind Monokular. The overflow menu has
     "Copy the XMR amount" and Settings; the mockup doesn't say what it
-    holds.
+    holds. Replaced by the till tweaks: the shift (60, 64, 72), one sale
+    screen by standing (70), the close sheet (62) and `TillNav` (80); the
+    overflow menu is gone (a Settings cog, and the XMR amount copies when
+    tapped).
 43. **PhoneUnpaid's "Show a new code" isn't built.** A new code for the
     same Square sale needs a second order for one Square payment, which
     the idempotency key (decision 14) exists to prevent; the cashier
@@ -583,3 +588,139 @@ pages, the enlarged code, the status bar chip), with the owner away.
     the app being killed rather than being "simply absent"; and the shift
     starts when the cashier turns watching on, not each time the service
     starts (64).
+
+Made while the two streams were built and merged (the overlay, order
+page, enlarged code and chip; the shift, sale screen, close sheet and
+detail pages), recorded by the developers and folded in by the lead.
+
+74. **The panel's face follows the sale's standing.** Live: the code and
+    the ring row. Paid, of any kind: the green tick, `SaleText.status` (so
+    a late one says "Paid after you closed it"), "0.31684 XMR received",
+    Done, and it lowers after five seconds. Anything else, where the code
+    was: a clock on `warnGround` (expired, cancelled, closed here), a
+    warning on `dangerGround` for a reversed payment ("Payment reversed ·
+    don't hand it over"), the refund arrow on `chip` for a refunded one
+    ("Refunded in Square", "Nothing more to do."), the line "Open the shift
+    to refund it in Square." or "Refund it in Square on Back till." (or "on
+    the till that took it" with no device name), and one button, "Open the
+    shift". The lit bubble draws the sale's phase ring (track, the orange
+    arc a quarter a step, the ink pupil) in place of the loading mark, in
+    its own window and docked above the panel; setup's previews keep the
+    Waiting look. The panel's XMR line copies the amount when tapped, like
+    the sale screen's; the enlarged code's doesn't, since a tap anywhere
+    there shrinks it.
+75. **The grabber's rule and its size** (adds to 65). `Panel.lowers(drag,
+    height, velocity, fling)`: the panel lowers once dragged past a quarter
+    of its height, or flung down at 800 dp/s or more
+    (`Panel.FLING_DP_PER_S`); short of that it springs back (a snap under
+    "Remove animations"). The phone panel moves with `Modifier.offset`; the
+    tablet's floating one fades. The grabber measures 80 × 48 dp itself,
+    the pill centred in it, and the card's top padding and the header's gap
+    are gone, so the header starts 48 dp from the card's top: 12 dp lower
+    than drawn, the price of a target a finger can't miss into the header
+    row, which opens the shift and takes the cashier out of Square. The
+    tap beside the panel lowers it through a pointer input, not a
+    `clickable`, so TalkBack hears exactly two "Lower to the bubble"
+    buttons: the docked bubble and the grabber.
+76. **The order page's words and when it resets.** The panel's order page
+    goes back to the code whenever the panel lowers, the bubble's sale
+    changes, the sale stops being live or it has no receipt; on a tablet it
+    shows inside the 360 dp card, at most 640 dp tall. Its subtitle leaves
+    out "Square receipt …" when the sale has no Square reference, and its
+    time is the receipt's issue time. Tip and Discount rows come from the
+    receipt's extensions (`tip.amount`, `discount.amount`, as
+    `SquareReceipts` writes them), the discount with a real minus (U+2212);
+    the subtotal is the sum of the line totals. Offered no receipt (which
+    shouldn't happen: the panel and the sale don't show the order line
+    without one) it says "What was bought stays on the till that rang it
+    up." The detail pages list every line with no cap and no link to the
+    order page, whose bottom bar is "Show the code" and only makes sense
+    live; the sale screen caps at four (three and "+N more", decision 66).
+77. **The enlarged code leaves by itself.** `CodeScreen` calls back once
+    the sale stops being live (paid, expired, closed), so `Screen.Code`
+    never shows a dead code and the sale screen shows the matching page;
+    `AppViewModel.back(from)` steps back only if that screen is still up,
+    since `TillNav` may already have moved on, and a second Back would
+    leave the sale. Full brightness is `screenBrightness =
+    BRIGHTNESS_OVERRIDE_FULL`, keep-on is `View.keepScreenOn`, the status
+    and navigation bar icons go dark, all restored on dispose. Its colours
+    are the light tokens' roles and `Fixed` ones on white, so the screen is
+    the same in both themes.
+78. **The notification's words and its paid face.** Title "New Monero sale
+    · Front Counter"; text "$13.88 · 3 items · waiting for payment" (no
+    XMR, as the shade is drawn); the items on a second line of the content
+    text, every line listed and left to Android to ellipsise, because
+    `ProgressStyle` takes the style and the sub-text is the sale's number.
+    The public version is the title and "$13.88 · waiting for payment": no
+    item ever leaves the private one. The paid face is posted on the
+    ongoing notification itself (`SaleNotifications.justPaid`: silent,
+    four green segments filled, the tick as its large icon) for
+    `Bubble.PAID_MS`, after which `Ongoing.of` goes back to the next live
+    sale or to watching; the separate "Paid · Sale #…" notification (39)
+    still alerts, unpromoted, with `ic_mark`. One ongoing notification, as
+    before: the foreground service's, which becomes the sale.
+79. **A refund's problem belongs to its sale.** `TillState.refundProblems`
+    maps an order to the POS's reason ("Couldn't refund it in Square: …"),
+    shown above that sale's Refund button until the refund is tried again.
+    It replaced `TillState.problem` for refunds because `check()` resets
+    that every two seconds, so the notice vanished before the cashier
+    could read it.
+80. **Where the till goes is `TillNav`**, pure and tested, which replaced
+    `TillFocus`, `focus` and `showing`. `TillNav.follow(screen, sales,
+    left)`: on the shift, the newest live sale the cashier hasn't left
+    comes up; a sale on screen stays whatever it becomes; its code or order
+    page gives way to the sale once it isn't live. `TillNav.paidOnScreen`
+    and the view model step back to the shift five seconds after a sale is
+    paid while its code was up; opened from the shift once paid, the page
+    stays. Leaving a sale brings up the next live one at once, as the old
+    screen did. A sale id the till doesn't list yet (a notification tapped
+    before the service loaded the shift) shows the shift until it appears;
+    a disconnected till shows the shift's Disconnected state whatever was
+    on screen.
+81. **When a shift starts.** `setShift(true)` after watching was off clears
+    the saved sales and stamps `shiftStartedAt`; `TillRunner.start` stamps
+    it when it's null (setup's first run, or an install updated from before
+    the shift was saved), so setup's test sale stays in the first shift.
+    With watching off the summary reads "Not watching" over Start watching,
+    and the rows still list what the till has.
+82. **The pages' notes, in the app's own knowledge.** Closed: "The code is
+    still live until 4:22 PM, and Monokulo keeps watching for a late
+    payment after that: if one arrives, this sale turns paid." while
+    `expiresAt` is ahead (the code's own expiry is known), else "Monokulo
+    keeps watching for a late payment for a while: …", and "Monokulo has
+    stopped watching it." once `settled`; Expired the same way with "The
+    code ran out at 4:22 PM". A refunded sale's timeline says "Closed:
+    customer not paying" whenever it was closed before the refund (the
+    sheet's No, or the Closed page's Refund: both mean the customer wasn't
+    paying), else "Code expired", "Cancelled" or "Reversed". The close
+    sheet's "Yes" line is "14:52 left to pay." while waiting or part paid
+    and "The payment is being confirmed." once seen (the design draws only
+    waiting). Another till's live row has no "· on Back till" suffix; its
+    ended rows do.
+83. **The X only while live, and a paid sale is never refunded.**
+    `Closing.choices(sale)` is empty once a sale isn't live, so the tinted
+    X never shows on a paid or refunded sale. Three layers keep "No: refund
+    it in Square" from refunding a payment that landed as it was tapped:
+    `Till.refund` returns before the POS call when the phase is Paid or
+    `refundedAt` is set; `AppViewModel.closeSale` applies the sheet's
+    answer only while `Closing.applies(sale)` (the sale is still live in
+    the runner's state); and `CloseSheet` hands the choice up only when its
+    hide animation finished normally, so a sale that turned paid and
+    swapped the screen out mid-animation drops the answer. `TillTest` and
+    `ShiftListTest` cover it.
+84. **Small things outside the plan's file lists.** `@Serializable` on
+    `PaymentCode` (receipt) and `FoundSale` (sales) for the saved shift;
+    the pure `ShiftList`, `SalePage`, `Closing` and `CloseChoice` in the
+    app module beside `SaleText`; `Fixed.White` (the QR card, the enlarged
+    code's screen, a glyph on ink) and `Fixed.Scrim` (the sheet's 62%
+    near-black) in the theme, so the app has no colour literal outside it;
+    `CircleButton` in Parts; `ProgressSegments` removed with the old sale
+    screen; `MainActivity`'s own clipboard code replaced by
+    `SaleNotifications.copyXmr`, which the panel uses too. New tests:
+    `PanelTest` (the grabber rule, the header's place, the ended faces),
+    `OrderPageTest` (counts, rates, totals, tip, discount, JPY, the
+    subtitle, the countdown line), `NotificationFaceTest` (`Face.of`,
+    `Ongoing.of`), `ShiftListTest` (filters, the Needs action count, the
+    summary, which row opens what, the pages' words, the sheet's
+    outcomes, `TillNav`) and `TillTest`'s saved shift, cap, close, reopen
+    and refund guard.

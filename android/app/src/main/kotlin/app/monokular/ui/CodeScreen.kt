@@ -28,7 +28,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -71,7 +70,7 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
     val muted = LightTokens.muted
     CompositionLocalProvider(LocalContentColor provides ink) {
         Column(
-            Modifier.fillMaxSize().background(Color.White)
+            Modifier.fillMaxSize().background(Fixed.White)
                 .clickable(onClickLabel = "Shrink the code", indication = null, interactionSource = null, onClick = onBack)
                 .safeDrawingPadding()
                 .padding(start = 6.dp, end = 6.dp, top = 20.dp, bottom = 28.dp),

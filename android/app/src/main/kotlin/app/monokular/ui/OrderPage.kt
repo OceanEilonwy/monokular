@@ -26,7 +26,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -213,7 +212,7 @@ private fun ShowCodeBar(sale: TillSale, onShowCode: () -> Unit) = Box(Modifier.f
             )
         }
         Box(Modifier.size(48.dp).clip(CircleShape).background(mk.onAccent), contentAlignment = Alignment.Center) {
-            Icon(MkIcons.Code, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
+            Icon(MkIcons.Code, contentDescription = null, tint = Fixed.White, modifier = Modifier.size(22.dp))
         }
     }
 }

@@ -1,8 +1,6 @@
 package app.monokular
 
 import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -22,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.monokular.notify.SaleNotifications
-import app.monokular.sales.TillSale
 import app.monokular.ui.AlertsScreen
 import app.monokular.ui.ConfirmScreen
 import app.monokular.ui.ConnectedScreen
@@ -199,7 +196,7 @@ class MainActivity : ComponentActivity() {
         onRefund = { model.refund(it) },
         onReopen = model::reopen,
         onCopy = { SaleNotifications.copyAddress(this, it.address) },
-        onCopyXmr = ::copyXmr,
+        onCopyXmr = { SaleNotifications.copyXmr(this, it.xmr) },
         onBackToSquare = if (multiWindow) null else ::backToSquare,
         onSignIn = ::signInToSquare,
         onForget = model::forget,
@@ -273,10 +270,6 @@ class MainActivity : ComponentActivity() {
         runCatching {
             startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, packageName))
         }
-    }
-
-    private fun copyXmr(sale: TillSale) {
-        getSystemService(ClipboardManager::class.java).setPrimaryClip(ClipData.newPlainText("XMR amount", sale.xmr))
     }
 
     /** Square Point of Sale, if it's installed; else Monokular steps back to whatever was behind it. */
