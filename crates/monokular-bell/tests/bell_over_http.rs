@@ -457,3 +457,411 @@ async fn a_sandbox_bell_asks_the_square_it_is_pointed_at_over_http() {
         format!("/v2/locations/{LOCATION}")
     );
 }
+
+/// A Square that redirects isn't followed: the merchant's token goes to
+/// the API it was configured for and nowhere else.
+#[tokio::test]
+async fn a_redirecting_square_never_gets_the_token_followed_over_http() {
+    let elsewhere = Stub::start(|_| Answer::status(200)).await;
+    let square = Stub::start({
+        let target = format!("{}/v2/locations/{LOCATION}", elsewhere.url());
+        move |_| Answer::status(307).header("location", &target)
+    })
+    .await;
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(&square.url(), &[]).await;
+    let answered = bell
+        .register(TOKEN, LOCATION, &Till::at(&push, "front"))
+        .await;
+    assert_ne!(answered.status, StatusCode::CREATED, "{}", answered.text());
+    assert_eq!(answered.problem(), "square-refused");
+    assert_eq!(square.drain().await.len(), 1);
+    assert!(
+        elsewhere.drain().await.is_empty(),
+        "the redirect was followed"
+    );
+    assert!(bell.rows().is_empty());
+}
+
+/// A Square slower than `bell.timeout_ms` is unavailable, not waited on.
+#[tokio::test]
+async fn a_square_slower_than_the_timeout_is_unavailable_over_http() {
+    let (_silent, square) = silent_url();
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(&square, &[("bell.timeout_ms", "100")]).await;
+    let started = std::time::Instant::now();
+    let answered = bell
+        .register(TOKEN, LOCATION, &Till::at(&push, "front"))
+        .await;
+    assert_eq!(answered.status, StatusCode::SERVICE_UNAVAILABLE);
+    assert_eq!(answered.problem(), "square-unavailable");
+    assert!(started.elapsed() < std::time::Duration::from_secs(5));
+    assert!(bell.rows().is_empty());
+}
+
+/// Square's `200` is believed only for the location asked about, with a
+/// merchant that is one: another location, a merchant id that isn't one,
+/// or no merchant is a Square that couldn't be asked, and nothing is
+/// kept.
+#[tokio::test]
+async fn a_square_answer_that_isnt_the_location_asked_for_is_unavailable_over_http() {
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(&square.url(), &[]).await;
+    let till = Till::at(&push, "front");
+    for location in [
+        serde_json::json!({"id": OTHER_LOCATION, "merchant_id": MERCHANT}),
+        serde_json::json!({"id": LOCATION, "merchant_id": "not/a/merchant"}),
+        serde_json::json!({"id": LOCATION}),
+        serde_json::json!({"id": LOCATION, "merchant_id": ""}),
+    ] {
+        square.answer(move |_| {
+            Answer::status(200).json(serde_json::json!({"location": location.clone()}))
+        });
+        let answered = bell.register(TOKEN, LOCATION, &till).await;
+        assert_eq!(
+            answered.status,
+            StatusCode::SERVICE_UNAVAILABLE,
+            "{}",
+            answered.text()
+        );
+        assert_eq!(answered.problem(), "square-unavailable");
+    }
+    // A 403 (the token lacks the scope) and any other 4xx are refusals.
+    for status in [403, 400] {
+        square.answer(move |_| Answer::status(status));
+        assert_eq!(
+            bell.register(TOKEN, LOCATION, &till).await.problem(),
+            "square-refused",
+            "{status}"
+        );
+    }
+    assert!(bell.rows().is_empty());
+}
+
+/// Whatever Square answers, and whatever it says in its errors, the token
+/// is in no log line and no answer.
+#[tokio::test]
+async fn a_failed_check_leaves_the_token_nowhere_over_http() {
+    let (_guard, log) = capture_log();
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(&square.url(), &[]).await;
+    let till = Till::at(&push, "front");
+    // Square echoing the token back in its error is still never repeated.
+    for status in [401, 404, 500, 429] {
+        square.answer(move |_| {
+            Answer::status(status).json(serde_json::json!({"errors": [{"detail": TOKEN}]}))
+        });
+        let answered = bell.register(TOKEN, LOCATION, &till).await;
+        assert!(!answered.text().contains(TOKEN), "{}", answered.text());
+    }
+    square.answer(|_| Answer::status(200).json(serde_json::json!({"location": TOKEN})));
+    let answered = bell.register(TOKEN, LOCATION, &till).await;
+    assert_eq!(answered.problem(), "square-unavailable");
+    assert!(!answered.text().contains(TOKEN), "{}", answered.text());
+    let log = log.text();
+    assert!(log.contains("Square"), "{log}");
+    assert!(!log.contains(TOKEN), "the token is in the log: {log}");
+    assert!(!String::from_utf8_lossy(&bell.stored_bytes()).contains(TOKEN));
+}
+
+/// A push service that redirects isn't followed (a redirect could point
+/// inside the Bell's network): the ding fails and is counted.
+#[tokio::test]
+async fn a_redirecting_push_service_is_not_followed_over_http() {
+    let square = Stub::square().await;
+    let elsewhere = Stub::push_service().await;
+    let push = Stub::start({
+        let target = format!("{}/push/elsewhere", elsewhere.url());
+        move |_| Answer::status(307).header("location", &target)
+    })
+    .await;
+    let bell = TestBell::start(&square.url(), &[]).await;
+    bell.registered(TOKEN, LOCATION, &Till::at(&push, "front"))
+        .await;
+    bell.webhook(&completed_payment()).await;
+    assert_eq!(push.drain().await.len(), 1);
+    assert!(
+        elsewhere.drain().await.is_empty(),
+        "the redirect was followed"
+    );
+    let rows = bell.rows();
+    assert_eq!((rows[0].3, rows[0].4), (None, 1));
+}
+
+/// Square is answered at once: the dings go out after, on their own, so a
+/// push service slower than `bell.timeout_ms` keeps neither Square waiting
+/// nor the ding: it fails at the timeout, and is counted.
+#[tokio::test]
+async fn a_webhook_is_answered_before_a_slow_ding_times_out_over_http() {
+    let square = Stub::square().await;
+    let (_silent, slow) = silent_url();
+    let bell = TestBell::start(&square.url(), &[("bell.timeout_ms", "1000")]).await;
+    let till = Till {
+        keys: push::encrypt::ReceiverKeys::generate(),
+        endpoint: format!("{slow}/push/front"),
+    };
+    bell.registered(TOKEN, LOCATION, &till).await;
+    let body = completed_payment();
+    let answered = bell
+        .call(webhook_request(&body, Some(&sign(WEBHOOK_URL, &body))))
+        .await;
+    assert_eq!(answered.status, StatusCode::OK);
+    // The ding is still waiting on the push service.
+    let early = tokio::time::timeout(
+        std::time::Duration::from_millis(100),
+        bell.bell.dings_sent(),
+    )
+    .await;
+    assert!(early.is_err(), "the webhook waited for its ding");
+    tokio::time::timeout(std::time::Duration::from_secs(10), bell.bell.dings_sent())
+        .await
+        .expect("the ding gave up at the timeout");
+    assert_eq!(bell.rows()[0].4, 1);
+}
+
+/// Every answer that refuses the ding without saying the subscription is
+/// gone counts against it: too large, unauthorised, forbidden, a client
+/// error of the push service's own.
+#[tokio::test]
+async fn a_push_service_refusing_a_ding_counts_a_failure_over_http() {
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(&square.url(), &[]).await;
+    bell.registered(TOKEN, LOCATION, &Till::at(&push, "front"))
+        .await;
+    let refusals = [413, 401, 403, 400, 502];
+    for (n, status) in refusals.into_iter().enumerate() {
+        push.answer(move |_| Answer::status(status));
+        bell.webhook(&completed_payment()).await;
+        assert_eq!(bell.rows()[0].4, n as i64 + 1, "{status}");
+    }
+    // A 200 or 202 is a ding taken, as 201 is.
+    for status in [200, 202] {
+        push.answer(move |_| Answer::status(status));
+        bell.webhook(&completed_payment()).await;
+        assert_eq!(bell.rows()[0].4, 0, "{status}");
+        assert!(bell.rows()[0].3.is_some());
+    }
+}
+
+/// Each push service gets a token for its own origin, signed with the
+/// Bell's key, unexpired and at most a day ahead (RFC 8292): one taken to
+/// another push service, checked with another key or past its expiry
+/// doesn't verify.
+#[tokio::test]
+async fn each_push_service_gets_a_vapid_token_for_its_own_origin_over_http() {
+    let square = Stub::square().await;
+    let (one, two) = (Stub::push_service().await, Stub::push_service().await);
+    let bell = TestBell::start(&square.url(), &[]).await;
+    bell.registered(TOKEN, LOCATION, &Till::at(&one, "front"))
+        .await;
+    bell.registered(TOKEN, LOCATION, &Till::at(&two, "back"))
+        .await;
+    bell.webhook(&completed_payment()).await;
+    let now = now();
+    let key = vapid_public_key();
+    let (at_one, at_two) = (one.next().await, two.next().await);
+    let read = |ding: &Received| PushRequest::parse(&ding.headers, &ding.body).unwrap();
+    let (at_one, at_two) = (read(&at_one), read(&at_two));
+    let origin = |stub: &Stub| Origin::parse(&stub.url()).unwrap();
+    for (request, own, other) in [
+        (&at_one, origin(&one), origin(&two)),
+        (&at_two, origin(&two), origin(&one)),
+    ] {
+        assert_eq!(*request.authorization.key(), key);
+        let claims = push::vapid::verify(&request.authorization, &key, &own, now).unwrap();
+        assert_eq!(claims.aud, own);
+        assert!(
+            claims.exp > now + 11 * 3600 && claims.exp <= now + 24 * 3600,
+            "{}",
+            claims.exp - now
+        );
+        assert!(matches!(
+            push::vapid::verify(&request.authorization, &key, &other, now),
+            Err(push::vapid::VapidError::Audience)
+        ));
+        assert!(matches!(
+            push::vapid::verify(&request.authorization, &key, &own, claims.exp),
+            Err(push::vapid::VapidError::Expired)
+        ));
+        let forged = push::VapidKey::generate().public();
+        assert!(matches!(
+            push::vapid::verify(&request.authorization, &forged, &own, now),
+            Err(push::vapid::VapidError::KeyMismatch)
+        ));
+    }
+}
+
+/// Private endpoints turned off after tills registered on them: every
+/// ding to one is refused before a request, by its IP literal or its
+/// `localhost` name, and counted, so the registration goes at the limit;
+/// nothing reaches the push service.
+#[tokio::test]
+async fn private_endpoints_turned_off_are_never_dinged_over_http() {
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let open = TestBell::start(&square.url(), &[]).await;
+    let by_ip = Till::at(&push, "by-ip");
+    let by_name = Till {
+        keys: push::encrypt::ReceiverKeys::generate(),
+        endpoint: format!("http://localhost:{}/push/by-name", push.address.port()),
+    };
+    open.registered(TOKEN, LOCATION, &by_ip).await;
+    open.registered(TOKEN, LOCATION, &by_name).await;
+    let store_path = open.store_path.to_str().unwrap().to_owned();
+    drop(open);
+
+    let closed = TestBell::start(
+        &square.url(),
+        &[
+            ("bell.store_path", &store_path),
+            ("bell.allow_private_endpoints", "false"),
+            ("bell.registration_failure_limit", "2"),
+        ],
+    )
+    .await;
+    closed.webhook(&completed_payment()).await;
+    assert!(
+        closed.rows().iter().all(|row| row.4 == 1),
+        "{:?}",
+        closed.rows()
+    );
+    closed.webhook(&completed_payment()).await;
+    assert!(push.drain().await.is_empty(), "a ding reached loopback");
+    assert!(closed.rows().is_empty(), "deleted at the limit");
+}
+
+/// A till registered again with new keys (its app reinstalled), or moved
+/// to another location, is dinged where it is now and with the keys it
+/// has now; once unregistered, registering again makes a new
+/// registration.
+#[tokio::test]
+async fn a_till_registered_again_is_dinged_where_and_as_it_is_now_over_http() {
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(&square.url(), &[]).await;
+    let old = Till::at(&push, "front");
+    let id = bell.registered(TOKEN, LOCATION, &old).await;
+    let new = Till {
+        keys: push::encrypt::ReceiverKeys::generate(),
+        endpoint: old.endpoint.clone(),
+    };
+    assert_eq!(bell.registered(TOKEN, OTHER_LOCATION, &new).await, id);
+
+    bell.webhook(&completed_payment()).await;
+    assert!(push.drain().await.is_empty(), "dinged where it was");
+    bell.webhook(&payment_webhook(
+        "payment.created",
+        "COMPLETED",
+        MERCHANT,
+        OTHER_LOCATION,
+    ))
+    .await;
+    let ding = push.next().await;
+    let request = PushRequest::parse(&ding.headers, &ding.body).unwrap();
+    let Message::Encrypted(body) = request.message else {
+        panic!("a ding is encrypted");
+    };
+    assert_eq!(
+        push::encrypt::decrypt(&new.keys, body.as_bytes()).unwrap(),
+        br#"{"wake":"square"}"#
+    );
+    assert!(push::encrypt::decrypt(&old.keys, body.as_bytes()).is_err());
+
+    assert_eq!(
+        bell.call(unregistration(&id)).await.status,
+        StatusCode::NO_CONTENT
+    );
+    let again = bell.registered(TOKEN, OTHER_LOCATION, &new).await;
+    assert_ne!(again, id);
+    assert_eq!(
+        bell.call(unregistration(&id)).await.status,
+        StatusCode::NOT_FOUND
+    );
+}
+
+/// Each ding is encrypted afresh: two dings to one till share no salt or
+/// key, so a push service can't tell they say the same.
+#[tokio::test]
+async fn every_ding_is_encrypted_afresh_over_http() {
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(&square.url(), &[]).await;
+    bell.registered(TOKEN, LOCATION, &Till::at(&push, "front"))
+        .await;
+    bell.webhook(&completed_payment()).await;
+    bell.webhook(&completed_payment()).await;
+    let dings = push.drain().await;
+    assert_eq!(dings.len(), 2);
+    // RFC 8188's header: a 16-byte salt, then the record size, the key's
+    // length and the sender's ephemeral key.
+    assert_ne!(dings[0].body[..16], dings[1].body[..16], "the salt");
+    assert_ne!(dings[0].body[21..86], dings[1].body[21..86], "the key");
+    assert_ne!(dings[0].body, dings[1].body);
+}
+
+/// Registrations racing for a location's last places fill it exactly to
+/// its bound, never past it: the count and the insert are one
+/// transaction.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn racing_registrations_fill_a_location_to_its_bound_exactly_over_http() {
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let bell = std::sync::Arc::new(
+        TestBell::start(&square.url(), &[("bell.registrations_per_minute", "1000")]).await,
+    );
+    let mut racing = tokio::task::JoinSet::new();
+    for n in 0..40 {
+        let (bell, till) = (bell.clone(), Till::at(&push, &n.to_string()));
+        racing.spawn(async move { bell.register(TOKEN, LOCATION, &till).await.status });
+    }
+    let mut statuses = Vec::new();
+    while let Some(status) = racing.join_next().await {
+        statuses.push(status.unwrap());
+    }
+    let created = statuses
+        .iter()
+        .filter(|status| **status == StatusCode::CREATED)
+        .count();
+    let full = statuses
+        .iter()
+        .filter(|status| **status == StatusCode::CONFLICT)
+        .count();
+    assert_eq!((created, full), (32, 8), "{statuses:?}");
+    assert_eq!(bell.rows().len(), 32);
+}
+
+/// Payments arriving together, every ding failing: each failure is
+/// counted once, the registration goes at the limit exactly, and nothing
+/// fails to be recorded on the way.
+#[tokio::test]
+async fn concurrent_failing_dings_delete_a_registration_once_over_http() {
+    let (_guard, log) = capture_log();
+    let square = Stub::square().await;
+    let push = Stub::start(|_| Answer::status(500)).await;
+    let bell = TestBell::start(&square.url(), &[("bell.registration_failure_limit", "5")]).await;
+    bell.registered(TOKEN, LOCATION, &Till::at(&push, "front"))
+        .await;
+    let body = completed_payment();
+    let signature = sign(WEBHOOK_URL, &body);
+    let mut calls = Vec::new();
+    for _ in 0..8 {
+        calls.push(bell.call(webhook_request(&body, Some(&signature))));
+    }
+    for call in calls {
+        assert_eq!(call.await.status, StatusCode::OK);
+    }
+    bell.bell.dings_sent().await;
+    let sent = push.drain().await.len();
+    assert!((5..=8).contains(&sent), "{sent} dings");
+    assert!(bell.rows().is_empty());
+    let log = log.text();
+    assert_eq!(
+        log.matches("dings failed too often in a row").count(),
+        1,
+        "{log}"
+    );
+    assert!(!log.contains("couldn't be"), "{log}");
+}

@@ -167,3 +167,14 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
 28. **Not wired into the app** (plan 1). The Android app registering with a
     Bell (Settings › Wake-ups, `/v1/info`, `/v1/register` with its UnifiedPush
     or relay endpoint) is the next step; `docs/bell.md` is the contract.
+29. **A `localhost` endpoint is refused at registration when private
+    endpoints are off** (found by the edge tests). The registration check
+    only looked at IP literals and left every name to the resolver, so
+    `http://localhost:…` (which `push::Endpoint` takes, as loopback) was
+    registered with `201` and then failed every ding until
+    `bell.registration_failure_limit` deleted it. `localhost`, `localhost.`
+    and every name under it are loopback whatever a resolver says (RFC 6761
+    §6.3), so `outbound::check_host` now refuses them, at registration
+    (`400`) and before each ding; other names are still the resolver's to
+    check at connect time. monokulo's `crate::outbound` check, which this
+    copies, should get the same rule.

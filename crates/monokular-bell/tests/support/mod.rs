@@ -248,6 +248,37 @@ pub fn unreachable_url() -> String {
     format!("http://{}", listener.local_addr().unwrap())
 }
 
+/// An `http` address on loopback that takes connections and never answers
+/// (the kernel accepts them into the listener's backlog): a Square or a
+/// push service slower than the Bell waits. Silent while the listener
+/// lives.
+pub fn silent_url() -> (std::net::TcpListener, String) {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let url = format!("http://{}", listener.local_addr().unwrap());
+    (listener, url)
+}
+
+/// Seconds since the Unix epoch, as the Bell's clock reads them.
+pub fn now() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64
+}
+
+/// The public key of [`VAPID_HEX`]: the key every ding is signed with.
+pub fn vapid_public_key() -> push::VapidPublicKey {
+    let mut private = [0u8; 32];
+    hex::decode_to_slice(VAPID_HEX, &mut private).unwrap();
+    push::VapidKey::from_bytes(&private).unwrap().public()
+}
+
+/// A completed `payment.created` at [`MERCHANT`]'s [`LOCATION`]: the
+/// webhook that dings.
+pub fn completed_payment() -> String {
+    payment_webhook("payment.created", "COMPLETED", MERCHANT, LOCATION)
+}
+
 /// A Bell built as the process builds it, from options file `values` over
 /// these: at [`PUBLIC_URI`], for [`APPLICATION_ID`], Square at
 /// `square_url`, private push endpoints allowed (the stand-ins are on
@@ -279,6 +310,8 @@ impl TestBell {
         for (key, value) in values {
             stored.insert((*key).to_owned(), (*value).to_owned());
         }
+        // A store of another Bell's, when `values` names one.
+        let store_path = PathBuf::from(&stored["bell.store_path"]);
         let env = live_settings::Env::fixed([
             ("MONOKULAR_BELL_SQUARE_WEBHOOK_KEY", WEBHOOK_KEY),
             ("MONOKULAR_BELL_VAPID_KEY", VAPID_HEX),

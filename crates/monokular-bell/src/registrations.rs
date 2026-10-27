@@ -472,6 +472,61 @@ pub(crate) mod tests {
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 
+    /// A till moving to a full location is refused, and stays where it
+    /// was, with the keys and the failures it had: the refused move
+    /// changes nothing.
+    #[tokio::test]
+    async fn a_move_to_a_full_location_leaves_the_registration_where_it_was() {
+        let path = temp_path("full-move");
+        let store = RegistrationStore::open(&path).unwrap();
+        for n in 0..MAX_PER_LOCATION {
+            store
+                .register(
+                    new("M1", "L1", &format!("https://push.example.org/{n}")),
+                    NOW,
+                )
+                .await
+                .unwrap();
+        }
+        let till = "https://push.example.org/moving";
+        let staying = new("M1", "L2", till);
+        let keys = staying.subscription.keys.clone();
+        let id = store.register(staying, NOW).await.unwrap();
+        store.failed(&id, 20).await.unwrap();
+        let refused = store.register(new("M1", "L1", till), NOW + 1).await;
+        assert!(matches!(refused, Err(RegisterError::Full)), "{refused:?}");
+        let at_l2 = store
+            .at_location(&merchant("M1"), &location("L2"))
+            .await
+            .unwrap();
+        assert_eq!(at_l2.len(), 1);
+        assert_eq!((&at_l2[0].id, &at_l2[0].subscription.keys), (&id, &keys));
+        assert_eq!(store.failed(&id, 20).await.unwrap(), Failed::Counted(2));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// A row that no longer reads (written by hand, or by a later Bell) is
+    /// an error for the ding that reads it, never a ding to a wrong place.
+    #[tokio::test]
+    async fn a_stored_row_that_doesnt_read_is_corrupt() {
+        let path = temp_path("corrupt");
+        let store = RegistrationStore::open(&path).unwrap();
+        store
+            .register(new("M1", "L1", "https://push.example.org/a"), NOW)
+            .await
+            .unwrap();
+        Connection::open(&path)
+            .unwrap()
+            .execute(
+                "UPDATE registrations SET endpoint = 'http://push.example.org/a'",
+                [],
+            )
+            .unwrap();
+        let read = store.at_location(&merchant("M1"), &location("L1")).await;
+        assert!(matches!(read, Err(StoreError::Corrupt(_))), "{read:?}");
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
     #[tokio::test]
     async fn failures_in_a_row_delete_at_the_limit_and_a_delivery_resets_them() {
         let path = temp_path("failures");

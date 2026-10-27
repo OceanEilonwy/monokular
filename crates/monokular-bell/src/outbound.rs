@@ -90,8 +90,11 @@ pub enum OutboundError {
 }
 
 /// Refuses a URL whose host is an IP literal of a private, loopback or
-/// link-local address (unless `reach` allows any): the half of the check a
-/// resolver never sees.
+/// link-local address, or a `localhost` name (unless `reach` allows any):
+/// the half of the check a resolver never sees, and the name that is
+/// loopback without asking one. Checked at registration as well as at
+/// each ding, so a till isn't registered for an endpoint the Bell will
+/// never send to.
 pub fn check_host(url: &url::Url, reach: Reach) -> Result<(), OutboundError> {
     if reach == Reach::AnyAddress {
         return Ok(());
@@ -99,6 +102,9 @@ pub fn check_host(url: &url::Url, reach: Reach) -> Result<(), OutboundError> {
     let ip = match url.host() {
         Some(url::Host::Ipv4(ip)) => IpAddr::V4(ip),
         Some(url::Host::Ipv6(ip)) => IpAddr::V6(ip),
+        Some(url::Host::Domain(name)) if is_localhost(name) => {
+            return Err(OutboundError::PrivateAddress);
+        }
         Some(url::Host::Domain(_)) => return Ok(()),
         None => return Err(OutboundError::Unresolvable),
     };
@@ -106,6 +112,14 @@ pub fn check_host(url: &url::Url, reach: Reach) -> Result<(), OutboundError> {
         return Err(OutboundError::PrivateAddress);
     }
     Ok(())
+}
+
+/// `localhost` and every name under it, with or without the root's dot:
+/// loopback whatever a resolver says (RFC 6761 §6.3), so refused without
+/// asking one. `Url` has lowercased the name already.
+fn is_localhost(name: &str) -> bool {
+    let name = name.strip_suffix('.').unwrap_or(name);
+    name == "localhost" || name.ends_with(".localhost")
 }
 
 /// Whether `ip` is loopback, private, link-local or otherwise no place to
@@ -216,7 +230,8 @@ mod tests {
     }
 
     /// An IP literal never reaches the resolver, so it is checked before
-    /// the request; a name is left to the resolver.
+    /// the request, as is `localhost`; any other name is left to the
+    /// resolver.
     #[test]
     fn an_ip_literal_is_checked_before_the_request() {
         let url = |text: &str| url::Url::parse(text).unwrap();
@@ -237,7 +252,25 @@ mod tests {
             Ok(())
         );
         assert_eq!(
-            check_host(&url("https://localhost/push"), Reach::Public),
+            check_host(&url("https://push.example.org/push"), Reach::Public),
+            Ok(())
+        );
+        // Loopback by name, in any spelling, without asking a resolver.
+        for name in [
+            "https://localhost/push",
+            "http://LocalHost:8080/push",
+            "https://localhost./push",
+            "https://push.localhost/push",
+        ] {
+            assert_eq!(
+                check_host(&url(name), Reach::Public),
+                Err(OutboundError::PrivateAddress),
+                "{name}"
+            );
+            assert_eq!(check_host(&url(name), Reach::AnyAddress), Ok(()));
+        }
+        assert_eq!(
+            check_host(&url("https://localhost.example.org/push"), Reach::Public),
             Ok(())
         );
     }

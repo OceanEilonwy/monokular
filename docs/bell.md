@@ -67,7 +67,7 @@ The same subscription registered again keeps its `registration_id`, moved to
 the location it names and with its keys replaced. A location takes 32
 registrations. The endpoint must be `https` (or `http` on the Bell's own
 machine), never an onion address, and on a public address unless the Bell
-allows private ones. Registrations are limited per address (IPv6 by its /64):
+allows private ones (a `localhost` name counts as private). Registrations are limited per address (IPv6 by its /64):
 each costs a request to Square.
 
 Problems: [`invalid-request`](#invalid-request), [`square-refused`](#square-refused),

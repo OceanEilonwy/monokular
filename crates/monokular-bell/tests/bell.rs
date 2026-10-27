@@ -116,7 +116,7 @@ async fn a_webhook_over_the_size_taken_is_refused_unread() {
 
 /// A subscription the Bell would never send to is refused before Square
 /// is asked: an onion address, plain `http` across a network, or a
-/// private address while those aren't allowed.
+/// private address or a `localhost` name while those aren't allowed.
 #[tokio::test]
 async fn a_subscription_the_bell_would_not_send_to_is_refused() {
     let bell = TestBell::without_square(&[("bell.allow_private_endpoints", "false")]).await;
@@ -132,6 +132,9 @@ async fn a_subscription_the_bell_would_not_send_to_is_refused() {
         "https://10.0.0.7/push/1",
         "http://127.0.0.1:8080/push/1",
         "https://[::1]/push/1",
+        "http://localhost:8080/push/1",
+        "https://LOCALHOST./push/1",
+        "https://push.localhost/push/1",
     ] {
         let mut subscription = till.subscription();
         subscription["endpoint"] = json!(endpoint);
@@ -242,4 +245,244 @@ async fn unregistering_an_id_that_isnt_one_is_unknown() {
         assert_eq!(answered.status, StatusCode::NOT_FOUND, "{id}");
         assert_eq!(answered.problem(), "unknown-registration");
     }
+}
+
+/// A registration is three short fields and a subscription: one past the
+/// 8 KiB the Bell reads is refused as too large, before it is parsed.
+#[tokio::test]
+async fn a_registration_over_the_size_taken_is_refused_unread() {
+    let bell = TestBell::without_square(&[]).await;
+    let at_limit = format!("{{\"pad\":\"{}\"}}", "x".repeat(8 * 1024 - 10));
+    assert_eq!(at_limit.len(), 8 * 1024);
+    let over = format!("{at_limit} ");
+    let post = |body: String| {
+        Request::post("/v1/register")
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap()
+    };
+    // At the limit it is read, and refused for what it says.
+    let read = bell.call(post(at_limit)).await;
+    assert_eq!(read.status, StatusCode::BAD_REQUEST, "{}", read.text());
+    assert_eq!(read.problem(), "invalid-request");
+    let refused = bell.call(post(over)).await;
+    assert_eq!(refused.status, StatusCode::PAYLOAD_TOO_LARGE);
+    assert_eq!(refused.problem(), "payload-too-large");
+}
+
+/// A webhook of exactly the 256 KiB the Bell reads is read and checked;
+/// the over-size refusal is for what is past it.
+#[tokio::test]
+async fn a_webhook_at_the_size_taken_is_read() {
+    let bell = TestBell::without_square(&[]).await;
+    let payment = payment_webhook("payment.updated", "APPROVED", MERCHANT, LOCATION);
+    // Square's bodies are objects: pad inside one, as a long note would.
+    let open = &payment[..payment.len() - 1];
+    let pad = 256 * 1024 - open.len() - ",\"note\":\"\"}".len();
+    let body = format!("{open},\"note\":\"{}\"}}", "x".repeat(pad));
+    assert_eq!(body.len(), 256 * 1024);
+    let answered = bell.webhook(&body).await;
+    assert_eq!(answered.status, StatusCode::OK, "{}", answered.text());
+    let unsigned = bell.call(webhook_request(&body, None)).await;
+    assert_eq!(unsigned.problem(), "invalid-signature");
+}
+
+/// The signature is checked against the whole header value: one with
+/// padding dropped, a URL-safe alphabet, spaces around it or a second
+/// signature after it isn't Square's.
+#[tokio::test]
+async fn a_signature_that_is_not_exactly_squares_is_refused() {
+    let bell = TestBell::without_square(&[]).await;
+    let body = payment_webhook("payment.updated", "APPROVED", MERCHANT, LOCATION);
+    let signature = sign(WEBHOOK_URL, &body);
+    let url_safe = signature.replace('+', "-").replace('/', "_");
+    let mut mangled = vec![
+        signature.trim_end_matches('=').to_owned(),
+        format!("{signature},{signature}"),
+        format!("{signature}x"),
+        String::new(),
+    ];
+    if url_safe != signature {
+        mangled.push(url_safe);
+    }
+    for value in mangled {
+        let answered = bell.call(webhook_request(&body, Some(&value))).await;
+        assert_eq!(answered.status, StatusCode::UNAUTHORIZED, "{value:?}");
+        assert_eq!(answered.problem(), "invalid-signature");
+    }
+    // Signed with another subscription's key.
+    let mut other = signature.into_bytes();
+    other[0] = if other[0] == b'A' { b'B' } else { b'A' };
+    let answered = bell
+        .call(webhook_request(
+            &body,
+            Some(std::str::from_utf8(&other).unwrap()),
+        ))
+        .await;
+    assert_eq!(answered.status, StatusCode::UNAUTHORIZED);
+}
+
+/// IPv6 clients are counted by their /64, so one host can't take a fresh
+/// minute by moving through its own prefix; the next /64 is another
+/// client.
+#[tokio::test]
+async fn registrations_from_one_ipv6_prefix_share_a_limit() {
+    let bell = TestBell::without_square(&[("bell.registrations_per_minute", "2")]).await;
+    let attempt = || json_request(Method::POST, "/v1/register", json!({}));
+    for peer in ["[2001:db8:1:2::1]:1000", "[2001:db8:1:2:ffff::9]:1000"] {
+        assert_eq!(
+            bell.call_from(peer, attempt()).await.status,
+            StatusCode::BAD_REQUEST
+        );
+    }
+    let limited = bell.call_from("[2001:db8:1:2::77]:1000", attempt()).await;
+    assert_eq!(limited.status, StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        bell.call_from("[2001:db8:1:3::1]:1000", attempt())
+            .await
+            .status,
+        StatusCode::BAD_REQUEST
+    );
+}
+
+/// Behind the trusted proxy, the client is the address the proxy saw: what
+/// a client writes into `X-Forwarded-For` itself, ahead of it, doesn't
+/// give it a fresh minute.
+#[tokio::test]
+async fn a_forwarded_chain_is_counted_by_the_address_the_proxy_saw() {
+    let bell = TestBell::without_square(&[("bell.registrations_per_minute", "2")]).await;
+    let forwarded = |chain: &str| {
+        let mut request = json_request(Method::POST, "/v1/register", json!({}));
+        request
+            .headers_mut()
+            .insert("x-forwarded-for", chain.parse().unwrap());
+        request
+    };
+    for spoofed in ["203.0.113.1", "203.0.113.2", "203.0.113.3"] {
+        let answered = bell
+            .call_from(
+                "127.0.0.1:1000",
+                forwarded(&format!("{spoofed}, 198.51.100.1")),
+            )
+            .await;
+        let expected = if spoofed == "203.0.113.3" {
+            StatusCode::TOO_MANY_REQUESTS
+        } else {
+            StatusCode::BAD_REQUEST
+        };
+        assert_eq!(answered.status, expected, "{spoofed}");
+    }
+    // A header that isn't an address list leaves the proxy's own address.
+    let garbage = bell
+        .call_from("127.0.0.1:1000", forwarded("not-an-address"))
+        .await;
+    assert_eq!(garbage.status, StatusCode::BAD_REQUEST);
+}
+
+/// A subscription is refused whole when any part of it isn't one: an
+/// endpoint past 2048 characters, an auth secret that isn't 16 bytes, a
+/// p256dh that isn't a point on the curve, keys missing, or not JSON.
+#[tokio::test]
+async fn a_subscription_that_isnt_one_is_refused() {
+    let bell = TestBell::without_square(&[]).await;
+    let till = Till {
+        keys: push::encrypt::ReceiverKeys::generate(),
+        endpoint: "https://push.example.org/push/1".to_owned(),
+    };
+    let with = |pointer: &str, value: serde_json::Value| {
+        let mut subscription = till.subscription();
+        *subscription.pointer_mut(pointer).unwrap() = value;
+        subscription
+    };
+    let mut no_keys = till.subscription();
+    no_keys.as_object_mut().unwrap().remove("keys");
+    // 65 bytes, 0x04 first, but not on the curve.
+    let mut off_curve = [0u8; 65];
+    off_curve[0] = 4;
+    off_curve[64] = 1;
+    let off_curve =
+        base64::Engine::encode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, off_curve);
+    for subscription in [
+        with(
+            "/endpoint",
+            json!(format!("https://push.example.org/{}", "a".repeat(2048))),
+        ),
+        with("/keys/auth", json!("AAAAAAAAAAAAAAAAAAAAAAA")),
+        with("/keys/auth", json!("not base64url!")),
+        with("/keys/p256dh", json!(off_curve)),
+        with("/endpoint", json!(42)),
+        no_keys,
+        json!("https://push.example.org/push/1"),
+    ] {
+        let answered = bell
+            .call(registration(TOKEN, LOCATION, &subscription))
+            .await;
+        assert_eq!(
+            answered.status,
+            StatusCode::BAD_REQUEST,
+            "{subscription}: {}",
+            answered.text()
+        );
+        assert_eq!(answered.problem(), "invalid-request");
+    }
+    let not_json = bell
+        .call(
+            Request::post("/v1/register")
+                .body(Body::from("square_access_token=x"))
+                .unwrap(),
+        )
+        .await;
+    assert_eq!(not_json.problem(), "invalid-request");
+}
+
+/// A refused registration's problem never repeats the access token, so a
+/// detail shown or reported by the app can't carry it.
+#[tokio::test]
+async fn a_refused_registration_never_repeats_the_token() {
+    let (_guard, log) = capture_log();
+    let bell = TestBell::without_square(&[]).await;
+    let till = Till {
+        keys: push::encrypt::ReceiverKeys::generate(),
+        endpoint: "https://push.example.org/push/1".to_owned(),
+    };
+    let long = format!("EAAAl-{}", "t".repeat(1100));
+    let mut bad_keys = till.subscription();
+    bad_keys["keys"]["auth"] = json!("AAAA");
+    for (token, location, subscription) in [
+        (TOKEN, "a/b", till.subscription()),
+        (TOKEN, LOCATION, bad_keys),
+        (long.as_str(), LOCATION, till.subscription()),
+        ("EAAAl-with a space", LOCATION, till.subscription()),
+    ] {
+        let answered = bell
+            .call(registration(token, location, &subscription))
+            .await;
+        assert_eq!(answered.status, StatusCode::BAD_REQUEST);
+        assert!(
+            !answered.text().contains("EAAAl-"),
+            "the token is in the answer: {}",
+            answered.text()
+        );
+    }
+    assert!(!log.text().contains("EAAAl-"), "{}", log.text());
+}
+
+/// `/v1/info`'s key is a P-256 point a till's push subscription can be
+/// made for, as browsers' `applicationServerKey` takes it.
+#[tokio::test]
+async fn the_info_key_is_an_uncompressed_p256_point() {
+    let bell = TestBell::without_square(&[]).await;
+    let info = bell
+        .call(Request::get("/v1/info").body(Body::empty()).unwrap())
+        .await
+        .json();
+    let key = info["vapid_public_key"].as_str().unwrap();
+    let bytes =
+        base64::Engine::decode(&base64::engine::general_purpose::URL_SAFE_NO_PAD, key).unwrap();
+    assert_eq!(bytes.len(), 65);
+    assert_eq!(bytes[0], 4);
+    assert_eq!(
+        push::VapidPublicKey::from_base64url(key).unwrap(),
+        vapid_public_key()
+    );
 }

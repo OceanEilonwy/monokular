@@ -621,6 +621,8 @@ pub(crate) mod tests {
     /// wherever it came from.
     #[tokio::test]
     async fn invalid_or_missing_values_stop_the_bell() {
+        const ZERO_KEY: &str = "0000000000000000000000000000000000000000000000000000000000000000";
+        let not_hex = format!("{}zz", &VAPID_HEX[2..]);
         let cases: &[Case] = &[
             (&[], &[], "MONOKULAR_BELL_SQUARE_WEBHOOK_KEY must be set"),
             (&[], &[], "MONOKULAR_BELL_VAPID_KEY must be set"),
@@ -684,7 +686,59 @@ pub(crate) mod tests {
                 SECRETS,
                 "bell.trusted_proxies",
             ),
+            // Set, but to nothing: as unset.
+            (
+                &[],
+                &[
+                    ("MONOKULAR_BELL_SQUARE_WEBHOOK_KEY", ""),
+                    ("MONOKULAR_BELL_VAPID_KEY", VAPID_HEX),
+                ],
+                "MONOKULAR_BELL_SQUARE_WEBHOOK_KEY",
+            ),
+            (
+                &[],
+                &[
+                    ("MONOKULAR_BELL_SQUARE_WEBHOOK_KEY", "k"),
+                    ("MONOKULAR_BELL_VAPID_KEY", ""),
+                ],
+                "MONOKULAR_BELL_VAPID_KEY",
+            ),
+            (
+                &[],
+                &[
+                    ("MONOKULAR_BELL_SQUARE_WEBHOOK_KEY", "k"),
+                    // Zero is no private key.
+                    ("MONOKULAR_BELL_VAPID_KEY", ZERO_KEY),
+                ],
+                "MONOKULAR_BELL_VAPID_KEY",
+            ),
+            (
+                &[],
+                &[
+                    ("MONOKULAR_BELL_SQUARE_WEBHOOK_KEY", "k"),
+                    // 64 characters, not all hex.
+                    ("MONOKULAR_BELL_VAPID_KEY", not_hex.as_str()),
+                ],
+                "MONOKULAR_BELL_VAPID_KEY",
+            ),
             (&[("bell.timeout_ms", "0")], SECRETS, "bell.timeout_ms"),
+            (&[("bell.timeout_ms", "120001")], SECRETS, "bell.timeout_ms"),
+            (
+                &[("bell.registration_failure_limit", "0")],
+                SECRETS,
+                "bell.registration_failure_limit",
+            ),
+            (
+                &[("bell.registrations_per_minute", "0")],
+                SECRETS,
+                "bell.registrations_per_minute",
+            ),
+            (&[("bell.listen", "localhost")], SECRETS, "bell.listen"),
+            (
+                &[("bell.square.api_url", "https://connect.squareup.onion")],
+                SECRETS,
+                "bell.square.api_url",
+            ),
             (&[("logging.level", "info,[")], SECRETS, "logging.level"),
         ];
         for (values, vars, expected) in cases {
