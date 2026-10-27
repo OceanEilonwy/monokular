@@ -276,11 +276,14 @@ class SaleNotifications(private val context: Context) {
      * them for long; an unpaid one left after that stands alone.
      */
     private fun post(sale: TillSale, notification: Notification) {
-        notify(idOf(sale), notification)
-        val ended = runCatching {
+        val id = idOf(sale)
+        notify(id, notification)
+        // The system posts in its own time, so the one just sent may not be listed yet: count the others and add it.
+        val others = runCatching {
             context.getSystemService(NotificationManager::class.java).activeNotifications
-                .count { it.notification.group == GROUP_ENDED && it.id != SUMMARY_ID }
+                .count { it.notification.group == GROUP_ENDED && it.id != SUMMARY_ID && it.id != id }
         }.getOrDefault(0)
+        val ended = others + 1
         if (ended >= 2) notify(SUMMARY_ID, summary(ended))
     }
 
