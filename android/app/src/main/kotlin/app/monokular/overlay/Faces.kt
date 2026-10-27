@@ -69,6 +69,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.monokular.BubbleLook
@@ -84,7 +85,6 @@ import app.monokular.ui.Logo
 import app.monokular.ui.MkIcons
 import app.monokular.ui.OrderContent
 import app.monokular.ui.OutlineButton
-import app.monokular.ui.PaidTick
 import app.monokular.ui.PhaseRing
 import app.monokular.ui.PrimaryButton
 import app.monokular.ui.QrCode
@@ -193,7 +193,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
                 Box(Modifier.size(12.dp).clip(CircleShape).background(Fixed.Ink))
             }
         }
-        BubbleLook.Paid -> Box(Modifier.shadow(6.dp, CircleShape)) { PaidTick(56.dp) }
+        BubbleLook.Paid -> Box(Modifier.shadow(6.dp, CircleShape)) { PaidHero(56.dp) }
     }
 }
 
@@ -238,31 +238,42 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
             .padding(start = 20.dp, end = 20.dp, bottom = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Grabber(
-            onDrag = { delta -> scope.launch { drag.snapTo((drag.value + delta).coerceAtLeast(0f)) } },
-            onRelease = { velocity ->
-                scope.launch {
-                    if (Panel.lowers(drag.value, height, velocity, fling)) {
-                        actions.onLower()
-                    } else {
-                        drag.animateTo(0f, if (still) snap() else spring())
+        val grabber = @Composable {
+            Grabber(
+                onDrag = { delta -> scope.launch { drag.snapTo((drag.value + delta).coerceAtLeast(0f)) } },
+                onRelease = { velocity ->
+                    scope.launch {
+                        if (Panel.lowers(drag.value, height, velocity, fling)) {
+                            actions.onLower()
+                        } else {
+                            drag.animateTo(0f, if (still) snap() else spring())
+                        }
+                    }
+                },
+                onTap = actions.onLower,
+            )
+        }
+        if (sideBySide) {
+            // A phone on its side has no height to spare: the code and its status on the right, at their full size,
+            // from the panel's top; the grabber heads the rest beside them, the order on one line, a little closer.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+                    grabber()
+                    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Details(sale, where, actions, oneLine = true)
+                        Buttons(sale, actions)
                     }
                 }
-            },
-            onTap = actions.onLower,
-        )
-        if (sideBySide) {
-            // A phone on its side: the code and its status on the right, at their full size, the rest beside them.
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                    Details(sale, where, actions)
-                    Buttons(sale, actions)
-                }
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Column(
+                    Modifier.padding(top = 18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(14.dp),
+                ) {
                     Face(sale, wide)
                 }
             }
         } else {
+            grabber()
             Column(
                 Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -278,7 +289,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
 
 /** The header, the amount and what was bought. */
 @Composable
-private fun Details(sale: TillSale, where: String, actions: PanelActions) {
+private fun Details(sale: TillSale, where: String, actions: PanelActions, oneLine: Boolean = false) {
     Header(sale, where, actions.onOpenShift)
     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(SaleText.amount(sale), style = display(44, -0.8))
@@ -290,7 +301,7 @@ private fun Details(sale: TillSale, where: String, actions: PanelActions) {
         )
     }
     val receipt = sale.receipt
-    if (receipt != null && receipt.lineItems.isNotEmpty()) OrderLine(SaleText.items(receipt), SaleText.firstItems(receipt), actions.onOrder)
+    if (receipt != null && receipt.lineItems.isNotEmpty()) OrderLine(SaleText.items(receipt), SaleText.firstItems(receipt), oneLine, actions.onOrder)
 }
 
 /** The code and its status while live; the tick once paid; else where the code was. */
@@ -308,7 +319,7 @@ private fun Face(sale: TillSale, wide: Boolean) = when (sale.standing) {
         StatusRow(sale)
     }
     is Standing.Paid -> {
-        PaidTick(88.dp)
+        PaidHero(88.dp)
         Text(
             SaleText.status(sale), style = display(28), textAlign = TextAlign.Center,
             modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
@@ -372,9 +383,9 @@ private fun Header(sale: TillSale, where: String, onOpenShift: () -> Unit) = Col
     }
 }
 
-/** "15 items" over the first few, on a card: opens the whole order. */
+/** "15 items" over the first few (or beside them, [oneLine]), on a card: opens the whole order. */
 @Composable
-private fun OrderLine(count: String, first: String, onOrder: () -> Unit) = Row(
+private fun OrderLine(count: String, first: String, oneLine: Boolean, onOrder: () -> Unit) = Row(
     Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp)).background(mk.card)
         .clickable(onClickLabel = "See the whole order", onClick = onOrder)
         .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -382,9 +393,14 @@ private fun OrderLine(count: String, first: String, onOrder: () -> Unit) = Row(
     horizontalArrangement = Arrangement.spacedBy(8.dp),
 ) {
     Icon(MkIcons.Bag, contentDescription = null, tint = mk.muted, modifier = Modifier.size(18.dp))
-    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-        Text(count, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+    val items = @Composable {
+        Text(count, fontSize = 14.sp, fontWeight = FontWeight.Bold, softWrap = false)
         Text(first, fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+    if (oneLine) {
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { items() }
+    } else {
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) { items() }
     }
     Icon(MkIcons.Chevron, contentDescription = null, tint = mk.muted, modifier = Modifier.size(16.dp))
 }
@@ -401,6 +417,12 @@ private fun StatusRow(sale: TillSale) = Row(
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
     CodeText.left(sale, secondsLeft(sale.expiresAt))?.let { Text("· $it", fontSize = 14.sp, color = mk.muted) }
+}
+
+/** Paid as the detail pages show it: the paid tick on the paid ground, in either theme. */
+@Composable
+private fun PaidHero(size: Dp) = Box(Modifier.size(size).clip(CircleShape).background(mk.paidGround), contentAlignment = Alignment.Center) {
+    Icon(MkIcons.Tick, contentDescription = null, tint = mk.paid, modifier = Modifier.size(size * 0.53f))
 }
 
 /** Where the code was, for a sale that stopped being live while the panel was up. */
