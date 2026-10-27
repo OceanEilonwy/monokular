@@ -74,14 +74,13 @@ fn main() {
         // On SIGTERM or Ctrl-C: stop accepting connections, and let
         // requests in flight and the dings they started finish, for up to
         // the grace period together.
+        let stopping = service_runtime::shutdown::on_signal();
         let serving = {
             let bell = bell.clone();
-            tokio::spawn(async move {
-                bell.serve(listener, service_runtime::shutdown::signal())
-                    .await
-            })
+            let stopping = stopping.clone();
+            tokio::spawn(async move { bell.serve(listener, stopping.cancelled_owned()).await })
         };
-        service_runtime::shutdown::signal().await;
+        stopping.cancelled().await;
         let deadline = Instant::now() + GRACE;
         tracing::info!(grace = ?GRACE, "shutting down: finishing requests and dings in flight");
         let finished = tokio::time::timeout_at(deadline.into(), async {

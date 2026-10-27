@@ -550,7 +550,7 @@ crates/push-relay/src/
   handles.rs        Handle, HandleId (ph_…), Platform, DeviceToken; HandleStore on sqlite
                     (its own file, migrations/0001_handles.sql); no trait, no in-memory store
   apns.rs           APNs: HTTP/2 (prior knowledge), ES256 provider token renewed at 50 min;
-                    alert, liveactivity (always an update), push-to-start
+                    alert, liveactivity (always an update)
   fcm.rs            FCM HTTP v1: RS256 service-account assertion (rsa) exchanged for an
                     access token, kept until 5 min before it expires; data messages
   limits.rs         per sender, per handle and per address, on the workspace's rate-limit crate
@@ -594,7 +594,7 @@ Registration, from the app:
 
 ```http
 POST /v1/register
-{ "platform": "apns" | "apns-liveactivity" | "apns-pushtostart" | "fcm",
+{ "platform": "apns" | "apns-liveactivity" | "fcm",
   "token": "<APNs/FCM device or activity token>",
   "app": "monokular",                   // picks the bundle ID / FCM project
   "vapid_public_key": "BJ…" }           // the sender: a monokulo or a Bell
@@ -644,7 +644,6 @@ translates:
 | --- | --- |
 | `apns` | `apns-push-type: alert`, `mutable-content: 1`, the ciphertext in a custom key; the Notification Service Extension decrypts and fills in title and body (for a ding, it fetches the sale first, §3). Fallback text: "New sale". |
 | `apns-liveactivity` | `apns-push-type: liveactivity`, topic `<bundle>.push-type.liveactivity`, `aps.content-state` from the plain JSON, always `event: update` (the relay never ends an activity, which the app idles or ends itself), `alert` only for paid ("Paid · 24.50 USD") / expired ("No payment yet"), `stale-date` from `expiresAt` while the sale is open. |
-| `apns-pushtostart` | `event: start` (iOS 17.2+), only if the app opted in: the JSON is `{"attributes-type", "attributes", "content-state"}`, handed on as it is. |
 | `fcm` | Data message, priority from `Urgency`, the ciphertext as data; the app decrypts. |
 
 Answers back to the sender, as problem+json: `201`; `404 unknown-handle`
@@ -856,10 +855,13 @@ only in the app.
 | expired | Clock | "No payment yet · refund in Square" | push, alert, high |
 
 Lifecycle: one activity per shift, started by the app (iOS ends it after 8 h;
-the next app launch starts a new one; push-to-start is opt-in because it
-sends the attributes through the relay). Monokulo's pushes never end it:
-the relay sends every state as an `update` (`paid` and `expired` with an
-alert), and the app takes the activity back to idle or ends it itself
+the next app launch starts a new one). There is no push-to-start: nothing
+would send one, since monokulo's targets carry only the content state, so
+the relay has no platform for it (monokulo `push.md` 157); it comes back
+as a monokulo target kind and a relay platform in one change, with the
+attributes it would send through the relay decided then. Monokulo's pushes
+never end it: the relay sends every state as an `update` (`paid` and
+`expired` with an alert), and the app takes the activity back to idle or ends it itself
 (monokulo `push.md` 113). The island shows only the till's own sales
 (monokulo `push.md` 141): monokulo pushes a till's Live Activity nothing of
 another till's, and sends a target's pushes in the order they were queued,

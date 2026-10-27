@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "abuse"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd#31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
 dependencies = [
  "axum",
  "hex",
@@ -877,6 +877,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92d699e522242e69e3003b94ecc1f960f3a5e015aa7c5d7486e65ad01dd94f5e"
 
 [[package]]
+name = "futures-sink"
+version = "0.3.34"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1944426bf7d03f1d14f708785e4b33efd750b36d48a157b836b3efc15ede8e1d"
+
+[[package]]
 name = "futures-task"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1441,7 +1447,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 [[package]]
 name = "live-settings"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd#31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
 dependencies = [
  "async-trait",
  "clap",
@@ -1754,7 +1760,7 @@ dependencies = [
 [[package]]
 name = "outbound"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd#31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
 dependencies = [
  "reqwest",
  "thiserror",
@@ -1933,7 +1939,7 @@ dependencies = [
 [[package]]
 name = "push"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd#31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
 dependencies = [
  "aes-gcm",
  "base64 0.23.1",
@@ -2095,7 +2101,7 @@ dependencies = [
 [[package]]
 name = "rate-limit"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd#31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
 dependencies = [
  "parking_lot",
 ]
@@ -2567,12 +2573,13 @@ dependencies = [
 [[package]]
 name = "service-runtime"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd#31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
 dependencies = [
  "parking_lot",
  "serde",
  "sysinfo",
  "tokio",
+ "tokio-util",
  "tracing",
 ]
 
@@ -2685,7 +2692,7 @@ dependencies = [
 [[package]]
 name = "sqlite"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd#31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
 dependencies = [
  "hex",
  "parking_lot",
@@ -2944,6 +2951,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c9cc2678c2cdd569ef8215e2afd7954ada2ae20b4fdd2c5fe6139a3b02d105db"
 dependencies = [
  "rustls",
+ "tokio",
+]
+
+[[package]]
+name = "tokio-util"
+version = "0.7.20"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e464cf451ba96ebfc6f9b6542f17ee8b8956e33f1e40d9690624e59d7a7f8a4b"
+dependencies = [
+ "bytes",
+ "futures-core",
+ "futures-sink",
+ "pin-project-lite",
  "tokio",
 ]
 

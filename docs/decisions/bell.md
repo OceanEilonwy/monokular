@@ -288,3 +288,22 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
     The README now says how a relay operator sizes
     `limits.per_sender_per_minute` for a whole Bell (push audit #15): the
     relay counts every merchant's tills as one sender.
+
+40. **The Bell stops on one token made before anything waits for it, and
+    the design has no push-to-start** (push audit #10 and #18, the Bell's
+    half; monokulo `push.md` 156 and 157). The Bell called
+    `service_runtime::shutdown::signal()` twice, once for `bell.serve`'s
+    graceful shutdown and once for the wait before the grace period: two
+    listeners for the same signal, the shape #10 names, where each hears
+    only signals after it is made. The monokulo pins move to `a0ff005f0`
+    (push-relay, with every group 4 fix), where `signal()` is private and
+    `shutdown::on_signal()` hands back a `CancellationToken` whose
+    handlers are installed before it returns: the Bell makes it where it
+    made the first listener, gives a clone to `bell.serve` and waits on
+    the token itself, so its start-up behaviour is unchanged. No test of
+    its own: with `signal()` private the two-listener shape no longer
+    compiles, and the binary's SIGTERM test covers the stop. The pin also
+    takes the relay's other group 4 fixes (#11, #12), which the Bell
+    doesn't call. Design sections 5 and 6 lose the `apns-pushtostart`
+    platform, its row and the opt-in, matching the relay; push-to-start
+    comes back with a monokulo target kind that writes it.

@@ -61,11 +61,11 @@ SIGTERM), 29 unit (the signature against Square's documented example,
 settings, the command line, the store, addresses).
 
 Gates, as `rust.yml` runs them, on stable (1.98.1) against the pinned
-monokulo commit `31c3cab9d`, 2026-10-28: `cargo fmt -p monokular-bell
+monokulo commit `a0ff005f0`, 2026-10-28: `cargo fmt -p monokular-bell
 --check`, `cargo test --locked -p orf-codec -p orf-codec-ffi -p
 monokular-bell`, `cargo clippy --locked --workspace --all-targets -- -D
 warnings` and `cargo nextest run --locked -p monokular-bell` (78 passed
-after the push audit's fixes, decisions 36 to 39), all passed.
+after the push audit's fixes, decisions 36 to 40), all passed.
 
 ## Risks and what is left
 
