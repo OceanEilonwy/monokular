@@ -724,3 +724,29 @@ detail pages), recorded by the developers and folded in by the lead.
     summary, which row opens what, the pages' words, the sheet's
     outcomes, `TillNav`) and `TillTest`'s saved shift, cap, close, reopen
     and refund guard.
+85. **QA's first pass over the panel and the chip** (refines 65, 68, 74).
+    The chip: Android 16 prints a chronometer, or a `when` in the future,
+    as a promoted notification's chip text, so the ongoing notification
+    sets no time at all (`setShowWhen(false)`, no chronometer) and the
+    chip is the icon alone; the code's countdown is on the panel, the
+    sale screen and the enlarged code. Android 16 draws the promoted
+    chip itself, a system-themed pill with a white icon whatever
+    `setColor` says, and refuses promotion to a colorized notification,
+    so the chip can't be the board's orange pill or green tick: the
+    shape of the icon (the ring filling, then the tick) carries the
+    phase, and `setColor` still tints the icon in the shade. The panel's
+    paid face: the overlay sees the sale it shows turn paid itself
+    (`Panel.landed`) rather than waiting for the service's `paid()`, so a
+    second sale waiting behind it comes up only after `Bubble.PAID_MS`
+    and the cashier sees the payment land; `PanelTest` covers it. The
+    panel's window on a phone draws edge to edge (`fitInsetsTypes = 0`,
+    the cutout always), under the status and navigation bars, and pads
+    itself with the safe drawing insets, so The order's ground runs under
+    the bars. With the phone on its side the bubble docks beside the
+    panel and the panel puts the code and its status to the right of the
+    header, amount, order line and buttons, the code at its one size; the
+    card still scrolls when a large font needs more. The "Paid" and "No
+    payment yet" notifications share a group, and once two are up a
+    silent summary with the mark (`ic_mark`) heads it, opening the shift,
+    gone when the Paid ones would be: Android's own bundle used the
+    launcher icon, a solid square in the status bar.

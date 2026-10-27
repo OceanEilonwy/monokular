@@ -11,8 +11,14 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class PanelTest {
-    private fun sale(phase: SalePhase = SalePhase.Waiting, found: Boolean = true, device: String? = "Back till", refundedAt: Long? = null) = TillSale(
-        orderId = "o1",
+    private fun sale(
+        phase: SalePhase = SalePhase.Waiting,
+        found: Boolean = true,
+        device: String? = "Back till",
+        refundedAt: Long? = null,
+        id: String = "o1",
+    ) = TillSale(
+        orderId = id,
         amount = "79.21",
         currency = "USD",
         reference = "k4Rt",
@@ -56,5 +62,17 @@ class PanelTest {
         assertEquals("Refund it in Square on the till that took it.", Panel.endedLine(sale(SalePhase.Expired, found = false, device = null)))
         assertEquals("Refunded in Square", Panel.endedHeading(sale(SalePhase.DoubleSpend, refundedAt = 9)))
         assertEquals("Nothing more to do.", Panel.endedLine(sale(SalePhase.Expired, refundedAt = 9)))
+    }
+
+    @Test
+    fun `the sale on the panel shows paid before the next one waiting comes up`() {
+        val waiting = listOf(sale(id = "1044"), sale(id = "1043"))
+        assertEquals("1044", Bubble.focus(waiting, null, justPaid = false), "the newest is up")
+        val paid = listOf(sale(SalePhase.Paid, id = "1044"), sale(id = "1043"))
+        assertTrue(Panel.landed(paid, "1044", wasLive = true), "it was live a moment ago, now paid")
+        assertEquals("1044", Bubble.focus(paid, "1044", justPaid = true), "held, paid, for a few seconds")
+        assertEquals("1043", Bubble.focus(paid, "1044", justPaid = false), "then the next one waiting")
+        assertFalse(Panel.landed(paid, "1044", wasLive = false), "already paid at the last look: not news")
+        assertFalse(Panel.landed(paid, "1043", wasLive = true), "another sale, still waiting")
     }
 }

@@ -17,6 +17,7 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -114,6 +115,15 @@ object Panel {
     fun lowers(drag: Float, height: Float, velocity: Float, fling: Float): Boolean =
         velocity >= fling || (height > 0f && drag > height / 4f)
 
+    /**
+     * Whether the sale the panel showed, [shown], live at the last look
+     * ([wasLive]), has just been paid: the panel then shows it paid for
+     * [app.monokular.Bubble.PAID_MS] before moving on to the next sale
+     * waiting, so the cashier sees the payment land where they're looking.
+     */
+    fun landed(sales: List<TillSale>, shown: String?, wasLive: Boolean): Boolean =
+        wasLive && sales.firstOrNull { it.orderId == shown }?.phase == SalePhase.Paid
+
     /** The header's second line before "Open the shift": the till's location for its own sale, else who took it. */
     fun where(sale: TillSale, location: String?): String = when {
         sale.found != null -> location ?: "This till"
@@ -196,14 +206,14 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
  * shift.
  */
 @Composable
-fun SalePanel(sale: TillSale, where: String, wide: Boolean, actions: PanelActions) {
+fun SalePanel(sale: TillSale, where: String, wide: Boolean, actions: PanelActions, sideBySide: Boolean = false) {
     if (sale.phase == SalePhase.Paid) LaunchedEffect(sale.orderId) { delay(5_000); actions.onLower() }
     // No Surface gives the overlay's window a text colour: the panel sets its own.
-    CompositionLocalProvider(LocalContentColor provides mk.ink) { PanelCard(sale, where, wide, actions) }
+    CompositionLocalProvider(LocalContentColor provides mk.ink) { PanelCard(sale, where, wide, sideBySide, actions) }
 }
 
 @Composable
-private fun PanelCard(sale: TillSale, where: String, wide: Boolean, actions: PanelActions) {
+private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: Boolean, actions: PanelActions) {
     val scope = rememberCoroutineScope()
     val drag = remember { Animatable(0f) }
     var height by remember { mutableFloatStateOf(0f) }
@@ -241,58 +251,85 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, actions: Pan
             },
             onTap = actions.onLower,
         )
-        Column(
-            Modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-        ) {
-            Header(sale, where, actions.onOpenShift)
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(SaleText.amount(sale), style = display(44, -0.8))
-                Text(
-                    SaleText.xmr(sale), fontSize = 15.sp, color = mk.muted,
-                    modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                        .clickable(onClickLabel = "Copy the XMR amount", onClick = actions.onCopyXmr)
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
-                )
+        if (sideBySide) {
+            // A phone on its side: the code and its status on the right, at their full size, the rest beside them.
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(24.dp)) {
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Details(sale, where, actions)
+                    Buttons(sale, actions)
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                    Face(sale, wide)
+                }
             }
-            val receipt = sale.receipt
-            if (receipt != null && receipt.lineItems.isNotEmpty()) OrderLine(SaleText.items(receipt), SaleText.firstItems(receipt), actions.onOrder)
-            when (sale.standing) {
-                is Standing.Live -> {
-                    // The same size whatever else the panel shows: the cashier's eye and the customer's camera find it where it was.
-                    QrCode(
-                        sale.code.uri,
-                        "Payment code for ${SaleText.amount(sale)}",
-                        Modifier.size(if (wide) 280.dp else 264.dp),
-                        padding = 16.dp,
-                        radius = if (wide) 30.dp else 28.dp,
-                    )
-                    StatusRow(sale)
-                }
-                is Standing.Paid -> {
-                    PaidTick(88.dp)
-                    Text(
-                        SaleText.status(sale), style = display(28), textAlign = TextAlign.Center,
-                        modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
-                    )
-                    Text("${SaleText.xmr(sale)} received", fontSize = 15.sp, color = mk.muted)
-                }
-                else -> Ended(sale)
-            }
-            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                when {
-                    sale.phase == SalePhase.Paid -> PrimaryButton("Done", actions.onLower, Modifier.weight(1f), height = 48.dp, size = 15)
-                    sale.live -> {
-                        OutlineButton("Copy address", actions.onCopy, Modifier.weight(1f), size = 15)
-                        PrimaryButton("Full screen", actions.onFullScreen, Modifier.weight(1f), height = 48.dp, size = 15)
-                    }
-                    else -> PrimaryButton("Open the shift", actions.onOpenShift, Modifier.weight(1f), height = 48.dp, size = 15)
-                }
+        } else {
+            Column(
+                Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Details(sale, where, actions)
+                Face(sale, wide)
+                Buttons(sale, actions)
             }
         }
     }
 }
+
+/** The header, the amount and what was bought. */
+@Composable
+private fun Details(sale: TillSale, where: String, actions: PanelActions) {
+    Header(sale, where, actions.onOpenShift)
+    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(SaleText.amount(sale), style = display(44, -0.8))
+        Text(
+            SaleText.xmr(sale), fontSize = 15.sp, color = mk.muted,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                .clickable(onClickLabel = "Copy the XMR amount", onClick = actions.onCopyXmr)
+                .padding(horizontal = 6.dp, vertical = 2.dp),
+        )
+    }
+    val receipt = sale.receipt
+    if (receipt != null && receipt.lineItems.isNotEmpty()) OrderLine(SaleText.items(receipt), SaleText.firstItems(receipt), actions.onOrder)
+}
+
+/** The code and its status while live; the tick once paid; else where the code was. */
+@Composable
+private fun Face(sale: TillSale, wide: Boolean) = when (sale.standing) {
+    is Standing.Live -> {
+        // The same size whatever else the panel shows: the cashier's eye and the customer's camera find it where it was.
+        QrCode(
+            sale.code.uri,
+            "Payment code for ${SaleText.amount(sale)}",
+            Modifier.size(if (wide) 280.dp else 264.dp),
+            padding = 16.dp,
+            radius = if (wide) 30.dp else 28.dp,
+        )
+        StatusRow(sale)
+    }
+    is Standing.Paid -> {
+        PaidTick(88.dp)
+        Text(
+            SaleText.status(sale), style = display(28), textAlign = TextAlign.Center,
+            modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
+        )
+        Text("${SaleText.xmr(sale)} received", fontSize = 15.sp, color = mk.muted)
+    }
+    else -> Ended(sale)
+}
+
+@Composable
+private fun Buttons(sale: TillSale, actions: PanelActions) =
+    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        when {
+            sale.phase == SalePhase.Paid -> PrimaryButton("Done", actions.onLower, Modifier.weight(1f), height = 48.dp, size = 15)
+            sale.live -> {
+                OutlineButton("Copy address", actions.onCopy, Modifier.weight(1f), size = 15)
+                PrimaryButton("Full screen", actions.onFullScreen, Modifier.weight(1f), height = 48.dp, size = 15)
+            }
+            else -> PrimaryButton("Open the shift", actions.onOpenShift, Modifier.weight(1f), height = 48.dp, size = 15)
+        }
+    }
 
 /**
  * The pill at the panel's top: drag it down to lower the panel, or tap it.
@@ -386,8 +423,9 @@ private fun Ended(sale: TillSale) {
 
 /**
  * The panel's window on a phone: Square left as it is behind it (a tap
- * there lowers the panel), the lit bubble docked above it (a tap there
- * lowers it too). The whole order, when it's up, fills the window.
+ * there lowers the panel), the lit bubble docked above it, or beside it
+ * with the phone on its side (a tap there lowers it too). The whole
+ * order, when it's up, fills the window.
  */
 @Composable
 fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage, actions: PanelActions) {
@@ -401,17 +439,33 @@ fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage,
         return
     }
     val lower by rememberUpdatedState(actions.onLower)
+    val bubble = @Composable {
+        Box(
+            Modifier.clip(CircleShape)
+                .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = actions.onLower)
+                .semantics { contentDescription = "Lower to the bubble" },
+        ) { BubbleFace(look, phase = sale.phase) }
+    }
+    // Taps on the panel itself stay there.
+    val panel = @Composable { sideBySide: Boolean ->
+        Box(Modifier.pointerInput(Unit) { detectTapGestures { } }) {
+            SalePanel(sale, where, wide = false, actions, sideBySide)
+        }
+    }
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { lower() } }) {
-        Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp), horizontalAlignment = Alignment.End) {
-            Spacer(Modifier.height(4.dp))
-            Box(
-                Modifier.clip(CircleShape)
-                    .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = actions.onLower)
-                    .semantics { contentDescription = "Lower to the bubble" },
-            ) { BubbleFace(look, phase = sale.phase) }
-            // Taps on the panel itself stay there.
-            Box(Modifier.pointerInput(Unit) { detectTapGestures { } }) {
-                SalePanel(sale, where, wide = false, actions)
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp)) {
+            if (maxWidth > maxHeight) {
+                // On its side the phone has no height to spare: the bubble docks beside the panel, not above it.
+                Row(Modifier.fillMaxSize().padding(top = 4.dp)) {
+                    Box(Modifier.weight(1f)) { panel(true) }
+                    bubble()
+                }
+            } else {
+                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.End) {
+                    Spacer(Modifier.height(4.dp))
+                    bubble()
+                    panel(false)
+                }
             }
         }
     }
