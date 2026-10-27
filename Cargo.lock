@@ -1566,6 +1566,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "live-settings",
+ "outbound",
  "push",
  "rand 0.10.3",
  "rate-limit",

@@ -28,7 +28,6 @@ use push::Subscription;
 use serde::{Deserialize, Serialize};
 
 use crate::Shared;
-use crate::outbound;
 use crate::problem::{Problem, ProblemDetails};
 use crate::registrations::{NewRegistration, RegisterError, RegistrationId, StoreError};
 use crate::square::{self, AccessToken, LocationError, LocationId, Notification};

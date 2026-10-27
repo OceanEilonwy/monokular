@@ -25,7 +25,6 @@
 
 pub mod cli;
 mod dings;
-mod outbound;
 mod problem;
 mod registrations;
 mod routes;
@@ -37,11 +36,11 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 use abuse::{ClientIdentity, TrustedProxies};
+use outbound::Reach;
 use push::{Sender, VapidKey};
 use rate_limit::RateLimiter;
 
 use crate::dings::Dings;
-use crate::outbound::Reach;
 use crate::registrations::{RegistrationStore, StoreError};
 use crate::settings::{ApplicationId, BellConfig, SquareEnvironment};
 use crate::square::{Square, WebhookKey};
@@ -124,7 +123,13 @@ impl Bell {
                 })
             })??;
         let reach = Reach::allowing_private(config.allow_private_endpoints);
-        let client = outbound::client(reach, config.timeout)
+        // Redirects off, no proxy and the checking resolver, as monokulo
+        // sends its webhooks and pushes: a ding endpoint could name an
+        // address inside the network the Bell runs in.
+        let client = outbound::client_builder(reach)
+            .user_agent(USER_AGENT)
+            .timeout(config.timeout)
+            .build()
             .map_err(|error| StartError::Client("push", error))?;
         let sender = Sender::new(client, Arc::clone(&vapid_key), public_uri.contact());
         let dings = Dings::new(

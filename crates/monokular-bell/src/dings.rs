@@ -19,10 +19,10 @@
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex, PoisonError};
 
+use outbound::Reach;
 use push::{Message, Options, SendError, Sender, Topic, Ttl, Urgency};
 use tokio::sync::watch;
 
-use crate::outbound::{self, Reach};
 use crate::registrations::{Failed, Registration, RegistrationStore};
 use crate::square::{LocationId, MerchantId, PaymentId};
 

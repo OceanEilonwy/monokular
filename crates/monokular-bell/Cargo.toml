@@ -22,6 +22,9 @@ hex = "0.4.3"
 # (`Mac::verify_slice`, on `subtle`).
 hmac = "0.13.0"
 live-settings.workspace = true
+# Where a ding may go: the private-address rule, and a client whose resolver
+# holds to it, as monokulo sends its webhooks and pushes.
+outbound.workspace = true
 # Encrypting and signing the dings (RFC 8291, RFC 8292) and sending them.
 push.workspace = true
 rand = "0.10.2"

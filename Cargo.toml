@@ -8,12 +8,14 @@ license = "GPL-3.0-only"
 repository = "https://github.com/OceanEilonwy/monokular"
 
 # Crates of the monokulo repository the Monokular Bell builds on (Web Push,
-# settings, storage, limits, client addresses and shutdown), all at one
-# commit of it, so they agree with each other (docs/decisions/bell.md 1).
+# settings, storage, limits, client addresses, outbound requests and
+# shutdown), all at one commit of it, so they agree with each other
+# (docs/decisions/bell.md 1).
 # Moved with `cargo update -p push --precise <commit>` after changing `rev`.
 [workspace.dependencies]
 abuse = { git = "https://github.com/OceanEilonwy/monokulo", rev = "a0ff005f00c9eedfa5f325ab5a20bf8351087472" }
 live-settings = { git = "https://github.com/OceanEilonwy/monokulo", rev = "a0ff005f00c9eedfa5f325ab5a20bf8351087472" }
+outbound = { git = "https://github.com/OceanEilonwy/monokulo", rev = "a0ff005f00c9eedfa5f325ab5a20bf8351087472" }
 push = { git = "https://github.com/OceanEilonwy/monokulo", rev = "a0ff005f00c9eedfa5f325ab5a20bf8351087472" }
 rate-limit = { git = "https://github.com/OceanEilonwy/monokulo", rev = "a0ff005f00c9eedfa5f325ab5a20bf8351087472" }
 service-runtime = { git = "https://github.com/OceanEilonwy/monokulo", rev = "a0ff005f00c9eedfa5f325ab5a20bf8351087472" }

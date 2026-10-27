@@ -307,3 +307,21 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
     doesn't call. Design sections 5 and 6 lose the `apns-pushtostart`
     platform, its row and the opt-in, matching the relay; push-to-start
     comes back with a monokulo target kind that writes it.
+
+41. **Dings go out through monokulo's `outbound` crate, not a copy of it**
+    (push audit #2; monokulo `push.md` 154). The Bell's `outbound` module
+    was monokulo's rule copied line for line (decision 13), and had
+    drifted: it refused `localhost` names and monokulo didn't, monokulo
+    refused onion hosts and it left that to `push::Endpoint`. The rule now
+    lives once, in the `outbound` crate (no password hashing, nothing that
+    needs nightly), pinned at the same monokulo commit as the others
+    (`a0ff005f0`, already the pin): the Bell builds its push client with
+    `outbound::client_builder(reach)` plus its `User-Agent` and
+    `bell.timeout_ms`, and calls `outbound::check_host` at registration
+    and before each ding, so it now refuses an onion host itself as well.
+    The module and its three tests are gone; the address table (both
+    copies' lists together) and the resolver's tests are the crate's. A
+    Bell test of its own resolver was not added: the client is the
+    crate's, built in one place, and the Bell's tests over HTTP still
+    check what it does with it (no redirect followed, private and
+    `localhost` endpoints refused at registration and at each ding).

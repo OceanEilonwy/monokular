@@ -910,6 +910,8 @@ Rules:
 ```text
 crates/push/                    new library (§5): Web Push, VAPID, RFC 8291
 crates/push-relay/              new library + `monokulo-push-relay` binary (§5)
+crates/outbound/                new library: the private-address rule and the checking HTTP client,
+                                for monokulo's webhooks and pushes and the Bell's dings
 crates/monokulo/                depends on push; on push-relay behind feature "relay" (default)
 crates/monokulo/src/
   apps/                         connected apps

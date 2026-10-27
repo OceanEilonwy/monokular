@@ -47,7 +47,7 @@ Push dings for the tills registered at that location. Its API is
 
 ## Tests and gates
 
-78 tests (`cargo nextest run -p monokular-bell`, about a second): 17
+75 tests (`cargo nextest run -p monokular-bell`, about a second): 17
 in-process (since the push audit, one: a proxy adding its own
 `X-Forwarded-For` line still has its client counted by that line), 28 over real HTTP (named `over_http`: a completed payment's
 webhook dings every till at its location and the ding decrypts to
@@ -57,15 +57,16 @@ the token left nowhere; private endpoints refused; racing registrations
 filling a location exactly; since the push audit, a payment ringing once
 and a refund never, another merchant refused a till's endpoint, and the
 `main` alias refused as the till's mistake), 4 of the binary (`--init`, missing secrets,
-SIGTERM), 29 unit (the signature against Square's documented example,
-settings, the command line, the store, addresses).
+SIGTERM), 26 unit (the signature against Square's documented example,
+settings, the command line, the store; the address rule's tests are
+monokulo's `outbound` crate's since push audit #2).
 
 Gates, as `rust.yml` runs them, on stable (1.98.1) against the pinned
 monokulo commit `a0ff005f0`, 2026-10-28: `cargo fmt -p monokular-bell
 --check`, `cargo test --locked -p orf-codec -p orf-codec-ffi -p
 monokular-bell`, `cargo clippy --locked --workspace --all-targets -- -D
-warnings` and `cargo nextest run --locked -p monokular-bell` (78 passed
-after the push audit's fixes, decisions 36 to 40), all passed.
+warnings` and `cargo nextest run --locked -p monokular-bell` (75 passed
+after the push audit's fixes, decisions 36 to 41), all passed.
 
 ## Risks and what is left
 
