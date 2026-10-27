@@ -1,6 +1,9 @@
 package app.monokular
 
 import app.monokular.core.Connection
+import app.monokular.push.BellRegistration
+import app.monokular.push.WakeUpChoice
+import app.monokular.push.WakeUpStore
 import app.monokular.sales.CursorStore
 import app.monokular.sales.Pkce
 import app.monokular.sales.ShiftStore
@@ -74,6 +77,26 @@ class Stores(private val secure: SecureStore) {
         get() = read("square.pending", PkceState.serializer())?.let { Pkce(it.verifier, it.state) }
         set(value) = write("square.pending", PkceState.serializer(), value?.let { PkceState(it.verifier, it.state) })
 
+    /**
+     * The Square application the till signs in through when it isn't the
+     * build's own: a Bell's (`docs/design.md` §3, decision 95). Set once a
+     * sign-in through it has finished, never before.
+     */
+    var squareApplicationId: String?
+        get() = secure.get("square.application")
+        set(value) = secure.put("square.application", value?.takeIf { it != BuildConfig.SQUARE_APPLICATION_ID })
+
+    /** Settings › Wake-ups: the choice, and the registration the Bell holds while there is one. */
+    val wakeUps = object : WakeUpStore {
+        override var choice: WakeUpChoice
+            get() = read("wakeups.choice", WakeUpChoice.serializer()) ?: WakeUpChoice.TimerOnly
+            set(value) = write("wakeups.choice", WakeUpChoice.serializer(), value.takeIf { it != WakeUpChoice.TimerOnly })
+
+        override var registration: BellRegistration?
+            get() = read("wakeups.registration", BellRegistration.serializer())
+            set(value) = write("wakeups.registration", BellRegistration.serializer(), value)
+    }
+
     /** Debug builds: a stand-in Square on the developer's machine. */
     var squareBaseUrl: String?
         get() = secure.get("debug.square.base")
@@ -114,5 +137,8 @@ class Stores(private val secure: SecureStore) {
         secure.put("square.handled", null)
         shift.save(emptyList())
         shiftStartedAt = null
+        squareApplicationId = null
+        wakeUps.choice = WakeUpChoice.TimerOnly
+        wakeUps.registration = null
     }
 }

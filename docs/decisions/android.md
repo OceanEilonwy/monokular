@@ -819,3 +819,146 @@ detail pages), recorded by the developers and folded in by the lead.
     one `change` now, and a re-found sale keeps `refundedAt` as it kept
     `closedAt`. Not reproduced, so the race is closed on reasoning, not
     on a failing test.
+
+## App: Wake-ups, the Monokular Bell (2026-10-28)
+
+Made by the team's tech lead and product owner while wiring the app to the
+Bell (`docs/design.md` §3, §5, §7; `docs/bell.md`), with the owner away.
+
+90. **UnifiedPush's connector, `org.unifiedpush.android:connector` 3.3.5**
+    (Apache-2.0, released 2026-08-22), in a `push` module that depends on
+    `core` alone (decision 56's module, back as the design's `push/`).
+    `UnifiedPush.register(context, instance, null, vapid)` hands the Bell's
+    `vapid_public_key` (base64url, as `/v1/info` gives it) to the
+    distributor, which then takes pushes signed by that key only; the
+    connector throws `VapidNotValidException` for a key that isn't a P-256
+    point. One instance, `bell`, for the Bell in use; choosing another Bell
+    unregisters it and registers again for the new key. FCM is not a path:
+    the embedded FCM distributor needs Firebase keys and a deployed relay,
+    and neither exists yet. The connector is wrapped behind
+    `PushSubscriptions` so the registration logic and its tests never see
+    Android.
+91. **Without a distributor, Wake-ups says so and stays on the timer.** The
+    connector's own dialogs (`tryUseDefaultDistributor`, the `unifiedpush://link`
+    deep link) are not used: Settings › Wake-ups shows the Bell rows with a
+    notice, "Wake-ups need a UnifiedPush app such as ntfy to carry them",
+    and a link to ntfy. The choice is kept, so installing a distributor and
+    coming back registers without choosing again. With one distributor it
+    is used; with several and none saved, the first by package name is saved
+    (`UnifiedPush.saveDistributor`) and Settings shows which under the Bell
+    rows, where the cashier can pick another from a list. A saved one that
+    is no longer installed counts as none.
+92. **The subscription's keys are the connector's, on this device.** The
+    connector's `DefaultKeyManager` makes the P-256 pair and auth secret per
+    instance, keeps the private key in the app's SharedPreferences encrypted
+    AES-GCM under a key in the Android Keystore, and decrypts each push
+    (RFC 8291) before `PushService.onMessage`: the app sees
+    `PushMessage(content, decrypted)`. The private key never leaves the
+    device and is never ours to hold; `allowBackup=false` keeps it out of
+    backups. A ding is taken only when `decrypted` is true and the content
+    reads as JSON with `"wake": "square"`; anything else is dropped and
+    counted, never logged in full. Holding the private key in the Keystore
+    itself (EC key agreement there needs API 31) is a follow-up, not this.
+93. **A ding reaches the shift through the app's graph, and is dropped
+    outside one.** `WakePushService` (the connector's `PushService`, in the
+    app's process) gives each ding to `Graph.push`, a `SharedFlow<Unit>`
+    without replay; `TillRunner` collects it while a shift runs and calls
+    `Shift.wake(WakeCause.Ding)`. No shift (watching off, or the process
+    was started by the ding alone): nothing checks Square, by the design's
+    "outside a shift nothing runs", and no foreground service is started
+    from a push (Android 14's rules make that a fight not worth having for
+    a sale the cashier isn't watching for). The registration itself stays
+    with the Bell across shifts: registering costs a Square request and one
+    of the Bell's 32 places per location, a ding outside a shift costs
+    nothing.
+94. **The timer's pace is a state machine, `WakePacing` in `sales`, pure and
+    tested.** Three states: `Timer` (2 s), `Bell` (30 s), `Doubt` (2 s, for
+    10 minutes). Events: the registration coming on or going off (from
+    `WakeUps.status`), a ding, and a *timer* check finding a new sale.
+    `Timer` + on → `Bell`. `Bell` + off → `Timer`. `Bell` + a ding → `Bell`.
+    `Bell` + the timer finding a sale (one the Bell should have rung for) →
+    `Doubt`, and `WakeUps.recheck()` is asked to register again. `Doubt` + a
+    ding → `Bell` (the Bell proved itself); `Doubt` + the timer finding
+    another sale → `Doubt` for 10 more minutes; `Doubt` running out → `Bell`;
+    `Doubt` + off → `Timer`. The 30 s tick is itself the backstop for a lost
+    ding, as §3 says; the app opening wakes the shift as before, without
+    touching the pace. `Shift.run` tells the pacing why it checked and
+    whether it found anything (`Till.check` answers how many sales it
+    found), and reads the interval afresh on every pass, so a change of
+    pace needs no restart. `RunnerState` carries the interval for Settings
+    ("Every 2 s" / "Every 30 s").
+95. **Registering, and registering again.** Choosing a Bell: `GET /v1/info`;
+    its `environment` must match the build's (`sandbox` or `production`), or
+    the status is `Failing` with "This Bell is for Square's sandbox" (or the
+    reverse); its `square_application_id` must be the one the till signed
+    in through, or the status is `NeedsSquareSignIn(bell, applicationId)`
+    (also when the till runs without Square). Then
+    `PushSubscriptions.subscribe(vapid)`, waiting for `Subscribed`; then
+    `POST /v1/register` with `SquareAuth.accessToken()`, the location and the
+    subscription, kept as `BellRegistration` in the encrypted store, status
+    `On`. Registered again, from the start, on: `recheck()` (Try again, a
+    shift starting, a location change, a new Square sign-in, the pacing's
+    doubt); a new endpoint from the distributor (the old id is deleted
+    first, as the Bell keys registrations by endpoint); the distributor
+    ending the subscription (`Failing`, then subscribe again). Retries by
+    problem: `square-unavailable`, `internal`, 5xx and no answer wait 1 min,
+    doubling to 30 min, while the choice stands; `rate-limited` waits its
+    `Retry-After`; `square-refused` goes to `NeedsSquareSignIn` (the token
+    lapsed, or the location isn't this merchant's); `invalid-request`,
+    `too-many-registrations` and `endpoint-registered` are `Failing` with the
+    Bell's own detail and wait for Try again (a configuration problem a
+    retry won't mend). The connector's `NETWORK` failure is retried the same
+    way; `ACTION_REQUIRED` is `Failing` naming the distributor. Problems are
+    read as RFC 9457 `type`s, as `Problems` reads Monokulo's, with the
+    Bell's own `detail` as the fallback.
+96. **A Bell with another Square application means signing in through it.**
+    The till's Square application is `Stores.squareApplicationId ?:
+    BuildConfig.SQUARE_APPLICATION_ID`, read by `Graph.squareConfig()`. For
+    `NeedsSquareSignIn`, Settings shows "This Bell hears Square through a
+    different application. Sign in to Square again to use it" with a Sign in
+    row; the sign-in is started with that application's id (kept with the
+    pending PKCE state), and only once it finishes is the id saved as the
+    till's and the old sign-in replaced, so an abandoned sign-in leaves the
+    working one alone. The location is chosen again if the new account has
+    several. Back to the project's Bell is the same flow the other way;
+    Timer only keeps whatever sign-in there is. The handled-payments cursor
+    is the location's and carries over.
+97. **Unregistering.** `DELETE /v1/register/{id}` (a `404` is as good as a
+    `204`), then `PushSubscriptions.unsubscribe()`, then the registration is
+    forgotten, on: Timer only chosen (the choice is saved first, so a failed
+    DELETE can't undo it); signing out of Square (the choice stays and
+    Wake-ups says it needs Square); disconnecting the device (before
+    `forgetAll`, which also sets the choice back to Timer only). A Bell that
+    can't be reached for the DELETE is tried once; the Bell deletes a dead
+    endpoint by itself after its push service answers 404/410.
+98. **A Bell's address is `BellAddress`**: `https`, or `http` to an onion
+    address (through Orbot, as the store is reached: decision 55) and to
+    anything in a debug build (a Bell on the developer's machine); a path
+    is kept (a Bell under one); no user name, query or fragment; a missing
+    scheme means https; shown as its host. An onion Bell with Orbot not
+    running is `Failing` "Orbot isn't running", retried as a network
+    problem. The project's Bell is `BuildConfig.BELL_URL`
+    (`-Pmonokular.bell.url`, default `https://bell.monokulo.com`, a
+    placeholder until one is deployed), and Settings names its host from
+    it. The subscription's endpoint is the distributor's and must be public
+    https for the Bell to take it, whatever the Bell's own address.
+99. **Settings › Wake-ups, in the app's own parts.** Under the section
+    label, one `Group` of three `ChoiceRow`s (new in `Parts.kt`: label,
+    muted detail, a tick at the end for the chosen one, `Role.RadioButton`
+    semantics, the whole row selectable): "Timer only" (detail "Checks
+    Square every 2 seconds"), "Monokular Bell" (detail: its host), "My own
+    Bell" (detail: its host, or "Enter its address"). With "My own Bell"
+    chosen, an `OutlinedTextField` "Bell address" and an `OutlineButton`
+    "Use it" follow in the group, as the debug stand-in field does, with
+    `BellAddress.problem` as the field's error. Then a second `Group`:
+    `FactRow("Checking Square", "Every 2 s" | "Every 30 s")` and a status row
+    with the Online/Offline dot: "Listening" (green) for `On`, "Setting up…"
+    with the `LoadingMark` for `Registering`, "Not set up" otherwise; for
+    `Failing` an `ActionRow("Try again")`, for `NeedsSquareSignIn` an
+    `ActionRow("Sign in to Square")`. A `Notice` above the second group
+    carries a `Failing` problem, the no-distributor message (with "Get ntfy"
+    as a `LinkButton`) or the Square mismatch. The footnote says what the
+    Bell is told: "Monokular gives the Bell your Square sign-in once, to
+    prove the location, and nothing about your sales; the Bell only says
+    when to look." The Shift footnote reads "every 2 seconds (30 with a
+    Bell)". Everything in `Theme.kt` tokens; both themes.

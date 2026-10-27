@@ -25,6 +25,9 @@ android {
         buildConfigField("String", "SQUARE_REDIRECT_URI", "\"https://monokular.monokulo.com/square\"")
         buildConfigField("String", "SQUARE_RETURN_URI", "\"https://monokular.monokulo.com/square\"")
         buildConfigField("String", "SQUARE_BASE_URL", "\"\"")
+        // The project's Monokular Bell (docs/design.md §3), which Settings ›
+        // Wake-ups offers by name. A placeholder until one is deployed.
+        buildConfigField("String", "BELL_URL", "\"${providers.gradleProperty("monokular.bell.url").getOrElse("https://bell.monokulo.com")}\"")
     }
 
     buildTypes {
@@ -59,6 +62,7 @@ android {
 
 dependencies {
     implementation(project(":sales"))
+    implementation(project(":push"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.browser)

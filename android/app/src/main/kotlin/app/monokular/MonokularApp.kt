@@ -40,7 +40,8 @@ class Graph(app: Application) {
     val monokulo = MonokuloApi(http, identity)
 
     fun squareConfig() = SquareConfig(
-        applicationId = BuildConfig.SQUARE_APPLICATION_ID,
+        // A Bell's application once the till has signed in through it (decision 95).
+        applicationId = stores.squareApplicationId ?: BuildConfig.SQUARE_APPLICATION_ID,
         sandbox = BuildConfig.SQUARE_SANDBOX,
         redirectUri = BuildConfig.SQUARE_REDIRECT_URI,
         baseUrl = if (BuildConfig.DEBUG) stores.squareBaseUrl ?: BuildConfig.SQUARE_BASE_URL.ifEmpty { null } else null,
