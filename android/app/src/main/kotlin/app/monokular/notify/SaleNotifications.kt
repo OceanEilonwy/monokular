@@ -246,6 +246,13 @@ class SaleNotifications(private val context: Context) {
             clipboard.setPrimaryClip(ClipData.newPlainText("Monero address", address))
             if (Build.VERSION.SDK_INT < 33) Toast.makeText(context, "Address copied", Toast.LENGTH_SHORT).show()
         }
+
+        /** Copies a sale's exact XMR amount (the panel's XMR line), for a wallet that wants it typed. */
+        fun copyXmr(context: Context, xmr: String) {
+            val clipboard = context.getSystemService(ClipboardManager::class.java)
+            clipboard.setPrimaryClip(ClipData.newPlainText("XMR amount", xmr))
+            if (Build.VERSION.SDK_INT < 33) Toast.makeText(context, "Amount copied", Toast.LENGTH_SHORT).show()
+        }
     }
 }
 

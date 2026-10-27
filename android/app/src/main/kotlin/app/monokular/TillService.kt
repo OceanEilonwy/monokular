@@ -36,7 +36,13 @@ class TillService : LifecycleService() {
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0,
         )
         graph.runner.start()
-        overlay = Overlay(this, graph, lifecycleScope, onCopy = { SaleNotifications.copyAddress(this, it.address) }, onFullScreen = ::openSale)
+        overlay = Overlay(
+            this, graph, lifecycleScope,
+            onCopy = { SaleNotifications.copyAddress(this, it.address) },
+            onCopyXmr = { SaleNotifications.copyXmr(this, it.xmr) },
+            onFullScreen = ::openSale,
+            onOpenShift = ::openShift,
+        )
         overlay.start()
         val changes = PhaseChanges()
         var posted: List<Any?>? = null
@@ -81,6 +87,15 @@ class TillService : LifecycleService() {
         overlay.stop()
         graph.runner.stop()
         super.onDestroy()
+    }
+
+    /** Opens Monokular on the shift (the panel's header row): the sale stays live, on the bubble and in the list. */
+    private fun openShift() {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(MainActivity.EXTRA_SHIFT, true),
+        )
     }
 
     private fun watching() = notes.watching(graph.store.now.value.store?.name.orEmpty(), graph.stores.location?.name)
