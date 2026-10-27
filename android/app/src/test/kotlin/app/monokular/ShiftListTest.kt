@@ -10,7 +10,9 @@ import java.time.ZoneId
 import java.util.Locale
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 class ShiftListTest {
     private val zone = ZoneId.of("America/Los_Angeles")
@@ -145,6 +147,10 @@ class ShiftListTest {
         assertEquals("14:52 left to pay.", Closing.detail(CloseChoice.KeepUp, sale("w"), 892))
         assertEquals(emptyList(), Closing.choices(shift.single { it.orderId == "refunded" }), "nothing to ask: no X")
         assertEquals(emptyList(), Closing.choices(sale("w", closedAt = 1)))
+        assertTrue(Closing.applies(sale("w")), "the code is still up: the answer stands")
+        assertFalse(Closing.applies(sale("p", SalePhase.Paid)), "paid as the cashier tapped: the answer is dropped")
+        assertFalse(Closing.applies(sale("w", closedAt = 1)))
+        assertFalse(Closing.applies(null), "gone from the shift")
         val amount = SaleText.amount(sale("w"))
         assertEquals("Sale #w · $amount · Square has it as Monero", Closing.subtitle(sale("w")))
         assertEquals("Sale #t · $amount · From Back till", Closing.subtitle(theirs))

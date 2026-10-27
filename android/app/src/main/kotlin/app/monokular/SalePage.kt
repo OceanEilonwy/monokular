@@ -3,6 +3,7 @@ package app.monokular
 import app.monokular.core.SalePhase
 import app.monokular.sales.Standing
 import app.monokular.sales.TillSale
+import app.monokular.sales.live
 import app.monokular.sales.standing
 import java.time.ZoneId
 import java.util.Locale
@@ -191,6 +192,13 @@ object Closing {
         sale.found == null -> listOf(CloseChoice.CloseForNow, CloseChoice.KeepUp)
         else -> CloseChoice.entries
     }
+
+    /**
+     * Whether the sheet's answer still stands for [sale] as it is now: only
+     * while its code is up. Paid (or ended) since the cashier tapped, the
+     * answer is dropped, so a paid sale is never closed or refunded by it.
+     */
+    fun applies(sale: TillSale?): Boolean = sale?.live == true
 
     fun outcome(choice: CloseChoice): CloseOutcome = when (choice) {
         CloseChoice.RefundIt -> CloseOutcome(close = true, refund = true, then = CloseOutcome.Then.Sale)

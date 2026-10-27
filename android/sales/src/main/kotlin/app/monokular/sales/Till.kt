@@ -232,9 +232,14 @@ class Till(
         change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(closedAt = null) else it }) }
     }
 
-    /** Refunds the POS sale of an order that was never paid. */
+    /**
+     * Refunds the POS sale of an order that was never paid. A paid sale is
+     * never refunded from here, nor one already refunded: the payment may
+     * land while the cashier's "No" is on its way.
+     */
     suspend fun refund(orderId: String) {
         val sale = state.value.sales.firstOrNull { it.orderId == orderId } ?: return
+        if (sale.phase == SalePhase.Paid || sale.refundedAt != null) return
         val found = sale.found ?: return
         change { it.copy(refundProblems = it.refundProblems - orderId) }
         try {

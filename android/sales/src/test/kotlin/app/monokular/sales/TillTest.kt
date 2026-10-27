@@ -250,6 +250,29 @@ class TillTest {
     }
 
     @Test
+    fun `a paid sale is never refunded, nor a refunded one twice`() = runBlocking {
+        val source = FakeSource(listOf(sale))
+        val till = Till(source, monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        till.onEvent(SaleEvent("sale.paid", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 2))
+        till.refund("ord_1")
+        val paid = till.sales.value.sales.single()
+        assertEquals(SalePhase.Paid, paid.phase)
+        assertEquals(null, paid.refundedAt, "the payment landed as the cashier said no")
+        assertTrue(source.refunded.isEmpty())
+
+        val other = FakeSource(listOf(sale))
+        val again = Till(other, monokulo, connection)
+        server.enqueue(order())
+        again.check()
+        again.onStatus("ord_1", SalePhase.Expired)
+        again.refund("ord_1")
+        again.refund("ord_1")
+        assertEquals(listOf("pay_monero"), other.refunded, "one refund in the POS")
+    }
+
+    @Test
     fun `a cancelled order ends its sale unpaid, and can be refunded`() = runBlocking {
         val source = FakeSource(listOf(sale))
         val till = Till(source, monokulo, connection)

@@ -70,9 +70,13 @@ fun CloseSheet(sale: TillSale, onChoice: (CloseChoice) -> Unit, onDismiss: () ->
             val left = secondsLeft(sale.expiresAt)
             for (choice in Closing.choices(sale)) {
                 Answer(choice, sale, left) {
-                    scope.launch { state.hide() }.invokeOnCompletion {
-                        onDismiss()
-                        onChoice(choice)
+                    // Only once the sheet is down: a sale paid meanwhile swaps
+                    // the screen out, cancels the hide and drops the answer.
+                    scope.launch { state.hide() }.invokeOnCompletion { cause ->
+                        if (cause == null) {
+                            onDismiss()
+                            onChoice(choice)
+                        }
                     }
                 }
             }

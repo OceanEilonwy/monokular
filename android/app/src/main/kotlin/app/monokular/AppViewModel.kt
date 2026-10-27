@@ -335,6 +335,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The close sheet's answer for the sale on screen ([Closing]). */
     fun closeSale(orderId: String, choice: CloseChoice) {
+        if (!Closing.applies(graph.runner.state.value.till.sales.firstOrNull { it.orderId == orderId })) return
         val outcome = Closing.outcome(choice)
         when {
             outcome.refund -> refund(orderId, close = outcome.close)
