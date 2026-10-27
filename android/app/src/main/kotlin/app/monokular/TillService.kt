@@ -9,17 +9,23 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import app.monokular.core.SalePhase
+import app.monokular.notify.Ongoing
 import app.monokular.notify.SaleNotifications
 import app.monokular.overlay.Overlay
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
  * Keeps the till running during a shift (`docs/design.md` §3, §7): a
  * foreground service whose ongoing notification is the current sale, and
- * which holds the bubble over other apps.
+ * which holds the bubble over other apps. The notification follows the
+ * newest sale whose code is up, turns into a green tick for a few seconds
+ * once one is paid, and goes back to watching when none is up.
  */
 class TillService : LifecycleService() {
     private val graph get() = (application as MonokularApp).graph
@@ -45,31 +51,44 @@ class TillService : LifecycleService() {
         )
         overlay.start()
         val changes = PhaseChanges()
+        // The sale just paid, while the chip shows its tick.
+        val justPaid = MutableStateFlow<String?>(null)
+        var paidTimer: Job? = null
         var posted: List<Any?>? = null
         val alerted = mutableSetOf<String>()
         lifecycleScope.launch {
-            combine(graph.runner.state, graph.permissions, graph.store.now) { state, _, _ -> state }.collect { state ->
+            combine(graph.runner.state, graph.permissions, graph.store.now, justPaid) { state, _, _, _ -> state }.collect { state ->
                 val sales = state.till.sales
                 for (sale in changes.next(sales)) {
                     when (sale.phase) {
                         SalePhase.Paid -> {
                             notes.paid(sale, quiet = graph.appVisible.value)
                             overlay.paid()
+                            justPaid.value = sale.orderId
+                            paidTimer?.cancel()
+                            paidTimer = lifecycleScope.launch {
+                                delay(Bubble.PAID_MS)
+                                justPaid.value = null
+                            }
                         }
                         SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend -> notes.unpaid(sale, quiet = graph.appVisible.value)
                         else -> Unit
                     }
                 }
-                val current = sales.firstOrNull { it.live }
-                val key = listOf(current?.orderId, current?.phase, notes.allowed(), graph.store.now.value.store?.name)
+                // Read now, not from the combine: a sale paid just above is the one to show.
+                val ongoing = Ongoing.of(sales, justPaid.value)
+                val sale = (ongoing as? Ongoing.Sale)?.sale ?: (ongoing as? Ongoing.Paid)?.sale
+                val key = listOf(ongoing::class, sale?.orderId, sale?.phase, sale?.receipt != null, notes.allowed(), graph.store.now.value.store?.name)
                 if (key == posted) return@collect
                 posted = key
-                if (current == null) {
-                    notes.ongoing(watching())
-                } else {
-                    // A heads-up once per sale, when it first appears; not again when an older one comes back to the top.
-                    val alert = current.phase == SalePhase.Waiting && alerted.add(current.orderId)
-                    notes.ongoing(notes.sale(current, graph.stores.location?.name, alert))
+                when (ongoing) {
+                    Ongoing.Watching -> notes.ongoing(watching())
+                    is Ongoing.Paid -> notes.ongoing(notes.justPaid(ongoing.sale))
+                    is Ongoing.Sale -> {
+                        // A heads-up once per sale, when it first appears; not again when an older one comes back to the top.
+                        val alert = ongoing.sale.phase == SalePhase.Waiting && alerted.add(ongoing.sale.orderId)
+                        notes.ongoing(notes.sale(ongoing.sale, graph.stores.location?.name, alert))
+                    }
                 }
             }
         }
