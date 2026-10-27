@@ -148,8 +148,11 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
                         }
                     }
                 } else {
+                    // As wide as the detail pages at most, so on a 600-839 dp window
+                    // the pill, order card and buttons don't stretch edge to edge.
                     Column(
-                        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                        Modifier.weight(1f).align(Alignment.CenterHorizontally).widthIn(max = PhoneMaxWidth).fillMaxWidth()
+                            .verticalScroll(rememberScrollState())
                             .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -159,7 +162,10 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
                         StatusPill(sale)
                         sale.receipt?.let { OrderCard(it, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
                     }
-                    Box(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp)) { Buttons(sale, actions) }
+                    Box(
+                        Modifier.align(Alignment.CenterHorizontally).widthIn(max = PhoneMaxWidth)
+                            .padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
+                    ) { Buttons(sale, actions) }
                 }
             }
         }
@@ -171,6 +177,9 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
 
 /** The sale's code on a phone: the design's 264 dp, whatever the order beside it. */
 private val CodeSide = 264.dp
+
+/** The phone layout's widest, the detail pages' (SaleDetail). */
+private val PhoneMaxWidth = 560.dp
 
 /**
  * A sale's top bar: Back to the shift, the sale and [subtitle], Settings,

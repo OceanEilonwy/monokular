@@ -18,6 +18,7 @@ import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.monokular.notify.SaleNotifications
@@ -124,7 +125,7 @@ class MainActivity : ComponentActivity() {
                             is Screen.Order -> s.orderId
                             else -> null
                         }?.let { id -> sales.firstOrNull { it.orderId == id } }
-                        val actions = tillActions()
+                        val actions = remember { tillActions() }
                         when {
                             // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
                             // a disconnected till shows why, whatever was on screen.

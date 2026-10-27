@@ -88,8 +88,6 @@ object SaleText {
         SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend -> 0
     }
 
-    val steps = listOf("Waiting", "Seen", "Confirming", "Paid")
-
     /** "1:05" from seconds. */
     fun clock(seconds: Long): String = "${seconds / 60}:${"%02d".format(seconds % 60)}"
 
