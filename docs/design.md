@@ -483,7 +483,7 @@ store's monokulo, and the Bell if it uses one).
 | Kind | Payload | Used for |
 | --- | --- | --- |
 | `encrypted` | RFC 8291 ciphertext | Every notification and ding, and every Android message |
-| `live-activity` | Plain JSON (iOS applies Live Activity pushes itself, with no extension to decrypt) | Live Activity updates only: `phase`, `sale`, `amount`, `currency`, `xmr`, `expiresAt`, `waitingCount`, and `paymentURI` only when the device turned on "Show code in island" (§6) and only while the sale takes a payment. Never the order's id. |
+| `live-activity` | Plain JSON (iOS applies Live Activity pushes itself, with no extension to decrypt) | Live Activity updates only, about the till's own sales (never another till's: the island would show the wrong sale): `phase`, `sale`, `amount`, `currency`, `xmr`, `expiresAt`, `waitingCount`, and `paymentURI` only when the device turned on "Show code in island" (§6) and only while the sale waits for its first payment (not after a part payment, when the full amount is no longer owed). Never the order's id. |
 
 For `encrypted`, the iOS Notification Service Extension and the Android
 receiver decrypt with the subscription's private key, which never leaves the
@@ -617,9 +617,10 @@ Authorization: vapid t=<JWT>, k=<public key>
 Content-Encoding: aes128gcm          (encrypted kind)  |  application/json (live-activity kind)
 TTL: 1800
 Urgency: high | normal | low
-Topic: 3f9c0a7e…                     (32 hex digits: a hash of the order id, which
-                                      collapses superseded updates and tells the
-                                      relay nothing)
+Topic: 3f9c0a7e…                     (32 hex digits: a hash of the target and the
+                                      order, which collapses superseded updates,
+                                      differs on every device and tells the relay
+                                      nothing)
 ```
 
 The relay checks the JWT against the handle's key, applies limits, and
@@ -754,11 +755,11 @@ the order id, its `merchant_order_id`, the amount, the address,
 
 | Event | From | Urgency | Notification | Live Activity |
 | --- | --- | --- | --- | --- |
-| `sale.waiting` | An app made an order | normal | none (the till that made it already shows it; the other apps' targets get it) | phase waiting |
+| `sale.waiting` | An app made an order | normal | none (the till that made it already shows it; the other apps' encrypted targets get it) | phase waiting, only on the till that made it (`order.pending`, waiting again) |
 | `sale.seen` | `order.unconfirmed` | low | none | phase seen |
 | `sale.confirming` | `order.confirming` | low | none | phase confirming |
 | `sale.paid` | `order.paid` / `order.overpaid` | high | "Paid · $24.50" | phase paid, alert; the app idles the activity |
-| `sale.partial` | `order.partial` | high | "Part paid" | phase waiting (the engine's event doesn't carry what arrived, so no "amount left") |
+| `sale.partial` | `order.partial` | high | "Part paid" | phase waiting, no `paymentURI` (the engine's event doesn't carry what arrived, so no "amount left", and the full amount is no longer owed: the checkout asks for the rest) |
 | `sale.expired` | `order.expired` | high | "No payment yet" | phase expired, alert |
 | `sale.double_spend` | `order.double_spend_detected` | high | "Payment reversed" | phase expired |
 
@@ -766,8 +767,10 @@ Payloads use the same body versioning as webhooks (`api_version`) so a
 connected app can rely on them. `TTL` is the time left on the code (at
 least a minute, at most `push.default_ttl_secs`, 30 minutes) for the
 events before a sale is settled, and 30 minutes for `paid`, `expired` and
-`double_spend`; `Topic` is the first 32 hex digits of the order id's
-SHA-256, the same for every push about one order.
+`double_spend`; `Topic` is the first 32 hex digits of SHA-256(target id,
+0x00, order id), the same for every push about one order to one target and
+different on every target, so no two of a store's devices carry the same
+value (monokulo `push.md` 140).
 
 ### Delivery path
 
@@ -812,7 +815,7 @@ through the relay): location label, store name.
 | `currency` | "USD" | With `amount`: no server formats money for the device's locale |
 | `xmr` | "0.1421" | Second line |
 | `expiresAt` | 1761312000 | Unix seconds: a countdown iOS draws itself (`Text(timerInterval:)`), and `stale-date` |
-| `waitingCount` | 2 | The store's app orders still waiting for a payment, this one included while it is: "+1 more" at 2 |
+| `waitingCount` | 2 | The till's own app orders still waiting for a payment, this one included while it is: "+1 more" at 2 |
 | `paymentURI` | `monero:…` | **Only** when the device has "Show code in island" on; the plain URI, never the receipt (§4) |
 
 **Show code in island** is a per-device setting, off by default. Turning it
@@ -835,7 +838,10 @@ the next app launch starts a new one; push-to-start is opt-in because it
 sends the attributes through the relay). Monokulo's pushes never end it:
 the relay sends every state as an `update` (`paid` and `expired` with an
 alert), and the app takes the activity back to idle or ends it itself
-(monokulo `push.md` 113). Overlapping sales show the newest plus "+N more".
+(monokulo `push.md` 113). The island shows only the till's own sales
+(monokulo `push.md` 141): monokulo pushes a till's Live Activity nothing of
+another till's, and sends a target's pushes in the order they were queued,
+so overlapping sales show the newest plus "+N more".
 Tapping opens `monokular://sale/{id}`.
 
 The waiting phase needs the app to run, so on iPhone it appears when the
@@ -863,6 +869,10 @@ Rules:
   high priority.
 - `Topic` collapses superseded updates; `TTL` equals the time left on the
   code (60 s for dings).
+- Monokulo sends one store's apps at most `push.per_store_per_minute`
+  pushes a minute (120), and targets sharing an endpoint once per event, so
+  one store can't spend the relay's per-sender budget, which every store of
+  an instance shares (monokulo `push.md` 144, 145).
 - iOS: `NSSupportsLiveActivitiesFrequentUpdates` for busy tills.
 - Square requests: one `ListPayments` per tick per till, plus one order read
   per Monero sale. The spike measures Square's limits for a busy store with
