@@ -273,3 +273,18 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
     a card payment that is `APPROVED` first becomes `COMPLETED` by one.
     `PaymentId` has no `Display`, so no log line can name it.
 
+39. **The Bell reads its client's address from every `X-Forwarded-For`
+    line, through monokulo's `abuse::identity::client_address`** (push
+    audit #8, the Bell's half). The Bell read only the header's first
+    line, so behind a proxy that adds a line of its own rather than
+    joining the client's, a client named its own address in a line
+    before the proxy's and had a fresh registration minute each time.
+    The helper now takes the `HeaderMap` and walks every line from the
+    last, so no caller can read one line again; the monokulo pins move to
+    `31c3cab9d` (push-relay, after monokulo's and the relay's halves), the
+    first commit with it. The pin also brings the shared `outbound` crate
+    (monokulo `push.md` 154) in through `push`; the Bell's own
+    `outbound` module stays until push audit #2's Bell step replaces it.
+    The README now says how a relay operator sizes
+    `limits.per_sender_per_minute` for a whole Bell (push audit #15): the
+    relay counts every merchant's tills as one sender.

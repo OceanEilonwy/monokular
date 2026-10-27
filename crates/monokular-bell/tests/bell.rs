@@ -379,6 +379,28 @@ async fn a_forwarded_chain_is_counted_by_the_address_the_proxy_saw() {
     assert_eq!(garbage.status, StatusCode::BAD_REQUEST);
 }
 
+/// A proxy that adds its own `X-Forwarded-For` line, rather than joining
+/// the client's, gives the client no fresh minute either: every line is
+/// read, the proxy's last, so a different invented first line each time
+/// still counts against the address the proxy saw.
+#[tokio::test]
+async fn registrations_behind_a_line_adding_proxy_are_limited_by_its_line() {
+    let bell = TestBell::without_square(&[("bell.registrations_per_minute", "2")]).await;
+    for spoofed in ["203.0.113.1", "203.0.113.2", "203.0.113.3"] {
+        let mut request = json_request(Method::POST, "/v1/register", json!({}));
+        let headers = request.headers_mut();
+        headers.append("x-forwarded-for", spoofed.parse().unwrap());
+        headers.append("x-forwarded-for", "198.51.100.1".parse().unwrap());
+        let answered = bell.call_from("127.0.0.1:1000", request).await;
+        let expected = if spoofed == "203.0.113.3" {
+            StatusCode::TOO_MANY_REQUESTS
+        } else {
+            StatusCode::BAD_REQUEST
+        };
+        assert_eq!(answered.status, expected, "{spoofed}");
+    }
+}
+
 /// A subscription is refused whole when any part of it isn't one: an
 /// endpoint past 2048 characters, an auth secret that isn't 16 bytes, a
 /// p256dh that isn't a point on the curve, keys missing, or not JSON.

@@ -153,6 +153,17 @@ given on the command line too (`monokular-bell --help`); anything invalid or
 missing stops it before it listens. Stopping it (SIGTERM) lets requests and
 dings in flight finish.
 
+An iPhone till, or an Android one with only Google's services, takes its
+dings through a push relay (monokulo's `monokulo-push-relay`), and a relay
+counts pushes per sender, which is the Bell's VAPID key: every merchant's
+tills behind it are one sender. A completed payment dings each till
+registered at its location once, so at its busiest a Bell sends about the
+payments a minute across all its merchants times the tills at each
+location; whoever runs the relay sizes its `limits.per_sender_per_minute`
+(600 by default) above that, or the relay answers `429` and those dings
+are lost: a ding is never sent again, as a minute late it is worth nothing. Its `limits.per_handle_per_minute` (60) is per till
+and is never what a Bell reaches.
+
 To try it on one machine against the stand-in Square, with any Web Push
 endpoint on loopback as the till's:
 

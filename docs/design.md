@@ -604,8 +604,14 @@ POST /v1/register
 
 - One registration per (platform, token, app, VAPID key): a device connected
   to two stores gets two handles, which nothing in the relay's file links
-  (the handle id is derived from the four, the row keyed by its hash and
-  the token and key sealed under a key derived from it). Registering the
+  (the handle id is an HMAC of the four under the relay's handle key,
+  which is never in the file; the row is keyed by the id's hash, and the
+  token and key are sealed under a key derived from the id). A copy of
+  the file alone links nothing; with a sender's endpoints it opens that
+  sender's handles, so their tokens, but not those devices' handles for
+  other senders, which need the key too; with the key as well it links
+  each such device to every sender whose public key is known, so the key
+  is kept apart from the file and its backups. Registering the
   same four again gives the same endpoint, its expiry pushed back. A handle
   no push has reached lasts `handles.unused_ttl_days` (7) after its
   registration, since registering needs no credential; once APNs or FCM
@@ -696,6 +702,7 @@ process, as everywhere else in monokulo. Secrets come only from the
 environment, in both cases:
 
 ```text
+MONOKULO_RELAY_HANDLE_KEY       (required: every handle id is made under it; openssl rand -hex 32, kept)
 MONOKULO_RELAY_APNS_KEY         (.p8 contents)
 MONOKULO_RELAY_FCM_CREDENTIALS  (service-account JSON)
 ```
@@ -703,9 +710,10 @@ MONOKULO_RELAY_FCM_CREDENTIALS  (service-account JSON)
 **Storage:** the relay always keeps its own SQLite file (`store.path`, by
 default `push-relay.db` beside monokulo's database when embedded), never
 tables in monokulo's database. It never touches store data, and moving
-from embedded to standalone is a matter of copying that file. It holds only
-`handles(id, platform, app, token, vapid_public_key, created_at,
-last_used_at, expires_at)`. No payloads are stored and no request bodies,
+from embedded to standalone is a matter of copying that file (and keeping
+the same handle key). It holds only `handles(key, platform, app, sealed,
+delivered, expires_at)`: the id's hash, the token and sender key sealed,
+and an expiry to the hour. No payloads are stored and no request bodies,
 tokens or endpoints are logged (a test reads the whole log to check).
 
 **Who runs what:** the project runs the official relay **standalone**, next

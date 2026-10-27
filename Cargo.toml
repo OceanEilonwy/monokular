@@ -12,12 +12,12 @@ repository = "https://github.com/OceanEilonwy/monokular"
 # commit of it, so they agree with each other (docs/decisions/bell.md 1).
 # Moved with `cargo update -p push --precise <commit>` after changing `rev`.
 [workspace.dependencies]
-abuse = { git = "https://github.com/OceanEilonwy/monokulo", rev = "35711592ace7709836fa975375495404cd4df49b" }
-live-settings = { git = "https://github.com/OceanEilonwy/monokulo", rev = "35711592ace7709836fa975375495404cd4df49b" }
-push = { git = "https://github.com/OceanEilonwy/monokulo", rev = "35711592ace7709836fa975375495404cd4df49b" }
-rate-limit = { git = "https://github.com/OceanEilonwy/monokulo", rev = "35711592ace7709836fa975375495404cd4df49b" }
-service-runtime = { git = "https://github.com/OceanEilonwy/monokulo", rev = "35711592ace7709836fa975375495404cd4df49b" }
-sqlite = { git = "https://github.com/OceanEilonwy/monokulo", rev = "35711592ace7709836fa975375495404cd4df49b" }
+abuse = { git = "https://github.com/OceanEilonwy/monokulo", rev = "31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd" }
+live-settings = { git = "https://github.com/OceanEilonwy/monokulo", rev = "31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd" }
+push = { git = "https://github.com/OceanEilonwy/monokulo", rev = "31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd" }
+rate-limit = { git = "https://github.com/OceanEilonwy/monokulo", rev = "31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd" }
+service-runtime = { git = "https://github.com/OceanEilonwy/monokulo", rev = "31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd" }
+sqlite = { git = "https://github.com/OceanEilonwy/monokulo", rev = "31c3cab9dd8aa1c0b2076b7df79ccd1a96a508cd" }
 
 # orf-codec-ffi's library as the Android app ships it, once per ABI: small.
 # (Release builds for this machine keep the defaults: UniFFI's bindgen reads

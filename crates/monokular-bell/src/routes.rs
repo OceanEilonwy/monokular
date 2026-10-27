@@ -71,10 +71,7 @@ async fn register(
     body: Body,
 ) -> Result<Response, ProblemDetails> {
     let now = service_runtime::time::now_unix();
-    let forwarded_for = headers
-        .get("x-forwarded-for")
-        .and_then(|value| value.to_str().ok());
-    let client = abuse::identity::client_address(peer.ip(), forwarded_for, &shared.trusted_proxies);
+    let client = abuse::identity::client_address(peer.ip(), &headers, &shared.trusted_proxies);
     shared
         .registrations
         .check_with_retry(abuse::ClientIdentity::from_address(client), now)
