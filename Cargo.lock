@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "abuse"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=abeb0ddfbaa23b4620320978c5746119c0b96489#abeb0ddfbaa23b4620320978c5746119c0b96489"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=35711592ace7709836fa975375495404cd4df49b#35711592ace7709836fa975375495404cd4df49b"
 dependencies = [
  "axum",
  "hex",
@@ -752,7 +752,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -1441,7 +1441,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 [[package]]
 name = "live-settings"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=abeb0ddfbaa23b4620320978c5746119c0b96489#abeb0ddfbaa23b4620320978c5746119c0b96489"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=35711592ace7709836fa975375495404cd4df49b#35711592ace7709836fa975375495404cd4df49b"
 dependencies = [
  "async-trait",
  "clap",
@@ -1921,7 +1921,7 @@ dependencies = [
 [[package]]
 name = "push"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=abeb0ddfbaa23b4620320978c5746119c0b96489#abeb0ddfbaa23b4620320978c5746119c0b96489"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=35711592ace7709836fa975375495404cd4df49b#35711592ace7709836fa975375495404cd4df49b"
 dependencies = [
  "aes-gcm",
  "base64 0.23.1",
@@ -1999,7 +1999,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2082,7 +2082,7 @@ dependencies = [
 [[package]]
 name = "rate-limit"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=abeb0ddfbaa23b4620320978c5746119c0b96489#abeb0ddfbaa23b4620320978c5746119c0b96489"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=35711592ace7709836fa975375495404cd4df49b#35711592ace7709836fa975375495404cd4df49b"
 dependencies = [
  "parking_lot",
 ]
@@ -2285,7 +2285,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2342,7 +2342,7 @@ dependencies = [
  "security-framework",
  "security-framework-sys",
  "webpki-root-certs",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -2554,7 +2554,7 @@ dependencies = [
 [[package]]
 name = "service-runtime"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=abeb0ddfbaa23b4620320978c5746119c0b96489#abeb0ddfbaa23b4620320978c5746119c0b96489"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=35711592ace7709836fa975375495404cd4df49b#35711592ace7709836fa975375495404cd4df49b"
 dependencies = [
  "parking_lot",
  "serde",
@@ -2672,7 +2672,7 @@ dependencies = [
 [[package]]
 name = "sqlite"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=abeb0ddfbaa23b4620320978c5746119c0b96489#abeb0ddfbaa23b4620320978c5746119c0b96489"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=35711592ace7709836fa975375495404cd4df49b#35711592ace7709836fa975375495404cd4df49b"
 dependencies = [
  "hex",
  "parking_lot",
@@ -2798,7 +2798,7 @@ dependencies = [
  "getrandom 0.3.4",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3455,7 +3455,7 @@ version = "0.1.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2a7b1c03c876122aa43f3020e6c3c3ee5c05081c9a00739faf7503aeba10d22"
 dependencies = [
- "windows-sys 0.52.0",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

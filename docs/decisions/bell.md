@@ -201,3 +201,30 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
 32. **`docs/design.md` §5 now says `push` is pinned to a commit**, not a tag
     (decision 27 had left the wrong wording for scope reasons; a stale
     statement about what was built is a doc bug, so fixed in review).
+
+## From the integration (2026-10-27)
+
+33. **The pin moves to the head of monokulo's `push-relay` branch,
+    `35711592a`** (decision 1 refined; monokulo `push.md` 134). After
+    `push-crate`, the push crate gained `Es256Key::from_pkcs8_pem` and
+    live-settings the handling of several embedded services in one options
+    file, and one `rev` serves all six crates, so the one commit that has
+    everything is the stack's final one. The Bell builds, lints and tests
+    against it on stable as before. After the monokulo stack is on `main`,
+    `rev` becomes `main`'s commit (`cargo update -p push --precise`).
+34. **`docs/design.md` says what was built, beyond §3** (monokulo `push.md`
+    94 and 135): §5 (the VAPID key read from `GET /api/v1/push-targets`,
+    `currency` in the Live Activity state, the `push` and `push-relay`
+    layouts and the crates table as built, the relay API without an
+    unregister route and with its problems, the hashed `Topic`, every Live
+    Activity push an `update`, the two-part relay settings under `[relay.*]`
+    and port 8444, the push targets' resources and `POST`, the events' TTL
+    and topic, the delivery path's retries and no `push.enabled`), §6
+    (`currency`, `waitingCount`'s meaning, the app idles the activity), §8
+    (monokulo's layout, migrations, settings, tests without provider
+    traits), §10 (what is built) and §11 (the pin, `crypto-bigint`). The
+    design's sections stay; what changed is stated where it stands.
+35. **The Bell's part of the project report is `docs/reports/bell.md`**,
+    pointing at monokulo's `docs/reports/bell-and-relay.md`, which covers
+    both repositories: what was built, how to try it, every decision, the
+    design's deviations, tests and gates, risks and what is left.
