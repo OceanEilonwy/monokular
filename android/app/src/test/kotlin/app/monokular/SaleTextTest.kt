@@ -151,21 +151,6 @@ class SaleTextTest {
     }
 
     @Test
-    fun `the till keeps its sale on screen through paid, and closed or ended sales never come up on their own`() {
-        val paid = sale("p", phase = SalePhase.Paid)
-        val waiting = sale("w")
-        val expired = sale("x", phase = SalePhase.Expired)
-        val closed = sale("c", closedAt = 1)
-        assertEquals("p", TillFocus.pick(listOf(paid, waiting), emptySet(), focus = "p")?.orderId)
-        assertEquals("w", TillFocus.pick(listOf(paid, waiting), setOf("p"), focus = "p")?.orderId)
-        assertEquals("w", TillFocus.pick(listOf(paid, waiting), emptySet(), focus = null)?.orderId)
-        assertEquals(null, TillFocus.pick(listOf(paid), emptySet(), focus = null))
-        assertEquals(null, TillFocus.pick(listOf(paid, expired, closed), emptySet(), focus = null), "they wait in the shift, under Needs action")
-        assertEquals("x", TillFocus.pick(listOf(paid, expired), emptySet(), focus = "x")?.orderId, "unless the cashier opened it")
-        assertEquals(null, TillFocus.pick(listOf(waiting), setOf("w"), focus = null), "a sale the cashier left stays down")
-    }
-
-    @Test
     fun `the loading mark's glints follow the web's keyframes`() {
         assertEquals(0f, glintAlpha(0f))
         assertEquals(0.95f, glintAlpha(0.05f))

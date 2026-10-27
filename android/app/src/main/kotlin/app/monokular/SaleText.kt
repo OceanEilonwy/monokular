@@ -10,6 +10,7 @@ import app.monokular.sales.standing
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
+import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -71,6 +72,13 @@ object SaleText {
         else -> "Closed · not paid"
     }
 
+    /** The status pill's second line under a live sale's code: what the cashier tells the customer. */
+    fun hint(sale: TillSale, secondsLeft: Long): String = when (sale.phase) {
+        SalePhase.Waiting -> "Scan with any Monero wallet · ${clock(secondsLeft)} left"
+        SalePhase.Partial -> "Ask the customer to pay the rest to the same code · ${clock(secondsLeft)} left"
+        else -> "The customer can go: it's being confirmed"
+    }
+
     /** Which of the four steps (Waiting, Seen, Confirming, Paid) it's at, from 1; 0 when it ended unpaid. */
     fun step(phase: SalePhase): Int = when (phase) {
         SalePhase.Waiting, SalePhase.Partial -> 1
@@ -114,6 +122,32 @@ object SaleText {
         return BigDecimal.valueOf(value).setScale(digits, RoundingMode.HALF_UP).toPlainString()
     }
 
+    /**
+     * The lines a sale's order card lists: every line when there are at
+     * most [max], else the first `max - 1` and how many more there are (the
+     * card's "+5 more", which opens the whole order).
+     */
+    fun shownLines(receipt: Receipt, max: Int = 4): Pair<List<Receipt.LineItem>, Int> {
+        val lines = receipt.lineItems
+        return if (lines.size <= max) lines to 0 else lines.take(max - 1) to lines.size - (max - 1)
+    }
+
+    /** "Tax 1.13": the receipt's taxes together, or null when it has none. */
+    fun tax(receipt: Receipt): String? {
+        val lines = receipt.tax?.taxLines.orEmpty()
+        if (lines.isEmpty()) return null
+        return "Tax " + plain(lines.sumOf { it.taxAmount }, receipt.currency)
+    }
+
+    /** "13.88 USD": the receipt's total with the currency's code. */
+    fun total(receipt: Receipt): String = "${plain(receipt.total, receipt.currency)} ${receipt.currency}"
+
+    /** "Square receipt bP9m · 4:07 PM", the time left out on a detail page (the design's order cards). */
+    fun receiptLabel(receipt: Receipt, withTime: Boolean, locale: Locale = Locale.getDefault(), zone: ZoneId = ZoneId.systemDefault()): String {
+        val issued = if (withTime) runCatching { OffsetDateTime.parse(receipt.receipt.issueTimestamp).toEpochSecond() }.getOrNull() else null
+        return "Square receipt ${receipt.receipt.receiptId}" + issued?.let { " · " + time(it, locale, zone) }.orEmpty()
+    }
+
     /** "4:07 PM" (or "16:07"): a time of day as the till's locale writes it, with a plain space before am or pm. */
     fun time(epochSeconds: Long, locale: Locale = Locale.getDefault(), zone: ZoneId = ZoneId.systemDefault()): String =
         DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale)
@@ -124,19 +158,41 @@ object SaleText {
     private const val NARROW_SPACE = '\u202F'
 }
 
-/** Which sale the till shows full screen. */
-object TillFocus {
+/** Which till screen the sales lead to, as they change (decision 70). */
+object TillNav {
     /**
-     * The sale on screen ([focus], the one shown last or opened from the
-     * shift) while it's there and the cashier hasn't [left] it, so a sale
-     * stays on screen through Paid; else the newest live sale they haven't
-     * left. A closed or ended sale never comes up on its own: it's in the
-     * shift, under Needs action when it needs them.
+     * The screen after the sales changed on [screen]: the shift brings up
+     * the newest live sale the cashier hasn't [left], while a closed or
+     * ended one never comes up on its own (it waits in the shift, under
+     * Needs action); a sale on screen stays whatever it becomes, through
+     * Paid, its page following its standing; the enlarged code and the
+     * order page are for a live sale only, so they give way to the sale's
+     * page once it's paid or ends.
      */
-    fun pick(sales: List<TillSale>, left: Set<String>, focus: String?): TillSale? {
-        val open = sales.filter { it.orderId !in left }
-        return open.firstOrNull { it.orderId == focus } ?: open.firstOrNull { it.live }
+    fun follow(screen: Screen, sales: List<TillSale>, left: Set<String>): Screen = when (screen) {
+        Screen.Till -> sales.firstOrNull { it.live && it.orderId !in left }?.let { Screen.Sale(it.orderId) } ?: screen
+        is Screen.Code -> if (liveOrUnknown(sales, screen.orderId)) screen else Screen.Sale(screen.orderId)
+        is Screen.Order -> if (liveOrUnknown(sales, screen.orderId)) screen else Screen.Sale(screen.orderId)
+        else -> screen
     }
+
+    /**
+     * The sale on [screen] if it was live at the last look ([liveBefore])
+     * and is paid now: it was paid while the customer watched, so it steps
+     * back to the shift after a few seconds. Opened from the shift once
+     * paid, it stays.
+     */
+    fun paidOnScreen(screen: Screen, sales: List<TillSale>, liveBefore: Set<String>): String? {
+        val shown = (screen as? Screen.Sale)?.orderId ?: return null
+        val sale = sales.firstOrNull { it.orderId == shown } ?: return null
+        return shown.takeIf { it in liveBefore && sale.standing is Standing.Paid }
+    }
+
+    private fun liveOrUnknown(sales: List<TillSale>, orderId: String): Boolean =
+        sales.firstOrNull { it.orderId == orderId }?.live ?: true
+
+    /** How long a sale paid on screen shows as paid before the till steps back (decision 42). */
+    const val PAID_STEP_BACK_MS = 5_000L
 }
 
 /**

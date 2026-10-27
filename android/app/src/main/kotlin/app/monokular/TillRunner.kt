@@ -65,6 +65,8 @@ class TillRunner(private val graph: Graph) {
         } else {
             NoSource
         }
+        // The first run, in setup (or after an update from before shifts were saved), starts the first shift.
+        if (graph.stores.shiftStartedAt == null) graph.stores.shiftStartedAt = System.currentTimeMillis() / 1000
         val till = Till(source, graph.monokulo, connection, store = graph.stores.shift).also { till = it }
         val shift = Shift(till).also { shift = it }
         mutable.value = RunnerState(running = true)

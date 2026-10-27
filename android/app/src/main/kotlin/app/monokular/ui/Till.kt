@@ -6,13 +6,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -29,15 +27,16 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
-import androidx.compose.ui.semantics.clearAndSetSemantics
-import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -48,10 +47,15 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
+import app.monokular.CloseChoice
+import app.monokular.Closing
+import app.monokular.Ground
 import app.monokular.SaleText
-import app.monokular.TillFocus
-import app.monokular.core.SalePhase
+import app.monokular.StateIcon
+import app.monokular.Tone
+import app.monokular.receipt.Receipt
 import app.monokular.sales.TillSale
+import app.monokular.sales.live
 import kotlinx.coroutines.delay
 
 /** Seconds left until [expiresAt], ticking. */
@@ -67,7 +71,7 @@ fun secondsLeft(expiresAt: Long): Long {
     return (expiresAt - now).coerceAtLeast(0)
 }
 
-/** What the till screen needs to know about the shift. */
+/** What the till's screens need to know about the shift. */
 data class TillStatus(
     /** The store's name as last read; null until the first read answers. */
     val store: String?,
@@ -77,16 +81,22 @@ data class TillStatus(
     val disconnected: Boolean,
     val problem: String?,
     val signInAgain: Boolean,
+    /** When this shift began, Unix seconds, if it's known. */
+    val startedAt: Long?,
 )
 
-/** What the till screen can do. */
+/** What the till's screens can do: events up to the view model. */
 class TillActions(
-    val onShowing: (String?) -> Unit,
     val onSettings: () -> Unit,
+    /** A sale from the shift: its code, or its page. */
     val onOpen: (String) -> Unit,
-    /** Leaves a sale's full screen: it stays live, on the bubble and in the shift's list. */
+    /** Back to the shift: the sale stays live, on the bubble and in the shift. */
     val onBack: (String) -> Unit,
+    val onEnlarge: (String) -> Unit,
+    val onShowOrder: (String) -> Unit,
+    val onClose: (String, CloseChoice) -> Unit,
     val onRefund: (String) -> Unit,
+    val onReopen: (String) -> Unit,
     val onCopy: (TillSale) -> Unit,
     val onCopyXmr: (TillSale) -> Unit,
     /** Null when Square is already beside Monokular (split screen). */
@@ -97,270 +107,223 @@ class TillActions(
 )
 
 /**
- * The till: the current sale full screen (AndFull, PhonePaid, PhoneUnpaid),
- * or, with none, the idle screen (AndTabSplit's Monokular pane) with this
- * shift's sales.
+ * One sale (decision 70): its code for the customer while it's live
+ * (SaleA), else the page its standing calls for (row 2b), so a sale that's
+ * paid or ends while on screen turns into its page in place.
  */
 @Composable
-fun TillScreen(status: TillStatus, sales: List<TillSale>, left: Set<String>, focus: String?, actions: TillActions) {
-    // A paid sale closes itself after a few seconds; one that ended unpaid waits for Done.
-    val current = TillFocus.pick(sales, left, focus)
-    androidx.compose.runtime.SideEffect { actions.onShowing(current?.orderId) }
-    if (current != null && !status.disconnected) {
-        SaleScreen(current, status.location, actions)
-    } else {
-        IdleScreen(status, sales, actions)
-    }
+fun SaleScreen(sale: TillSale, location: String?, refunding: Boolean, refundProblem: String?, actions: TillActions) {
+    if (sale.live) LiveSale(sale, location, actions) else SaleDetail(sale, location, refunding, refundProblem, actions)
 }
 
+/** A live sale full screen, for the customer to scan (SaleA); split in two on a wide window (decision 45). */
 @Composable
-private fun IdleScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions) = Page(maxWidth = 640.dp) {
-    Row(
-        Modifier.fillMaxWidth().padding(start = 24.dp, end = 16.dp, top = 16.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        val (dot, line) = when {
-            status.disconnected -> mk.danger to "Disconnected"
-            !status.running -> mk.outline to "Not watching"
-            status.live -> mk.paid to "Watching"
-            else -> mk.outline to "Reconnecting…"
-        }
-        Row(
-            Modifier.weight(1f).semantics(mergeDescendants = true) {},
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
-            Text(
-                listOfNotNull(status.store, status.location).joinToString(" · "),
-                fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.semantics { contentDescription = "${listOfNotNull(status.store, status.location).joinToString(", ")}: $line" },
-            )
-        }
-        RoundIconButton(MkIcons.Settings, "Settings", actions.onSettings, filled = true, iconSize = 20.dp)
-    }
-    if (status.disconnected) {
-        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            Heading("Disconnected")
-            Lead("The store disconnected this device. Connect it again with a new code from the store's settings.")
-            PrimaryButton("Connect again", actions.onForget, Modifier.fillMaxWidth())
-        }
-        return@Page
-    }
-    Notice(status.problem, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
-    if (status.signInAgain) {
-        PrimaryButton("Sign in to Square again", actions.onSignIn, Modifier.padding(16.dp).fillMaxWidth())
-    }
-    Column(
-        Modifier.fillMaxWidth().heightIn(min = 360.dp).padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-    ) {
-        Logo(140.dp, Modifier.alpha(0.35f), grey = true)
-        Text(
-            if (status.running) "No sale right now" else "Not watching for sales",
-            style = display(22, 0.0), color = mk.muted, textAlign = TextAlign.Center,
-            modifier = Modifier.semantics { heading() },
-        )
-        Text(
-            if (status.running) {
-                "The code appears here, and the bubble over Square lights up, when you tap Monero in Square."
-            } else {
-                "Start watching and Monokular checks Square for Monero sales until you stop it."
-            },
-            fontSize = 15.sp, lineHeight = 21.sp, color = mk.muted, textAlign = TextAlign.Center,
-            modifier = Modifier.widthIn(max = 280.dp),
-        )
-        if (!status.running) PrimaryButton("Start watching", actions.onStartShift)
-    }
-    if (sales.isNotEmpty()) {
-        SectionLabel("This shift")
-        Group(
-            rows = sales.take(20).map { sale ->
-                {
+private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
+    var asking by rememberSaveable(sale.orderId) { mutableStateOf(false) }
+    KeepScreenOn()
+    Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
+        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
+            val wide = maxWidth >= 840.dp
+            Column(Modifier.fillMaxSize()) {
+                SaleBar(
+                    sale, SaleText.place(sale, location), actions,
+                    onClose = { asking = true }.takeIf { Closing.choices(sale).isNotEmpty() },
+                )
+                if (wide) {
                     Row(
-                        Modifier.fillMaxWidth().heightIn(min = 56.dp)
-                            .clickable(onClickLabel = "Show ${SaleText.title(sale)}") { actions.onOpen(sale.orderId) }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
+                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 32.dp),
+                        horizontalArrangement = Arrangement.spacedBy(48.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        Column(Modifier.weight(1f)) {
-                            Text(SaleText.title(sale), fontSize = 17.sp)
-                            Muted(SaleText.status(sale))
+                        Code(sale, min(this@BoxWithConstraints.maxHeight - 120.dp, 440.dp)) { actions.onEnlarge(sale.orderId) }
+                        Column(
+                            Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(20.dp),
+                            horizontalAlignment = Alignment.Start,
+                        ) {
+                            Amount(sale, actions.onCopyXmr, start = true)
+                            StatusPill(sale)
+                            sale.receipt?.let { OrderCard(it, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
+                            Buttons(sale, actions)
                         }
-                        Text(SaleText.amount(sale), fontSize = 17.sp, color = mk.muted)
                     }
+                } else {
+                    Column(
+                        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        Amount(sale, actions.onCopyXmr)
+                        Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide)) { actions.onEnlarge(sale.orderId) }
+                        StatusPill(sale)
+                        sale.receipt?.let { OrderCard(it, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
+                    }
+                    Box(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp)) { Buttons(sale, actions) }
                 }
-            },
-        )
-        Spacer(Modifier.height(24.dp))
+            }
+        }
+    }
+    if (asking) {
+        CloseSheet(sale, onChoice = { actions.onClose(sale.orderId, it) }, onDismiss = { asking = false })
     }
 }
 
-/** The sale's top app bar: Back to the till, the sale and where it's from, and Settings. */
+/** The sale's code on a phone: the design's 264 dp, whatever the order beside it. */
+private val CodeSide = 264.dp
+
+/**
+ * A sale's top bar: Back to the shift, the sale and [subtitle], Settings,
+ * and on a live sale the tinted X that asks whether the customer is paying.
+ */
 @Composable
-private fun SaleBar(sale: TillSale, location: String?, actions: TillActions) = Row(
-    Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 16.dp),
+fun SaleBar(sale: TillSale, subtitle: String, actions: TillActions, onClose: (() -> Unit)? = null) = Row(
+    Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 12.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(4.dp),
 ) {
-    RoundIconButton(MkIcons.Back, "Back to the till", { actions.onBack(sale.orderId) }, iconSize = 22.dp)
+    RoundIconButton(MkIcons.Back, "Back to the shift", { actions.onBack(sale.orderId) }, iconSize = 22.dp)
     Column(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }) {
         Text(SaleText.title(sale), fontSize = 20.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(SaleText.place(sale, location), fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(subtitle, fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
-    RoundIconButton(MkIcons.Settings, "Settings", actions.onSettings, filled = true, iconSize = 20.dp)
+    CircleButton(MkIcons.Settings, "Settings", actions.onSettings, ground = mk.chip, tint = mk.ink, iconSize = 20.dp)
+    if (onClose != null) {
+        Spacer(Modifier.width(4.dp))
+        CircleButton(MkIcons.Close, "Close sale", onClose, ground = mk.dangerGround, tint = mk.danger, iconSize = 16.dp)
+    }
 }
 
-/** The amount, and the XMR to pay under it, which copies itself when tapped ([onCopyXmr]). */
+/** The amount, and the XMR to pay under it, which copies itself when tapped ([onCopyXmr]; acceptance D7). */
 @Composable
-private fun Amount(sale: TillSale, onCopyXmr: (TillSale) -> Unit, size: Int = 56, start: Boolean = false) = Column(
+private fun Amount(sale: TillSale, onCopyXmr: (TillSale) -> Unit, start: Boolean = false) = Column(
     horizontalAlignment = if (start) Alignment.Start else Alignment.CenterHorizontally,
 ) {
     val align = if (start) TextAlign.Start else TextAlign.Center
-    Text(SaleText.amount(sale), style = display(size, -1.0), textAlign = align)
+    Text(SaleText.amount(sale), style = display(52, -1.0), textAlign = align)
     Text(
-        SaleText.xmr(sale), fontSize = 18.sp, color = mk.muted, textAlign = align,
+        SaleText.xmr(sale), fontSize = 17.sp, color = mk.muted, textAlign = align,
         modifier = Modifier.clip(RoundedCornerShape(8.dp))
             .clickable(onClickLabel = "Copy the XMR amount") { onCopyXmr(sale) }
             .padding(horizontal = 6.dp, vertical = 2.dp),
     )
 }
 
-/** "Waiting for payment" with the loading mark, on its pill. */
+/** The code, which enlarges when tapped (CodeB), with the expand badge on its corner. */
 @Composable
-private fun StatusPill(sale: TillSale) {
-    val sub = when (sale.phase) {
-        SalePhase.Waiting -> "Scan with any Monero wallet · ${SaleText.clock(secondsLeft(sale.expiresAt))} left"
-        SalePhase.Partial -> "Ask the customer to pay the rest to the same code"
-        else -> "The customer can go: it's being confirmed"
-    }
-    Row(
-        Modifier.clip(RoundedCornerShape(28.dp)).background(mk.inset).padding(start = 12.dp, end = 18.dp, top = 10.dp, bottom = 10.dp)
-            .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        LoadingMark(32.dp, label = "", modifier = Modifier.clearAndSetSemantics {})
-        Column {
-            Text(SaleText.status(sale), fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
-            Text(sub, fontSize = 13.sp, color = mk.muted)
-        }
-    }
-}
-
-/** A sale full screen, for the customer to scan (AndFull); paid (PhonePaid) or not (PhoneUnpaid) when it ends. */
-@Composable
-private fun SaleScreen(sale: TillSale, location: String?, actions: TillActions) {
-    if (sale.phase == SalePhase.Paid && !sale.refunded) {
-        // Back to watching after a few seconds, as the design's paid panel does.
-        LaunchedEffect(sale.orderId) {
-            delay(5_000)
-            actions.onBack(sale.orderId)
-        }
-    }
-    Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
-        BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
-            val wide = maxWidth >= 840.dp && sale.phase.isFinal.not()
-            Column(Modifier.fillMaxSize()) {
-                SaleBar(sale, location, actions)
-                when {
-                    sale.phase == SalePhase.Paid -> Ended(sale, actions, paid = true)
-                    sale.phase.isFinal -> Ended(sale, actions, paid = false)
-                    wide -> Row(
-                        Modifier.weight(1f).fillMaxWidth().padding(horizontal = 32.dp),
-                        horizontalArrangement = Arrangement.spacedBy(48.dp, Alignment.CenterHorizontally),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Code(sale, min(this@BoxWithConstraints.maxHeight - 120.dp, 440.dp))
-                        Column(
-                            Modifier.widthIn(max = 420.dp),
-                            verticalArrangement = Arrangement.spacedBy(24.dp),
-                            horizontalAlignment = Alignment.Start,
-                        ) {
-                            Amount(sale, actions.onCopyXmr, start = true)
-                            StatusPill(sale)
-                            ProgressSegments(SaleText.step(sale.phase), Modifier.fillMaxWidth())
-                            Buttons(sale, actions)
-                        }
-                    }
-                    else -> {
-                        Column(
-                            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(20.dp),
-                        ) {
-                            Amount(sale, actions.onCopyXmr)
-                            Code(sale, min(min(this@BoxWithConstraints.maxWidth - 40.dp, 320.dp), maxOf(this@BoxWithConstraints.maxHeight - 360.dp, 200.dp)))
-                            StatusPill(sale)
-                        }
-                        Box(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp)) { Buttons(sale, actions) }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun Code(sale: TillSale, side: Dp) = QrCode(
-    sale.code.uri,
-    "Payment code for ${SaleText.amount(sale)}" + if (sale.code.hasReceipt) ", with the receipt in it" else "",
-    Modifier.width(side),
-    padding = if (side < 260.dp) 14.dp else 20.dp,
-    radius = if (side < 260.dp) 28.dp else 36.dp,
-)
-
-@Composable
-private fun Buttons(sale: TillSale, actions: TillActions) = Column(
-    Modifier.fillMaxWidth(),
-    horizontalAlignment = Alignment.CenterHorizontally,
-    verticalArrangement = Arrangement.spacedBy(4.dp),
+private fun Code(sale: TillSale, side: Dp, onEnlarge: () -> Unit) = Box(
+    Modifier.clip(RoundedCornerShape(32.dp)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
 ) {
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), height = 56.dp)
-        actions.onBackToSquare?.let { PrimaryButton("Back to Square", it, Modifier.weight(1f), height = 56.dp, size = 16) }
+    QrCode(
+        sale.code.uri,
+        "Payment code for ${SaleText.amount(sale)}" + if (sale.code.hasReceipt) ", with the receipt in it" else "",
+        Modifier.width(side),
+        padding = 18.dp,
+        radius = 32.dp,
+    )
+    Box(
+        Modifier.align(Alignment.BottomEnd).padding(10.dp).size(32.dp).clip(CircleShape).background(Fixed.Ink),
+        contentAlignment = Alignment.Center,
+    ) { Icon(MkIcons.Expand, contentDescription = null, tint = Fixed.White, modifier = Modifier.size(16.dp)) }
+}
+
+/** "Waiting for payment" with the phase ring, on its pill; the words, not the countdown, are announced. */
+@Composable
+private fun StatusPill(sale: TillSale) = Row(
+    Modifier.clip(RoundedCornerShape(28.dp)).background(mk.card).padding(start = 12.dp, end = 18.dp, top = 10.dp, bottom = 10.dp)
+        .semantics(mergeDescendants = true) {},
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+) {
+    PhaseRing(sale.phase, 30.dp)
+    Column {
+        Text(
+            SaleText.status(sale), fontSize = 16.sp, fontWeight = FontWeight.Bold,
+            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+        )
+        Text(SaleText.hint(sale, secondsLeft(sale.expiresAt)), fontSize = 13.sp, color = mk.muted)
     }
 }
 
-/** Paid, or ended without the money. */
 @Composable
-private fun ColumnScope.Ended(sale: TillSale, actions: TillActions, paid: Boolean) {
+private fun Buttons(sale: TillSale, actions: TillActions) = Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), height = 56.dp)
+    actions.onBackToSquare?.let { PrimaryButton("Back to Square", it, Modifier.weight(1f), height = 56.dp, size = 16) }
+}
+
+/**
+ * What was bought, from this till's own receipt (decision 63): each line
+ * and its price, the tax and the total. On the sale ([onOpen] set) a long
+ * order shows three lines and "+N more", and the card opens the whole order
+ * (decision 66); a detail page lists every line.
+ */
+@Composable
+fun OrderCard(receipt: Receipt, withTime: Boolean, onOpen: (() -> Unit)? = null) {
+    val (lines, more) = if (onOpen != null) SaleText.shownLines(receipt) else receipt.lineItems to 0
+    val open = onOpen.takeIf { more > 0 }
     Column(
-        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(start = 24.dp, end = 24.dp, top = 64.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(18.dp),
+        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(mk.card)
+            .then(if (open != null) Modifier.clickable(onClickLabel = "See the whole order", onClick = open) else Modifier)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        if (paid) {
-            PaidTick(88.dp)
-        } else {
-            Box(Modifier.size(88.dp).clip(CircleShape).background(mk.warnGround), contentAlignment = Alignment.Center) {
-                Icon(MkIcons.Clock, contentDescription = null, tint = mk.warn, modifier = Modifier.size(44.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("ORDER", fontSize = 12.sp, letterSpacing = 0.6.sp, color = mk.muted, modifier = Modifier.semantics { heading() })
+            Text(
+                SaleText.receiptLabel(receipt, withTime).uppercase(), fontSize = 12.sp, letterSpacing = 0.6.sp, color = mk.muted,
+                textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+        }
+        for (line in lines) {
+            Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(SaleText.line(line), fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text(SaleText.plain(line.lineTotal, receipt.currency), fontSize = 14.sp, color = mk.muted, softWrap = false)
             }
         }
-        Text(
-            SaleText.status(sale), style = display(28), textAlign = TextAlign.Center,
-            modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
-        )
-        Text("${SaleText.amount(sale)} · ${SaleText.xmr(sale)}", style = display(22, 0.0), textAlign = TextAlign.Center)
-        val text = when {
-            paid && sale.refunded -> "${SaleText.xmr(sale)} arrived after the Square sale was refunded. Ring the sale up in Square again, or return the payment."
-            paid -> "${SaleText.xmr(sale)} received. Back to watching in a moment."
-            sale.refunded -> "The Square sale is refunded."
-            sale.found == null -> "Another till took this sale: refund it in Square there if the customer isn't paying."
-            sale.phase == SalePhase.DoubleSpend -> "The payment was reversed on the network. Square has already recorded this sale as Monero, so refund it there."
-            sale.phase == SalePhase.Cancelled -> "The order was cancelled in Monokulo. Square has already recorded this sale as Monero, so refund it there."
-            else -> "The code expired. Square has already recorded this sale as Monero, so refund it there if the customer isn't paying."
-        }
-        Text(text, fontSize = 16.sp, lineHeight = 22.sp, color = mk.muted, textAlign = TextAlign.Center, modifier = Modifier.widthIn(max = 320.dp))
-    }
-    Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp).widthIn(max = 560.dp).fillMaxWidth().align(Alignment.CenterHorizontally), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        if (!paid && sale.found != null && !sale.refunded) {
-            PrimaryButton("Refund the Square sale", { actions.onRefund(sale.orderId) }, Modifier.fillMaxWidth())
-            OutlineButton("Done", { actions.onBack(sale.orderId) }, Modifier.fillMaxWidth(), height = 52.dp, size = 17)
-        } else {
-            PrimaryButton("Done", { actions.onBack(sale.orderId) }, Modifier.fillMaxWidth())
+        if (more > 0) Text("+$more more", fontSize = 14.sp, color = mk.link)
+        Box(Modifier.fillMaxWidth().height(1.dp).background(mk.divider))
+        Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(SaleText.tax(receipt) ?: "Total", fontSize = 14.sp, color = mk.muted, modifier = Modifier.weight(1f))
+            Text(SaleText.total(receipt), fontSize = 14.sp, fontWeight = FontWeight.Bold, softWrap = false)
         }
     }
+}
+
+/** A state's glyph on its ground: a shift row's 36 dp circle, a page's 72 dp hero. */
+@Composable
+fun StateBadge(sale: TillSale, icon: StateIcon, ground: Ground, size: Dp, glyph: Dp, quiet: Boolean = false) {
+    if (icon == StateIcon.Ring) {
+        PhaseRing(sale.phase, size)
+        return
+    }
+    val (vector, tint) = when (icon) {
+        StateIcon.Clock -> MkIcons.Clock to mk.warn
+        StateIcon.Warning -> MkIcons.Warning to mk.danger
+        StateIcon.Tick -> MkIcons.Tick to mk.paid
+        StateIcon.Refund -> MkIcons.Refund to if (quiet) mk.muted else mk.ink
+        StateIcon.Close, StateIcon.Ring -> MkIcons.Close to if (quiet) mk.muted else mk.ink
+    }
+    Box(Modifier.size(size).clip(CircleShape).background(groundColor(ground)), contentAlignment = Alignment.Center) {
+        Icon(vector, contentDescription = null, tint = tint, modifier = Modifier.size(glyph))
+    }
+}
+
+/** The theme's colour for a [Ground] role. */
+@Composable
+fun groundColor(ground: Ground): Color = when (ground) {
+    Ground.Paid -> mk.paidGround
+    Ground.Warn -> mk.warnGround
+    Ground.Danger -> mk.dangerGround
+    Ground.Chip -> mk.chip
+    Ground.Card -> mk.card
+}
+
+/** The theme's colour for a [Tone] role. */
+@Composable
+fun toneColor(tone: Tone): Color = when (tone) {
+    Tone.Link -> mk.link
+    Tone.Warn -> mk.warn
+    Tone.Danger -> mk.danger
+    Tone.Paid -> mk.paid
+    Tone.Muted -> mk.muted
 }

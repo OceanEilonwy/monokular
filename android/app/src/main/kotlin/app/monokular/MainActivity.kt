@@ -34,8 +34,11 @@ import app.monokular.ui.SettingsActions
 import app.monokular.ui.SettingsScreen
 import app.monokular.ui.SettingsState
 import app.monokular.ui.SquareScreen
+import app.monokular.ui.CodeScreen
+import app.monokular.ui.OrderPage
+import app.monokular.ui.SaleScreen
+import app.monokular.ui.ShiftScreen
 import app.monokular.ui.TillActions
-import app.monokular.ui.TillScreen
 import app.monokular.ui.TillStatus
 import app.monokular.ui.WelcomeScreen
 
@@ -61,8 +64,7 @@ class MainActivity : ComponentActivity() {
                 val busy by model.busy.collectAsStateWithLifecycle()
                 val problem by model.problem.collectAsStateWithLifecycle()
                 val runner by model.runner.collectAsStateWithLifecycle()
-                val left by model.left.collectAsStateWithLifecycle()
-                val focus by model.focus.collectAsStateWithLifecycle()
+                val refunding by model.refunding.collectAsStateWithLifecycle()
                 val bubbleWanted by model.bubbleWanted.collectAsStateWithLifecycle()
                 val store by model.store.collectAsStateWithLifecycle()
                 // Read so that coming back from Android's settings recomposes.
@@ -114,33 +116,24 @@ class MainActivity : ComponentActivity() {
                         bubble = bubbleWanted && model.overlayAllowed(),
                         onStart = model::startShift,
                     )
-                    Screen.Till -> TillScreen(
-                        status = TillStatus(
-                            store = store.store?.name,
-                            location = model.location?.name,
-                            running = runner.running,
-                            live = runner.live,
-                            disconnected = runner.disconnected,
-                            problem = runner.till.problem ?: runner.streamProblem,
-                            signInAgain = runner.till.signInAgain,
-                        ),
-                        sales = runner.till.sales,
-                        left = left,
-                        focus = focus,
-                        actions = TillActions(
-                            onShowing = model::showing,
-                            onSettings = model::openSettings,
-                            onOpen = model::open,
-                            onBack = model::leave,
-                            onRefund = model::refund,
-                            onCopy = { SaleNotifications.copyAddress(this, it.address) },
-                            onCopyXmr = ::copyXmr,
-                            onBackToSquare = if (isInMultiWindowMode) null else ::backToSquare,
-                            onSignIn = ::signInToSquare,
-                            onForget = model::forget,
-                            onStartShift = { model.setShift(true) },
-                        ),
-                    )
+                    Screen.Till, is Screen.Sale, is Screen.Code, is Screen.Order -> {
+                        val sales = runner.till.sales
+                        val shown = when (s) {
+                            is Screen.Sale -> s.orderId
+                            is Screen.Code -> s.orderId
+                            is Screen.Order -> s.orderId
+                            else -> null
+                        }?.let { id -> sales.firstOrNull { it.orderId == id } }
+                        val actions = tillActions()
+                        when {
+                            // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
+                            // a disconnected till shows why, whatever was on screen.
+                            shown == null || runner.disconnected -> ShiftScreen(tillStatus(runner, store), sales, actions)
+                            s is Screen.Code -> CodeScreen(shown, onBack = { model.back(s) })
+                            s is Screen.Order -> OrderPage(shown, "Back to the sale", onBack = { model.back(s) }, onShowCode = { model.back(s) })
+                            else -> SaleScreen(shown, model.location?.name, shown.orderId in refunding, runner.till.refundProblems[shown.orderId], actions)
+                        }
+                    }
                     Screen.Settings -> {
                         val torRunning by produceState<Boolean?>(null, store) { value = model.torRunning() }
                         SettingsScreen(
@@ -173,7 +166,7 @@ class MainActivity : ComponentActivity() {
                                 onSquareBaseUrl = { model.squareBaseUrl = it },
                                 onCopyAddress = { SaleNotifications.copyAddress(this, it) },
                                 onTor = model::setTor,
-                                onBack = model::goHome,
+                                onBack = model::closeSettings,
                             ),
                         )
                     }
@@ -181,6 +174,34 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun tillStatus(runner: RunnerState, store: StoreNow) = TillStatus(
+        store = store.store?.name,
+        location = model.location?.name,
+        running = runner.running,
+        live = runner.live,
+        disconnected = runner.disconnected,
+        problem = runner.till.problem ?: runner.streamProblem,
+        signInAgain = runner.till.signInAgain,
+        startedAt = model.shiftStartedAt,
+    )
+
+    private fun tillActions() = TillActions(
+        onSettings = model::openSettings,
+        onOpen = model::open,
+        onBack = model::leave,
+        onEnlarge = model::enlarge,
+        onShowOrder = model::showOrder,
+        onClose = model::closeSale,
+        onRefund = { model.refund(it) },
+        onReopen = model::reopen,
+        onCopy = { SaleNotifications.copyAddress(this, it.address) },
+        onCopyXmr = ::copyXmr,
+        onBackToSquare = if (isInMultiWindowMode) null else ::backToSquare,
+        onSignIn = ::signInToSquare,
+        onForget = model::forget,
+        onStartShift = { model.setShift(true) },
+    )
 
     override fun onStart() {
         super.onStart()
@@ -262,7 +283,7 @@ class MainActivity : ComponentActivity() {
     }
 
     companion object {
-        /** A sale to show full screen. */
+        /** A sale to show full screen: its code, or its page. */
         const val EXTRA_ORDER = "app.monokular.ORDER"
 
         /** Open on the shift (the panel's "Open the shift"), whatever sale is live. */
