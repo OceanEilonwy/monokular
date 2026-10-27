@@ -61,7 +61,7 @@ class MainActivity : ComponentActivity() {
                 val busy by model.busy.collectAsStateWithLifecycle()
                 val problem by model.problem.collectAsStateWithLifecycle()
                 val runner by model.runner.collectAsStateWithLifecycle()
-                val closed by model.closed.collectAsStateWithLifecycle()
+                val left by model.left.collectAsStateWithLifecycle()
                 val focus by model.focus.collectAsStateWithLifecycle()
                 val bubbleWanted by model.bubbleWanted.collectAsStateWithLifecycle()
                 val store by model.store.collectAsStateWithLifecycle()
@@ -87,7 +87,7 @@ class MainActivity : ComponentActivity() {
                         onSkip = model::withoutSquare,
                         onContinue = {
                             // The test sale has done its job: the till opens on its idle screen, the sale in its list.
-                            runner.till.sales.forEach { model.close(it.orderId) }
+                            runner.till.sales.forEach { model.leave(it.orderId) }
                             model.go(Screen.Alerts)
                         },
                     )
@@ -125,14 +125,13 @@ class MainActivity : ComponentActivity() {
                             signInAgain = runner.till.signInAgain,
                         ),
                         sales = runner.till.sales,
-                        closed = closed,
+                        left = left,
                         focus = focus,
                         actions = TillActions(
                             onShowing = model::showing,
                             onSettings = model::openSettings,
                             onOpen = model::open,
-                            onBack = model::close,
-                            onCloseSale = model::closeSale,
+                            onBack = model::leave,
                             onRefund = model::refund,
                             onCopy = { SaleNotifications.copyAddress(this, it.address) },
                             onCopyXmr = ::copyXmr,
@@ -213,6 +212,7 @@ class MainActivity : ComponentActivity() {
 
     private fun handle(intent: Intent?) {
         intent?.getStringExtra(EXTRA_ORDER)?.let(model::open)
+        if (intent?.getBooleanExtra(EXTRA_SHIFT, false) == true) model.openShift()
         when (intent?.action) {
             Intent.ACTION_VIEW -> {
                 val uri = intent.data ?: return
@@ -264,6 +264,9 @@ class MainActivity : ComponentActivity() {
     companion object {
         /** A sale to show full screen. */
         const val EXTRA_ORDER = "app.monokular.ORDER"
+
+        /** Open on the shift (the panel's "Open the shift"), whatever sale is live. */
+        const val EXTRA_SHIFT = "app.monokular.SHIFT"
 
         /** Square Point of Sale's package. */
         const val SQUARE_POS = "com.squareup"

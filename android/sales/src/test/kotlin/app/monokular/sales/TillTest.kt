@@ -23,6 +23,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import java.time.Instant
 
 /** A POS that has the sales it's given. */
 class FakeSource(var sales: List<FoundSale>, private val receipt: Receipt? = null) : SaleSource {
@@ -344,5 +345,100 @@ class TillTest {
         }
         assertTrue(source.handledIds.isEmpty(), "no order was made, so the sale is still to do")
         assertTrue(said.size >= names.size - 2, "each problem says its own thing (the three bad-request ones share words): $said")
+    }
+
+    @Test
+    fun `closing a sale for now takes its code down and keeps it in the shift, where a late payment still pays it`() = runBlocking {
+        var clock = 1_000L
+        val till = Till(FakeSource(listOf(sale), receipt), monokulo, connection, now = { clock })
+        server.enqueue(order())
+        till.check()
+        val shown = till.sales.value.sales.single()
+        assertEquals(Instant.parse(sale.createdAt).epochSecond, shown.createdAt, "rung up at the POS's time")
+        assertEquals(receipt, shown.receipt, "what was bought stays on the till, for its own screens")
+        assertEquals(Standing.Live(SalePhase.Waiting), shown.standing)
+        assertTrue(shown.live)
+        assertFalse(shown.needsAction)
+        clock = 1_060
+        till.close("ord_1")
+        till.close("ord_1")
+        val closed = till.sales.value.sales.single()
+        assertEquals(Standing.Closed, closed.standing)
+        assertEquals(1_060L, closed.closedAt, "closed once, at the first close")
+        assertFalse(closed.live)
+        assertTrue(closed.needsAction, "Square has it as Monero: refund it or wait")
+        assertTrue(closed.open, "Monokulo still watches it")
+        till.onEvent(SaleEvent("sale.paid", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 2_000))
+        val paid = till.sales.value.sales.single()
+        assertEquals(Standing.Paid(late = true), paid.standing)
+        assertEquals(2_000L, paid.paidAt, "paid at the event's time")
+        assertFalse(paid.needsAction)
+    }
+
+    @Test
+    fun `show the code again reopens a closed sale`() = runBlocking {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        till.close("ord_1")
+        till.reopen("ord_1")
+        val shown = till.sales.value.sales.single()
+        assertEquals(Standing.Live(SalePhase.Waiting), shown.standing)
+        assertEquals(null, shown.closedAt)
+    }
+
+    @Test
+    fun `refunding a closed sale marks both, and a late payment then says paid after the refund`() = runBlocking {
+        var clock = 10L
+        val source = FakeSource(listOf(sale))
+        val till = Till(source, monokulo, connection, now = { clock })
+        server.enqueue(order())
+        till.check()
+        till.close("ord_1")
+        clock = 20
+        till.refund("ord_1")
+        val refunded = till.sales.value.sales.single()
+        assertEquals(Standing.Refunded, refunded.standing)
+        assertEquals(10L, refunded.closedAt)
+        assertEquals(20L, refunded.refundedAt)
+        assertFalse(refunded.needsAction, "nothing more to do")
+        assertEquals(listOf("pay_monero"), source.refunded)
+        till.onEvent(SaleEvent("sale.paid", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 30))
+        assertEquals(Standing.Paid(late = true, afterRefund = true), till.sales.value.sales.single().standing)
+        assertTrue(till.sales.value.sales.single().needsAction, "ring it up again, or return the payment")
+    }
+
+    @Test
+    fun `an expired or reversed sale needs action until refunded, while another till's never does`() = runBlocking {
+        var clock = 100L
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection, now = { clock })
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Seen)
+        clock = 200
+        till.onStatus("ord_1", SalePhase.Expired)
+        val expired = till.sales.value.sales.single()
+        assertEquals(Standing.Expired, expired.standing)
+        assertEquals(100L, expired.seenAt, "the first time it was seen is kept")
+        assertEquals(200L, expired.endedAt)
+        assertTrue(expired.needsAction)
+        till.onStatus("ord_1", SalePhase.DoubleSpend)
+        assertEquals(Standing.Reversed, till.sales.value.sales.single().standing)
+        assertEquals(200L, till.sales.value.sales.single().endedAt, "ended once")
+        till.refund("ord_1")
+        assertEquals(Standing.Refunded, till.sales.value.sales.single().standing)
+        // Another till's sale: this till can't refund it, so it never needs action here.
+        till.onEvent(SaleEvent("sale.waiting", "ord_2", "5.00", "USD", "8Cy", 30000000000, null, 99, "Back till", 300))
+        till.onEvent(SaleEvent("sale.seen", "ord_2", "5.00", "USD", "8Cy", 30000000000, null, 99, "Back till", 310))
+        till.onEvent(SaleEvent("sale.expired", "ord_2", "5.00", "USD", "8Cy", 30000000000, null, 99, "Back till", 320))
+        val theirs = till.sales.value.sales.first { it.orderId == "ord_2" }
+        assertEquals(Standing.OtherTill, theirs.standing)
+        assertEquals(300L, theirs.createdAt)
+        assertEquals(310L, theirs.seenAt)
+        assertEquals(320L, theirs.endedAt)
+        assertFalse(theirs.needsAction)
+        assertEquals(null, theirs.receipt, "another till's sale has no items here")
+        till.close("ord_2")
+        assertEquals(Standing.OtherTill, till.sales.value.sales.first { it.orderId == "ord_2" }.standing, "closing it here changes nothing about who has its Square sale")
     }
 }

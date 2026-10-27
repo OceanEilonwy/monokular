@@ -56,8 +56,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** What went wrong last, to show. */
     val problem = MutableStateFlow<String?>(null)
 
-    /** Sales the cashier closed (or that closed themselves once paid): the till shows its idle screen past them. */
-    val closed = MutableStateFlow(emptySet<String>())
+    /** Sales whose full screen the cashier left (Back, or a paid one that stepped back itself): the till shows the shift past them. */
+    val left = MutableStateFlow(emptySet<String>())
 
     /** The sale on screen, or opened from the list or a notification. */
     val focus = MutableStateFlow<String?>(null)
@@ -255,22 +255,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         graph.squareAuth().signOut()
         stores.forgetAll()
         graph.store.forget()
-        closed.value = emptySet()
+        left.value = emptySet()
         go(Screen.Welcome)
     }
 
     fun refund(orderId: String) = graph.runner.refund(orderId)
 
-    /** The cashier closed a sale's full screen (it stays in the shift's list). */
-    fun close(orderId: String) {
-        closed.update { it + orderId }
+    /** The cashier left a sale's full screen (it stays live, in the shift). */
+    fun leave(orderId: String) {
+        left.update { it + orderId }
         if (focus.value == orderId) focus.value = null
-    }
-
-    /** The cashier closed the sale itself: off the screen, the bubble and the shift's list. */
-    fun closeSale(orderId: String) {
-        close(orderId)
-        graph.runner.dismiss(orderId)
     }
 
     /** What the till screen shows now, so it stays there through Paid. */
@@ -280,9 +274,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Shows a sale full screen again (from the list, a notification or the bubble's panel). */
     fun open(orderId: String) {
-        closed.update { it - orderId }
+        left.update { it - orderId }
         focus.value = orderId
         if (stores.setupDone && screenState.value !is Screen.Till) go(Screen.Till)
+    }
+
+    /** The shift's list (from the panel's "Open the shift"): every live sale's full screen is left for now. */
+    fun openShift() {
+        focus.value = null
+        left.update { it + graph.runner.state.value.till.sales.map { s -> s.orderId } }
+        if (stores.setupDone) go(Screen.Till)
     }
 
     fun wake() = graph.runner.wake()

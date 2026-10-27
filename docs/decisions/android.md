@@ -398,3 +398,188 @@ has every fix the app was waiting for; the interim code is gone.
 59. **The sandbox's sign-in leaves out `session=false`,** which Square's
     sandbox doesn't support; production keeps it, so each sign-in is the
     seller's own.
+
+## App: the till redesign (2026-10-27)
+
+Made by the team's tech lead and product owner while building the approved
+designs (the "Monokular till tweaks" canvas: the panel over Square, the
+order full screen, the sale and its close sheet, the shift and its detail
+pages, the enlarged code, the status bar chip), with the owner away.
+
+60. **Where a sale stands is one sealed type** (`sales/Standing.kt`):
+    `Live(phase)`, `Paid(late, afterRefund)`, `Closed`, `Expired`,
+    `Reversed`, `Refunded` and `OtherTill`, read off a `TillSale` with
+    `standing`. It joins what Monokulo says about the payment (the phase)
+    with what the cashier did on this till (closed it, refunded it), so a
+    shift row's words, its icon and the page it opens are all decided in one
+    place and tested there. Order of precedence: paid beats everything (a
+    late payment after a close or a refund is `Paid` with the flags);
+    another till's sale that isn't live or paid is `OtherTill` whatever was
+    done here; then refunded, reversed, expired (or cancelled), closed. The
+    code running out therefore outranks the cashier's close: a closed sale
+    whose code then expires shows "Code expired", which has no "Show the
+    code again". `live` (standing is `Live`) is what the bubble lights for,
+    what the ongoing notification follows and what the shift opens as a
+    code; `needsAction` is closed, expired or reversed on a sale this till
+    found and hasn't refunded, and a sale paid after it was refunded (the
+    cashier must ring it up again or return the payment), which is what
+    the shift's "Needs action" chip counts. Another till's sale is never
+    "closed on" that till in the app's words: Monokulo has no event for a
+    till closing a sale, so this till can't know it; the row and page say
+    what this till does know (its code ran out, its payment was reversed,
+    it was closed here) and name the till that has its Square sale.
+61. **The cashier's marks live on the sale, as times.** `TillSale` gains
+    `closedAt` and `refundedAt` (`refunded` is now `refundedAt != null`),
+    and `createdAt`, `seenAt`, `paidAt` and `endedAt` for the detail pages'
+    timelines, all Unix seconds. The old `closed` set in the view model (a
+    sale the cashier had closed, which only hid it) is gone: a close is a
+    fact about the sale that the bubble, the notification and the shift
+    all need, so it belongs in the model, not the screen. What remains in
+    the view model is `left`: sales whose full screen the cashier stepped
+    back from, which stay live and only don't come back up on their own.
+    Times come from the source that knows them: the POS's `created_at` for
+    a sale this till rang up, the event's `at` for a sale another till made
+    and for each step the stream reports, and the till's clock (`now`,
+    injectable for tests) for the cashier's own actions and for a resync,
+    which says what happened but not when. A step already timed keeps its
+    time.
+62. **"Not sure: close it for now" is `Till.close`**: it stamps `closedAt`
+    and nothing else. The code comes down (the sale isn't live), the
+    bubble, panel and chip move on, and the sale goes to the shift under
+    Needs action. Nothing is said to Monokulo, which keeps watching the
+    order for a late payment exactly as before; `sale.paid` arriving later
+    turns the row into "Paid after you closed it". "Show the code again" on
+    the closed page is `Till.reopen`, which clears `closedAt`, so the code,
+    bubble and chip come back. "No: refund it in Square" closes the sale
+    and then refunds it (`close`, then `refund`): the sale's timeline shows
+    both, and a refund the POS refuses leaves a Closed sale with its Refund
+    button, and the till's problem text saying why. `Till.dismiss` and the
+    sale screen's "Close sale" link, which took a sale off the till
+    altogether, are gone: a sale Square has as Monero must stay in the shift
+    until it's paid or refunded.
+63. **What was bought reaches the screens from the sale itself.**
+    `TillSale.receipt` keeps the `Receipt` this till built from Square's
+    order (the one that went into the code), so the panel's order line,
+    the order page, the sale's order card, the detail pages and the
+    notification's item line all read it on the device. It is never sent to
+    Monokulo (the till only ever sends amount, currency, reference and the
+    idempotency key, as `TillTest` checks) and never logged: the app logs
+    nothing, and `TillSale` must not be put through a logger or a crash
+    report. A sale another till found has no receipt here, and its pages
+    say so ("what was bought stays on that till"). Counts add quantities
+    up ("15 items"); the first three lines are named, then "+N more".
+64. **The shift list survives the process.** The till's sales were in
+    memory only, so Android ending the service lost every sale, including
+    closed and expired ones the cashier still had to refund: money Square
+    had taken as Monero that nobody was reminded of. The till now saves its
+    sales (JSON, through a `ShiftStore` the app backs with `SecureStore`,
+    so the receipts inside are encrypted at rest like everything else the
+    app keeps) on every change and loads them when it starts; the resync
+    that follows the stream opening then brings their phases up to date.
+    The list is this shift's: it starts when the cashier starts watching
+    (`Stores.shiftStartedAt`, the "since 9:02 am" in the shift's summary)
+    and is cleared when the next shift starts after a stop. It is capped at
+    500 sales, newest first.
+65. **The panel's grabber and the bubble lower it; nothing else is a
+    collapse button.** The phone panel is still one `MATCH_PARENT` overlay
+    window with the lit bubble docked above it. Dragging the grabber down
+    moves the panel with the finger (`translationY`) and, past a quarter
+    of its height or with a downward fling, lowers it (`panelOpen = false`);
+    short of that it springs back. Tapping the docked bubble lowers it, as
+    before; on a tablet, where the real bubble stays, its tap now toggles
+    the panel instead of only opening it. A tap on the empty part of the
+    window still lowers the panel: that window takes every touch, so the
+    alternative is a dead zone over Square. The grabber is a 48 dp button
+    to TalkBack ("Lower to the bubble"), which can't drag. On the tablet's
+    floating panel, whose window is only as big as itself, the drag fades
+    the panel instead of moving it.
+66. **The order page is a page of the overlay, and a screen of the app.**
+    From the panel, its order line swaps the panel's content for "The
+    order, full screen" inside the same overlay window (a sealed
+    `PanelPage`, Code or Order), and its back arrow or "Show the code" swaps
+    it back. An overlay window can't take the system Back key (it isn't
+    focusable), which is why the design draws both ways back on screen.
+    Starting Monokular's activity for it would have taken Square off the
+    screen, which the panel exists to avoid. The header row's "Open the
+    shift" and the panel's "Full screen" do start the activity
+    (`EXTRA_SHIFT`, `EXTRA_ORDER`), as "Full screen" already did. In the
+    app, the sale screen's order card shows up to four lines (three and
+    "+N more" when there are more) and then opens the same page as
+    `Screen.Order`, so a long order can't push the sale's buttons off the
+    screen; both places draw one `OrderPage` composable.
+67. **The enlarged code is a screen of the app** (`Screen.Code(orderId)`),
+    white in both themes, with the window's `screenBrightness` set to full
+    and `FLAG_KEEP_SCREEN_ON` while it's up, both undone when it goes;
+    its status bar icons are dark for the white ground. A tap anywhere or
+    the shrink button goes back, as does the system's Back. The sale screen
+    keeps the screen on too while a live code is showing; the panel over
+    Square doesn't change brightness (an overlay window's brightness isn't
+    honoured, and the design says the panel's code never changes size).
+68. **The status bar chip is the small icon alone.** On Android 16+, a
+    promoted ongoing notification's chip shows its small icon and, when
+    set, `setShortCriticalText`; the amount that was there is removed, so
+    the chip is the icon only, as designed. The icon is one of four
+    monochrome vector drawables chosen by phase (`ic_mark_q1`, `_q2`,
+    `_q3`: the mark's open ring with its pupil, the ring's arc filled a
+    quarter, a half, three quarters, the rest at 30% alpha, which the
+    status bar keeps; `ic_tick`: a tick), and the notification's
+    `setColor` is the accent, or the paid green for the paid face. The
+    system draws the chip and decides how it uses the colour; the app
+    doesn't depend on it being orange. The ongoing notification shows the
+    paid face, promoted, for a few seconds (`Bubble.PAID_MS`) and then goes
+    back to watching or to the next live sale, so the chip goes; a sale
+    that is closed, expires or is reversed isn't live, so the notification
+    moves on and the chip goes at once. The separate "Paid" and unpaid
+    notifications (decision 39) stay, unpromoted, in the shade. Before
+    Android 16 there is no chip: the same per-phase icon is the ongoing
+    notification's status bar icon, and the shade shows the same
+    notification. The watching, paid and unpaid notifications use the plain
+    ring-and-pupil mark (`ic_mark`); the launcher icon is unchanged.
+69. **Three theme roles added, none renamed.** The designs are drawn in dark
+    mode in the dark tokens' own colours (ground `#1C1B19`, card `#2A2825`,
+    divider and chip `#3A3733`, edge `#4A4743`, muted `#A8A29A`, ink
+    `#ECE8DF`, link `#FF8A3D`, paid `#4CC27A`, warn `#E8C267`, warnGround
+    `#3D3320`, danger `#FF6B6B`), so they map onto the existing roles. Two
+    had no role: `dangerGround` (`#3D2422` dark, `#F6DCD9` light) behind
+    the tinted X, a reversed sale's icon and its note, `onDangerGround`
+    (`#FFD2CE` dark, `#6E1A1A` light) for the note's text on it, and
+    `paidGround` (`#1E3A28` dark, `#DCEFE2` light) behind the paid tick.
+    The close sheet's "Yes" icon sits on `warnGround` rather than a fourth
+    tint the design draws once (`#3A2A14`). The "Needs
+    action" count sits on `warn` in `ground`-coloured text, which reads in
+    both themes; the selected filter chip is `ink` on `ground` inverted.
+    The enlarged code's screen is white in both themes, like the QR card.
+70. **One sale screen, its content by standing.** `Screen.Sale(orderId)`
+    shows the code (the design's SaleA) while the sale is live, and the
+    matching detail page (Paid, Paid after closing, Closed, Code expired,
+    Payment reversed, Refunded, Closed on another till) otherwise, so a
+    sale that gets paid while on screen turns into its Paid page in place,
+    and steps back to the shift after five seconds as before; opened from
+    the shift, a detail page stays. The close sheet is a Material bottom
+    sheet on the sale screen whose open state survives rotation. Ended and
+    closed sales no longer come up full screen on their own (decision 42's
+    "except an unpaid one that still needs refunding"): the shift's "Needs
+    action" count and the unpaid notification, which opens the sale's
+    page, do that job now. The sale screen's tap on the XMR amount to copy
+    it stays. For a sale another till found, the close sheet has two rows,
+    "No: close it" (refund it in Square on that till) and "Yes: keep the
+    code up": there is nothing this till can refund, so "No" and "Not
+    sure" would do the same thing.
+71. **Times the app doesn't know aren't shown.** The design's "Monokulo
+    watches for a late payment until 4:22 pm" and "Paid, 10 confirmations"
+    name things the API doesn't give the app (only `is_final`, and no
+    confirmation count). The pages say Monokulo is still watching for a
+    late payment, or has stopped (`settled`), and "Paid", with the times
+    the app does have.
+72. **The shift's summary sums paid sales per currency**, and shows each
+    currency's total joined with " · " (one, in practice). Times of day are
+    written as the locale does ("3:58 PM" in the US, "15:58" in Britain),
+    with a plain space before am or pm; the design's lower case isn't
+    forced on a locale that writes otherwise.
+73. **The product owner's acceptance criteria** (the team's
+    `acceptance.md`) are the test plan, and its own calls where the designs
+    are silent (D1 to D12) stand except where a decision above says
+    otherwise: the shift list is saved (64), so the marks on a sale survive
+    the app being killed rather than being "simply absent"; and the shift
+    starts when the cashier turns watching on, not each time the service
+    starts (64).

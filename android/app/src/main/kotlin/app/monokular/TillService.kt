@@ -12,6 +12,7 @@ import app.monokular.core.SalePhase
 import app.monokular.notify.SaleNotifications
 import app.monokular.overlay.Overlay
 import app.monokular.sales.TillSale
+import app.monokular.sales.live
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
@@ -53,7 +54,7 @@ class TillService : LifecycleService() {
                         else -> Unit
                     }
                 }
-                val current = sales.firstOrNull { !it.phase.isFinal }
+                val current = sales.firstOrNull { it.live }
                 val key = listOf(current?.orderId, current?.phase, notes.allowed(), graph.store.now.value.store?.name)
                 if (key == posted) return@collect
                 posted = key
@@ -71,7 +72,7 @@ class TillService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_SHOW_CODE && !overlay.showCode()) {
-            graph.runner.state.value.till.sales.firstOrNull { !it.phase.isFinal }?.let(::openSale)
+            graph.runner.state.value.till.sales.firstOrNull { it.live }?.let(::openSale)
         }
         return START_STICKY
     }

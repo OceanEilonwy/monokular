@@ -9,6 +9,7 @@ import app.monokular.core.Problems
 import app.monokular.core.SaleEvent
 import app.monokular.core.SalePhase
 import app.monokular.receipt.PaymentCode
+import app.monokular.receipt.Receipt
 import app.monokular.receipt.ReceiptCode
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -17,6 +18,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
+import java.time.Instant
 
 /** A sale on the till's screen. */
 data class TillSale(
@@ -34,7 +36,14 @@ data class TillSale(
     val address: String,
     /** The POS sale this till found, when it found it: what a refund needs. */
     val found: FoundSale? = null,
-    val refunded: Boolean = false,
+    /**
+     * What was bought, as the receipt this till built from the POS's order
+     * (`docs/design.md` §4). It is shown on this till's own screens and
+     * never leaves the device except inside [code]: never sent to Monokulo,
+     * never logged. Null for another till's sale, or when the order couldn't
+     * be read.
+     */
+    val receipt: Receipt? = null,
     /** The device that made the order, for a sale another till found. */
     val deviceName: String? = null,
     /** Where to read the order again: its `self` link, or its sale event's `mk:order`. */
@@ -45,9 +54,22 @@ data class TillSale(
      * a late payment that turns it paid.
      */
     val settled: Boolean = false,
+    /** When it was rung up, Unix seconds: the POS's time for this till's own, the event's for another's. */
+    val createdAt: Long = 0,
+    /** When its payment was first seen on the network, if it was. */
+    val seenAt: Long? = null,
+    val paidAt: Long? = null,
+    /** When it ended unpaid: the code ran out, the order was cancelled or the payment reversed. */
+    val endedAt: Long? = null,
+    /** When the cashier closed it on this till (the close sheet's "Not sure" or "No"), if they did. */
+    val closedAt: Long? = null,
+    /** When the cashier refunded it in Square from this till, if they did. */
+    val refundedAt: Long? = null,
 ) {
     /** Worth reading again: Monokulo may still move it on. */
     val open: Boolean get() = !settled && phase != SalePhase.Paid
+
+    val refunded: Boolean get() = refundedAt != null
 }
 
 /** What the till shows: its sales, newest first, and the last thing that went wrong. */
@@ -71,6 +93,8 @@ class Till(
     private val connection: Connection,
     /** Only this device's sales, when the POS says which device took each. */
     private val deviceId: String? = null,
+    /** The time, Unix seconds: what the cashier's marks and a resync's are stamped with. */
+    private val now: () -> Long = { System.currentTimeMillis() / 1000 },
 ) {
     private val state = MutableStateFlow(TillState())
     val sales: StateFlow<TillState> = state.asStateFlow()
@@ -107,7 +131,7 @@ class Till(
             }
             source.handled(sale)
             val receipt = runCatching { source.receipt(sale) }.getOrNull()
-            add(order, ReceiptCode.of(order.paymentUri, receipt), sale)
+            add(order, ReceiptCode.of(order.paymentUri, receipt), receipt, sale)
         }
         state.update { it.copy(problem = problem, signInAgain = false) }
     }
@@ -126,7 +150,7 @@ class Till(
         val phase = event.phase ?: return
         state.update { s ->
             if (s.sales.any { it.orderId == event.orderId }) {
-                s.copy(sales = s.sales.map { if (it.orderId == event.orderId) it.copy(phase = phase, url = it.url ?: event.orderUrl) else it })
+                s.copy(sales = s.sales.map { if (it.orderId == event.orderId) it.moved(phase, event.at).copy(url = it.url ?: event.orderUrl) else it })
             } else if (phase == SalePhase.Waiting) {
                 // Another till's sale: shown with the plain code (no receipt here).
                 val uri = PaymentUri.build(event.address, event.piconero)
@@ -139,7 +163,35 @@ class Till(
 
     /** An order's phase, from its status, and whether it's [TillSale.settled] (after the stream reconnects). */
     fun onStatus(orderId: String, phase: SalePhase, settled: Boolean = false) {
-        state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(phase = phase, settled = settled) else it }) }
+        val at = now()
+        state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.moved(phase, at).copy(settled = settled) else it }) }
+    }
+
+    /**
+     * The sale in [phase], the time of its first step there kept: seen when
+     * its payment first showed, paid, or ended unpaid. A step already timed
+     * keeps its time (a resync says what, not when).
+     */
+    private fun TillSale.moved(phase: SalePhase, at: Long): TillSale = copy(
+        phase = phase,
+        seenAt = seenAt ?: at.takeIf { phase == SalePhase.Seen || phase == SalePhase.Confirming || phase == SalePhase.Partial },
+        paidAt = paidAt ?: at.takeIf { phase == SalePhase.Paid },
+        endedAt = endedAt ?: at.takeIf { phase.isUnpaid },
+    )
+
+    /**
+     * The cashier closed the sale for now: its code comes down and it goes
+     * to the shift, where Monokulo's late payment still reaches it and the
+     * cashier can refund it. Nothing is said to Monokulo.
+     */
+    fun close(orderId: String) {
+        val at = now()
+        state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId && it.closedAt == null) it.copy(closedAt = at) else it }) }
+    }
+
+    /** "Show the code again" on a closed sale: its code is back up. */
+    fun reopen(orderId: String) {
+        state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(closedAt = null) else it }) }
     }
 
     /** Refunds the POS sale of an order that was never paid. */
@@ -148,34 +200,37 @@ class Till(
         val found = sale.found ?: return
         try {
             source.refund(found)
-            state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(refunded = true) else it }) }
+            val at = now()
+            state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(refundedAt = it.refundedAt ?: at) else it }) }
         } catch (e: Exception) {
             state.update { it.copy(problem = "Couldn't refund it in the POS: ${e.message}. Refund it there instead.") }
         }
     }
 
-    /** Takes a finished sale off the screen. */
-    fun dismiss(orderId: String) {
-        state.update { s -> s.copy(sales = s.sales.filterNot { it.orderId == orderId }) }
-    }
-
-    private fun add(order: Order, code: PaymentCode, found: FoundSale) {
+    private fun add(order: Order, code: PaymentCode, receipt: Receipt?, found: FoundSale) {
         // Another till may have made this order already, and the store's events
-        // may have moved it on (paid, even): keep what they said, else the order's own.
-        val known = state.value.sales.firstOrNull { it.orderId == order.orderId }?.phase
+        // may have moved it on (paid, even): keep what they said, and when,
+        // else the order's own.
+        val known = state.value.sales.firstOrNull { it.orderId == order.orderId }
         val sale = TillSale(
             orderId = order.orderId,
             amount = order.amount ?: decimalAmount(found.amountMinor, found.currency),
             currency = order.currency ?: found.currency,
             reference = order.merchantOrderId,
             code = code,
-            phase = known ?: order.phase,
+            phase = known?.phase ?: order.phase,
             url = order.url,
             settled = known == null && order.isFinal,
             expiresAt = order.expiresAt,
             xmr = PaymentUri.xmr(order.piconero),
             address = order.address,
             found = found,
+            receipt = receipt,
+            createdAt = runCatching { Instant.parse(found.createdAt).epochSecond }.getOrElse { now() },
+            seenAt = known?.seenAt,
+            paidAt = known?.paidAt,
+            endedAt = known?.endedAt,
+            closedAt = known?.closedAt,
         )
         state.update { s -> s.copy(sales = listOf(sale) + s.sales.filterNot { it.orderId == order.orderId }) }
     }
@@ -192,6 +247,7 @@ class Till(
         address = address,
         deviceName = deviceName.ifBlank { null },
         url = orderUrl,
+        createdAt = at,
     )
 
     companion object {

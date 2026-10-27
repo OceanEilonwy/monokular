@@ -95,8 +95,6 @@ class TillRunner(private val graph: Graph) {
         scope.launch { till.refund(orderId) }
     }
 
-    fun dismiss(orderId: String) = till?.dismiss(orderId)
-
     private suspend fun follow(till: Till) {
         val connection = graph.stores.connection ?: return
         var wait = 1.seconds

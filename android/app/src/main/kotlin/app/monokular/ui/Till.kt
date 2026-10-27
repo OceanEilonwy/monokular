@@ -22,7 +22,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -30,7 +29,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -88,8 +86,6 @@ class TillActions(
     val onOpen: (String) -> Unit,
     /** Leaves a sale's full screen: it stays live, on the bubble and in the shift's list. */
     val onBack: (String) -> Unit,
-    /** Takes a sale off this till altogether, whatever happens to its order. */
-    val onCloseSale: (String) -> Unit,
     val onRefund: (String) -> Unit,
     val onCopy: (TillSale) -> Unit,
     val onCopyXmr: (TillSale) -> Unit,
@@ -106,9 +102,9 @@ class TillActions(
  * shift's sales.
  */
 @Composable
-fun TillScreen(status: TillStatus, sales: List<TillSale>, closed: Set<String>, focus: String?, actions: TillActions) {
+fun TillScreen(status: TillStatus, sales: List<TillSale>, left: Set<String>, focus: String?, actions: TillActions) {
     // A paid sale closes itself after a few seconds; one that ended unpaid waits for Done.
-    val current = TillFocus.pick(sales, closed, focus)
+    val current = TillFocus.pick(sales, left, focus)
     androidx.compose.runtime.SideEffect { actions.onShowing(current?.orderId) }
     if (current != null && !status.disconnected) {
         SaleScreen(current, status.location, actions)
@@ -326,30 +322,6 @@ private fun Buttons(sale: TillSale, actions: TillActions) = Column(
         OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), height = 56.dp)
         actions.onBackToSquare?.let { PrimaryButton("Back to Square", it, Modifier.weight(1f), height = 56.dp, size = 16) }
     }
-    CloseSale(sale, actions)
-}
-
-/** "Close sale", after asking: the sale leaves this till, though its order carries on in Monokulo. */
-@Composable
-private fun CloseSale(sale: TillSale, actions: TillActions) {
-    var asking by remember { mutableStateOf(false) }
-    LinkButton("Close sale", { asking = true }, size = 16, color = mk.muted)
-    if (!asking) return
-    AlertDialog(
-        onDismissRequest = { asking = false },
-        containerColor = mk.card,
-        titleContentColor = mk.ink,
-        textContentColor = mk.muted,
-        title = { Text("Close this sale?") },
-        text = {
-            Text(
-                "Monokular stops showing it and takes it off this shift. If the customer pays anyway, Monokulo still records the payment." +
-                    if (sale.found != null && !sale.refunded) " Square has already recorded this sale as Monero: refund it there if the customer isn't paying." else "",
-            )
-        },
-        confirmButton = { LinkButton("Close sale", { asking = false; actions.onCloseSale(sale.orderId) }, color = mk.danger) },
-        dismissButton = { LinkButton("Keep it", { asking = false }) },
-    )
 }
 
 /** Paid, or ended without the money. */
