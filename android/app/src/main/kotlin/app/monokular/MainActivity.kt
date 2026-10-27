@@ -70,6 +70,8 @@ class MainActivity : ComponentActivity() {
                 val store by model.store.collectAsStateWithLifecycle()
                 // Read so that coming back from Android's settings recomposes.
                 @Suppress("UNUSED_VARIABLE") val tick = resumed.intValue
+                // Re-read on every bump of `resumed`, which onMultiWindowModeChanged makes, so the till's actions follow it.
+                val multiWindow = isInMultiWindowMode
                 BackHandler(enabled = screen != Screen.Welcome && screen != Screen.Till && screen != Screen.Square) { model.back() }
                 when (val s = screen) {
                     Screen.Welcome -> WelcomeScreen(onStart = { model.go(Screen.Scan) })
@@ -125,7 +127,7 @@ class MainActivity : ComponentActivity() {
                             is Screen.Order -> s.orderId
                             else -> null
                         }?.let { id -> sales.firstOrNull { it.orderId == id } }
-                        val actions = remember { tillActions() }
+                        val actions = remember(multiWindow) { tillActions(multiWindow) }
                         when {
                             // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
                             // a disconnected till shows why, whatever was on screen.
@@ -187,7 +189,7 @@ class MainActivity : ComponentActivity() {
         startedAt = model.shiftStartedAt,
     )
 
-    private fun tillActions() = TillActions(
+    private fun tillActions(multiWindow: Boolean) = TillActions(
         onSettings = model::openSettings,
         onOpen = model::open,
         onBack = model::leave,
@@ -198,7 +200,7 @@ class MainActivity : ComponentActivity() {
         onReopen = model::reopen,
         onCopy = { SaleNotifications.copyAddress(this, it.address) },
         onCopyXmr = ::copyXmr,
-        onBackToSquare = if (isInMultiWindowMode) null else ::backToSquare,
+        onBackToSquare = if (multiWindow) null else ::backToSquare,
         onSignIn = ::signInToSquare,
         onForget = model::forget,
         onStartShift = { model.setShift(true) },
