@@ -64,7 +64,11 @@ token's own merchant, and its answer names that merchant. Answered `201`:
 ```
 
 The same subscription registered again keeps its `registration_id`, moved to
-the location it names and with its keys replaced. A location takes 32
+the location it names and with its keys replaced, when the token is its own
+merchant's, or when its keys are the ones it was registered with (a till
+signed in to another merchant's account). An endpoint alone isn't enough:
+anyone else is refused with [`endpoint-registered`](#endpoint-registered),
+and the registration is left as it was. A location takes 32
 registrations. The endpoint must be `https` (or `http` on the Bell's own
 machine), never an onion address, and on a public address unless the Bell
 allows private ones (a `localhost` name counts as private). Registrations
@@ -73,6 +77,7 @@ are limited per address (IPv6 by its /64): each costs a request to Square.
 Problems: [`invalid-request`](#invalid-request), [`square-refused`](#square-refused),
 [`square-unavailable`](#square-unavailable),
 [`too-many-registrations`](#too-many-registrations),
+[`endpoint-registered`](#endpoint-registered),
 [`payload-too-large`](#payload-too-large), [`rate-limited`](#rate-limited).
 
 ### `DELETE /v1/register/{registration_id}`
@@ -139,6 +144,13 @@ service said the subscription was gone. Register again.
 
 `409`: the location has 32 registrations. Take back one that no longer uses
 this Bell.
+
+### endpoint-registered
+
+`409`: the subscription's endpoint is registered for another Square merchant,
+and the keys given aren't the ones it was registered with. Take the old
+registration back (`DELETE` with its id), or register with the subscription's
+own keys.
 
 ### invalid-signature
 

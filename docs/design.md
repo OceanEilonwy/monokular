@@ -363,7 +363,10 @@ GET    /v1/info → { "square_application_id", "environment", "vapid_public_key"
 ```
 
 The token check stops anyone from subscribing to dings for a business they
-don't control (which would tell them when it takes payments).
+don't control (which would tell them when it takes payments). An endpoint
+already registered moves only for its own merchant, or for a caller giving
+the subscription's own auth secret: an endpoint is no secret (push services
+and distributors see it), so knowing one doesn't take a till's dings away.
 
 Storage: its own SQLite file with `registrations(id, merchant_id,
 location_id, endpoint, p256dh, auth, created_at, last_ok_at, failures)`.

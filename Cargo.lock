@@ -1570,6 +1570,7 @@ dependencies = [
  "service-runtime",
  "sha2",
  "sqlite",
+ "subtle",
  "thiserror",
  "tokio",
  "tower",

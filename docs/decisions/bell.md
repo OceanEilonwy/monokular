@@ -241,3 +241,19 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
     webhooks by the ID it chose, so a registration under another one would
     never ding it. `main` isn't refused by name before Square is asked, so
     any other alias Square has or adds is handled the same way.
+37. **An endpoint already registered moves only for its own merchant, or
+    with its own auth secret; otherwise `409 endpoint-registered`, without
+    the id** (push audit #16). `ON CONFLICT (endpoint) DO UPDATE` let anyone
+    with any Square account and a till's endpoint take its registration (new
+    merchant, location and keys) and learn the id that unregisters it. The
+    same merchant still moves and re-keys its tills freely (an app
+    reinstalled, a till moved between locations): its own token is the
+    proof. Another merchant needs the 16-byte auth secret the till
+    registered with, which never leaves the till and the Bell, compared in
+    constant time (`subtle`, already in the tree under `hmac`): that is the
+    till signed in to another account without unregistering first, which
+    would otherwise be stuck at `409` with dings its old merchant still
+    sends. A challenge pushed to the endpoint was not chosen: it needs a
+    second round trip and state for something the auth secret already
+    proves.
+

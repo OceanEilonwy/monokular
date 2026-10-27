@@ -132,6 +132,13 @@ async fn register(
                 "The location has {} registrations already: unregister a till that no longer uses this Bell.",
                 crate::registrations::MAX_PER_LOCATION
             )),
+            // No id: the registration isn't the caller's.
+            RegisterError::Taken => {
+                tracing::info!("a registration of another merchant's endpoint was refused");
+                Problem::EndpointRegistered.detail(
+                    "The subscription is registered for another Square merchant. Unregister it there, or register with the subscription's own keys.",
+                )
+            }
             RegisterError::Store(error) => internal(error),
         })?;
     tracing::info!(registration = %id, "registered");

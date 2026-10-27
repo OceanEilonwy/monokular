@@ -7,7 +7,9 @@
 //!
 //! One subscription is one registration: registered again (a till moved
 //! to another location, or its app started again), its row is updated,
-//! keeping its id.
+//! keeping its id. An endpoint alone proves nothing (a push service, a
+//! distributor's log or a shared server can show it), so only its own
+//! merchant, or a caller holding its keys, may change its registration.
 
 use std::fmt;
 use std::path::Path;
@@ -16,6 +18,7 @@ use std::str::FromStr;
 use push::{AuthSecret, Endpoint, P256dh, Subscription, SubscriptionKeys};
 use rand::Rng as _;
 use rusqlite::{Connection, OptionalExtension as _, TransactionBehavior, params};
+use subtle::ConstantTimeEq as _;
 
 use crate::square::{LocationId, MerchantId};
 
@@ -119,6 +122,10 @@ pub enum StoreError {
 pub enum RegisterError {
     #[error("the location has {MAX_PER_LOCATION} registrations already")]
     Full,
+    /// The endpoint is registered for another merchant, and the keys given
+    /// aren't the ones it was registered with.
+    #[error("the endpoint is another merchant's registration")]
+    Taken,
     #[error(transparent)]
     Store(#[from] StoreError),
 }
@@ -157,8 +164,11 @@ impl RegistrationStore {
 
     /// Registers `new`'s subscription for its location at `now`: a new
     /// registration, or its existing one moved there with its keys
-    /// replaced and its failures forgotten. Refused when the location has
-    /// [`MAX_PER_LOCATION`] others.
+    /// replaced and its failures forgotten. An existing one moves only for
+    /// its own merchant, or for a caller giving the auth secret it was
+    /// registered with (a till signed in to another account): otherwise
+    /// [`RegisterError::Taken`], and it is left as it was. Refused when
+    /// the location has [`MAX_PER_LOCATION`] others.
     pub async fn register(
         &self,
         new: NewRegistration,
@@ -174,6 +184,22 @@ impl RegistrationStore {
                 )
                 .map_err(StoreError::from)?;
                 let endpoint = new.subscription.endpoint.as_str();
+                let auth = new.subscription.keys.auth.to_base64url();
+                let existing: Option<(String, String)> = transaction
+                    .query_row(
+                        "SELECT merchant_id, auth FROM registrations WHERE endpoint = ?1",
+                        params![endpoint],
+                        |row| Ok((row.get(0)?, row.get(1)?)),
+                    )
+                    .optional()
+                    .map_err(StoreError::from)?;
+                if let Some((merchant_id, stored_auth)) = existing {
+                    // Compared in constant time: the secret is the proof.
+                    let holds_keys: bool = stored_auth.as_bytes().ct_eq(auth.as_bytes()).into();
+                    if merchant_id != new.merchant_id.as_str() && !holds_keys {
+                        return Err(RegisterError::Taken);
+                    }
+                }
                 let others: u32 = transaction
                     .query_row(
                         "SELECT COUNT(*) FROM registrations
@@ -203,7 +229,7 @@ impl RegistrationStore {
                             new.location_id.as_str(),
                             endpoint,
                             new.subscription.keys.p256dh.to_base64url(),
-                            new.subscription.keys.auth.to_base64url(),
+                            auth,
                             now,
                         ],
                         |row| row.get(0),
@@ -420,6 +446,54 @@ pub(crate) mod tests {
         assert_eq!(at_l2[0].subscription.keys, keys);
         // Its failures were forgotten: a limit of one deletes at once.
         assert_eq!(store.failed(&first, 2).await.unwrap(), Failed::Counted(1));
+        let _ = std::fs::remove_dir_all(path.parent().unwrap());
+    }
+
+    /// Another merchant can't take a registration by its endpoint: refused,
+    /// it keeps its merchant, location, keys and failures. Given the keys
+    /// it was registered with (the till signed in to another account), it
+    /// moves.
+    #[tokio::test]
+    async fn another_merchant_moves_a_registration_only_with_its_keys() {
+        let path = temp_path("taken");
+        let store = RegistrationStore::open(&path).unwrap();
+        let till = "https://push.example.org/till-1";
+        let first = new("M1", "L1", till);
+        let keys = first.subscription.keys.clone();
+        let id = store.register(first, NOW).await.unwrap();
+        store.failed(&id, 20).await.unwrap();
+
+        let taken = store.register(new("M2", "L9", till), NOW + 1).await;
+        assert!(matches!(taken, Err(RegisterError::Taken)), "{taken:?}");
+        let at_l1 = store
+            .at_location(&merchant("M1"), &location("L1"))
+            .await
+            .unwrap();
+        assert_eq!(at_l1.len(), 1);
+        assert_eq!((&at_l1[0].id, &at_l1[0].subscription.keys), (&id, &keys));
+        assert_eq!(store.failed(&id, 20).await.unwrap(), Failed::Counted(2));
+
+        let mut signed_in_elsewhere = new("M2", "L9", till);
+        signed_in_elsewhere.subscription.keys = keys;
+        assert_eq!(
+            store.register(signed_in_elsewhere, NOW + 2).await.unwrap(),
+            id
+        );
+        assert!(
+            store
+                .at_location(&merchant("M1"), &location("L1"))
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert_eq!(
+            store
+                .at_location(&merchant("M2"), &location("L9"))
+                .await
+                .unwrap()
+                .len(),
+            1
+        );
         let _ = std::fs::remove_dir_all(path.parent().unwrap());
     }
 

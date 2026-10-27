@@ -35,6 +35,9 @@ serde_json = "1.0.151"
 # services have them.
 service-runtime.workspace = true
 sha2 = "0.11.0"
+# A registration moved to another merchant only by its auth secret,
+# compared in constant time.
+subtle = "2.6.1"
 # The registrations' own database file: its pool and migration runner.
 sqlite.workspace = true
 thiserror = "2.0.20"

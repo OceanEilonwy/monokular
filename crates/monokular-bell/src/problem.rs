@@ -28,6 +28,9 @@ pub enum Problem {
     UnknownRegistration,
     /// The location has as many registrations as it may.
     TooManyRegistrations,
+    /// The endpoint is registered for another merchant, and the keys given
+    /// aren't its own.
+    EndpointRegistered,
     /// A webhook whose signature isn't Square's for this Bell.
     InvalidSignature,
     /// The body is more than the route reads.
@@ -47,6 +50,7 @@ impl Problem {
             Problem::SquareUnavailable => "square-unavailable",
             Problem::UnknownRegistration => "unknown-registration",
             Problem::TooManyRegistrations => "too-many-registrations",
+            Problem::EndpointRegistered => "endpoint-registered",
             Problem::InvalidSignature => "invalid-signature",
             Problem::PayloadTooLarge => "payload-too-large",
             Problem::RateLimited => "rate-limited",
@@ -60,7 +64,7 @@ impl Problem {
             Problem::SquareRefused | Problem::InvalidSignature => StatusCode::UNAUTHORIZED,
             Problem::SquareUnavailable => StatusCode::SERVICE_UNAVAILABLE,
             Problem::UnknownRegistration => StatusCode::NOT_FOUND,
-            Problem::TooManyRegistrations => StatusCode::CONFLICT,
+            Problem::TooManyRegistrations | Problem::EndpointRegistered => StatusCode::CONFLICT,
             Problem::PayloadTooLarge => StatusCode::PAYLOAD_TOO_LARGE,
             Problem::RateLimited => StatusCode::TOO_MANY_REQUESTS,
             Problem::Internal => StatusCode::INTERNAL_SERVER_ERROR,
@@ -74,6 +78,7 @@ impl Problem {
             Problem::SquareUnavailable => "Square unavailable",
             Problem::UnknownRegistration => "Unknown registration",
             Problem::TooManyRegistrations => "Too many registrations",
+            Problem::EndpointRegistered => "Registered elsewhere",
             Problem::InvalidSignature => "Not signed by Square",
             Problem::PayloadTooLarge => "Too large",
             Problem::RateLimited => "Too many requests",

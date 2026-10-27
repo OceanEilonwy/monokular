@@ -903,3 +903,61 @@ async fn a_location_named_by_squares_main_alias_is_refused_over_http() {
     assert_eq!(square.next().await.path, "/v2/locations/main");
     assert!(bell.rows().is_empty());
 }
+
+/// An endpoint alone doesn't give its registration away: another
+/// merchant registering a till's endpoint with keys of its own is refused
+/// (`409`, and no registration id), and the till's own merchant's payments
+/// still ding it with its own keys. The till itself, signed in to another
+/// merchant's account, moves its registration with the keys it registered.
+#[tokio::test]
+async fn another_merchant_cant_take_a_tills_registration_by_its_endpoint_over_http() {
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(&square.url(), &[]).await;
+    let till = Till::at(&push, "front");
+    let id = bell.registered(TOKEN, LOCATION, &till).await;
+
+    let attacker = Till {
+        keys: push::encrypt::ReceiverKeys::generate(),
+        endpoint: till.endpoint.clone(),
+    };
+    let answered = bell
+        .register(OTHER_TOKEN, OTHER_MERCHANTS_LOCATION, &attacker)
+        .await;
+    assert_eq!(answered.status, StatusCode::CONFLICT, "{}", answered.text());
+    assert_eq!(answered.problem(), "endpoint-registered");
+    assert!(!answered.text().contains(&id), "{}", answered.text());
+    let rows = bell.rows();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(
+        (&rows[0].0, rows[0].1.as_str(), rows[0].2.as_str()),
+        (&id, MERCHANT, LOCATION)
+    );
+
+    bell.webhook(&payment_webhook(
+        "payment.created",
+        "COMPLETED",
+        OTHER_MERCHANT,
+        OTHER_MERCHANTS_LOCATION,
+    ))
+    .await;
+    assert!(push.drain().await.is_empty(), "dinged for the attacker");
+    bell.webhook(&completed_payment()).await;
+    let ding = push.next().await;
+    let request = PushRequest::parse(&ding.headers, &ding.body).unwrap();
+    let Message::Encrypted(body) = request.message else {
+        panic!("a ding is encrypted");
+    };
+    assert_eq!(
+        push::encrypt::decrypt(&till.keys, body.as_bytes()).unwrap(),
+        br#"{"wake":"square"}"#
+    );
+
+    // The till, with its own keys, signed in to the other merchant.
+    assert_eq!(
+        bell.registered(OTHER_TOKEN, OTHER_MERCHANTS_LOCATION, &till)
+            .await,
+        id
+    );
+    assert_eq!(bell.rows()[0].1, OTHER_MERCHANT);
+}
