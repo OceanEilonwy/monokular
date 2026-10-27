@@ -76,7 +76,10 @@ object Fixed {
     val Paid = Color(0xFF1A7F37)
     val Track = Color(0xFFE4DFD5)
     val Outline = Color(0xFF8C8577)
-    /** Over another app, behind the floating panel. */
+    /** The QR card and the enlarged code's screen; a glyph on [Ink]. */
+    val White = Color.White
+    /** Over the sale, behind the close sheet: the design's 62% near-black. */
+    val Scrim = Color(0x9E0A0908)
 }
 
 val LightTokens = Tokens(

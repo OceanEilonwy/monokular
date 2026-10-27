@@ -17,10 +17,12 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.serialization.Serializable
 import java.security.MessageDigest
 import java.time.Instant
 
-/** A sale on the till's screen. */
+/** A sale on the till's screen, and in its saved shift ([ShiftStore]). */
+@Serializable
 data class TillSale(
     val orderId: String,
     val amount: String,
@@ -78,7 +80,24 @@ data class TillState(
     val problem: String? = null,
     /** The POS sign-in has ended: the cashier must sign in again. */
     val signInAgain: Boolean = false,
+    /**
+     * Why the POS refused a refund, by order: shown on that sale's page
+     * beside its Refund button until it's tried again, which the next
+     * check, clearing [problem], doesn't undo.
+     */
+    val refundProblems: Map<String, String> = emptyMap(),
 )
+
+/**
+ * Where the till keeps this shift's sales between runs (decision 64): the
+ * app backs it with its encrypted store, since a sale's receipt says what
+ * was bought.
+ */
+interface ShiftStore {
+    fun load(): List<TillSale>
+
+    fun save(sales: List<TillSale>)
+}
 
 /**
  * The till (`docs/design.md` §1): turns the POS's Monero sales into
@@ -95,20 +114,39 @@ class Till(
     private val deviceId: String? = null,
     /** The time, Unix seconds: what the cashier's marks and a resync's are stamped with. */
     private val now: () -> Long = { System.currentTimeMillis() / 1000 },
+    /** This shift's sales as saved: loaded now, saved again on every change. */
+    private val store: ShiftStore? = null,
 ) {
-    private val state = MutableStateFlow(TillState())
+    private val state = MutableStateFlow(TillState(sales = store?.load().orEmpty().take(MAX_SALES)))
     val sales: StateFlow<TillState> = state.asStateFlow()
     private val checking = Mutex()
+    private val saving = Any()
+
+    /**
+     * Changes the till's state, keeping at most [MAX_SALES] sales, and saves
+     * the sales when they changed. The save writes the state as it is then,
+     * not as this change left it, so two changes racing still leave the
+     * latest on disk.
+     */
+    private fun change(block: (TillState) -> TillState) {
+        var moved = false
+        state.update { old ->
+            val new = block(old).let { if (it.sales.size > MAX_SALES) it.copy(sales = it.sales.take(MAX_SALES)) else it }
+            moved = new.sales != old.sales
+            new
+        }
+        if (moved && store != null) synchronized(saving) { store.save(state.value.sales) }
+    }
 
     /** Looks for new sales; makes each an order with its code. */
     suspend fun check() = checking.withLock {
         val found = try {
             source.newSales()
         } catch (e: SquareException) {
-            state.update { it.copy(problem = e.message, signInAgain = e.signInAgain) }
+            change { it.copy(problem = e.message, signInAgain = e.signInAgain) }
             return@withLock
         } catch (e: Exception) {
-            state.update { it.copy(problem = "Couldn't reach the POS: ${e.message}") }
+            change { it.copy(problem = "Couldn't reach the POS: ${e.message}") }
             return@withLock
         }
         var problem: String? = null
@@ -133,7 +171,7 @@ class Till(
             val receipt = runCatching { source.receipt(sale) }.getOrNull()
             add(order, ReceiptCode.of(order.paymentUri, receipt), receipt, sale)
         }
-        state.update { it.copy(problem = problem, signInAgain = false) }
+        change { it.copy(problem = problem, signInAgain = false) }
     }
 
     /**
@@ -148,7 +186,7 @@ class Till(
     /** What the store's event stream said. */
     fun onEvent(event: SaleEvent) {
         val phase = event.phase ?: return
-        state.update { s ->
+        change { s ->
             if (s.sales.any { it.orderId == event.orderId }) {
                 s.copy(sales = s.sales.map { if (it.orderId == event.orderId) it.moved(phase, event.at).copy(url = it.url ?: event.orderUrl) else it })
             } else if (phase == SalePhase.Waiting) {
@@ -164,7 +202,7 @@ class Till(
     /** An order's phase, from its status, and whether it's [TillSale.settled] (after the stream reconnects). */
     fun onStatus(orderId: String, phase: SalePhase, settled: Boolean = false) {
         val at = now()
-        state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.moved(phase, at).copy(settled = settled) else it }) }
+        change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.moved(phase, at).copy(settled = settled) else it }) }
     }
 
     /**
@@ -186,24 +224,30 @@ class Till(
      */
     fun close(orderId: String) {
         val at = now()
-        state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId && it.closedAt == null) it.copy(closedAt = at) else it }) }
+        change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId && it.closedAt == null) it.copy(closedAt = at) else it }) }
     }
 
     /** "Show the code again" on a closed sale: its code is back up. */
     fun reopen(orderId: String) {
-        state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(closedAt = null) else it }) }
+        change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(closedAt = null) else it }) }
     }
 
-    /** Refunds the POS sale of an order that was never paid. */
+    /**
+     * Refunds the POS sale of an order that was never paid. A paid sale is
+     * never refunded from here, nor one already refunded: the payment may
+     * land while the cashier's "No" is on its way.
+     */
     suspend fun refund(orderId: String) {
         val sale = state.value.sales.firstOrNull { it.orderId == orderId } ?: return
+        if (sale.phase == SalePhase.Paid || sale.refundedAt != null) return
         val found = sale.found ?: return
+        change { it.copy(refundProblems = it.refundProblems - orderId) }
         try {
             source.refund(found)
             val at = now()
-            state.update { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(refundedAt = it.refundedAt ?: at) else it }) }
+            change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(refundedAt = it.refundedAt ?: at) else it }) }
         } catch (e: Exception) {
-            state.update { it.copy(problem = "Couldn't refund it in the POS: ${e.message}. Refund it there instead.") }
+            change { it.copy(refundProblems = it.refundProblems + (orderId to "Couldn't refund it in the POS: ${e.message}. Refund it there instead.")) }
         }
     }
 
@@ -232,7 +276,7 @@ class Till(
             endedAt = known?.endedAt,
             closedAt = known?.closedAt,
         )
-        state.update { s -> s.copy(sales = listOf(sale) + s.sales.filterNot { it.orderId == order.orderId }) }
+        change { s -> s.copy(sales = listOf(sale) + s.sales.filterNot { it.orderId == order.orderId }) }
     }
 
     private fun SaleEvent.toTillSale(code: PaymentCode) = TillSale(
@@ -251,6 +295,9 @@ class Till(
     )
 
     companion object {
+        /** The most sales a shift keeps, newest first: older ones drop off the list and the saved shift. */
+        const val MAX_SALES = 500
+
         /** `sq:` and the start of SHA-256 of the POS's payment id: the same for every till, and opaque. */
         fun idempotencyKey(sale: FoundSale): String {
             val hash = MessageDigest.getInstance("SHA-256").digest(sale.id.toByteArray())

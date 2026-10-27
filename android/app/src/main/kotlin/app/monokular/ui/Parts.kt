@@ -52,7 +52,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import app.monokular.SaleText
 
 /**
  * A screen's frame: the ground colour, clear of the system bars, at most
@@ -177,6 +176,26 @@ fun RoundIconButton(
     ),
 ) { Icon(icon, contentDescription = label, modifier = Modifier.size(iconSize)) }
 
+/**
+ * A round button drawn [visual] wide on [ground] (the sale's 44 dp cog and
+ * tinted X), still 48 dp to touch.
+ */
+@Composable
+fun CircleButton(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit,
+    ground: Color,
+    tint: Color,
+    iconSize: Dp,
+    modifier: Modifier = Modifier,
+    visual: Dp = 44.dp,
+) = IconButton(onClick = onClick, modifier = modifier.size(48.dp)) {
+    Box(Modifier.size(visual).clip(CircleShape).background(ground), contentAlignment = Alignment.Center) {
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(iconSize))
+    }
+}
+
 /** The top of an onboarding step: a back arrow. */
 @Composable
 fun BackBar(onBack: (() -> Unit)?) = Row(Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -252,38 +271,12 @@ fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, enab
     )
 }
 
-/** The four steps of a payment as segments, the current one and those before it filled. */
-@Composable
-fun ProgressSegments(step: Int, modifier: Modifier = Modifier, labels: Boolean = true) {
-    val description = if (step in 1..4) "Step $step of 4: ${SaleText.steps[step - 1].lowercase()}" else "Not paid"
-    Column(modifier.semantics(mergeDescendants = true) { contentDescription = description }, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            for (i in 1..4) {
-                Box(Modifier.weight(1f).height(6.dp).clip(CircleShape).background(if (i <= step) mk.accent else mk.chip))
-            }
-        }
-        if (labels) {
-            Row {
-                SaleText.steps.forEachIndexed { i, name ->
-                    Text(
-                        name,
-                        fontSize = 12.sp,
-                        color = if (i + 1 == step) mk.ink else mk.muted,
-                        fontWeight = if (i + 1 == step) FontWeight.SemiBold else null,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-            }
-        }
-    }
-}
-
 /** A green circle with a white tick: paid. */
 @Composable
 fun PaidTick(size: Dp) = Box(
     Modifier.size(size).clip(CircleShape).background(Fixed.Paid),
     contentAlignment = Alignment.Center,
-) { Icon(MkIcons.Tick, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.55f)) }
+) { Icon(MkIcons.Tick, contentDescription = null, tint = Fixed.White, modifier = Modifier.size(size * 0.55f)) }
 
 /** A problem to show: on the inset colour, not shouted. */
 @Composable
