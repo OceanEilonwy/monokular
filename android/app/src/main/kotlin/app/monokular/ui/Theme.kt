@@ -53,8 +53,14 @@ data class Tokens(
     /** "No payment yet": the clock and its circle. */
     val warn: Color,
     val warnGround: Color,
-    /** Disconnect. */
+    /** Disconnect; a reversed payment; the tinted X that closes a sale. */
     val danger: Color,
+    /** Behind [danger]: the X's circle, a reversed sale's icon and note. */
+    val dangerGround: Color,
+    /** Text on [dangerGround]: the reversed sale's note. */
+    val onDangerGround: Color,
+    /** Behind [paid]: the tick's circle on a paid row or page. */
+    val paidGround: Color,
     /** A switch that's off. */
     val switchOff: Color,
     val dark: Boolean,
@@ -70,7 +76,10 @@ object Fixed {
     val Paid = Color(0xFF1A7F37)
     val Track = Color(0xFFE4DFD5)
     val Outline = Color(0xFF8C8577)
-    /** Over another app, behind the floating panel. */
+    /** The QR card and the enlarged code's screen; a glyph on [Ink]. */
+    val White = Color.White
+    /** Over the sale, behind the close sheet: the design's 62% near-black. */
+    val Scrim = Color(0x9E0A0908)
 }
 
 val LightTokens = Tokens(
@@ -90,6 +99,9 @@ val LightTokens = Tokens(
     warn = Color(0xFF7D5E00),
     warnGround = Color(0xFFF1E3CF),
     danger = Color(0xFFB00020),
+    dangerGround = Color(0xFFF6DCD9),
+    onDangerGround = Color(0xFF6E1A1A),
+    paidGround = Color(0xFFDCEFE2),
     switchOff = Color(0xFFC9C3B8),
     dark = false,
 )
@@ -111,6 +123,9 @@ val DarkTokens = Tokens(
     warn = Color(0xFFE8C267),
     warnGround = Color(0xFF3D3320),
     danger = Color(0xFFFF6B6B),
+    dangerGround = Color(0xFF3D2422),
+    onDangerGround = Color(0xFFFFD2CE),
+    paidGround = Color(0xFF1E3A28),
     switchOff = Color(0xFF5A564C),
     dark = true,
 )

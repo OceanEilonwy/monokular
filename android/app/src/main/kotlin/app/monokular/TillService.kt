@@ -3,22 +3,30 @@ package app.monokular
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.os.Build
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleService
 import androidx.lifecycle.lifecycleScope
 import app.monokular.core.SalePhase
+import app.monokular.notify.Ongoing
 import app.monokular.notify.SaleNotifications
 import app.monokular.overlay.Overlay
 import app.monokular.sales.TillSale
+import app.monokular.sales.live
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 
 /**
  * Keeps the till running during a shift (`docs/design.md` §3, §7): a
  * foreground service whose ongoing notification is the current sale, and
- * which holds the bubble over other apps.
+ * which holds the bubble over other apps. The notification follows the
+ * newest sale whose code is up, turns into a green tick for a few seconds
+ * once one is paid, and goes back to watching when none is up.
  */
 class TillService : LifecycleService() {
     private val graph get() = (application as MonokularApp).graph
@@ -35,34 +43,53 @@ class TillService : LifecycleService() {
             if (Build.VERSION.SDK_INT >= 34) ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE else 0,
         )
         graph.runner.start()
-        overlay = Overlay(this, graph, lifecycleScope, onCopy = { SaleNotifications.copyAddress(this, it.address) }, onFullScreen = ::openSale)
+        overlay = Overlay(
+            this, graph, lifecycleScope,
+            onCopy = { SaleNotifications.copyAddress(this, it.address) },
+            onCopyXmr = { SaleNotifications.copyXmr(this, it.xmr) },
+            onFullScreen = ::openSale,
+            onOpenShift = ::openShift,
+        )
         overlay.start()
         val changes = PhaseChanges()
+        // The sale just paid, while the chip shows its tick.
+        val justPaid = MutableStateFlow<String?>(null)
+        var paidTimer: Job? = null
         var posted: List<Any?>? = null
         val alerted = mutableSetOf<String>()
         lifecycleScope.launch {
-            combine(graph.runner.state, graph.permissions, graph.store.now) { state, _, _ -> state }.collect { state ->
+            combine(graph.runner.state, graph.permissions, graph.store.now, justPaid) { state, _, _, _ -> state }.collect { state ->
                 val sales = state.till.sales
                 for (sale in changes.next(sales)) {
                     when (sale.phase) {
                         SalePhase.Paid -> {
                             notes.paid(sale, quiet = graph.appVisible.value)
                             overlay.paid()
+                            justPaid.value = sale.orderId
+                            paidTimer?.cancel()
+                            paidTimer = lifecycleScope.launch {
+                                delay(Bubble.PAID_MS)
+                                justPaid.value = null
+                            }
                         }
                         SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend -> notes.unpaid(sale, quiet = graph.appVisible.value)
                         else -> Unit
                     }
                 }
-                val current = sales.firstOrNull { !it.phase.isFinal }
-                val key = listOf(current?.orderId, current?.phase, notes.allowed(), graph.store.now.value.store?.name)
+                // Read now, not from the combine: a sale paid just above is the one to show.
+                val ongoing = Ongoing.of(sales, justPaid.value)
+                val sale = (ongoing as? Ongoing.Sale)?.sale ?: (ongoing as? Ongoing.Paid)?.sale
+                val key = listOf(ongoing::class, sale?.orderId, sale?.phase, sale?.receipt != null, notes.allowed(), graph.store.now.value.store?.name)
                 if (key == posted) return@collect
                 posted = key
-                if (current == null) {
-                    notes.ongoing(watching())
-                } else {
-                    // A heads-up once per sale, when it first appears; not again when an older one comes back to the top.
-                    val alert = current.phase == SalePhase.Waiting && alerted.add(current.orderId)
-                    notes.ongoing(notes.sale(current, graph.stores.location?.name, alert))
+                when (ongoing) {
+                    Ongoing.Watching -> notes.ongoing(watching())
+                    is Ongoing.Paid -> notes.ongoing(notes.justPaid(ongoing.sale))
+                    is Ongoing.Sale -> {
+                        // A heads-up once per sale, when it first appears; not again when an older one comes back to the top.
+                        val alert = ongoing.sale.phase == SalePhase.Waiting && alerted.add(ongoing.sale.orderId)
+                        notes.ongoing(notes.sale(ongoing.sale, graph.stores.location?.name, alert))
+                    }
                 }
             }
         }
@@ -71,15 +98,29 @@ class TillService : LifecycleService() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
         if (intent?.action == ACTION_SHOW_CODE && !overlay.showCode()) {
-            graph.runner.state.value.till.sales.firstOrNull { !it.phase.isFinal }?.let(::openSale)
+            graph.runner.state.value.till.sales.firstOrNull { it.live }?.let(::openSale)
         }
         return START_STICKY
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        overlay.configurationChanged()
     }
 
     override fun onDestroy() {
         overlay.stop()
         graph.runner.stop()
         super.onDestroy()
+    }
+
+    /** Opens Monokular on the shift (the panel's header row): the sale stays live, on the bubble and in the list. */
+    private fun openShift() {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                .putExtra(MainActivity.EXTRA_SHIFT, true),
+        )
     }
 
     private fun watching() = notes.watching(graph.store.now.value.store?.name.orEmpty(), graph.stores.location?.name)

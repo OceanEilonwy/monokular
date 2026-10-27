@@ -3,11 +3,14 @@ package app.monokular
 import app.monokular.core.Connection
 import app.monokular.sales.CursorStore
 import app.monokular.sales.Pkce
+import app.monokular.sales.ShiftStore
 import app.monokular.sales.SquareLocation
 import app.monokular.sales.SquareTokens
+import app.monokular.sales.TillSale
 import app.monokular.sales.TokenStore
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.SetSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -41,6 +44,11 @@ class Stores(private val secure: SecureStore) {
     var shiftOn: Boolean
         get() = secure.get("shift.on") != "false"
         set(value) = secure.put("shift.on", value.toString())
+
+    /** When this shift began, Unix seconds: the cashier turned watching on (the shift's "since 9:02 am"). */
+    var shiftStartedAt: Long?
+        get() = secure.get("shift.started")?.toLongOrNull()
+        set(value) = secure.put("shift.started", value?.toString())
 
     /** The cashier went through setup to the end (OnbReady's "Start Monokular"). */
     var setupDone: Boolean
@@ -88,6 +96,12 @@ class Stores(private val secure: SecureStore) {
         }
     }
 
+    /** This shift's sales, receipts and all, encrypted like everything else here (decision 64). */
+    val shift = object : ShiftStore {
+        override fun load() = read("shift.sales", ListSerializer(TillSale.serializer())).orEmpty()
+        override fun save(sales: List<TillSale>) = write("shift.sales", ListSerializer(TillSale.serializer()), sales.ifEmpty { null })
+    }
+
     /** Forgets the store and everything about this till's Square. */
     fun forgetAll() {
         connection = null
@@ -98,5 +112,7 @@ class Stores(private val secure: SecureStore) {
         tokens.save(null)
         secure.put("square.since", null)
         secure.put("square.handled", null)
+        shift.save(emptyList())
+        shiftStartedAt = null
     }
 }

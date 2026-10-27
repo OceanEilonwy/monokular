@@ -25,8 +25,8 @@ object MkIcons {
         }.build()
 
     val Back = icon("back", 24f, "M20 12H5M11 5l-7 7 7 7" to 2.2f)
-    val ChevronDown = icon("chevron down", 16f, "M3 6l5 5 5-5" to 2.2f)
-    val Minus = icon("minus", 16f, "M3 8h10" to 2.2f)
+    /** A chevron to the right: a row or a line that opens something. */
+    val Chevron = icon("chevron", 24f, "M9 5l7 7-7 7" to 2.4f)
     /** A cog: eight teeth round a hole. */
     val Settings = icon(
         "settings", 24f,
@@ -45,4 +45,16 @@ object MkIcons {
     )
     val Clock = icon("clock", 24f, "M12 3a9 9 0 1 0 0.01 0Z" to 2f, "M12 7v5.5l3.5 2" to 2f)
     val Bell = icon("bell", 24f, "M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Z M10 20.5a2 2 0 0 0 4 0" to 1.8f)
+    /** An X: the tinted button that opens the close sheet, and a sale closed on another till. */
+    val Close = icon("close", 14f, "M2 2l10 10M12 2L2 12" to 2.2f)
+    /** An arrow turning back: a refund in Square. */
+    val Refund = icon("refund", 24f, "M9 14l-4-4 4-4M5 10h9a5 5 0 0 1 0 10h-3" to 2.2f)
+    /** A triangle with a mark: a reversed payment. */
+    val Warning = icon("warning", 24f, "M12 4l9 16H3z M12 10v4.5 M12 17.2v.1" to 2f)
+    /** A closed box: "close it for now". */
+    val Tray = icon("tray", 24f, "M6.5 5h11A2.5 2.5 0 0 1 20 7.5v9a2.5 2.5 0 0 1-2.5 2.5h-11A2.5 2.5 0 0 1 4 16.5v-9A2.5 2.5 0 0 1 6.5 5Z M4 10h16" to 2f)
+    /** Arrows out to the corners: enlarge the code. */
+    val Expand = icon("expand", 24f, "M14 4h6v6M10 20H4v-6M20 4l-6 6M4 20l6-6" to 2.2f)
+    /** Arrows in from the corners: shrink it. */
+    val Shrink = icon("shrink", 24f, "M4 10h6V4M20 14h-6v6M10 10L3 3M14 14l7 7" to 2.2f)
 }

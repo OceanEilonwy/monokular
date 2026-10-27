@@ -12,7 +12,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
@@ -58,7 +57,7 @@ fun QrCode(text: String, description: String, modifier: Modifier = Modifier, pad
         modifier
             .aspectRatio(1f)
             .clip(RoundedCornerShape(radius))
-            .background(Color.White)
+            .background(Fixed.White)
             .padding(padding)
             .semantics { contentDescription = description },
     ) {

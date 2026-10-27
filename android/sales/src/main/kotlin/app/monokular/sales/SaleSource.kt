@@ -1,6 +1,7 @@
 package app.monokular.sales
 
 import app.monokular.receipt.Receipt
+import kotlinx.serialization.Serializable
 
 /**
  * A point of sale the till watches for Monero sales (`docs/design.md` §1,
@@ -25,6 +26,7 @@ interface SaleSource {
 }
 
 /** A Monero sale the POS closed. */
+@Serializable
 data class FoundSale(
     /** The POS's id for the payment: what the till's idempotency key is made from. */
     val id: String,

@@ -16,9 +16,7 @@ import android.widget.FrameLayout
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
-import androidx.compose.foundation.layout.padding
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -29,8 +27,9 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import app.monokular.Bubble
 import app.monokular.BubbleLook
 import app.monokular.Graph
-import app.monokular.SaleText
+import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
+import app.monokular.sales.live
 import app.monokular.ui.MonokularTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -46,34 +45,47 @@ data class OverlayState(
     val look: BubbleLook = BubbleLook.Idle,
     /** The sale the bubble and the panel are about: the one waiting, or the one that just finished. */
     val sale: TillSale? = null,
-    val place: String = "",
+    /** The header's "Front Counter" (or "From Back till"), before "Open the shift". */
+    val where: String = "",
+    val page: PanelPage = PanelPage.Code,
 )
 
 /**
  * The bubble over other apps and the panel it opens (`docs/design.md` §9
- * "overlay"; the design's AndIdle, AndSale, AndPanel, AndPaid and
- * AndTabFloat). Shown during a shift when the cashier allowed "display
- * over other apps" and didn't choose notifications only, and hidden while
- * Monokular itself is on screen. Runs on the main thread, in the till's
- * service.
+ * "overlay"; the till tweaks' Panel over Square and The order, full
+ * screen). Shown during a shift when the cashier allowed "display over
+ * other apps" and didn't choose notifications only, and hidden while
+ * Monokular itself is on screen. The bubble opens the panel and, tapped
+ * again, lowers it; so do the panel's grabber and a tap beside it. Runs
+ * on the main thread, in the till's service.
  */
 class Overlay(
     private val context: Context,
     private val graph: Graph,
     private val scope: CoroutineScope,
     private val onCopy: (TillSale) -> Unit,
+    private val onCopyXmr: (TillSale) -> Unit,
     private val onFullScreen: (TillSale) -> Unit,
+    /** Opens Monokular on the shift (the panel's header row). */
+    private val onOpenShift: () -> Unit,
 ) {
     private val wm = context.getSystemService(WindowManager::class.java)
     private val owner = WindowOwner()
     private val state = MutableStateFlow(OverlayState())
     private val panelOpen = MutableStateFlow(false)
+    private val page = MutableStateFlow<PanelPage>(PanelPage.Code)
     private val justPaid = MutableStateFlow(false)
     private var bubble: BubbleFrame? = null
     private var panel: View? = null
+    /** Whether the panel up is the floating one; null while none is up. */
+    private var panelWide: Boolean? = null
+    /** The last usable and open shown, shown again when the configuration changes. */
+    private var showing: Pair<Boolean, Boolean>? = null
     private var job: Job? = null
     private var paidTimer: Job? = null
     private var focus: String? = null
+    /** Whether [focus] was live at the last look, to see it turn paid. */
+    private var focusLive = false
 
     /** Whether the person allowed Monokular to draw over other apps. */
     fun allowed(): Boolean = Settings.canDrawOverlays(context)
@@ -81,15 +93,24 @@ class Overlay(
     fun start() {
         owner.start()
         job = scope.launch {
-            combine(graph.runner.state, graph.appVisible, graph.bubbleWanted, panelOpen, justPaid) { runner, visible, wanted, open, paid ->
+            val panel = combine(panelOpen, page) { open, page -> open to page }
+            combine(graph.runner.state, graph.appVisible, graph.bubbleWanted, panel, justPaid) { runner, visible, wanted, (open, shown), paid ->
                 val sales = runner.till.sales
-                focus = Bubble.focus(sales, focus, paid)
+                val previous = focus
+                // The panel's own sale just paid: it stays up, paid, before the focus moves on, whichever of
+                // this and the service's paid() sees the payment first.
+                val landed = Panel.landed(sales, previous, focusLive)
+                if (landed) paid()
+                focus = Bubble.focus(sales, focus, paid || landed)
                 val sale = sales.firstOrNull { it.orderId == focus }
-                val look = Bubble.look(sales, paid)
-                state.value = OverlayState(look, sale, sale?.let { SaleText.place(it, graph.stores.location?.name) }.orEmpty())
+                focusLive = sale?.live == true
+                // The whole order is about the sale whose code is up: another sale, or this one ending, brings the code back.
+                if (focus != previous || sale?.live != true || sale.receipt == null) page.value = PanelPage.Code
+                val where = sale?.let { Panel.where(it, graph.stores.location?.name) }.orEmpty()
+                state.value = OverlayState(Bubble.look(sales, paid || landed), sale, where, if (sale?.live == true) shown else PanelPage.Code)
                 val usable = wanted && runner.running && !runner.disconnected && !visible && allowed()
-                Triple(usable, open && sale != null, wide())
-            }.collect { (usable, open, wide) -> show(usable, open, wide) }
+                usable to (open && sale != null)
+            }.collect { (usable, open) -> show(usable, open) }
         }
     }
 
@@ -101,7 +122,7 @@ class Overlay(
         owner.stop()
     }
 
-    /** A sale was just paid: the bubble is green for a few seconds. */
+    /** A sale was just paid: the bubble is green, and the panel shows it paid, for a few seconds. */
     fun paid() {
         paidTimer?.cancel()
         justPaid.value = true
@@ -118,18 +139,31 @@ class Overlay(
         return true
     }
 
-    private fun wide(): Boolean {
-        val metrics = context.resources.displayMetrics
-        return metrics.widthPixels / metrics.density >= 600
+    /** The screen changed under the windows (a fold opened, split screen): the panel's kind is judged again. */
+    fun configurationChanged() {
+        showing?.let { (usable, open) -> show(usable, open) }
     }
 
-    private fun show(usable: Boolean, open: Boolean, wide: Boolean) {
+    /** Whether the panel floats: by the screen's smallest width, the same whichever way a phone is held. */
+    private fun wide(): Boolean = Panel.wide(context.resources.configuration.smallestScreenWidthDp)
+
+    private fun show(usable: Boolean, open: Boolean) {
+        showing = usable to open
+        val wide = wide()
         val panelShown = usable && open
         // On a phone the panel docks the bubble at its top; on a tablet the bubble stays where it was.
         val bubbleShown = usable && !(panelShown && !wide)
         if (bubbleShown) addBubble() else removeBubble()
+        // A panel of the other kind is put up again, as the floating one would be clipped on a phone.
+        if (panelShown && panelWide != null && panelWide != wide) removePanel()
         if (panelShown) addPanel(wide) else removePanel()
-        if (!usable) panelOpen.value = false
+        if (!usable) lower()
+    }
+
+    /** Lowers the panel to the bubble, its code face up for next time. */
+    private fun lower() {
+        panelOpen.value = false
+        page.value = PanelPage.Code
     }
 
     private fun compose(content: @androidx.compose.runtime.Composable () -> Unit) = ComposeView(context).apply {
@@ -156,7 +190,8 @@ class Overlay(
             x = 0
             y = prefs.bubbleY ?: (context.resources.displayMetrics.heightPixels / 3)
         }
-        val frame = BubbleFrame(context, wm, params, onTap = { panelOpen.value = true }) { left, y ->
+        // On a tablet the bubble stays up beside the floating panel: a second tap lowers it.
+        val frame = BubbleFrame(context, wm, params, onTap = { if (panelOpen.value) lower() else panelOpen.value = true }) { left, y ->
             prefs.bubbleOnLeft = left
             prefs.bubbleY = y
         }
@@ -166,7 +201,7 @@ class Overlay(
             compose {
                 val s by state.collectAsStateWithLifecycle()
                 androidx.compose.runtime.SideEffect { frame.describe(Bubble.label(s.look)) }
-                BubbleFace(s.look)
+                BubbleFace(s.look, phase = s.sale?.phase ?: SalePhase.Waiting)
             }.apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS },
         )
         runCatching { wm.addView(frame, params) }.onSuccess { bubble = frame }
@@ -188,28 +223,41 @@ class Overlay(
                 y = (8 * density).toInt()
             }
         } else {
-            overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, touchThrough = false)
+            overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, touchThrough = false).apply {
+                // Edge to edge, under the status and navigation bars and round a cutout, as the app's screens are:
+                // the panel and The order pad themselves with the safe drawing insets.
+                if (Build.VERSION.SDK_INT >= 30) {
+                    fitInsetsTypes = 0
+                    layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                } else if (Build.VERSION.SDK_INT >= 28) {
+                    layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
         }
-        val minimise = { panelOpen.value = false }
         val view = compose {
             val s by state.collectAsStateWithLifecycle()
             val sale = s.sale ?: return@compose
-            val copy = { onCopy(sale) }
-            val full = { panelOpen.value = false; onFullScreen(sale) }
-            if (wide) {
-                androidx.compose.foundation.layout.Box(androidx.compose.ui.Modifier.padding(24.dp)) {
-                    SalePanel(sale, s.place, wide = true, minimise, copy, full)
-                }
-            } else {
-                PhonePanel(sale, s.place, s.look, minimise, copy, full)
-            }
+            val actions = PanelActions(
+                onLower = ::lower,
+                onOpenShift = { lower(); onOpenShift() },
+                onOrder = { page.value = PanelPage.Order },
+                onBackToCode = { page.value = PanelPage.Code },
+                onCopy = { onCopy(sale) },
+                onCopyXmr = { onCopyXmr(sale) },
+                onFullScreen = { lower(); onFullScreen(sale) },
+            )
+            if (wide) FloatingPanel(sale, s.where, s.page, actions) else PhonePanel(sale, s.where, s.look, s.page, actions)
         }
-        runCatching { wm.addView(view, params) }.onSuccess { panel = view }
+        runCatching { wm.addView(view, params) }.onSuccess {
+            panel = view
+            panelWide = wide
+        }
     }
 
     private fun removePanel() {
         panel?.let { runCatching { wm.removeViewImmediate(it) } }
         panel = null
+        panelWide = null
     }
 }
 
@@ -234,10 +282,10 @@ private class WindowOwner : SavedStateRegistryOwner {
 }
 
 /**
- * The bubble's window: a tap opens the panel, a drag moves it, and letting
- * go snaps it to the nearer side. Touches are handled here, in screen
- * coordinates, because the window moves under the finger. TalkBack hears
- * one button, named for the bubble's state.
+ * The bubble's window: a tap opens the panel (or lowers it again), a drag
+ * moves it, and letting go snaps it to the nearer side. Touches are
+ * handled here, in screen coordinates, because the window moves under the
+ * finger. TalkBack hears one button, named for the bubble's state.
  */
 @SuppressLint("ViewConstructor")
 private class BubbleFrame(
