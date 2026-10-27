@@ -104,8 +104,9 @@ each test was run once against the reverted fix and failed.
 | 10, 18 | (monokulo) one stop token per process; no push-to-start | The Bell stops on one token made before anything waits on it; the design drops push-to-start, as the relay has (40) | monokulo's `service-runtime` test | `ddeda82` |
 | 13, 22, 6, 14, 9 | (monokulo) a till's island shows only its sales, a `Topic` per target, no code after a part payment, sealed handles, a week for an unused handle | The design says what monokulo now builds | monokulo's | `c200779`, `cd0a8d8`, `99ce8cf` |
 
-The pin is `aed855ab8`, the head of monokulo's `push-relay` with every
-fix and its report in (decision 33). Against it, on stable, 2026-10-28:
+The pin is `2b200ef2a`, monokulo's `main` once the push stack merged
+(monokulo #253, the same tree as `push-relay`'s head `aed855ab8`, with every
+fix and its report in; decision 33). Against it, on stable, 2026-10-28:
 `cargo fmt -p monokular-bell --check`, `cargo test --locked -p orf-codec -p
 orf-codec-ffi -p monokular-bell`, `cargo clippy --locked --workspace
 --all-targets -- -D warnings` and `cargo nextest run --locked -p
