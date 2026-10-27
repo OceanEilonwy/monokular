@@ -51,9 +51,13 @@ object ShiftList {
     /** What the Needs action chip counts (decision 60). */
     fun needsAction(sales: List<TillSale>): Int = sales.count { it.needsAction }
 
-    /** "5 paid · $69.50 · since 9:02 AM", or "Nothing paid yet · since 9:02 AM": paid sales summed per currency (decision 72). */
+    /**
+     * "5 paid · $69.50 · since 9:02 AM", or "Nothing paid yet · since 9:02 AM": the sales paid since the shift
+     * started summed per currency (decision 72). A sale carried over from the last shift, paid after its refund,
+     * still needs the cashier but isn't this shift's takings.
+     */
     fun summary(sales: List<TillSale>, startedAt: Long?, locale: Locale = Locale.getDefault(), zone: ZoneId = ZoneId.systemDefault()): String {
-        val paid = sales.filter { it.phase == SalePhase.Paid }
+        val paid = sales.filter { it.phase == SalePhase.Paid && (startedAt == null || (it.paidAt ?: startedAt) >= startedAt) }
         val totals = paid.groupBy { it.currency }.map { (currency, those) ->
             Amounts.fiat(those.sumOf { runCatching { BigDecimal(it.amount) }.getOrDefault(BigDecimal.ZERO) }.toPlainString(), currency, locale)
         }

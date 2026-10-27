@@ -576,8 +576,10 @@ pages, the enlarged code, the status bar chip), with the owner away.
     confirmation count). The pages say Monokulo is still watching for a
     late payment, or has stopped (`settled`), and "Paid", with the times
     the app does have.
-72. **The shift's summary sums paid sales per currency**, and shows each
-    currency's total joined with " · " (one, in practice). Times of day are
+72. **The shift's summary sums the sales paid since the shift started**
+    per currency, and shows each currency's total joined with " · " (one,
+    in practice); a sale the last shift carried over (decision 86), paid
+    after its refund, is listed but not counted. Times of day are
     written as the locale does ("3:58 PM" in the US, "15:58" in Britain),
     with a plain space before am or pm; the design's lower case isn't
     forced on a locale that writes otherwise.

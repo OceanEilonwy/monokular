@@ -98,6 +98,9 @@ class ShiftListTest {
         assertEquals("Nothing paid yet", ShiftList.summary(emptyList(), null, Locale.US, zone))
         val mixed = listOf(sale("a", SalePhase.Paid, amount = "1.25"), sale("b", SalePhase.Paid, amount = "500", currency = "JPY"), sale("c", SalePhase.Paid, amount = "2.75"))
         assertEquals("3 paid · $4.00 · ¥500", ShiftList.summary(mixed, null, Locale.US, zone))
+        // A sale the last shift carried over, paid after its refund, isn't this shift's takings.
+        val carried = sale("paidAfterRefund", SalePhase.Paid, amount = "11.00", closedAt = started - 900, refundedAt = started - 800, paidAt = started - 60)
+        assertEquals("1 paid · $24.50 · since 9:02 AM", ShiftList.summary(listOf(carried, sale("paid", SalePhase.Paid, amount = "24.50", paidAt = at)), started, Locale.US, zone))
     }
 
     @Test

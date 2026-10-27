@@ -106,10 +106,14 @@ class TillRunner(private val graph: Graph) {
         mutable.update { it.copy(running = false, live = false) }
     }
 
-    /** The cashier stopped watching: every live sale's code comes down ([Till.closeLive]). */
+    /**
+     * The cashier stopped watching: every live sale's code comes down
+     * ([Till.closeLive]). Done here and now, not launched, so the closes
+     * are saved before the service stops and before the next shift reads
+     * what the last one left to do.
+     */
     fun closeLive() {
-        val till = till ?: return
-        scope.launch { till.closeLive() }
+        till?.closeLive()
     }
 
     /** The store disconnected this device (it answered 401): stop asking. */
