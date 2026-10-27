@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "abuse"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=aed855ab88578668a4ce9855d34539ae9765cf69#aed855ab88578668a4ce9855d34539ae9765cf69"
 dependencies = [
  "axum",
  "hex",
@@ -1447,7 +1447,7 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 [[package]]
 name = "live-settings"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=aed855ab88578668a4ce9855d34539ae9765cf69#aed855ab88578668a4ce9855d34539ae9765cf69"
 dependencies = [
  "async-trait",
  "clap",
@@ -1761,7 +1761,7 @@ dependencies = [
 [[package]]
 name = "outbound"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=aed855ab88578668a4ce9855d34539ae9765cf69#aed855ab88578668a4ce9855d34539ae9765cf69"
 dependencies = [
  "reqwest",
  "thiserror",
@@ -1940,7 +1940,7 @@ dependencies = [
 [[package]]
 name = "push"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=aed855ab88578668a4ce9855d34539ae9765cf69#aed855ab88578668a4ce9855d34539ae9765cf69"
 dependencies = [
  "aes-gcm",
  "base64 0.23.1",
@@ -2102,7 +2102,7 @@ dependencies = [
 [[package]]
 name = "rate-limit"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=aed855ab88578668a4ce9855d34539ae9765cf69#aed855ab88578668a4ce9855d34539ae9765cf69"
 dependencies = [
  "parking_lot",
 ]
@@ -2574,7 +2574,7 @@ dependencies = [
 [[package]]
 name = "service-runtime"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=aed855ab88578668a4ce9855d34539ae9765cf69#aed855ab88578668a4ce9855d34539ae9765cf69"
 dependencies = [
  "parking_lot",
  "serde",
@@ -2693,7 +2693,7 @@ dependencies = [
 [[package]]
 name = "sqlite"
 version = "0.1.0"
-source = "git+https://github.com/OceanEilonwy/monokulo?rev=a0ff005f00c9eedfa5f325ab5a20bf8351087472#a0ff005f00c9eedfa5f325ab5a20bf8351087472"
+source = "git+https://github.com/OceanEilonwy/monokulo?rev=aed855ab88578668a4ce9855d34539ae9765cf69#aed855ab88578668a4ce9855d34539ae9765cf69"
 dependencies = [
  "hex",
  "parking_lot",

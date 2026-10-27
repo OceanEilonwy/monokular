@@ -63,7 +63,7 @@ settings, the command line, the store; the address rule's tests are
 monokulo's `outbound` crate's since push audit #2).
 
 Gates, as `rust.yml` runs them, on stable (1.98.1) against the pinned
-monokulo commit `a0ff005f0`, 2026-10-28: `cargo fmt -p monokular-bell
+monokulo commit `aed855ab8`, 2026-10-28: `cargo fmt -p monokular-bell
 --check`, `cargo test --locked -p orf-codec -p orf-codec-ffi -p
 monokular-bell`, `cargo clippy --locked --workspace --all-targets -- -D
 warnings` and `cargo nextest run --locked -p monokular-bell` (76 passed
@@ -83,3 +83,30 @@ after the push audit's fixes, decisions 36 to 42), all passed.
   the official Bell, no release job yet (decision 6).
 - The `--init` header comes from live-settings and mentions an admin page
   the Bell doesn't have (decision 12).
+
+## Audit fixes
+
+The push audit (monokulo's `audit-push` branch, `scripts/audit/REPORT.md`
+and `FIXES.md`; the whole stack's fix table is section 10 of
+[`bell-and-relay.md`](https://github.com/OceanEilonwy/monokulo/blob/push-relay/docs/reports/bell-and-relay.md))
+read the Bell at `99a0c3b`. Its findings on the Bell, and those monokulo
+fixes the Bell shares, are fixed on `monokular-bell`, decisions 36 to 42;
+each test was run once against the reverted fix and failed.
+
+| # | Finding | Fix | Test | Commit |
+| --- | --- | --- | --- | --- |
+| 16 | Anyone who knew a till's endpoint could move its registration to their merchant, swap its keys and learn its id | An endpoint already registered moves only for its own merchant, or for a caller with its auth secret; anyone else is answered `409` without the id (37) | `another_merchant_cant_take_a_tills_registration_by_its_endpoint_over_http`, `another_merchant_moves_a_registration_only_with_its_keys` | `d0debba` |
+| 3 | Every `payment.updated` of a completed payment dinged again, refunds included | A payment rings once, remembered in memory for ten minutes, and a refunded one never (38) | `a_payment_rings_once_and_a_refund_never_over_http`, `a_payment_rings_once_until_it_is_forgotten`, `at_most_so_many_payments_are_remembered_the_oldest_forgotten_first` | `7dcd133` |
+| 4 | `location_id` `main` passed the check and always came back `503` | A location Square names by another id is the till's mistake, `400`, not Square unavailable (36) | `a_location_named_by_squares_main_alias_is_refused_over_http`, `a_square_answer_that_isnt_the_location_asked_for_is_refused_over_http` | `4f98d4b` |
+| 8 | The registration limit read only the first `X-Forwarded-For` line | The Bell reads its client's address through monokulo's `abuse::client_address`, every line from the last (39) | `registrations_behind_a_line_adding_proxy_are_limited_by_its_line` | `5516491` |
+| 2 | The Bell's private-address guard was a hand copy of monokulo's, already drifting | Dings go out through monokulo's `outbound` crate; the copy and its tests are deleted (41) | `outbound`'s own tests, in monokulo | `c778067` |
+| 15 | One merchant could spend the push relay's whole budget for every merchant behind the Bell | Each merchant's tills get a share of the Bell's dings a minute (42) | `one_merchant_cant_spend_another_merchants_dings_over_http` | `1e84895` |
+| 10, 18 | (monokulo) one stop token per process; no push-to-start | The Bell stops on one token made before anything waits on it; the design drops push-to-start, as the relay has (40) | monokulo's `service-runtime` test | `ddeda82` |
+| 13, 22, 6, 14, 9 | (monokulo) a till's island shows only its sales, a `Topic` per target, no code after a part payment, sealed handles, a week for an unused handle | The design says what monokulo now builds | monokulo's | `c200779`, `cd0a8d8`, `99ce8cf` |
+
+The pin is `aed855ab8`, the head of monokulo's `push-relay` with every
+fix and its report in (decision 33). Against it, on stable, 2026-10-28:
+`cargo fmt -p monokular-bell --check`, `cargo test --locked -p orf-codec -p
+orf-codec-ffi -p monokular-bell`, `cargo clippy --locked --workspace
+--all-targets -- -D warnings` and `cargo nextest run --locked -p
+monokular-bell` (76 passed, 1.2 s), all passed.
