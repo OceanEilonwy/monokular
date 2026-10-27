@@ -770,3 +770,20 @@ detail pages), recorded by the developers and folded in by the lead.
     a reversed sale reversed (expired doesn't replace it either: it still
     mustn't be handed over) and never moves an expired or cancelled one
     back to a live phase; a paid status, late, still pays either.
+88. **The launch intent acts once.** `MainActivity.onCreate` ran
+    `handle(intent)` on every recreate, so a rotation or a theme change
+    replayed the intent the activity was born with: a shared connect link
+    reopened onboarding over the enlarged code, a notification's
+    `EXTRA_ORDER` or `EXTRA_SHIFT` reopened that sale or the shift over
+    whatever the cashier was doing. The intent is now handled only on a
+    fresh create (`savedInstanceState == null`) and never when the system
+    relaunches the activity from Recents (`FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY`),
+    where Android hands back the original intent too; `onNewIntent` calls
+    `setIntent` first so a later recreate sees the newest one. The view
+    model keeps the screen across a recreate; after the process is killed
+    the intent isn't replayed either, so the app comes back on its default
+    screen rather than on a sale the cashier may have left, which is the
+    plainer outcome. In the shift's top row the store and location are
+    their own text and shorten first, so " · Watching", " · Not watching"
+    or " · Disconnected" is never cut at large font sizes; the TalkBack
+    label is unchanged.

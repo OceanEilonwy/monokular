@@ -55,7 +55,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        handle(intent)
+        // Only a fresh launch acts on its intent: a rotation or theme change recreates the activity with the same
+        // intent, and replaying it would reopen a sale, the shift or onboarding over whatever the cashier was doing.
+        // Reopening from Recents replays the original intent too, so that is skipped as well.
+        if (savedInstanceState == null && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) handle(intent)
         setContent {
             MonokularTheme {
                 val screen by model.screen.collectAsStateWithLifecycle()
@@ -228,6 +231,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        setIntent(intent)
         handle(intent)
     }
 

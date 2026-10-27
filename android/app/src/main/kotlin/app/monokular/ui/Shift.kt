@@ -141,7 +141,14 @@ private fun TopRow(status: TillStatus, actions: TillActions) = Row(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
-        Text((place + state).joinToString(" · "), fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // The state word is what the cashier reads this row for: the store and location give way first at large font sizes.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (place.isNotEmpty()) Text(
+                place.joinToString(" · "), fontSize = 13.sp, color = mk.muted, maxLines = 1,
+                overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
+            )
+            Text(if (place.isEmpty()) state else " · $state", fontSize = 13.sp, color = mk.muted, maxLines = 1, softWrap = false)
+        }
     }
     CircleButton(MkIcons.Settings, "Settings", actions.onSettings, ground = mk.chip, tint = mk.ink, iconSize = 20.dp)
 }
