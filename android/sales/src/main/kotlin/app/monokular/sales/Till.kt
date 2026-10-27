@@ -206,16 +206,32 @@ class Till(
     }
 
     /**
-     * The sale in [phase], the time of its first step there kept: seen when
+     * The sale moved on to [to], the time of its first step there kept: seen when
      * its payment first showed, paid, or ended unpaid. A step already timed
      * keeps its time (a resync says what, not when).
      */
-    private fun TillSale.moved(phase: SalePhase, at: Long): TillSale = copy(
-        phase = phase,
-        seenAt = seenAt ?: at.takeIf { phase == SalePhase.Seen || phase == SalePhase.Confirming || phase == SalePhase.Partial },
-        paidAt = paidAt ?: at.takeIf { phase == SalePhase.Paid },
-        endedAt = endedAt ?: at.takeIf { phase.isUnpaid },
-    )
+    private fun TillSale.moved(to: SalePhase, at: Long): TillSale = after(to).let { phase ->
+        copy(
+            phase = phase,
+            seenAt = seenAt ?: at.takeIf { phase == SalePhase.Seen || phase == SalePhase.Confirming || phase == SalePhase.Partial },
+            paidAt = paidAt ?: at.takeIf { phase == SalePhase.Paid },
+            endedAt = endedAt ?: at.takeIf { phase.isUnpaid },
+        )
+    }
+
+    /**
+     * Where a sale goes when Monokulo says [to]. Only a payment moves a sale
+     * that ended unpaid: a reversed one stays reversed (its order reads
+     * `pending` again once the double spend voided the payment, and carries
+     * nothing saying so), and an expired or cancelled one never goes back
+     * to waiting. Otherwise, what Monokulo says.
+     */
+    private fun TillSale.after(to: SalePhase): SalePhase = when {
+        to == SalePhase.Paid -> to
+        phase == SalePhase.DoubleSpend -> phase
+        phase.isUnpaid && !to.isUnpaid -> phase
+        else -> to
+    }
 
     /**
      * The cashier closed the sale for now: its code comes down and it goes
@@ -225,6 +241,16 @@ class Till(
     fun close(orderId: String) {
         val at = now()
         change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId && it.closedAt == null) it.copy(closedAt = at) else it }) }
+    }
+
+    /**
+     * Watching stopped: every live sale's code comes down, closed as the
+     * close sheet's "Not sure" closes one, so none stays up with nothing
+     * watching it and each waits in the shift to be refunded or paid late.
+     */
+    fun closeLive() {
+        val at = now()
+        change { s -> s.copy(sales = s.sales.map { if (it.live) it.copy(closedAt = at) else it }) }
     }
 
     /** "Show the code again" on a closed sale: its code is back up. */

@@ -76,6 +76,12 @@ class ShiftListTest {
     }
 
     @Test
+    fun `a new shift keeps the last one's sales that still need action, and only those`() {
+        assertEquals(ids(ShiftList.rows(shift, ShiftFilter.NeedsAction)), ids(ShiftList.carried(shift)))
+        assertEquals(emptyList(), ShiftList.carried(listOf(sale("w"))))
+    }
+
+    @Test
     fun `the filters keep the shift's order, newest first`() {
         assertEquals(ids(shift), ids(ShiftList.rows(shift, ShiftFilter.All)))
         assertEquals(listOf("paid", "latePaid", "paidAfterRefund"), ids(ShiftList.rows(shift, ShiftFilter.Paid)))

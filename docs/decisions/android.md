@@ -678,7 +678,8 @@ detail pages), recorded by the developers and folded in by the lead.
     a disconnected till shows the shift's Disconnected state whatever was
     on screen.
 81. **When a shift starts.** `setShift(true)` after watching was off clears
-    the saved sales and stamps `shiftStartedAt`; `TillRunner.start` stamps
+    the saved sales but for those that still need action (decision 85)
+    and stamps `shiftStartedAt`; `TillRunner.start` stamps
     it when it's null (setup's first run, or an install updated from before
     the shift was saved), so setup's test sale stays in the first shift.
     With watching off the summary reads "Not watching" over Start watching,
@@ -724,3 +725,20 @@ detail pages), recorded by the developers and folded in by the lead.
     summary, which row opens what, the pages' words, the sheet's
     outcomes, `TillNav`) and `TillTest`'s saved shift, cap, close, reopen
     and refund guard.
+85. **The end of a shift loses nothing to do.** Turning watching off
+    closes every live sale (`Till.closeLive`, as the sheet's "Not sure"
+    does), so no code stays up with nothing watching it; the shift's rows
+    still list under Start watching, from the saved shift when the app
+    starts with watching off (`TillRunner.showSaved`, a till that isn't
+    running), and their pages still refund. Turning watching on again
+    starts a new shift that keeps the last one's Needs action sales
+    (`ShiftList.carried`) and drops the rest, so nothing needs a warning
+    or a question first. A restart or a settings change that restarts the
+    service closes nothing.
+86. **Only a payment moves a sale that ended unpaid.** A double spend
+    voids the payment, and the order's status then reads `pending` again
+    with nothing saying it was reversed, so a resync once put a reversed
+    sale back to Waiting with its code, bubble and chip. `Till` now keeps
+    a reversed sale reversed (expired doesn't replace it either: it still
+    mustn't be handed over) and never moves an expired or cancelled one
+    back to a live phase; a paid status, late, still pays either.

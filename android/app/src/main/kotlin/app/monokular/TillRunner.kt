@@ -1,5 +1,6 @@
 package app.monokular
 
+import app.monokular.core.Connection
 import app.monokular.core.MonokuloException
 import app.monokular.core.Problems
 import app.monokular.core.StreamEvent
@@ -54,33 +55,61 @@ class TillRunner(private val graph: Graph) {
     private var job: Job? = null
     private var till: Till? = null
     private var shift: Shift? = null
+    /** Copies [till]'s state into [state]: it outlives [job], so a stopped till's shift still shows and changes. */
+    private var showing: Job? = null
 
     fun start() {
         if (job?.isActive == true) return
         val connection = graph.stores.connection ?: return
         graph.store.read(connection)
+        // The first run, in setup (or after an update from before shifts were saved), starts the first shift.
+        if (graph.stores.shiftStartedAt == null) graph.stores.shiftStartedAt = System.currentTimeMillis() / 1000
+        val till = newTill(connection).also(::show)
+        val shift = Shift(till).also { shift = it }
+        mutable.update { it.copy(running = true, live = false, disconnected = false, streamProblem = null) }
+        job = scope.launch {
+            launch { shift.run() }
+            launch { follow(till) }
+        }
+    }
+
+    /**
+     * While the till isn't watching: the saved shift on screen, so its
+     * sales can still be opened and refunded (decision 85). The app calls
+     * it as it starts with watching off.
+     */
+    fun showSaved() {
+        if (till != null) return
+        val connection = graph.stores.connection ?: return
+        show(newTill(connection))
+    }
+
+    private fun newTill(connection: Connection): Till {
         val location = graph.stores.location
         val source: SaleSource = if (location != null && graph.squareAuth().signedIn) {
             SquareSource(graph.squareApi(), graph.squareConfig(), location, graph.stores.cursor)
         } else {
             NoSource
         }
-        // The first run, in setup (or after an update from before shifts were saved), starts the first shift.
-        if (graph.stores.shiftStartedAt == null) graph.stores.shiftStartedAt = System.currentTimeMillis() / 1000
-        val till = Till(source, graph.monokulo, connection, store = graph.stores.shift).also { till = it }
-        val shift = Shift(till).also { shift = it }
-        mutable.value = RunnerState(running = true)
-        job = scope.launch {
-            launch { till.sales.collect { s -> mutable.update { it.copy(till = s) } } }
-            launch { shift.run() }
-            launch { follow(till) }
-        }
+        return Till(source, graph.monokulo, connection, store = graph.stores.shift)
+    }
+
+    private fun show(till: Till) {
+        this.till = till
+        showing?.cancel()
+        showing = scope.launch { till.sales.collect { s -> mutable.update { it.copy(till = s) } } }
     }
 
     fun stop() {
         job?.cancel()
         job = null
         mutable.update { it.copy(running = false, live = false) }
+    }
+
+    /** The cashier stopped watching: every live sale's code comes down ([Till.closeLive]). */
+    fun closeLive() {
+        val till = till ?: return
+        scope.launch { till.closeLive() }
     }
 
     /** The store disconnected this device (it answered 401): stop asking. */

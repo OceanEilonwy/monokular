@@ -45,6 +45,9 @@ object ShiftList {
         ShiftFilter.Paid -> sales.filter { it.standing is Standing.Paid }
     }
 
+    /** What a new shift keeps of the last one's [sales]: those that still need the cashier (decision 85). */
+    fun carried(sales: List<TillSale>): List<TillSale> = sales.filter { it.needsAction }
+
     /** What the Needs action chip counts (decision 60). */
     fun needsAction(sales: List<TillSale>): Int = sales.count { it.needsAction }
 

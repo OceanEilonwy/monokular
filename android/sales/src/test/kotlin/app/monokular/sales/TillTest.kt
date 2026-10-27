@@ -565,4 +565,62 @@ class TillTest {
         assertEquals(40L, shown.endedAt)
         assertEquals(Standing.Expired, shown.standing, "the code running out outranks the close")
     }
+
+    @Test
+    fun `a reversed sale stays reversed through a resync that reads pending, and in the saved shift`() = runBlocking {
+        val shift = MemoryShift()
+        var clock = 10L
+        val till = Till(FakeSource(listOf(sale), receipt), monokulo, connection, now = { clock }, store = shift)
+        server.enqueue(order())
+        till.check()
+        till.onEvent(SaleEvent("sale.seen", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 5))
+        till.onEvent(SaleEvent("sale.double_spend", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 7))
+        assertEquals(Standing.Reversed, till.sales.value.sales.single().standing)
+        // The app was restarted: the next run loads the saved shift, and the stream's resync reads the
+        // order, which says pending again once the double spend voided its payment.
+        clock = 20
+        val again = Till(FakeSource(emptyList()), monokulo, connection, now = { clock }, store = shift)
+        again.onStatus("ord_1", Order.phaseOf("pending"), settled = false)
+        val shown = again.sales.value.sales.single()
+        assertEquals(Standing.Reversed, shown.standing, "never back to waiting")
+        assertFalse(shown.live, "no code, bubble or chip")
+        assertTrue(shown.needsAction)
+        assertEquals(7L, shown.endedAt)
+        assertEquals(Standing.Reversed, MemoryShift(shift.saved).load().single().standing)
+        // Nor does it read as expired once its code runs out: it still mustn't be handed over.
+        again.onStatus("ord_1", SalePhase.Expired, settled = false)
+        assertEquals(Standing.Reversed, again.sales.value.sales.single().standing)
+        // Only a payment moves it on.
+        again.onStatus("ord_1", SalePhase.Paid, settled = true)
+        assertEquals(Standing.Paid(late = true), again.sales.value.sales.single().standing)
+    }
+
+    @Test
+    fun `an expired sale never goes back to waiting, whatever a resync reads`() = runBlocking {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection, now = { 10 })
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Expired)
+        till.onStatus("ord_1", SalePhase.Waiting)
+        till.onStatus("ord_1", SalePhase.Seen)
+        assertEquals(Standing.Expired, till.sales.value.sales.single().standing)
+        assertEquals(null, till.sales.value.sales.single().seenAt, "a step it didn't take isn't timed")
+    }
+
+    @Test
+    fun `stopping watching closes every live sale, which a late payment still pays`() = runBlocking {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection, now = { 30 })
+        server.enqueue(order())
+        till.check()
+        till.onEvent(SaleEvent("sale.waiting", "ord_2", "5.00", "USD", "8Cy", 30000000000, null, 99, "Back till", 20))
+        till.closeLive()
+        val (theirs, ours) = till.sales.value.sales
+        assertEquals(Standing.Closed, ours.standing)
+        assertEquals(30L, ours.closedAt)
+        assertTrue(ours.needsAction, "to refund")
+        assertEquals(Standing.OtherTill, theirs.standing)
+        assertFalse(theirs.live)
+        till.onStatus("ord_1", SalePhase.Paid, settled = true)
+        assertEquals(Standing.Paid(late = true), till.sales.value.sales.first { it.orderId == "ord_1" }.standing)
+    }
 }

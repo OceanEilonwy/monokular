@@ -92,6 +92,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // On app start: the store's name and base currency, read live.
         graph.store.read(stores.connection)
         viewModelScope.launch { graph.runner.state.collect { follow(it.till.sales) } }
+        // Not watching: the shift's sales still list, to open and refund.
+        if (!stores.shiftOn) graph.runner.showSaved()
     }
 
     /** The sales changed: bring up a new one, move off a code that's down, and step back from one paid on screen. */
@@ -259,15 +261,18 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Watching on or off. Turning it on after it was off starts a new
-     * shift: the last one's sales go, and "since" is now (decision 64).
+     * Watching on or off. Turning it off brings every live code down;
+     * the shift's sales stay listed. Turning it on after it was off
+     * starts a new shift: "since" is now and the last one's sales go,
+     * but for those that still need the cashier (decisions 64, 85).
      * The first shift starts when the till first runs, in setup.
      */
     fun setShift(on: Boolean) {
         if (on && !stores.shiftOn) {
-            stores.shift.save(emptyList())
+            stores.shift.save(ShiftList.carried(stores.shift.load()))
             stores.shiftStartedAt = System.currentTimeMillis() / 1000
         }
+        if (!on && stores.shiftOn) graph.runner.closeLive()
         stores.shiftOn = on
         if (on) TillService.start(getApplication()) else TillService.stop(getApplication())
     }
