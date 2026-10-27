@@ -25,8 +25,8 @@ object MkIcons {
         }.build()
 
     val Back = icon("back", 24f, "M20 12H5M11 5l-7 7 7 7" to 2.2f)
-    val ChevronDown = icon("chevron down", 16f, "M3 6l5 5 5-5" to 2.2f)
-    val Minus = icon("minus", 16f, "M3 8h10" to 2.2f)
+    /** A chevron to the right: a row or a line that opens something. */
+    val Chevron = icon("chevron", 24f, "M9 5l7 7-7 7" to 2.4f)
     /** A cog: eight teeth round a hole. */
     val Settings = icon(
         "settings", 24f,

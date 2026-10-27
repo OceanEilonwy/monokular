@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The status bar chip while a sale is seen on the network: the ring faint, half of it drawn from 12 o'clock, and the pupil. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android" android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <path android:strokeColor="#FFFFFFFF" android:strokeAlpha="0.3" android:strokeWidth="2.8" android:pathData="M12,3.5a8.5,8.5 0 1,1 0,17a8.5,8.5 0 1,1 0,-17"/>
+    <path android:strokeColor="#FFFFFFFF" android:strokeWidth="2.8" android:strokeLineCap="round" android:pathData="M12,3.5a8.5,8.5 0 0,1 0,17"/>
+    <path android:fillColor="#FFFFFFFF" android:pathData="M12,9.3a2.7,2.7 0 1,1 0,5.4a2.7,2.7 0 1,1 0,-5.4z"/>
+</vector>
