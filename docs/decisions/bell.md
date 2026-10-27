@@ -153,7 +153,9 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
     the tests assert it on a captured log at trace level.
 24. **The access token is wiped from memory when dropped** (`Zeroizing`), its
     `Debug` prints nothing of it, and it is dropped as soon as Square's
-    request is sent.
+    request is sent. What is wiped is the string it arrived in; the copy in
+    the request's `Authorization` header is reqwest's own and is freed, not
+    wiped, with the request.
 25. **Problem `type`s point at sections of `docs/bell.md` on GitHub**, the
     Bell's API page, written with this build; the Bell has no site of its own.
 26. **The stand-in Square (`tools/fake-square`) answers
@@ -178,3 +180,24 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
     (`400`) and before each ding; other names are still the resolver's to
     check at connect time. monokulo's `crate::outbound` check, which this
     copies, should get the same rule.
+
+## From the principal's review (2026-10-27)
+
+30. **`crypto-bigint` stays at 0.7.5 until 0.7.10 is two weeks old**
+    (decision 3, decided). The two-week rule stands: 0.7.6, 0.7.7 and 0.7.8
+    were each yanked within days, which is the churn the rule is for, and the
+    Bell's exposure is a signing every 11 hours per push service plus one
+    ECDH per ding over `{"wake":"square"}`, none of it reachable to time from
+    outside. Both locks (monokulo's and this one) move together to 0.7.10 or
+    later on 2026-11-09, or at once if the owner says the fix wins over the
+    rule or the advisory is upgraded. Logged in monokulo's `push.md` as well
+    when its PRs are reviewed.
+31. **A stored row that doesn't read fails the whole location's dings**
+    (`RegistrationStore::at_location` returns `StoreError::Corrupt`), rather
+    than skipping the row. Only the Bell writes rows, so a corrupt one means
+    the file was edited or the schema drifted: failing closed and loud (an
+    error log line per webhook) is better than dinging whatever does read
+    next to it. Revisit if a migration ever changes the columns in place.
+32. **`docs/design.md` §5 now says `push` is pinned to a commit**, not a tag
+    (decision 27 had left the wrong wording for scope reasons; a stale
+    statement about what was built is a doc bug, so fixed in review).

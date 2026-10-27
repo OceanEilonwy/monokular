@@ -495,8 +495,8 @@ monokulo by default and as `monokulo-engine` when separate.
 Keeping them apart means a monokulo built with `--no-default-features`
 drops the relay's server code, APNs/FCM clients and OAuth entirely, and
 another Rust sender (the Bell) only takes the small crate. The Bell depends
-on `push` from the monokulo repository (a git dependency pinned to a tag
-until `push` is published to crates.io).
+on `push` from the monokulo repository (a git dependency pinned to one
+monokulo commit until `push` is published to crates.io).
 
 ### The `push` crate (`crates/push`)
 
