@@ -441,8 +441,12 @@ to the store's tills. The Bell's dings (§3) use the same Web Push transport.
   and signed (VAPID, RFC 8292), from monokulo and from the Bell.
 - UnifiedPush works with no relay at all; APNs and FCM go through a relay
   (`push-relay`), embedded in monokulo or standalone.
-- The relay learns as little as possible: no store, no device-to-store link,
-  ciphertext for every ordinary notification.
+- The relay learns as little as possible: no store, ciphertext for every
+  ordinary notification, and a handles file that can't link a device's
+  handles or name the senders it takes pushes from (each row sealed under a
+  key only its endpoint gives). The relay itself sees a token and its
+  sender together at each registration and push, as it must to hand them
+  on.
 
 ### Why Web Push for everything
 
@@ -599,9 +603,13 @@ POST /v1/register
 ```
 
 - One registration per (platform, token, app, VAPID key): a device connected
-  to two stores gets two handles, which the relay can't link to each other.
-  Registering the same four again gives the same endpoint, its expiry
-  pushed back; a handle lasts `handles.ttl_days` (90) after its last
+  to two stores gets two handles, which nothing in the relay's file links
+  (the handle id is derived from the four, the row keyed by its hash and
+  the token and key sealed under a key derived from it). Registering the
+  same four again gives the same endpoint, its expiry pushed back. A handle
+  no push has reached lasts `handles.unused_ttl_days` (7) after its
+  registration, since registering needs no credential; once APNs or FCM
+  has taken a push for it, `handles.ttl_days` (90) after its last
   registration or delivered push.
 - There is no unregister route: it would be unauthenticated (the app holds
   no secret the relay knows) or sender-only, and nothing would call it.
@@ -673,8 +681,10 @@ by both binaries (the same pattern as the engine's `[engine.*]` /
 `--engine-…` settings in monokulo). Every key has two parts, so it can sit
 under monokulo's `[relay.*]` tables: `server.listen`, `server.public_uri`,
 `server.trusted_proxies`, `server.upstream_timeout_ms`, `store.path`,
-`handles.ttl_days`, `handles.apps` (bundle ID and FCM project per app),
-`limits.per_sender_per_minute`, `limits.per_handle_per_minute`,
+`handles.ttl_days`, `handles.unused_ttl_days`, `handles.apps` (bundle ID
+and FCM project per app), `limits.per_sender_per_minute` (a sender is a
+whole monokulo or a whole Bell, so it is sized for the busiest; a push the
+handle's own limit refuses doesn't count), `limits.per_handle_per_minute`,
 `limits.registrations_per_minute`, `apns.endpoint`, `apns.team_id`,
 `apns.key_id`, `fcm.endpoint`, and for the standalone binary alone
 `logging.level` and `logging.format`. `relay.enabled` is monokulo's own,
