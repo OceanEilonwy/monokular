@@ -9,7 +9,8 @@
 //! sign-in must be through, and the key its subscription is made for.
 //!
 //! `POST /v1/square/webhook`, from Square: answered `200` once its
-//! signature checks, and a completed payment's tills dinged after.
+//! signature checks, and a completed payment's tills dinged after, once
+//! per payment.
 //!
 //! No route logs a body, a token or an endpoint: a line names a
 //! registration and an endpoint's host at most.
@@ -206,9 +207,10 @@ async fn webhook(
         })?;
     match square::read_notification(&body) {
         Ok(Notification::Completed {
+            payment_id,
             merchant_id,
             location_id,
-        }) => shared.dings.ring(merchant_id, location_id),
+        }) => shared.dings.ring(payment_id, merchant_id, location_id),
         Ok(Notification::Ignored) => {}
         // Square's own, so answered as taken: refusing it would only have
         // Square send it again.

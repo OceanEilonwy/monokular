@@ -10,6 +10,7 @@ use std::collections::HashMap;
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, Once, PoisonError};
 
 use axum::body::Body;
@@ -536,9 +537,30 @@ pub const BUYER_EMAIL: &str = "buyer.of.coffee@example.com";
 pub const PAYMENT_ID: &str = "KkAkhdMsgzn59SM8A89WgKwekxLZY";
 pub const AMOUNT: u64 = 92_517;
 
-/// A `payment.created` or `payment.updated` webhook of `merchant`'s payment
-/// at `location`, as Square sends it.
+/// A `payment.created` or `payment.updated` webhook of a payment of
+/// `merchant`'s at `location`, as Square sends it: each call another
+/// payment, as the Bell rings each payment once.
 pub fn payment_webhook(kind: &str, status: &str, merchant: &str, location: &str) -> String {
+    static PAYMENTS: AtomicU64 = AtomicU64::new(0);
+    let n = PAYMENTS.fetch_add(1, Ordering::Relaxed);
+    payment_webhook_of(
+        &format!("PmtAkhdMsgzn59SM8A89W{n:08}"),
+        kind,
+        status,
+        merchant,
+        location,
+    )
+}
+
+/// A `payment.created` or `payment.updated` webhook of payment
+/// `payment_id`, `merchant`'s at `location`, as Square sends it.
+pub fn payment_webhook_of(
+    payment_id: &str,
+    kind: &str,
+    status: &str,
+    merchant: &str,
+    location: &str,
+) -> String {
     json!({
         "merchant_id": merchant,
         "type": kind,
@@ -546,9 +568,9 @@ pub fn payment_webhook(kind: &str, status: &str, merchant: &str, location: &str)
         "created_at": "2026-10-27T10:00:00.000Z",
         "data": {
             "type": "payment",
-            "id": PAYMENT_ID,
+            "id": payment_id,
             "object": {"payment": {
-                "id": PAYMENT_ID,
+                "id": payment_id,
                 "created_at": "2026-10-27T10:00:00.000Z",
                 "amount_money": {"amount": AMOUNT, "currency": "USD"},
                 "total_money": {"amount": AMOUNT, "currency": "USD"},

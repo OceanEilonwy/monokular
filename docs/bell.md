@@ -15,9 +15,11 @@ what each of its errors means. How to run one is in the
 
 Square sends the Bell every webhook of its application, for every merchant
 signed in through it, with each payment's amount, card and buyer. The Bell
-checks the signature, reads a payment event's `type`, `merchant_id`,
-`data.object.payment.location_id` and `status`, and nothing else: no body is
-stored, logged or put into an answer. A merchant's access token is used for one
+checks the signature, reads a payment event's `type`, `merchant_id`, and its
+payment's `id`, `location_id`, `status` and whether `refunded_money` is there
+(never what it says), and nothing else: no body is stored, logged or put into
+an answer. The ids of the payments it rang are kept in memory for 10 minutes
+(10,000 at most), so each payment rings once, and nowhere else. A merchant's access token is used for one
 request to Square at registration and dropped.
 
 Its own SQLite file (`bell.store_path`) holds one table: per registration, the
@@ -93,8 +95,12 @@ of HMAC-SHA256, keyed with the subscription's signature key, over the
 notification URL (`bell.public_uri` followed by `/v1/square/webhook`, exactly
 as the subscription in the Developer Console names it) followed by the body.
 Answered `200` at once; a `payment.created` or `payment.updated` whose payment
-is `COMPLETED` then dings each registration of its merchant's location. Every
-other event, and a signed body that doesn't read, is taken and dropped.
+is `COMPLETED` then dings each registration of its merchant's location, once
+per payment: a later `payment.updated` of the same payment (its processing fee
+filled in) doesn't ding again, and one of a refunded payment (`refunded_money`
+there) never dings. Every other event, and a signed body that doesn't read, is
+taken and dropped. A restart forgets which payments rang, so one may ding
+twice across it.
 
 Problems: [`invalid-signature`](#invalid-signature),
 [`payload-too-large`](#payload-too-large).

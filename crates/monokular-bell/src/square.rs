@@ -1,5 +1,5 @@
 //! What the Bell has to do with Square: check a webhook's signature, read
-//! the four fields of a payment webhook it acts on, and check, with a
+//! the fields of a payment webhook it acts on, and check, with a
 //! merchant's access token, that a location is theirs.
 //!
 //! A webhook body carries the payment's amount, its card's details and its
@@ -15,6 +15,7 @@ use hmac::{Hmac, KeyInit as _, Mac as _};
 use live_settings::Secret;
 use reqwest::StatusCode;
 use serde::Deserialize;
+use serde::de::IgnoredAny;
 use sha2::Sha256;
 use zeroize::Zeroizing;
 
@@ -76,8 +77,10 @@ impl WebhookKey {
 /// What a signed webhook asks of the Bell.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Notification {
-    /// A payment at this merchant's location completed: ding its tills.
+    /// A payment at this merchant's location completed: ding its tills,
+    /// once per payment.
     Completed {
+        payment_id: PaymentId,
         merchant_id: MerchantId,
         location_id: LocationId,
     },
@@ -148,8 +151,12 @@ struct PaymentObject {
 
 #[derive(Deserialize)]
 struct Payment {
+    id: PaymentId,
     location_id: LocationId,
     status: PaymentStatus,
+    /// Whether the payment has been refunded at all: what is there is
+    /// skipped unread.
+    refunded_money: Option<IgnoredAny>,
 }
 
 #[derive(Deserialize)]
@@ -161,9 +168,10 @@ enum PaymentStatus {
 }
 
 /// What a signed webhook's `body` asks: [`Notification::Completed`] for a
-/// `payment.created` or `payment.updated` whose payment is `COMPLETED`;
-/// any other type is [`Notification::Ignored`] with nothing but its type
-/// read.
+/// `payment.created` or `payment.updated` whose payment is `COMPLETED` and
+/// not refunded (a refund sends `payment.updated` of a payment that stays
+/// `COMPLETED`, which is no sale); any other type is
+/// [`Notification::Ignored`] with nothing but its type read.
 pub fn read_notification(body: &[u8]) -> Result<Notification, BodyError> {
     let head: Head = serde_json::from_slice(body)?;
     match head.kind {
@@ -172,12 +180,13 @@ pub fn read_notification(body: &[u8]) -> Result<Notification, BodyError> {
     }
     let event: PaymentEvent = serde_json::from_slice(body)?;
     let payment = event.data.object.payment;
-    Ok(match payment.status {
-        PaymentStatus::Completed => Notification::Completed {
+    Ok(match (payment.status, payment.refunded_money) {
+        (PaymentStatus::Completed, None) => Notification::Completed {
+            payment_id: payment.id,
             merchant_id: event.merchant_id,
             location_id: payment.location_id,
         },
-        PaymentStatus::Other => Notification::Ignored,
+        (PaymentStatus::Completed, Some(_)) | (PaymentStatus::Other, _) => Notification::Ignored,
     })
 }
 
@@ -233,6 +242,23 @@ square_id!(
     LocationId,
     "location"
 );
+/// A payment: what tells one payment's webhooks from another's. Compared,
+/// never shown: it has no `Display`, so no log line names it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Deserialize)]
+#[serde(try_from = "String")]
+pub struct PaymentId(String);
+
+impl TryFrom<String> for PaymentId {
+    type Error = String;
+
+    fn try_from(text: String) -> Result<Self, Self::Error> {
+        if is_square_id(&text) {
+            Ok(PaymentId(text))
+        } else {
+            Err("not a Square payment ID (1 to 64 letters, digits, - and _)".to_owned())
+        }
+    }
+}
 
 /// A merchant's Square access token, as a till hands it over to register.
 /// Used for one request and dropped, wiped: `Debug` doesn't show it and
@@ -485,6 +511,7 @@ mod tests {
             assert_eq!(
                 read_notification(payment(kind, "COMPLETED", "S8GWD5R9QB376").as_bytes()),
                 Ok(Notification::Completed {
+                    payment_id: PaymentId("KkAkhdMsgzn59SM8A89WgKwekxLZY".to_owned()),
                     merchant_id: MerchantId("6SSW7HV8K2ST5".to_owned()),
                     location_id: LocationId("S8GWD5R9QB376".to_owned()),
                 }),
@@ -502,6 +529,16 @@ mod tests {
                 "{status}"
             );
         }
+        // A refund's payment.updated: still COMPLETED, now refunded.
+        let mut refunded: serde_json::Value =
+            serde_json::from_str(&payment("payment.updated", "COMPLETED", "S8GWD5R9QB376"))
+                .unwrap();
+        refunded["data"]["object"]["payment"]["refunded_money"] =
+            serde_json::json!({"amount": 2450, "currency": "USD"});
+        assert_eq!(
+            read_notification(refunded.to_string().as_bytes()),
+            Ok(Notification::Ignored)
+        );
         // Read by its type alone: the rest needn't be a payment.
         for kind in [
             "refund.created",

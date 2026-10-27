@@ -12,9 +12,11 @@
 //!
 //! The Bell sees every webhook of its application, with each payment's
 //! amount and card details. It reads a payment webhook's merchant,
-//! location and status and nothing else, and keeps, logs or answers with
-//! none of any body; it holds no Square token. Its own SQLite file holds
-//! the registrations alone.
+//! location, payment id, status and whether it was refunded, and nothing
+//! else; it keeps the ids of the payments it rang in memory for a few
+//! minutes, so each rings once, and logs, stores or answers with none of
+//! any body; it holds no Square token. Its own SQLite file holds the
+//! registrations alone.
 //!
 //! [`settings`] declares its configuration, [`Bell::start`] builds it from
 //! that, and [`Bell::router`] serves its four routes.

@@ -343,8 +343,11 @@ Bell ──Web Push (empty, encrypted)──▶ each till registered for that lo
   asks the cashier to sign in again when they switch).
 - **What the Bell sees:** Square's webhook bodies, which include each
   payment's amount and card details, for every merchant signed in through
-  its application. It reads `merchant_id` and `location_id`, then drops the
-  body: none of it is stored or logged. It never sees orders and holds no
+  its application. It reads `merchant_id`, `location_id`, the payment's id
+  and status and whether it was refunded, then drops the body: none of it is
+  stored or logged. It remembers the payments it rang, in memory for ten
+  minutes, so a payment's later `payment.updated` (a fee filled in, a
+  refund) doesn't ding again: on iPhone and iPad a ding is an alert. It never sees orders and holds no
   Square token. This is why the Bell is optional and anyone can run their
   own.
 

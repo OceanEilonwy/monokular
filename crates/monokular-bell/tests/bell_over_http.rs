@@ -340,10 +340,28 @@ async fn a_webhook_leaves_no_trace_of_its_payment_over_http() {
     let till = Till::at(&push, "front");
     bell.registered(TOKEN, LOCATION, &till).await;
     for body in [
-        payment_webhook("payment.created", "COMPLETED", MERCHANT, LOCATION),
-        payment_webhook("payment.updated", "APPROVED", MERCHANT, LOCATION),
-        payment_webhook("payment.created", "COMPLETED", MERCHANT, LOCATION)
-            .replace(LOCATION, "a/b"),
+        payment_webhook_of(
+            PAYMENT_ID,
+            "payment.created",
+            "COMPLETED",
+            MERCHANT,
+            LOCATION,
+        ),
+        payment_webhook_of(
+            PAYMENT_ID,
+            "payment.updated",
+            "APPROVED",
+            MERCHANT,
+            LOCATION,
+        ),
+        payment_webhook_of(
+            PAYMENT_ID,
+            "payment.created",
+            "COMPLETED",
+            MERCHANT,
+            LOCATION,
+        )
+        .replace(LOCATION, "a/b"),
     ] {
         assert_eq!(bell.webhook(&body).await.status, StatusCode::OK);
     }
@@ -511,9 +529,8 @@ async fn a_square_answer_that_isnt_the_location_asked_for_is_refused_over_http()
     let bell = TestBell::start(&square.url(), &[]).await;
     let till = Till::at(&push, "front");
     square.answer(|_| {
-        Answer::status(200).json(
-            serde_json::json!({"location": {"id": OTHER_LOCATION, "merchant_id": MERCHANT}}),
-        )
+        Answer::status(200)
+            .json(serde_json::json!({"location": {"id": OTHER_LOCATION, "merchant_id": MERCHANT}}))
     });
     let answered = bell.register(TOKEN, LOCATION, &till).await;
     assert_eq!(
@@ -857,11 +874,10 @@ async fn concurrent_failing_dings_delete_a_registration_once_over_http() {
     let bell = TestBell::start(&square.url(), &[("bell.registration_failure_limit", "5")]).await;
     bell.registered(TOKEN, LOCATION, &Till::at(&push, "front"))
         .await;
-    let body = completed_payment();
-    let signature = sign(WEBHOOK_URL, &body);
+    let bodies: Vec<String> = (0..8).map(|_| completed_payment()).collect();
     let mut calls = Vec::new();
-    for _ in 0..8 {
-        calls.push(bell.call(webhook_request(&body, Some(&signature))));
+    for body in &bodies {
+        calls.push(bell.call(webhook_request(body, Some(&sign(WEBHOOK_URL, body)))));
     }
     for call in calls {
         assert_eq!(call.await.status, StatusCode::OK);
@@ -899,7 +915,12 @@ async fn a_location_named_by_squares_main_alias_is_refused_over_http() {
         answered.text()
     );
     assert_eq!(answered.problem(), "invalid-request");
-    assert!(answered.json()["detail"].as_str().unwrap().contains("own ID"));
+    assert!(
+        answered.json()["detail"]
+            .as_str()
+            .unwrap()
+            .contains("own ID")
+    );
     assert_eq!(square.next().await.path, "/v2/locations/main");
     assert!(bell.rows().is_empty());
 }
@@ -960,4 +981,46 @@ async fn another_merchant_cant_take_a_tills_registration_by_its_endpoint_over_ht
         id
     );
     assert_eq!(bell.rows()[0].1, OTHER_MERCHANT);
+}
+
+/// A payment rings once. Square sends `payment.updated` of a payment that
+/// stays `COMPLETED` when its processing fee is filled in, and again when
+/// it is refunded: neither is a sale, and on an iPhone or iPad a ding is
+/// an alert. Another payment rings again; a refund of a payment rung long
+/// ago (or before a restart) doesn't.
+#[tokio::test]
+async fn a_payment_rings_once_and_a_refund_never_over_http() {
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(&square.url(), &[]).await;
+    bell.registered(TOKEN, LOCATION, &Till::at(&push, "front"))
+        .await;
+    let event =
+        |id: &str, kind: &str| payment_webhook_of(id, kind, "COMPLETED", MERCHANT, LOCATION);
+    let refunded = |id: &str| {
+        let mut body: serde_json::Value =
+            serde_json::from_str(&event(id, "payment.updated")).unwrap();
+        body["data"]["object"]["payment"]["refunded_money"] =
+            serde_json::json!({"amount": AMOUNT, "currency": "USD"});
+        body.to_string()
+    };
+    let p = "PaymentPPPPPPPPPPPPPPPPPPPPPP";
+    for body in [
+        event(p, "payment.created"),
+        // The fee filled in.
+        event(p, "payment.updated"),
+        refunded(p),
+    ] {
+        assert_eq!(bell.webhook(&body).await.status, StatusCode::OK);
+    }
+    assert_eq!(push.drain().await.len(), 1, "one payment, one ding");
+
+    bell.webhook(&event("PaymentQQQQQQQQQQQQQQQQQQQQQQ", "payment.created"))
+        .await;
+    assert_eq!(push.drain().await.len(), 1, "another payment dings");
+
+    // A refund of a payment this Bell never rang.
+    bell.webhook(&refunded("PaymentRRRRRRRRRRRRRRRRRRRRRR"))
+        .await;
+    assert!(push.drain().await.is_empty(), "a refund dinged");
 }

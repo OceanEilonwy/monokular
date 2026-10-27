@@ -256,4 +256,20 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
     sends. A challenge pushed to the endpoint was not chosen: it needs a
     second round trip and state for something the auth secret already
     proves.
+38. **A payment rings once, and a refunded one never** (push audit #3).
+    Square sends `payment.updated` of a payment that stays `COMPLETED` (the
+    processing fee filled in, a refund, Monokular's own refund of an expired
+    Monero sale), and each one dinged: harmless on Android, a false "New
+    sale" alert on iPhone and iPad, which the Notification Service Extension
+    can't withdraw. The Bell now reads the payment's `id` (a Square ID,
+    nothing about the buyer) and whether `refunded_money` is present (never
+    its value), ignores a refunded payment, and keeps the ids it rang in
+    memory, for 10 minutes and 10,000 at most, oldest forgotten first.
+    These are constants, not settings: they bound memory and cover the
+    minute or so in which Square sends a payment's updates, and no operator
+    has a reason to tune them. In memory only, so the Bell still writes
+    nothing of a webhook to disk; a restart costs one extra ding at most,
+    which design §3 accepts. `payment.updated` isn't dropped altogether:
+    a card payment that is `APPROVED` first becomes `COMPLETED` by one.
+    `PaymentId` has no `Display`, so no log line can name it.
 

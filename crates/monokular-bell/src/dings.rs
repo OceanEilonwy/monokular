@@ -8,15 +8,23 @@
 //! high`, `TTL: 60` (a ding a minute late is worth nothing) and `Topic:
 //! wake`, so a push service holding several for an offline till hands
 //! over one. It is sent once: there is no queue and no retry.
+//!
+//! A payment rings once: Square sends `payment.updated` of a payment that
+//! stays `COMPLETED` (its processing fee filled in, a refund), and on an
+//! iPhone or iPad a ding is an alert the till can't take back. The ids of
+//! the payments rung are kept in memory only, for [`REMEMBERED_FOR`]
+//! seconds and [`REMEMBERED_AT_MOST`] of them; a restart forgets them,
+//! which costs one extra ding at most.
 
-use std::sync::Arc;
+use std::collections::{HashSet, VecDeque};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use push::{Message, Options, SendError, Sender, Topic, Ttl, Urgency};
 use tokio::sync::watch;
 
 use crate::outbound::{self, Reach};
 use crate::registrations::{Failed, Registration, RegistrationStore};
-use crate::square::{LocationId, MerchantId};
+use crate::square::{LocationId, MerchantId, PaymentId};
 
 /// What a ding says, before it is encrypted.
 pub const WAKE: &[u8] = br#"{"wake":"square"}"#;
@@ -27,6 +35,14 @@ pub const TTL: Ttl = Ttl::seconds(60);
 /// A ding's topic.
 pub const TOPIC: &str = "wake";
 
+/// How long, in seconds, a payment rung is remembered: past the minute or
+/// so in which Square sends a payment's later updates.
+pub const REMEMBERED_FOR: i64 = 10 * 60;
+
+/// The most payments remembered at once, the oldest forgotten first: a
+/// bound on the memory a burst of payments takes.
+pub const REMEMBERED_AT_MOST: usize = 10_000;
+
 /// Sends dings to registrations, and keeps their failures.
 pub struct Dings {
     sender: Sender,
@@ -34,6 +50,7 @@ pub struct Dings {
     reach: Reach,
     failure_limit: u32,
     options: Options,
+    rung: Mutex<Rung>,
     /// How many rings are running, for [`Dings::idle`].
     running: watch::Sender<usize>,
 }
@@ -55,13 +72,30 @@ impl Dings {
                 ttl: TTL,
                 topic: Some(Topic::parse(TOPIC)?),
             },
+            rung: Mutex::new(Rung::default()),
             running: watch::Sender::new(0),
         })
     }
 
-    /// Dings every till registered for `merchant_id`'s `location_id`, on a
-    /// task of its own: the webhook that asked is answered at once.
-    pub fn ring(self: &Arc<Self>, merchant_id: MerchantId, location_id: LocationId) {
+    /// Dings every till registered for `merchant_id`'s `location_id` for
+    /// `payment_id`, on a task of its own: the webhook that asked is
+    /// answered at once. A payment rung already, lately, isn't rung again.
+    pub fn ring(
+        self: &Arc<Self>,
+        payment_id: PaymentId,
+        merchant_id: MerchantId,
+        location_id: LocationId,
+    ) {
+        let now = service_runtime::time::now_unix();
+        let first = self
+            .rung
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .first(payment_id, now);
+        if !first {
+            tracing::debug!("a payment rung already: no dings");
+            return;
+        }
         let dings = Arc::clone(self);
         let running = Running::start(&self.running);
         tokio::spawn(async move {
@@ -162,6 +196,41 @@ impl Dings {
     }
 }
 
+/// The payments rung lately, oldest first.
+#[derive(Default)]
+struct Rung {
+    order: VecDeque<(i64, PaymentId)>,
+    ids: HashSet<PaymentId>,
+}
+
+impl Rung {
+    /// Whether `id` is rung for the first time at `now` (and so is
+    /// remembered from now): false for one remembered still.
+    fn first(&mut self, id: PaymentId, now: i64) -> bool {
+        while let Some((at, _)) = self.order.front() {
+            if now - at < REMEMBERED_FOR {
+                break;
+            }
+            self.forget_oldest();
+        }
+        if self.ids.contains(&id) {
+            return false;
+        }
+        if self.order.len() >= REMEMBERED_AT_MOST {
+            self.forget_oldest();
+        }
+        self.ids.insert(id.clone());
+        self.order.push_back((now, id));
+        true
+    }
+
+    fn forget_oldest(&mut self) {
+        if let Some((_, id)) = self.order.pop_front() {
+            self.ids.remove(&id);
+        }
+    }
+}
+
 /// One running ring, counted in [`Dings::idle`]'s count until dropped,
 /// however its task ends.
 struct Running(watch::Sender<usize>);
@@ -176,5 +245,43 @@ impl Running {
 impl Drop for Running {
     fn drop(&mut self) {
         self.0.send_modify(|count| *count -= 1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const NOW: i64 = 1_800_000_000;
+
+    fn payment(n: usize) -> PaymentId {
+        PaymentId::try_from(format!("P{n}")).unwrap()
+    }
+
+    #[test]
+    fn a_payment_rings_once_until_it_is_forgotten() {
+        let mut rung = Rung::default();
+        assert!(rung.first(payment(1), NOW));
+        assert!(!rung.first(payment(1), NOW + 1));
+        assert!(rung.first(payment(2), NOW + 1));
+        assert!(!rung.first(payment(1), NOW + REMEMBERED_FOR - 1));
+        // Remembered from its first ring, not its last.
+        assert!(rung.first(payment(1), NOW + REMEMBERED_FOR));
+        assert!(!rung.first(payment(2), NOW + REMEMBERED_FOR));
+        assert_eq!(rung.order.len(), rung.ids.len());
+    }
+
+    #[test]
+    fn at_most_so_many_payments_are_remembered_the_oldest_forgotten_first() {
+        let mut rung = Rung::default();
+        for n in 0..REMEMBERED_AT_MOST {
+            assert!(rung.first(payment(n), NOW));
+        }
+        assert!(rung.first(payment(REMEMBERED_AT_MOST), NOW));
+        assert_eq!(rung.ids.len(), REMEMBERED_AT_MOST);
+        assert_eq!(rung.order.len(), REMEMBERED_AT_MOST);
+        // The oldest went; the next oldest is still there.
+        assert!(!rung.first(payment(1), NOW));
+        assert!(rung.first(payment(0), NOW));
     }
 }
