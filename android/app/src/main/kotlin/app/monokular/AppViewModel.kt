@@ -349,12 +349,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         open(orderId)
     }
 
-    /** The cashier left a sale's full screen for the shift (it stays live, on the bubble and in the shift). */
+    /**
+     * The cashier left a sale's full screen for the shift (it stays live, on
+     * the bubble and in the shift); another live sale they haven't left
+     * comes up in its place.
+     */
     fun leave(orderId: String) {
         left.update { it + orderId }
-        when (val screen = screenState.value) {
-            is Screen.Sale, is Screen.Code, is Screen.Order -> if (screen.orderIdOrNull() == orderId) go(Screen.Till)
-            else -> Unit
+        val screen = screenState.value
+        if (screen.orderIdOrNull() == orderId) {
+            go(Screen.Till)
+            follow(graph.runner.state.value.till.sales)
         }
     }
 
