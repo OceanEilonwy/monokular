@@ -7,6 +7,18 @@ edition = "2024"
 license = "GPL-3.0-only"
 repository = "https://github.com/OceanEilonwy/monokular"
 
+# Crates of the monokulo repository the Monokular Bell builds on (its push
+# sending, settings, storage, limits and client addresses), all at one
+# commit of it, so they agree with each other (docs/decisions/bell.md 22).
+# Moved with `cargo update -p push --precise <commit>` after changing `rev`.
+[workspace.dependencies]
+abuse = { git = "https://github.com/OceanEilonwy/monokulo", rev = "abeb0ddfbaa23b4620320978c5746119c0b96489" }
+live-settings = { git = "https://github.com/OceanEilonwy/monokulo", rev = "abeb0ddfbaa23b4620320978c5746119c0b96489" }
+push = { git = "https://github.com/OceanEilonwy/monokulo", rev = "abeb0ddfbaa23b4620320978c5746119c0b96489" }
+rate-limit = { git = "https://github.com/OceanEilonwy/monokulo", rev = "abeb0ddfbaa23b4620320978c5746119c0b96489" }
+service-runtime = { git = "https://github.com/OceanEilonwy/monokulo", rev = "abeb0ddfbaa23b4620320978c5746119c0b96489" }
+sqlite = { git = "https://github.com/OceanEilonwy/monokulo", rev = "abeb0ddfbaa23b4620320978c5746119c0b96489" }
+
 # orf-codec-ffi's library as the Android app ships it, once per ABI: small.
 # (Release builds for this machine keep the defaults: UniFFI's bindgen reads
 # its metadata from symbols that LTO and stripping remove.)
