@@ -81,6 +81,7 @@ import app.monokular.sales.live
 import app.monokular.sales.standing
 import app.monokular.ui.CodeText
 import app.monokular.ui.Fixed
+import app.monokular.ui.LightTokens
 import app.monokular.ui.Logo
 import app.monokular.ui.MkIcons
 import app.monokular.ui.OrderContent
@@ -158,8 +159,8 @@ class PanelActions(
 /**
  * The bubble (the design's Bubble part), in each [look]: faded and grey
  * with nothing to do, white with the [phase]'s ring (and a pulse) for a
- * sale, green with a tick once it's paid. Its colours are the design's
- * whatever the theme: it sits over another app.
+ * sale, the paid tick on its pale ground once it's paid. Its colours are
+ * the design's whatever the theme: it sits over another app.
  */
 @Composable
 fun BubbleFace(look: BubbleLook, pulse: Boolean = true, phase: SalePhase = SalePhase.Waiting) = Box(
@@ -193,7 +194,9 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
                 Box(Modifier.size(12.dp).clip(CircleShape).background(Fixed.Ink))
             }
         }
-        BubbleLook.Paid -> Box(Modifier.shadow(6.dp, CircleShape)) { PaidHero(56.dp) }
+        BubbleLook.Paid -> Box(Modifier.shadow(6.dp, CircleShape)) {
+            PaidHero(56.dp, ground = LightTokens.paidGround, tint = LightTokens.paid)
+        }
     }
 }
 
@@ -393,14 +396,20 @@ private fun OrderLine(count: String, first: String, oneLine: Boolean, onOrder: (
     horizontalArrangement = Arrangement.spacedBy(8.dp),
 ) {
     Icon(MkIcons.Bag, contentDescription = null, tint = mk.muted, modifier = Modifier.size(18.dp))
-    val items = @Composable {
-        Text(count, fontSize = 14.sp, fontWeight = FontWeight.Bold, softWrap = false)
-        Text(first, fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
-    }
+    val countText = @Composable { Text(count, fontSize = 14.sp, fontWeight = FontWeight.Bold, softWrap = false) }
+    val firstText = @Composable { Text(first, fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
     if (oneLine) {
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { items() }
+        // "15 items · Flat white, Oat latte, +3 more", the first items giving way first.
+        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            countText()
+            Text("·", fontSize = 13.sp, color = mk.muted)
+            firstText()
+        }
     } else {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) { items() }
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
+            countText()
+            firstText()
+        }
     }
     Icon(MkIcons.Chevron, contentDescription = null, tint = mk.muted, modifier = Modifier.size(16.dp))
 }
@@ -419,11 +428,15 @@ private fun StatusRow(sale: TillSale) = Row(
     CodeText.left(sale, secondsLeft(sale.expiresAt))?.let { Text("· $it", fontSize = 14.sp, color = mk.muted) }
 }
 
-/** Paid as the detail pages show it: the paid tick on the paid ground, in either theme. */
+/**
+ * Paid as the detail pages show it: the paid tick on the paid ground. The
+ * panel takes the theme's; the bubble, over another app, the design's.
+ */
 @Composable
-private fun PaidHero(size: Dp) = Box(Modifier.size(size).clip(CircleShape).background(mk.paidGround), contentAlignment = Alignment.Center) {
-    Icon(MkIcons.Tick, contentDescription = null, tint = mk.paid, modifier = Modifier.size(size * 0.53f))
-}
+private fun PaidHero(size: Dp, ground: Color = mk.paidGround, tint: Color = mk.paid) =
+    Box(Modifier.size(size).clip(CircleShape).background(ground), contentAlignment = Alignment.Center) {
+        Icon(MkIcons.Tick, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.53f))
+    }
 
 /** Where the code was, for a sale that stopped being live while the panel was up. */
 @Composable

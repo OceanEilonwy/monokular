@@ -748,7 +748,16 @@ detail pages), recorded by the developers and folded in by the lead.
     the bars. With the phone on its side the bubble docks beside the
     panel and the panel puts the code and its status to the right of the
     header, amount, order line and buttons, the code at its one size; the
-    card still scrolls when a large font needs more. The "Paid" and "No
+    grabber heads that left column alone (still 48 dp, centred over the
+    header) so the code starts 18 dp from the panel's top, the column's
+    gaps close to 10 dp and the order line reads "15 items · Flat white,
+    Oat latte, +3 more" on one line, which at the default font fits a
+    phone's height with a few dp to spare; the card still scrolls when a
+    large font needs more. The panel's paid hero and the bubble's paid
+    look draw the detail pages' hero, the paid tick on the paid ground:
+    the panel in the theme's colours, the bubble in the light theme's
+    whatever the theme, as the rest of the bubble is; the solid green
+    `PaidTick` stays only in onboarding's previews. The "Paid" and "No
     payment yet" notifications share a group, and once two are up a
     silent summary with the mark (`ic_mark`) heads it, opening the shift,
     gone when the Paid ones would be: Android's own bundle used the
