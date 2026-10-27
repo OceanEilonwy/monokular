@@ -318,7 +318,10 @@ time the alert stays "New sale · Tap to show code" and the app does the rest.
 A small service that turns a POS's webhooks into dings for the right tills.
 It lives in this repository (`crates/monokular-bell`, a library and the
 `monokular-bell` binary), because it is POS-specific and app-side; monokulo
-knows nothing about it.
+knows nothing about it. It builds on monokulo's `push`, `live-settings`,
+`sqlite`, `rate-limit`, `abuse` and `service-runtime` crates, git
+dependencies pinned to one monokulo commit, so it is configured, stores and
+limits the way monokulo does. Its API is in [bell.md](bell.md).
 
 ```text
 Square ──payment.created webhook──▶ Bell: verify signature, read merchant_id
@@ -349,8 +352,9 @@ Registration, from the app:
 
 ```http
 POST https://bell.monokulo.com/v1/register
-{ "square_access_token": "…",           (used once to confirm the merchant with
-                                          GET /v2/merchants/me, never stored)
+{ "square_access_token": "…",           (used once for GET /v2/locations/{location_id},
+                                          whose merchant_id proves both the token and
+                                          the location; never stored)
   "location_id": "L…",
   "subscription": { "endpoint", "keys": { "p256dh", "auth" } } }
 → 201 { "registration_id": "br_…", "square_application_id": "…" }
@@ -364,13 +368,19 @@ don't control (which would tell them when it takes payments).
 Storage: its own SQLite file with `registrations(id, merchant_id,
 location_id, endpoint, p256dh, auth, created_at, last_ok_at, failures)`.
 Registrations whose endpoint answers 404/410 are deleted, the same rule as
-monokulo's push targets.
+monokulo's push targets, and so are those whose push service fails
+`bell.registration_failure_limit` dings in a row. A location takes 32.
 
 Settings (TOML options file plus CLI, invalid values stop the process):
-`bell.listen`, `bell.public_uri`, `bell.store_path`,
-`bell.square.application_id`, `bell.square.environment`. Secrets from the
-environment only: `MONOKULAR_BELL_SQUARE_WEBHOOK_KEY` (the webhook signature
-key) and `MONOKULAR_BELL_VAPID_KEY`.
+`bell.listen`, `bell.public_uri` (Square's webhook URL is it followed by
+`/v1/square/webhook`, and the signature covers it), `bell.store_path`,
+`bell.square.application_id`, `bell.square.environment`,
+`bell.square.api_url` (a stand-in Square instead of the environment's),
+`bell.registration_failure_limit`, `bell.registrations_per_minute`,
+`bell.trusted_proxies`, `bell.allow_private_endpoints`, `bell.timeout_ms`.
+Secrets from the environment only: `MONOKULAR_BELL_SQUARE_WEBHOOK_KEY` (the
+webhook signature key) and `MONOKULAR_BELL_VAPID_KEY` (32 bytes as 64 hex
+digits; `/v1/info` gives its public key).
 
 In the app: **Settings › Wake-ups**: "Timer only" (default), "Monokular Bell
 (bell.monokulo.com)", or "My own Bell" with a URL. The app reads
