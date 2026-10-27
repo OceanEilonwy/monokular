@@ -43,6 +43,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -224,7 +225,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, actions: Pan
             .background(mk.ground)
             .semantics { paneTitle = "Monokular payment code" }
             .verticalScroll(rememberScrollState())
-            .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 18.dp),
+            .padding(start = 20.dp, end = 20.dp, bottom = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Grabber(
@@ -241,7 +242,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, actions: Pan
             onTap = actions.onLower,
         )
         Column(
-            Modifier.fillMaxWidth().padding(top = 2.dp),
+            Modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
@@ -295,11 +296,13 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, actions: Pan
 
 /**
  * The pill at the panel's top: drag it down to lower the panel, or tap it.
- * Drawn 22 dp tall; Compose widens its touch to 48 dp.
+ * It measures 48 dp tall itself, the panel's top padding included, so a
+ * finger just under the pill lowers the panel rather than reaching the
+ * header below, which opens the shift.
  */
 @Composable
 private fun Grabber(onDrag: (Float) -> Unit, onRelease: (Float) -> Unit, onTap: () -> Unit) = Box(
-    Modifier.size(80.dp, 22.dp)
+    Modifier.size(80.dp, 48.dp)
         .draggable(rememberDraggableState(onDrag), Orientation.Vertical, onDragStopped = { velocity -> onRelease(velocity) })
         .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = onTap)
         .semantics { contentDescription = "Lower to the bubble" },
@@ -397,7 +400,8 @@ fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage,
         }
         return
     }
-    Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { actions.onLower() } }) {
+    val lower by rememberUpdatedState(actions.onLower)
+    Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { lower() } }) {
         Column(Modifier.fillMaxSize().safeDrawingPadding().padding(horizontal = 16.dp), horizontalAlignment = Alignment.End) {
             Spacer(Modifier.height(4.dp))
             Box(

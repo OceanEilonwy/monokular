@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -108,7 +108,8 @@ fun OrderPage(sale: TillSale, backLabel: String, onBack: () -> Unit, onShowCode:
     BackHandler(onBack = onBack)
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
-            OrderContent(sale, backLabel, onBack, onShowCode, Modifier.fillMaxSize())
+            // As wide as the app's other pages ([Page]), centred on a tablet or a wide window.
+            OrderContent(sale, backLabel, onBack, onShowCode, Modifier.widthIn(max = 560.dp).fillMaxSize())
         }
     }
 }
@@ -172,7 +173,11 @@ private fun Line(item: Receipt.LineItem, currency: String) {
         Modifier.fillMaxWidth().padding(vertical = 11.dp).semantics(mergeDescendants = true) {},
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(OrderText.quantity(item), fontSize = 16.sp, color = mk.muted, modifier = Modifier.width(36.dp))
+        // Never wraps: "0.5 ×" and "12 ×" stay on one line at any font scale.
+        Text(
+            OrderText.quantity(item), fontSize = 16.sp, color = mk.muted, maxLines = 1, softWrap = false,
+            modifier = Modifier.widthIn(min = 36.dp),
+        )
         Text(item.description, fontSize = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Text(SaleText.plain(item.lineTotal, currency), fontSize = 16.sp, maxLines = 1, softWrap = false)
     }
