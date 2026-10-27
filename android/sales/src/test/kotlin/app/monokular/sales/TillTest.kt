@@ -8,6 +8,7 @@ import app.monokular.core.SaleEvent
 import app.monokular.core.SalePhase
 import app.monokular.receipt.Receipt
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonObject
@@ -29,13 +30,27 @@ import java.time.Instant
 class FakeSource(var sales: List<FoundSale>, private val receipt: Receipt? = null) : SaleSource {
     val handledIds = mutableListOf<String>()
     val refunded = mutableListOf<String>()
+    /** The POS is down: refunds fail with this. */
+    var refusal: String? = null
     override suspend fun newSales() = sales.filter { it.id !in handledIds }
     override suspend fun receipt(sale: FoundSale) = receipt
     override suspend fun refund(sale: FoundSale) {
+        refusal?.let { throw SquareException(503, it) }
         refunded += sale.id
     }
     override fun handled(sale: FoundSale) {
         handledIds += sale.id
+    }
+}
+
+/** A saved shift in memory, kept as the JSON the app writes, so what's saved must round-trip. */
+class MemoryShift(var saved: String? = null) : ShiftStore {
+    var saves = 0
+    private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+    override fun load(): List<TillSale> = saved?.let { json.decodeFromString(ListSerializer(TillSale.serializer()), it) }.orEmpty()
+    override fun save(sales: List<TillSale>) {
+        saves++
+        saved = json.encodeToString(ListSerializer(TillSale.serializer()), sales)
     }
 }
 
@@ -440,5 +455,91 @@ class TillTest {
         assertEquals(null, theirs.receipt, "another till's sale has no items here")
         till.close("ord_2")
         assertEquals(Standing.OtherTill, till.sales.value.sales.first { it.orderId == "ord_2" }.standing, "closing it here changes nothing about who has its Square sale")
+    }
+
+    @Test
+    fun `a till started on a saved shift shows its sales, marks and receipts, and saves every change`() = runBlocking {
+        val shift = MemoryShift()
+        val first = Till(FakeSource(listOf(sale), receipt), monokulo, connection, now = { 50 }, store = shift)
+        server.enqueue(order())
+        first.check()
+        first.close("ord_1")
+        assertTrue(shift.saves >= 2, "the new sale, then its close")
+        assertFalse(shift.saved!!.contains("problem"), "only the sales are saved")
+        // Android ended the process: the next run starts from what was saved.
+        val again = Till(FakeSource(emptyList()), monokulo, connection, store = shift)
+        val shown = again.sales.value.sales.single()
+        assertEquals("ord_1", shown.orderId)
+        assertEquals(50L, shown.closedAt)
+        assertEquals(Standing.Closed, shown.standing)
+        assertEquals(receipt, shown.receipt, "what was bought is back for the till's own screens")
+        assertEquals(sale, shown.found, "and it can still be refunded")
+        assertTrue(shown.code.hasReceipt)
+        // A check that finds nothing changes nothing, so writes nothing.
+        val saves = shift.saves
+        again.check()
+        assertEquals(saves, shift.saves)
+        again.onStatus("ord_1", SalePhase.Expired, settled = true)
+        assertEquals(Standing.Expired, MemoryShift(shift.saved).load().single().standing)
+    }
+
+    @Test
+    fun `a shift keeps its newest sales up to the cap`() = runBlocking {
+        val shift = MemoryShift()
+        val till = Till(FakeSource(emptyList()), monokulo, connection, store = shift)
+        repeat(Till.MAX_SALES + 3) { i ->
+            till.onEvent(SaleEvent("sale.waiting", "ord_$i", "5.00", "USD", "8Cy", 30000000000, null, 99, "Back", i.toLong()))
+        }
+        val sales = till.sales.value.sales
+        assertEquals(Till.MAX_SALES, sales.size)
+        assertEquals("ord_${Till.MAX_SALES + 2}", sales.first().orderId, "newest first")
+        assertEquals("ord_3", sales.last().orderId, "the oldest three dropped off")
+        assertEquals(Till.MAX_SALES, MemoryShift(shift.saved).load().size)
+        // A saved shift longer than the cap (an older build's) is cut down as it loads.
+        val long = MemoryShift().apply { save(sales + sales.map { it.copy(orderId = it.orderId + "b") }) }
+        assertEquals(Till.MAX_SALES, Till(FakeSource(emptyList()), monokulo, connection, store = long).sales.value.sales.size)
+    }
+
+    @Test
+    fun `a refund the POS refuses leaves the sale closed and unrefunded, says why on that sale, and can be tried again`() = runBlocking {
+        val source = FakeSource(listOf(sale))
+        val till = Till(source, monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        // The close sheet's "No": close, then refund.
+        till.close("ord_1")
+        source.refusal = "Square is down"
+        till.refund("ord_1")
+        val failed = till.sales.value.sales.single()
+        assertEquals(Standing.Closed, failed.standing)
+        assertFalse(failed.refunded)
+        assertTrue(failed.needsAction, "still to refund")
+        assertEquals("Couldn't refund it in the POS: Square is down. Refund it there instead.", till.sales.value.refundProblems["ord_1"])
+        till.check()
+        assertEquals(null, till.sales.value.problem)
+        assertNotNull(till.sales.value.refundProblems["ord_1"], "a check doesn't wipe the sale's refund problem")
+        source.refusal = null
+        till.refund("ord_1")
+        assertEquals(Standing.Refunded, till.sales.value.sales.single().standing)
+        assertEquals(emptyMap(), till.sales.value.refundProblems)
+    }
+
+    @Test
+    fun `a closed sale keeps its marks and times through the stream and a resync`() = runBlocking {
+        var clock = 10L
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection, now = { clock })
+        server.enqueue(order())
+        till.check()
+        till.onEvent(SaleEvent("sale.seen", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 5))
+        clock = 20
+        till.close("ord_1")
+        clock = 30
+        till.onStatus("ord_1", SalePhase.Seen)
+        till.onEvent(SaleEvent("sale.expired", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 40))
+        val shown = till.sales.value.sales.single()
+        assertEquals(5L, shown.seenAt)
+        assertEquals(20L, shown.closedAt)
+        assertEquals(40L, shown.endedAt)
+        assertEquals(Standing.Expired, shown.standing, "the code running out outranks the close")
     }
 }

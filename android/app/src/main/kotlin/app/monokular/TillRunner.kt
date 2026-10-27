@@ -65,7 +65,7 @@ class TillRunner(private val graph: Graph) {
         } else {
             NoSource
         }
-        val till = Till(source, graph.monokulo, connection).also { till = it }
+        val till = Till(source, graph.monokulo, connection, store = graph.stores.shift).also { till = it }
         val shift = Shift(till).also { shift = it }
         mutable.value = RunnerState(running = true)
         job = scope.launch {
@@ -90,9 +90,25 @@ class TillRunner(private val graph: Graph) {
     /** Check the POS now (the app came to the front). */
     fun wake() = shift?.wake()
 
-    fun refund(orderId: String) {
+    /** Refunds the sale's POS sale; [close] it first (the close sheet's "No"). The job ends when the POS has answered. */
+    fun refund(orderId: String, close: Boolean = false): Job? {
+        val till = till ?: return null
+        return scope.launch {
+            if (close) till.close(orderId)
+            till.refund(orderId)
+        }
+    }
+
+    /** Closes the sale for now (the close sheet's "Not sure"): its code comes down, it stays in the shift. */
+    fun close(orderId: String) {
         val till = till ?: return
-        scope.launch { till.refund(orderId) }
+        scope.launch { till.close(orderId) }
+    }
+
+    /** "Show the code again" on a closed sale. */
+    fun reopen(orderId: String) {
+        val till = till ?: return
+        scope.launch { till.reopen(orderId) }
     }
 
     private suspend fun follow(till: Till) {

@@ -1,9 +1,11 @@
 package app.monokular.receipt
 
+import kotlinx.serialization.Serializable
 import uniffi.orf_codec_ffi.OrfException
 import uniffi.orf_codec_ffi.appendReceipt
 
 /** The code to show for a sale: the payment URI, with the receipt when it could be added. */
+@Serializable
 data class PaymentCode(
     val uri: String,
     /** Whether [uri] carries the receipt. */
