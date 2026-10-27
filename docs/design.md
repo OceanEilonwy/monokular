@@ -726,7 +726,7 @@ stream and the Square timer during a shift (§7).
 vapid_keys(id, public_key, private_key_encrypted, created_at_utc)
 push_targets(id pt_…, store_id, app_id, client_id, kind encrypted|live-activity,
              endpoint, p256dh, auth, events, include_payment_uri,
-             created_at_utc, last_ok_at_utc, failures)
+             created_at_utc, last_ok_at_utc, failures, registered_seq)
 ```
 
 - Registered by the app with its key (`ak_` only): `POST` the
@@ -736,7 +736,11 @@ push_targets(id pt_…, store_id, app_id, client_id, kind encrypted|live-activit
   picks a `client_id` per subscription; registering it again replaces the
   subscription on the same target (the design's `PUT`, as `api-macros`
   has `get`/`post`/`delete` and every link names a `GET`-able resource).
-  At most 8 targets per app.
+  At most 8 targets per app. Of a store's targets on one endpoint (one
+  subscription), only the last registered that wants an event is pushed
+  (`registered_seq`, bumped by every registration, in place or new): a
+  device re-paired as a new connection gets the same relay handle with
+  new keys, and is pushed with those (monokulo `push.md` 145).
 - `kind` and keys can't mix: `encrypted` needs `p256dh` and `auth`,
   `live-activity` takes none and may set `include_payment_uri` (the "Show
   code in island" switch, decided at registration). A `CHECK` in the table
@@ -870,7 +874,8 @@ Rules:
 - `Topic` collapses superseded updates; `TTL` equals the time left on the
   code (60 s for dings).
 - Monokulo sends one store's apps at most `push.per_store_per_minute`
-  pushes a minute (120), and targets sharing an endpoint once per event, so
+  pushes a minute (120), and targets sharing an endpoint once per event (as
+  the last registered), so
   one store can't spend the relay's per-sender budget, which every store of
   an instance shares (monokulo `push.md` 144, 145).
 - iOS: `NSSupportsLiveActivitiesFrequentUpdates` for busy tills.
