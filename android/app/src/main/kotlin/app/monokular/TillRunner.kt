@@ -75,7 +75,7 @@ class TillRunner(private val graph: Graph) {
 
     /**
      * While the till isn't watching: the saved shift on screen, so its
-     * sales can still be opened and refunded (decision 85). The app calls
+     * sales can still be opened and refunded (decision 86). The app calls
      * it as it starts with watching off.
      */
     fun showSaved() {

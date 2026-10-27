@@ -51,8 +51,8 @@ data class Face(
     val publicText: String,
     /** How many of the four steps are filled. */
     val step: Int,
-    /** The header counts down to the code's expiry. */
-    val countdown: Boolean,
+    /** The customer still has to scan: "Full screen" beside "Show code", else "Copy address". */
+    val fullScreen: Boolean,
 ) {
     companion object {
         private val accent = Fixed.Accent.toArgb()
@@ -77,7 +77,7 @@ data class Face(
                 detail = receipt?.takeIf { it.lineItems.isNotEmpty() }?.let { SaleText.firstItems(it, show = it.lineItems.size) },
                 publicText = "$amount · $phrase",
                 step = SaleText.step(sale.phase),
-                countdown = sale.phase == SalePhase.Waiting || sale.phase == SalePhase.Partial,
+                fullScreen = sale.phase == SalePhase.Waiting || sale.phase == SalePhase.Partial,
             )
         }
 
@@ -92,7 +92,7 @@ data class Face(
                 detail = null,
                 publicText = text,
                 step = 4,
-                countdown = false,
+                fullScreen = false,
             )
         }
     }
@@ -176,9 +176,7 @@ class SaleNotifications(private val context: Context) {
             .setLargeIcon(runCatching { qrBitmap(sale.code.uri, scale = 4, margin = 2) }.getOrNull())
             .setContentIntent(showCode)
             .addAction(0, "Show code", showCode)
-        if (face.countdown) {
-            // The code's countdown, in the header.
-            builder.setWhen(sale.expiresAt * 1000).setShowWhen(true).setUsesChronometer(true).setChronometerCountDown(true)
+        if (face.fullScreen) {
             builder.addAction(0, "Full screen", openApp(sale.orderId))
         } else {
             builder.addAction(0, "Copy address", copy(sale))
@@ -196,9 +194,12 @@ class SaleNotifications(private val context: Context) {
 
     /**
      * A Live Update showing [face]: promoted on Android 16+, where its
-     * status bar chip is the small icon alone (no short critical text, so
-     * no amount or words in the chip). The private version names what was
-     * bought; the public one, on the lock screen, never does.
+     * status bar chip is the small icon alone. Nothing the chip would
+     * print is set: no short critical text, and no time (Android shows a
+     * chronometer or a future `when` as the chip's text), so the code's
+     * countdown is on the panel and the sale screen, not here. The
+     * private version names what was bought; the public one, on the lock
+     * screen, never does.
      */
     private fun live(face: Face, sale: TillSale, channel: String): NotificationCompat.Builder {
         val style = NotificationCompat.ProgressStyle()
@@ -210,6 +211,7 @@ class SaleNotifications(private val context: Context) {
             .setColor(face.color)
             .setContentTitle(face.title)
             .setContentText(face.publicText)
+            .setShowWhen(false)
             .build()
         return NotificationCompat.Builder(context, channel)
             .setSmallIcon(face.icon)
@@ -218,6 +220,7 @@ class SaleNotifications(private val context: Context) {
             // The items go on a line of their own: ProgressStyle takes the style a second line would need.
             .setContentText(listOfNotNull(face.text, face.detail).joinToString("\n"))
             .setSubText(SaleText.title(sale))
+            .setShowWhen(false)
             .setStyle(style)
             .setOngoing(true)
             .setCategory(NotificationCompat.CATEGORY_STATUS)
@@ -236,6 +239,7 @@ class SaleNotifications(private val context: Context) {
             .setContentTitle("Paid · ${SaleText.title(sale)}")
             .setContentText("${SaleText.amount(sale)} · ${SaleText.xmr(sale)} received")
             .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setGroup(GROUP_ENDED)
             .setAutoCancel(true)
             .setTimeoutAfter(ENDED_MS)
             .setSilent(quiet)
@@ -254,6 +258,7 @@ class SaleNotifications(private val context: Context) {
                 "${SaleText.amount(sale)}. " + if (sale.found != null) "Refund it in Square if the customer isn't paying." else "Refund it in Square on the till that took it.",
             )
             .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setGroup(GROUP_ENDED)
             .setAutoCancel(true)
             .setSilent(quiet)
             .setContentIntent(openApp(sale.orderId))
@@ -263,7 +268,37 @@ class SaleNotifications(private val context: Context) {
     /** Posts [notification] as the shift's one ongoing notification. */
     fun ongoing(notification: Notification) = notify(ONGOING_ID, notification)
 
-    private fun post(sale: TillSale, notification: Notification) = notify(idOf(sale), notification)
+    /**
+     * Posts a sale's own "Paid" or "No payment yet" in the ended group,
+     * and, once there are two, the group's summary: left to itself Android
+     * bundles them under the launcher icon, a solid square in the status
+     * bar. The summary goes when the Paid ones would, so it never outlives
+     * them for long; an unpaid one left after that stands alone.
+     */
+    private fun post(sale: TillSale, notification: Notification) {
+        val id = idOf(sale)
+        notify(id, notification)
+        // The system posts in its own time, so the one just sent may not be listed yet: count the others and add it.
+        val others = runCatching {
+            context.getSystemService(NotificationManager::class.java).activeNotifications
+                .count { it.notification.group == GROUP_ENDED && it.id != SUMMARY_ID && it.id != id }
+        }.getOrDefault(0)
+        val ended = others + 1
+        if (ended >= 2) notify(SUMMARY_ID, summary(ended))
+    }
+
+    private fun summary(ended: Int): Notification = NotificationCompat.Builder(context, CHANNEL_SALES)
+        .setSmallIcon(R.drawable.ic_mark)
+        .setColor(accent)
+        .setContentTitle("$ended sales ended")
+        .setGroup(GROUP_ENDED)
+        .setGroupSummary(true)
+        .setGroupAlertBehavior(NotificationCompat.GROUP_ALERT_CHILDREN)
+        .setSilent(true)
+        .setAutoCancel(true)
+        .setTimeoutAfter(ENDED_MS)
+        .setContentIntent(openShift())
+        .build()
 
     /** Android 13+ asks the cashier first; without it the till runs silently. */
     private fun notify(id: Int, notification: Notification) {
@@ -282,6 +317,16 @@ class SaleNotifications(private val context: Context) {
         Intent(context, MainActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
             .apply { if (orderId != null) putExtra(MainActivity.EXTRA_ORDER, orderId) },
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
+    /** Opens Monokular on the shift, where every ended sale is listed. */
+    private fun openShift(): PendingIntent = PendingIntent.getActivity(
+        context,
+        SUMMARY_ID,
+        Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            .putExtra(MainActivity.EXTRA_SHIFT, true),
         PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
     )
 
@@ -327,6 +372,8 @@ class SaleNotifications(private val context: Context) {
 
     companion object {
         const val ONGOING_ID = 1
+        private const val SUMMARY_ID = 2
+        private const val GROUP_ENDED = "ended"
         const val CHANNEL_SHIFT = "shift"
         const val CHANNEL_SALES = "sales"
 

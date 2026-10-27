@@ -62,7 +62,7 @@ class NotificationFaceTest {
         assertEquals("2 × Flat white, Almond croissant", face.detail)
         assertEquals("$amount · waiting for payment", face.publicText, "the lock screen never shows an item or a count")
         assertEquals(1, face.step)
-        assertTrue(face.countdown)
+        assertTrue(face.fullScreen)
     }
 
     @Test
@@ -72,7 +72,7 @@ class NotificationFaceTest {
         assertEquals(R.drawable.ic_mark_q2, seen.icon)
         assertEquals("Seen on the network", seen.title)
         assertEquals("$amount · 3 items · waiting for confirmation", seen.text)
-        assertFalse(seen.countdown, "once seen there's nothing to count down")
+        assertFalse(seen.fullScreen, "once seen the customer has scanned")
         val confirming = Face.of(sale(phase = SalePhase.Confirming), null)
         assertEquals(R.drawable.ic_mark_q3, confirming.icon)
         assertEquals("$amount · 3 items · nearly there", confirming.text)
@@ -103,7 +103,7 @@ class NotificationFaceTest {
         assertEquals("$amount · 0.05552 XMR received", face.text)
         assertNull(face.detail)
         assertEquals(4, face.step)
-        assertFalse(face.countdown)
+        assertFalse(face.fullScreen)
     }
 
     @Test

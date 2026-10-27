@@ -264,7 +264,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * Watching on or off. Turning it off brings every live code down;
      * the shift's sales stay listed. Turning it on after it was off
      * starts a new shift: "since" is now and the last one's sales go,
-     * but for those that still need the cashier (decisions 64, 85).
+     * but for those that still need the cashier (decisions 64, 86).
      * The first shift starts when the till first runs, in setup.
      */
     fun setShift(on: Boolean) {

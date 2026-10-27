@@ -80,6 +80,8 @@ class Overlay(
     private var job: Job? = null
     private var paidTimer: Job? = null
     private var focus: String? = null
+    /** Whether [focus] was live at the last look, to see it turn paid. */
+    private var focusLive = false
 
     /** Whether the person allowed Monokular to draw over other apps. */
     fun allowed(): Boolean = Settings.canDrawOverlays(context)
@@ -91,12 +93,17 @@ class Overlay(
             combine(graph.runner.state, graph.appVisible, graph.bubbleWanted, panel, justPaid) { runner, visible, wanted, (open, shown), paid ->
                 val sales = runner.till.sales
                 val previous = focus
-                focus = Bubble.focus(sales, focus, paid)
+                // The panel's own sale just paid: it stays up, paid, before the focus moves on, whichever of
+                // this and the service's paid() sees the payment first.
+                val landed = Panel.landed(sales, previous, focusLive)
+                if (landed) paid()
+                focus = Bubble.focus(sales, focus, paid || landed)
                 val sale = sales.firstOrNull { it.orderId == focus }
+                focusLive = sale?.live == true
                 // The whole order is about the sale whose code is up: another sale, or this one ending, brings the code back.
                 if (focus != previous || sale?.live != true || sale.receipt == null) page.value = PanelPage.Code
                 val where = sale?.let { Panel.where(it, graph.stores.location?.name) }.orEmpty()
-                state.value = OverlayState(Bubble.look(sales, paid), sale, where, if (sale?.live == true) shown else PanelPage.Code)
+                state.value = OverlayState(Bubble.look(sales, paid || landed), sale, where, if (sale?.live == true) shown else PanelPage.Code)
                 val usable = wanted && runner.running && !runner.disconnected && !visible && allowed()
                 Triple(usable, open && sale != null, wide())
             }.collect { (usable, open, wide) -> show(usable, open, wide) }
@@ -111,7 +118,7 @@ class Overlay(
         owner.stop()
     }
 
-    /** A sale was just paid: the bubble is green for a few seconds. */
+    /** A sale was just paid: the bubble is green, and the panel shows it paid, for a few seconds. */
     fun paid() {
         paidTimer?.cancel()
         justPaid.value = true
@@ -205,7 +212,16 @@ class Overlay(
                 y = (8 * density).toInt()
             }
         } else {
-            overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, touchThrough = false)
+            overlayParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, touchThrough = false).apply {
+                // Edge to edge, under the status and navigation bars and round a cutout, as the app's screens are:
+                // the panel and The order pad themselves with the safe drawing insets.
+                if (Build.VERSION.SDK_INT >= 30) {
+                    fitInsetsTypes = 0
+                    layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                } else if (Build.VERSION.SDK_INT >= 28) {
+                    layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                }
+            }
         }
         val view = compose {
             val s by state.collectAsStateWithLifecycle()
