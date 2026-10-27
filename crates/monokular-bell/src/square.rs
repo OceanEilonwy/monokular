@@ -277,6 +277,11 @@ pub enum LocationError {
     /// merchant's (`404`).
     #[error("Square refused the token for that location ({0})")]
     Refused(StatusCode),
+    /// Square answered for another location than the one asked: the ID
+    /// was an alias (`main`, the merchant's main location), not the
+    /// location's own. Asking again gives the same answer.
+    #[error("Square answered for another location")]
+    NotById,
     /// Square didn't answer, or answered that it couldn't (`429`, `5xx`),
     /// or answered with something that isn't a location.
     #[error("Square couldn't be asked: {0}")]
@@ -355,10 +360,10 @@ impl Square {
                 BodyError::from(error)
             ))
         })?;
+        // Not stored as answered: the till matches webhooks by the ID it
+        // chose, so a registration by an alias would never ding.
         if answer.location.id != *location {
-            return Err(LocationError::Unavailable(
-                "Square answered with another location".to_owned(),
-            ));
+            return Err(LocationError::NotById);
         }
         Ok(answer.location.merchant_id)
     }

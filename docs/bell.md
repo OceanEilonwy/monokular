@@ -116,8 +116,10 @@ service limiting the Bell, not the till's subscription failing.
 ### invalid-request
 
 `400`: the body isn't what the route takes: not JSON, a field missing or
-unknown, a location ID or token that can't be one, keys that aren't a P-256
-point and a 16-byte secret, or an endpoint the Bell won't send to.
+unknown, a location ID or token that can't be one, a location named by an
+alias such as `main` rather than its own ID (Square answers it with another
+ID, and webhooks name that one), keys that aren't a P-256 point and a 16-byte
+secret, or an endpoint the Bell won't send to.
 
 ### square-refused
 

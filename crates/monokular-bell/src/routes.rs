@@ -105,6 +105,12 @@ async fn register(
                     "Square refused the access token, or the location isn't its merchant's.",
                 )
             }
+            LocationError::NotById => {
+                tracing::info!("a registration named its location by an alias");
+                Problem::InvalidRequest.detail(
+                    "location_id must be the location's own ID, as Square lists it, not an alias such as main.",
+                )
+            }
             LocationError::Unavailable(reason) => {
                 tracing::warn!(%reason, "Square couldn't check a registration");
                 Problem::SquareUnavailable.detail("Square couldn't be asked; try again later.")

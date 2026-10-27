@@ -168,8 +168,9 @@ impl Stub {
 
     /// Square, knowing two merchants by their tokens: [`MERCHANT`] with
     /// [`LOCATION`] and [`OTHER_LOCATION`], [`OTHER_MERCHANT`] with
-    /// [`OTHER_MERCHANTS_LOCATION`]. Any other token is refused (`401`),
-    /// as is a location of another merchant (`404`), as Square does.
+    /// [`OTHER_MERCHANTS_LOCATION`], the first of each its main one (asked
+    /// for as `main`). Any other token is refused (`401`), as is a
+    /// location of another merchant (`404`), as Square does.
     pub async fn square() -> Arc<Stub> {
         Stub::start(|received| {
             let merchants: HashMap<&str, (&str, &[&str])> = HashMap::from([
@@ -198,6 +199,13 @@ impl Stub {
             };
             let Some(location) = received.path.strip_prefix("/v2/locations/") else {
                 return errors(404, "NOT_FOUND", "No such route.");
+            };
+            // Square's alias for the merchant's main location, answered
+            // with that location's own ID.
+            let location = if location == "main" {
+                locations[0]
+            } else {
+                location
             };
             if !locations.contains(&location) {
                 return errors(404, "NOT_FOUND", "Location not found.");

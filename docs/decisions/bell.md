@@ -228,3 +228,16 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
     pointing at monokulo's `docs/reports/bell-and-relay.md`, which covers
     both repositories: what was built, how to try it, every decision, the
     design's deviations, tests and gates, risks and what is left.
+
+## From the push audit (2026-10-27)
+
+36. **A location named by an alias is the till's mistake, answered `400`
+    `invalid-request`** (push audit #4). Square answers
+    `GET /v2/locations/main` with the main location's own ID; the Bell
+    answered that mismatch `503 square-unavailable`, so a till retried a
+    registration that could never succeed. A `200` for another location is
+    now `LocationError::NotById`, permanent, with a detail saying to give the
+    location's own ID. The answered ID isn't stored instead: the till matches
+    webhooks by the ID it chose, so a registration under another one would
+    never ding it. `main` isn't refused by name before Square is asked, so
+    any other alias Square has or adds is handled the same way.

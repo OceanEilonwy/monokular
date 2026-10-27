@@ -500,17 +500,30 @@ async fn a_square_slower_than_the_timeout_is_unavailable_over_http() {
 }
 
 /// Square's `200` is believed only for the location asked about, with a
-/// merchant that is one: another location, a merchant id that isn't one,
-/// or no merchant is a Square that couldn't be asked, and nothing is
-/// kept.
+/// merchant that is one: a merchant id that isn't one, or no merchant, is
+/// a Square that couldn't be asked; another location is the till's
+/// mistake (an ID that isn't the location's own), not to be retried.
+/// Nothing is kept.
 #[tokio::test]
-async fn a_square_answer_that_isnt_the_location_asked_for_is_unavailable_over_http() {
+async fn a_square_answer_that_isnt_the_location_asked_for_is_refused_over_http() {
     let square = Stub::square().await;
     let push = Stub::push_service().await;
     let bell = TestBell::start(&square.url(), &[]).await;
     let till = Till::at(&push, "front");
+    square.answer(|_| {
+        Answer::status(200).json(
+            serde_json::json!({"location": {"id": OTHER_LOCATION, "merchant_id": MERCHANT}}),
+        )
+    });
+    let answered = bell.register(TOKEN, LOCATION, &till).await;
+    assert_eq!(
+        answered.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        answered.text()
+    );
+    assert_eq!(answered.problem(), "invalid-request");
     for location in [
-        serde_json::json!({"id": OTHER_LOCATION, "merchant_id": MERCHANT}),
         serde_json::json!({"id": LOCATION, "merchant_id": "not/a/merchant"}),
         serde_json::json!({"id": LOCATION}),
         serde_json::json!({"id": LOCATION, "merchant_id": ""}),
@@ -864,4 +877,29 @@ async fn concurrent_failing_dings_delete_a_registration_once_over_http() {
         "{log}"
     );
     assert!(!log.contains("couldn't be"), "{log}");
+}
+
+/// `main`, Square's alias for the merchant's main location, reads as a
+/// location ID, but Square answers it with the location's own: a
+/// registration by it would never ding (webhooks name the real ID), so it
+/// is refused as the till's mistake, `400` and not "try again later", and
+/// nothing is kept.
+#[tokio::test]
+async fn a_location_named_by_squares_main_alias_is_refused_over_http() {
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(&square.url(), &[]).await;
+    let answered = bell
+        .register(TOKEN, "main", &Till::at(&push, "front"))
+        .await;
+    assert_eq!(
+        answered.status,
+        StatusCode::BAD_REQUEST,
+        "{}",
+        answered.text()
+    );
+    assert_eq!(answered.problem(), "invalid-request");
+    assert!(answered.json()["detail"].as_str().unwrap().contains("own ID"));
+    assert_eq!(square.next().await.path, "/v2/locations/main");
+    assert!(bell.rows().is_empty());
 }
