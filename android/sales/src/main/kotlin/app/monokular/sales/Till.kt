@@ -280,29 +280,33 @@ class Till(
     private fun add(order: Order, code: PaymentCode, receipt: Receipt?, found: FoundSale) {
         // Another till may have made this order already, and the store's events
         // may have moved it on (paid, even): keep what they said, and when,
-        // else the order's own.
-        val known = state.value.sales.firstOrNull { it.orderId == order.orderId }
-        val sale = TillSale(
-            orderId = order.orderId,
-            amount = order.amount ?: decimalAmount(found.amountMinor, found.currency),
-            currency = order.currency ?: found.currency,
-            reference = order.merchantOrderId,
-            code = code,
-            phase = known?.phase ?: order.phase,
-            url = order.url,
-            settled = known == null && order.isFinal,
-            expiresAt = order.expiresAt,
-            xmr = PaymentUri.xmr(order.piconero),
-            address = order.address,
-            found = found,
-            receipt = receipt,
-            createdAt = runCatching { Instant.parse(found.createdAt).epochSecond }.getOrElse { now() },
-            seenAt = known?.seenAt,
-            paidAt = known?.paidAt,
-            endedAt = known?.endedAt,
-            closedAt = known?.closedAt,
-        )
-        change { s -> s.copy(sales = listOf(sale) + s.sales.filterNot { it.orderId == order.orderId }) }
+        // else the order's own. Read and replaced in the one change, so a
+        // close or a refund stamped meanwhile on another thread isn't lost.
+        change { s ->
+            val known = s.sales.firstOrNull { it.orderId == order.orderId }
+            val sale = TillSale(
+                orderId = order.orderId,
+                amount = order.amount ?: decimalAmount(found.amountMinor, found.currency),
+                currency = order.currency ?: found.currency,
+                reference = order.merchantOrderId,
+                code = code,
+                phase = known?.phase ?: order.phase,
+                url = order.url,
+                settled = known == null && order.isFinal,
+                expiresAt = order.expiresAt,
+                xmr = PaymentUri.xmr(order.piconero),
+                address = order.address,
+                found = found,
+                receipt = receipt,
+                createdAt = runCatching { Instant.parse(found.createdAt).epochSecond }.getOrElse { now() },
+                seenAt = known?.seenAt,
+                paidAt = known?.paidAt,
+                endedAt = known?.endedAt,
+                closedAt = known?.closedAt,
+                refundedAt = known?.refundedAt,
+            )
+            s.copy(sales = listOf(sale) + s.sales.filterNot { it.orderId == order.orderId })
+        }
     }
 
     private fun SaleEvent.toTillSale(code: PaymentCode) = TillSale(

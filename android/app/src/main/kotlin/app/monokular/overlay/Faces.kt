@@ -108,6 +108,17 @@ object Panel {
     /** How fast a downward fling on the grabber has to be to lower the panel, in dp a second. */
     const val FLING_DP_PER_S = 800f
 
+    /** The smallest screen width, in dp, from which the panel floats beside Square instead of filling the screen. */
+    const val WIDE_DP = 600
+
+    /**
+     * Whether the panel floats (a tablet) rather than filling the screen
+     * with the bubble docked above it (a phone): judged by the screen's
+     * smallest width, so a phone on its side is still a phone and never
+     * gets the floating card, which has no room for its code.
+     */
+    fun wide(smallestWidthDp: Int): Boolean = smallestWidthDp >= WIDE_DP
+
     /**
      * Whether letting go of the grabber lowers the panel: dragged down past
      * a quarter of its [height], or flung down at [fling] or faster

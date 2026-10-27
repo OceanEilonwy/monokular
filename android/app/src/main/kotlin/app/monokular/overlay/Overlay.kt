@@ -77,6 +77,10 @@ class Overlay(
     private val justPaid = MutableStateFlow(false)
     private var bubble: BubbleFrame? = null
     private var panel: View? = null
+    /** Whether the panel up is the floating one; null while none is up. */
+    private var panelWide: Boolean? = null
+    /** The last usable and open shown, shown again when the configuration changes. */
+    private var showing: Pair<Boolean, Boolean>? = null
     private var job: Job? = null
     private var paidTimer: Job? = null
     private var focus: String? = null
@@ -105,8 +109,8 @@ class Overlay(
                 val where = sale?.let { Panel.where(it, graph.stores.location?.name) }.orEmpty()
                 state.value = OverlayState(Bubble.look(sales, paid || landed), sale, where, if (sale?.live == true) shown else PanelPage.Code)
                 val usable = wanted && runner.running && !runner.disconnected && !visible && allowed()
-                Triple(usable, open && sale != null, wide())
-            }.collect { (usable, open, wide) -> show(usable, open, wide) }
+                usable to (open && sale != null)
+            }.collect { (usable, open) -> show(usable, open) }
         }
     }
 
@@ -135,16 +139,23 @@ class Overlay(
         return true
     }
 
-    private fun wide(): Boolean {
-        val metrics = context.resources.displayMetrics
-        return metrics.widthPixels / metrics.density >= 600
+    /** The screen changed under the windows (a fold opened, split screen): the panel's kind is judged again. */
+    fun configurationChanged() {
+        showing?.let { (usable, open) -> show(usable, open) }
     }
 
-    private fun show(usable: Boolean, open: Boolean, wide: Boolean) {
+    /** Whether the panel floats: by the screen's smallest width, the same whichever way a phone is held. */
+    private fun wide(): Boolean = Panel.wide(context.resources.configuration.smallestScreenWidthDp)
+
+    private fun show(usable: Boolean, open: Boolean) {
+        showing = usable to open
+        val wide = wide()
         val panelShown = usable && open
         // On a phone the panel docks the bubble at its top; on a tablet the bubble stays where it was.
         val bubbleShown = usable && !(panelShown && !wide)
         if (bubbleShown) addBubble() else removeBubble()
+        // A panel of the other kind is put up again, as the floating one would be clipped on a phone.
+        if (panelShown && panelWide != null && panelWide != wide) removePanel()
         if (panelShown) addPanel(wide) else removePanel()
         if (!usable) lower()
     }
@@ -237,12 +248,16 @@ class Overlay(
             )
             if (wide) FloatingPanel(sale, s.where, s.page, actions) else PhonePanel(sale, s.where, s.look, s.page, actions)
         }
-        runCatching { wm.addView(view, params) }.onSuccess { panel = view }
+        runCatching { wm.addView(view, params) }.onSuccess {
+            panel = view
+            panelWide = wide
+        }
     }
 
     private fun removePanel() {
         panel?.let { runCatching { wm.removeViewImmediate(it) } }
         panel = null
+        panelWide = null
     }
 }
 

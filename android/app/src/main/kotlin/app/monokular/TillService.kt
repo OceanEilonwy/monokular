@@ -3,6 +3,7 @@ package app.monokular
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.content.res.Configuration
 import android.os.Build
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
@@ -100,6 +101,11 @@ class TillService : LifecycleService() {
             graph.runner.state.value.till.sales.firstOrNull { it.live }?.let(::openSale)
         }
         return START_STICKY
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        overlay.configurationChanged()
     }
 
     override fun onDestroy() {

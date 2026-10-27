@@ -796,3 +796,26 @@ detail pages), recorded by the developers and folded in by the lead.
     their own text and shorten first, so " · Watching", " · Not watching"
     or " · Disconnected" is never cut at large font sizes; the TalkBack
     label is unchanged.
+89. **A phone is a phone whichever way it's held** (QA's third pass; refines
+    36 and 65). `Overlay.wide()` read the display's current width, so a
+    phone on its side (952 dp across) counted as a tablet: raising the panel
+    from the bubble in landscape put up the floating card, a 360 dp window
+    at the top right that holds only the header, the amount and the order
+    line, clipped at the screen's bottom with no code and no buttons, the
+    free bubble still lit beside it. The answer was also captured in the
+    state flow, so it went stale until the next sale event: back upright
+    the next raise was still the floating card, and a sale event in
+    landscape with the phone panel up added the free bubble beside the
+    docked one. Now `Panel.wide(smallestScreenWidthDp)` (600 dp and up,
+    tested) decides, the same whichever way a phone is turned; `show`
+    judges it on every pass rather than carrying it in the flow, the
+    service forwards `onConfigurationChanged` so a fold opening or split
+    screen is judged again, and a panel of the other kind is taken down
+    and put up again rather than left clipped. Beside it, QA saw once a
+    failed refund's Closed page with "Rung up" but no "Closed" row:
+    `Till.add` read the known sale, built the new one and replaced it in
+    two steps on `Dispatchers.Default`, so a close or refund stamped
+    meanwhile on another thread could be overwritten by the resync; it is
+    one `change` now, and a re-found sale keeps `refundedAt` as it kept
+    `closedAt`. Not reproduced, so the race is closed on reasoning, not
+    on a failing test.

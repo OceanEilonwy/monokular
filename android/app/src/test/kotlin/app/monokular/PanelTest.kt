@@ -44,6 +44,14 @@ class PanelTest {
     }
 
     @Test
+    fun `the panel floats only on a screen whose smallest width is a tablet's`() {
+        assertFalse(Panel.wide(411), "a phone, upright or on its side: its smallest width doesn't change")
+        assertFalse(Panel.wide(599))
+        assertTrue(Panel.wide(600), "a small tablet")
+        assertTrue(Panel.wide(840))
+    }
+
+    @Test
     fun `the header says where the sale is from`() {
         assertEquals("Front Counter", Panel.where(sale(), "Front Counter"))
         assertEquals("This till", Panel.where(sale(), null))
