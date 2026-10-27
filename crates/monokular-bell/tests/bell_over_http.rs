@@ -1024,3 +1024,48 @@ async fn a_payment_rings_once_and_a_refund_never_over_http() {
         .await;
     assert!(push.drain().await.is_empty(), "a refund dinged");
 }
+
+/// Each merchant's tills share `bell.dings_per_merchant_per_minute`
+/// across its locations, and another merchant has a share of its own:
+/// every ding is signed with the Bell's one key, which a push relay
+/// counts as one sender, so one merchant's payments can't spend what the
+/// relay gives every merchant. A ding over its merchant's share is
+/// dropped, not counted as its till's failure.
+#[tokio::test]
+async fn one_merchant_cant_spend_another_merchants_dings_over_http() {
+    let square = Stub::square().await;
+    let push = Stub::push_service().await;
+    let bell = TestBell::start(
+        &square.url(),
+        &[("bell.dings_per_merchant_per_minute", "3")],
+    )
+    .await;
+    for name in ["front", "back"] {
+        bell.registered(TOKEN, LOCATION, &Till::at(&push, name))
+            .await;
+    }
+    bell.registered(TOKEN, OTHER_LOCATION, &Till::at(&push, "elsewhere"))
+        .await;
+    bell.registered(
+        OTHER_TOKEN,
+        OTHER_MERCHANTS_LOCATION,
+        &Till::at(&push, "other-merchant"),
+    )
+    .await;
+    let dinged = async |merchant: &str, location: &str| {
+        let body = payment_webhook("payment.created", "COMPLETED", merchant, location);
+        assert_eq!(bell.webhook(&body).await.status, StatusCode::OK);
+        push.drain().await.len()
+    };
+
+    assert_eq!(dinged(MERCHANT, LOCATION).await, 2);
+    // The share is the merchant's, not the location's.
+    assert_eq!(dinged(MERCHANT, OTHER_LOCATION).await, 1);
+    assert_eq!(dinged(MERCHANT, LOCATION).await, 0, "over the share");
+    assert_eq!(dinged(OTHER_MERCHANT, OTHER_MERCHANTS_LOCATION).await, 1);
+    assert!(
+        bell.rows().iter().all(|row| row.4 == 0),
+        "a dropped ding counted as a failure: {:?}",
+        bell.rows()
+    );
+}

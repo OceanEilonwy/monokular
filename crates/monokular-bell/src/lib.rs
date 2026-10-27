@@ -137,6 +137,7 @@ impl Bell {
             store.clone(),
             reach,
             config.registration_failure_limit,
+            config.dings_per_merchant_per_minute,
         )?;
         let square = Square::new(config.square.api_url.clone(), config.timeout)
             .map_err(|error| StartError::Client("Square", error))?;

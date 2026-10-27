@@ -161,8 +161,13 @@ registered at its location once, so at its busiest a Bell sends about the
 payments a minute across all its merchants times the tills at each
 location; whoever runs the relay sizes its `limits.per_sender_per_minute`
 (600 by default) above that, or the relay answers `429` and those dings
-are lost: a ding is never sent again, as a minute late it is worth nothing. Its `limits.per_handle_per_minute` (60) is per till
-and is never what a Bell reaches.
+are lost: a ding is never sent again, as a minute late it is worth
+nothing. Its `limits.per_handle_per_minute` (60) is per till and is never
+what a Bell reaches. So that one busy merchant can't spend the relay's
+budget for all of them, the Bell sends each merchant's tills at most
+`bell.dings_per_merchant_per_minute` dings a minute (120 by default),
+across its locations, and drops the rest: keep it well below the relay's
+per-sender limit.
 
 To try it on one machine against the stand-in Square, with any Web Push
 endpoint on loopback as the till's:

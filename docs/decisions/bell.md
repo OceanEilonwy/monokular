@@ -325,3 +325,26 @@ be reversed knowingly. The Bell's API is in [../bell.md](../bell.md).
     crate's, built in one place, and the Bell's tests over HTTP still
     check what it does with it (no redirect followed, private and
     `localhost` endpoints refused at registration and at each ding).
+
+42. **Each merchant's tills get at most
+    `bell.dings_per_merchant_per_minute` dings a minute, 120 by default,
+    the rest dropped** (push audit #15, the Bell's half; monokulo
+    `push.md` 144, 151). Every ding is signed with the Bell's one VAPID
+    key, which a push relay counts as one sender, so one busy or hostile
+    merchant (32 tills a location, as many locations as it likes) could
+    spend the relay's `limits.per_sender_per_minute` for every merchant
+    behind the Bell, whose tills then fell back to their timers. Only the
+    Bell knows merchants apart, so the share is taken here, with the
+    shared fixed-window `RateLimiter` keyed by `MerchantId`, in memory (a
+    restart gives a fresh minute). Per merchant, not per location: a
+    merchant opens locations at will, and the merchant is the account
+    that pays. A ding is counted when it is about to be sent, after its
+    host check, so a refused endpoint costs nothing; over the share it is
+    dropped and logged, not counted as its till's failure, as a ding a
+    push service limits (decision 17): a ding a minute late is worth
+    nothing, so it is not put off as monokulo's pushes are. 120 is about
+    fifteen payments a minute at a location with eight tills; the
+    setting's description and the README say to keep it well below the
+    relay's per-sender limit. The README's sizing note (decision 39)
+    stays: many merchants at once can still reach the relay's limit,
+    which its operator sizes.

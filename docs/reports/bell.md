@@ -47,16 +47,17 @@ Push dings for the tills registered at that location. Its API is
 
 ## Tests and gates
 
-75 tests (`cargo nextest run -p monokular-bell`, about a second): 17
+76 tests (`cargo nextest run -p monokular-bell`, about a second): 17
 in-process (since the push audit, one: a proxy adding its own
-`X-Forwarded-For` line still has its client counted by that line), 28 over real HTTP (named `over_http`: a completed payment's
+`X-Forwarded-For` line still has its client counted by that line), 29 over real HTTP (named `over_http`: a completed payment's
 webhook dings every till at its location and the ding decrypts to
 `{"wake":"square"}` with the right headers; other events ding nothing;
 Square refusing, redirecting or timing out; gone and failing subscriptions;
 the token left nowhere; private endpoints refused; racing registrations
 filling a location exactly; since the push audit, a payment ringing once
 and a refund never, another merchant refused a till's endpoint, and the
-`main` alias refused as the till's mistake), 4 of the binary (`--init`, missing secrets,
+`main` alias refused as the till's mistake, and one merchant's dings
+kept to its share, leaving another merchant's), 4 of the binary (`--init`, missing secrets,
 SIGTERM), 26 unit (the signature against Square's documented example,
 settings, the command line, the store; the address rule's tests are
 monokulo's `outbound` crate's since push audit #2).
@@ -65,8 +66,8 @@ Gates, as `rust.yml` runs them, on stable (1.98.1) against the pinned
 monokulo commit `a0ff005f0`, 2026-10-28: `cargo fmt -p monokular-bell
 --check`, `cargo test --locked -p orf-codec -p orf-codec-ffi -p
 monokular-bell`, `cargo clippy --locked --workspace --all-targets -- -D
-warnings` and `cargo nextest run --locked -p monokular-bell` (75 passed
-after the push audit's fixes, decisions 36 to 41), all passed.
+warnings` and `cargo nextest run --locked -p monokular-bell` (76 passed
+after the push audit's fixes, decisions 36 to 42), all passed.
 
 ## Risks and what is left
 

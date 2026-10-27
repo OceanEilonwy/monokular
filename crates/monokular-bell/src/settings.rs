@@ -77,6 +77,14 @@ settings! {
         example: "20",
         applies: Restart,
     },
+    DINGS_PER_MERCHANT_PER_MINUTE: u32 {
+        key: "bell.dings_per_merchant_per_minute",
+        default: 120,
+        check: range(1, 1_000_000),
+        description: "Dings one merchant's tills are sent a minute, across all its locations: a payment dings each till at its location once. The rest of the minute's dings are dropped, as a ding a minute late is worth nothing and the till's timer asks Square anyway. Every merchant's dings are signed with the Bell's one VAPID key, which a push relay counts as one sender, so keep it well below the relay's per-sender limit (600 a minute by default), or one busy merchant spends the relay's budget for all of them.",
+        example: "120",
+        applies: Restart,
+    },
     ALLOW_PRIVATE_ENDPOINTS: bool {
         key: "bell.allow_private_endpoints",
         default: false,
@@ -174,6 +182,7 @@ pub struct BellConfig {
     pub timeout: Duration,
     pub registrations_per_minute: u32,
     pub registration_failure_limit: u32,
+    pub dings_per_merchant_per_minute: u32,
     pub allow_private_endpoints: bool,
     pub square: SquareConfig,
     pub webhook_key: Option<WebhookKey>,
@@ -218,6 +227,7 @@ impl Section for BellConfig {
             &TIMEOUT_MS,
             &REGISTRATIONS_PER_MINUTE,
             &REGISTRATION_FAILURE_LIMIT,
+            &DINGS_PER_MERCHANT_PER_MINUTE,
             &ALLOW_PRIVATE_ENDPOINTS,
             &SQUARE_APPLICATION_ID,
             &SQUARE_ENVIRONMENT,
@@ -255,6 +265,7 @@ impl Section for BellConfig {
             timeout: Duration::from_millis(snapshot.get(&TIMEOUT_MS)),
             registrations_per_minute: snapshot.get(&REGISTRATIONS_PER_MINUTE),
             registration_failure_limit: snapshot.get(&REGISTRATION_FAILURE_LIMIT),
+            dings_per_merchant_per_minute: snapshot.get(&DINGS_PER_MERCHANT_PER_MINUTE),
             allow_private_endpoints: snapshot.get(&ALLOW_PRIVATE_ENDPOINTS),
             square: SquareConfig {
                 application_id,
@@ -540,6 +551,7 @@ pub(crate) mod tests {
         assert_eq!(config.timeout, Duration::from_secs(10));
         assert_eq!(config.registrations_per_minute, 30);
         assert_eq!(config.registration_failure_limit, 20);
+        assert_eq!(config.dings_per_merchant_per_minute, 120);
         assert!(!config.allow_private_endpoints);
         assert!(
             config
@@ -732,6 +744,11 @@ pub(crate) mod tests {
                 &[("bell.registrations_per_minute", "0")],
                 SECRETS,
                 "bell.registrations_per_minute",
+            ),
+            (
+                &[("bell.dings_per_merchant_per_minute", "0")],
+                SECRETS,
+                "bell.dings_per_merchant_per_minute",
             ),
             (&[("bell.listen", "localhost")], SECRETS, "bell.listen"),
             (

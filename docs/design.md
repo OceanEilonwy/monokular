@@ -383,7 +383,10 @@ Settings (TOML options file plus CLI, invalid values stop the process):
 `bell.square.application_id`, `bell.square.environment`,
 `bell.square.api_url` (a stand-in Square instead of the environment's),
 `bell.registration_failure_limit`, `bell.registrations_per_minute`,
-`bell.trusted_proxies`, `bell.allow_private_endpoints`, `bell.timeout_ms`.
+`bell.dings_per_merchant_per_minute` (120: a merchant's tills, across its
+locations, get that many dings a minute and the rest are dropped, so one
+merchant can't spend the push relay's per-sender budget, which every
+merchant behind the Bell shares as one VAPID key), `bell.trusted_proxies`, `bell.allow_private_endpoints`, `bell.timeout_ms`.
 Secrets from the environment only: `MONOKULAR_BELL_SQUARE_WEBHOOK_KEY` (the
 webhook signature key) and `MONOKULAR_BELL_VAPID_KEY` (32 bytes as 64 hex
 digits; `/v1/info` gives its public key).

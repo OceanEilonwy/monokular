@@ -9,6 +9,12 @@
 //! wake`, so a push service holding several for an offline till hands
 //! over one. It is sent once: there is no queue and no retry.
 //!
+//! Each merchant's tills are sent at most
+//! `bell.dings_per_merchant_per_minute` dings a minute, the rest dropped:
+//! every ding is signed with the Bell's one key, which a push relay counts
+//! as one sender, so without a share of its own one merchant could spend
+//! the relay's budget for every merchant behind the Bell.
+//!
 //! A payment rings once: Square sends `payment.updated` of a payment that
 //! stays `COMPLETED` (its processing fee filled in, a refund), and on an
 //! iPhone or iPad a ding is an alert the till can't take back. The ids of
@@ -21,6 +27,7 @@ use std::sync::{Arc, Mutex, PoisonError};
 
 use outbound::Reach;
 use push::{Message, Options, SendError, Sender, Topic, Ttl, Urgency};
+use rate_limit::RateLimiter;
 use tokio::sync::watch;
 
 use crate::registrations::{Failed, Registration, RegistrationStore};
@@ -50,6 +57,9 @@ pub struct Dings {
     reach: Reach,
     failure_limit: u32,
     options: Options,
+    /// Each merchant's dings this minute, against
+    /// `bell.dings_per_merchant_per_minute`.
+    per_merchant: RateLimiter<MerchantId>,
     rung: Mutex<Rung>,
     /// How many rings are running, for [`Dings::idle`].
     running: watch::Sender<usize>,
@@ -61,6 +71,7 @@ impl Dings {
         store: RegistrationStore,
         reach: Reach,
         failure_limit: u32,
+        dings_per_merchant_per_minute: u32,
     ) -> Result<Self, push::message::TopicError> {
         Ok(Dings {
             sender,
@@ -72,6 +83,7 @@ impl Dings {
                 ttl: TTL,
                 topic: Some(Topic::parse(TOPIC)?),
             },
+            per_merchant: RateLimiter::new(dings_per_merchant_per_minute),
             rung: Mutex::new(Rung::default()),
             running: watch::Sender::new(0),
         })
@@ -122,19 +134,28 @@ impl Dings {
         };
         let mut sending = tokio::task::JoinSet::new();
         for registration in registrations {
-            let dings = Arc::clone(self);
-            sending.spawn(async move { dings.ding(registration).await });
+            let (dings, merchant_id) = (Arc::clone(self), merchant_id.clone());
+            sending.spawn(async move { dings.ding(&merchant_id, registration).await });
         }
         let rung = sending.len();
         while sending.join_next().await.is_some() {}
         tracing::debug!(rung, "dings sent");
     }
 
-    /// One ding to `registration`, and what its answer means for it.
-    async fn ding(&self, registration: Registration) {
+    /// One ding to `merchant_id`'s `registration`, and what its answer
+    /// means for it.
+    async fn ding(&self, merchant_id: &MerchantId, registration: Registration) {
         let now = service_runtime::time::now_unix();
         let endpoint = &registration.subscription.endpoint;
         let outcome = match outbound::check_host(endpoint.as_url(), self.reach) {
+            // Counted only when it is to be sent: a ding refused here
+            // costs its merchant's share nothing. Over it, the ding is
+            // dropped, not the till's failure, as one a push service
+            // limits.
+            Ok(()) if !self.per_merchant.check(merchant_id.clone(), now) => {
+                tracing::warn!(registration = %registration.id, host = endpoint.host(), "the merchant's dings for this minute were spent: a ding was dropped");
+                return;
+            }
             Ok(()) => match push::encrypt(&registration.subscription.keys, WAKE) {
                 Ok(encrypted) => {
                     self.sender
