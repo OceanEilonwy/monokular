@@ -1007,6 +1007,23 @@ written except where an entry below says otherwise.
      exported `RaiseToForegroundService` that a distributor binds to raise
      the app's priority while it delivers; the app declares only
      `WakePushService` (`exported="false"`, `PUSH_EVENT`), A12.1.
+101. **The shift says why it checked, counts what is new, and re-reads its
+    pace every 2 s** (dev-2; refines 94). `WakeCause` gains `Started`, the
+    shift's first check: sales rung while nothing watched (a ding outside a
+    shift is dropped, decision 93) are found by it, and a `Timer` find there
+    would read as a wake-up the Bell missed. `Till.check()` answers how many
+    of the POS's sales it found that the previous check hadn't, another
+    device's included (the Bell rings for every sale at the location, not
+    for one till's): a sale whose order failed and is found again isn't
+    counted twice, and a POS that can't be read found 0. The timer waits in
+    ticks of 2 s at most and reads `interval()` at each, so the pace going
+    from 30 s to 2 s mid-wait checks within a tick rather than at the end of
+    the 30 s (A5.24); the ticks cost a coroutine resuming, no request. The
+    wait is a `select` over the conflated wake channel and the tick's
+    timeout, not `withTimeoutOrNull { receive() }`, which can take a wake-up
+    as it times out and drop it. The pace Settings shows is read off the
+    status, the same `WakeUpStatus.interval` the shift reads, so the plan's
+    `RunnerState.interval` would only have copied it and isn't added.
 102. **The app sees a distributor come or go by itself.** The connector has
      no callback for a distributor uninstalled, and decision 91's "looks
      again at every Settings open" would have put a `recheck()` (a
@@ -1023,6 +1040,27 @@ written except where an entry below says otherwise.
      distributor is `Distributors.resolve()`: the saved one while it is
      installed, else the connector's `resolveDefaultDistributor` (the
      default or the only one, saved), else the list for the cashier.
+103. **Settings › Wake-ups' choices, where A1 is silent** (dev-2; refines 99).
+    "My own Bell" tapped with no address saved yet ticks the row and opens
+    the address field, but nothing is chosen until "Use this Bell": the
+    saved choice, its registration and its status card stand meanwhile
+    (hidden while the row waits, with the footnote "Enter the address of
+    the Bell you run, then press Use this Bell. Until then Wake-ups stay as
+    they were."); with an address saved, the tap chooses it at once. The
+    field starts with the saved address as the row shows it, with its
+    scheme only when that isn't https (a debug build's http Bell), so it
+    reads back as the same address and "Use this Bell" stays off. The Bell
+    row says "Sign in needed" for `NoSquare` as well as `SignInNeeded`
+    (the emulator script's step 16 expects it; the footnotes tell them
+    apart), and "Choose a UnifiedPush app" for `ChooseDistributor`, whose
+    footnote is "Deliver wake-ups through one of the UnifiedPush apps
+    above. Until you choose, Monokular checks every 2 seconds."; its rows
+    are `ChoiceRow`s in the status card named by Android's label for each
+    package, none ticked. `NoDistributor` adds a "Get ntfy" row in the link
+    colour that opens `https://ntfy.sh/` in a Custom Tab, as Square's
+    sign-in opens. Settings opening calls nothing: `UnifiedPushSubscriptions`
+    hears a package installed or removed and `BellWakeUps` looks again by
+    itself (decision 91), and the card follows its status live.
 104. **The Bell client is three suspending calls behind `BellClient`, and
      its errors are two exceptions.** `BellApi` takes the graph's client,
      with `Proxy.NO_PROXY` (decision 98: never Orbot, whatever the store
@@ -1040,6 +1078,28 @@ written except where an entry below says otherwise.
      routes only, no `Authorization` header on any, the token in
      `register`'s body and nowhere else, that body exactly the three fields
      and the subscription's public half (A9.1, A9.2).
+105. **The view model's side of signing in through a Bell, and of taking
+    the registration back** (dev-2; refines 96, 97). `Stores.pendingSignIn`
+    is a `PendingSignIn(pkce, applicationId)`: the application rides with
+    the PKCE state (kept across the app being ended), null for the till's
+    own. The attempt's `SquareAuth` is built with that application, so
+    `authorizeUrl` and `finish` use its `client_id`; only after `finish`
+    succeeds is `Stores.squareApplicationId` set (and the old token
+    replaced by `finish` itself), the running till restarted as the new
+    application, the location chosen again when the account has several,
+    and the cashier taken back to Settings, where `chooseLocation`'s
+    `recheck()` carries the registration on to `Connected`. A sign-in that
+    fails goes back to Settings with Square's words, shown above the
+    Wake-ups cards, and leaves the old sign-in working. "Sign out of
+    Square" now runs as the view model's other network work does:
+    `unregister()` awaited, then the sign-out.
+    "Disconnect this device" awaits `unregister(forget = true)` before
+    Monokulo's disconnect (the Bell's `DELETE` comes first in its log, as
+    the emulator script's step 22 expects), and "Connect again" after the
+    store disconnected the till does too; redeeming a new connect code
+    takes back any registration left before `forgetAll`. A location change
+    calls `recheck()`, since the Bell rings the till for the location it
+    registered.
 106. **One pass at a time brings the Bell into line with the choice.**
      `BellWakeUps` doesn't keep a state machine beside the store: a pass
      reads the choice and the registration and does what decision 95
