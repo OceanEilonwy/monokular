@@ -6,10 +6,6 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
-import java.time.temporal.ChronoUnit
-import java.util.Currency
 
 /**
  * A Square order as an Open Receipt Format receipt (`docs/design.md` §4),
@@ -51,7 +47,7 @@ object SquareReceipts {
         return Receipt(
             receipt = Receipt.Info(
                 receiptId = sale.reference ?: order.id.takeLast(8),
-                issueTimestamp = timestamp(order.createdAt, location.timezone),
+                issueTimestamp = receiptTimestamp(Instant.parse(order.createdAt), location.timezone),
             ),
             merchant = Receipt.Merchant(
                 legalName = oneLine(location.businessName ?: location.name),
@@ -78,24 +74,5 @@ object SquareReceipts {
         return oneLine(parts.joinToString(", "))
     }
 
-    /** The codec refuses line breaks in text. */
-    private fun oneLine(s: String): String = s.split(Regex("\\s+")).filter { it.isNotEmpty() }.joinToString(" ")
-
-    /** Whole seconds, in the location's own time zone: the codec refuses fractions. */
-    internal fun timestamp(createdAt: String, timezone: String?): String {
-        val instant = Instant.parse(createdAt).truncatedTo(ChronoUnit.SECONDS)
-        val zone = timezone?.let { runCatching { ZoneId.of(it) }.getOrNull() } ?: ZoneId.of("UTC")
-        return DateTimeFormatter.ISO_OFFSET_DATE_TIME.format(instant.atZone(zone))
-    }
-
-    private fun minorDigits(currency: String): Int =
-        runCatching { Currency.getInstance(currency).defaultFractionDigits }.getOrDefault(2).coerceAtLeast(0)
-
     private fun amount(minor: Long, digits: Int): BigDecimal = BigDecimal.valueOf(minor).movePointLeft(digits)
-}
-
-/** [minor] units of [currency] as a decimal string: 2450 USD is "24.50". */
-fun decimalAmount(minor: Long, currency: String): String {
-    val digits = runCatching { Currency.getInstance(currency).defaultFractionDigits }.getOrDefault(2).coerceAtLeast(0)
-    return BigDecimal.valueOf(minor).movePointLeft(digits).setScale(digits).toPlainString()
 }
