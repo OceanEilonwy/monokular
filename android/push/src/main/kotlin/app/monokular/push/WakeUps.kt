@@ -44,7 +44,6 @@ data class BellInfo(
     val environment: String,
     /** The key every ding is signed with: what the subscription is made for. */
     @SerialName("vapid_public_key") val vapidPublicKey: String,
-    val version: String,
 )
 
 /** A registration the Bell holds for this till: `POST /v1/register`'s answer and what it was made with. */
@@ -53,16 +52,15 @@ data class BellRegistration(
     val bell: BellAddress,
     /** `br_…`: known only to this till, and all `DELETE /v1/register/{id}` needs. */
     @SerialName("registration_id") val registrationId: String,
-    /** The Square location the Bell rings this till for. */
-    @SerialName("location_id") val locationId: String,
-    /** The Square application the Bell answered with. */
-    @SerialName("square_application_id") val squareApplicationId: String,
     /** The Bell's key the subscription was made for: another one means subscribing again (decision 95). */
     @SerialName("vapid_public_key") val vapidPublicKey: String,
     /** The subscription registered, to tell when the distributor has changed it. */
     val subscription: PushSubscription,
-    /** Unix seconds. */
-    @SerialName("registered_at") val registeredAt: Long,
+    /**
+     * The distributor's package the subscription was made through: at a start, before
+     * this process has subscribed, the one an uninstall took away (decision 122).
+     */
+    val distributor: String,
 )
 
 /**

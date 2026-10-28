@@ -318,7 +318,10 @@ time the alert stays "New sale · Tap to show code" and the app does the rest.
 A small service that turns a POS's webhooks into dings for the right tills.
 It lives in this repository (`crates/monokular-bell`, a library and the
 `monokular-bell` binary), because it is POS-specific and app-side; monokulo
-knows nothing about it.
+knows nothing about it. It builds on monokulo's `push`, `live-settings`,
+`sqlite`, `rate-limit`, `abuse` and `service-runtime` crates, git
+dependencies pinned to one monokulo commit, so it is configured, stores and
+limits the way monokulo does. Its API is in [bell.md](bell.md).
 
 ```text
 Square ──payment.created webhook──▶ Bell: verify signature, read merchant_id
@@ -340,8 +343,11 @@ Bell ──Web Push (empty, encrypted)──▶ each till registered for that lo
   asks the cashier to sign in again when they switch).
 - **What the Bell sees:** Square's webhook bodies, which include each
   payment's amount and card details, for every merchant signed in through
-  its application. It reads `merchant_id` and `location_id`, then drops the
-  body: none of it is stored or logged. It never sees orders and holds no
+  its application. It reads `merchant_id`, `location_id`, the payment's id
+  and status and whether it was refunded, then drops the body: none of it is
+  stored or logged. It remembers the payments it rang, in memory for ten
+  minutes, so a payment's later `payment.updated` (a fee filled in, a
+  refund) doesn't ding again: on iPhone and iPad a ding is an alert. It never sees orders and holds no
   Square token. This is why the Bell is optional and anyone can run their
   own.
 
@@ -349,8 +355,9 @@ Registration, from the app:
 
 ```http
 POST https://bell.monokulo.com/v1/register
-{ "square_access_token": "…",           (used once to confirm the merchant with
-                                          GET /v2/merchants/me, never stored)
+{ "square_access_token": "…",           (used once for GET /v2/locations/{location_id},
+                                          whose merchant_id proves both the token and
+                                          the location; never stored)
   "location_id": "L…",
   "subscription": { "endpoint", "keys": { "p256dh", "auth" } } }
 → 201 { "registration_id": "br_…", "square_application_id": "…" }
@@ -359,18 +366,30 @@ GET    /v1/info → { "square_application_id", "environment", "vapid_public_key"
 ```
 
 The token check stops anyone from subscribing to dings for a business they
-don't control (which would tell them when it takes payments).
+don't control (which would tell them when it takes payments). An endpoint
+already registered moves only for its own merchant, or for a caller giving
+the subscription's own auth secret: an endpoint is no secret (push services
+and distributors see it), so knowing one doesn't take a till's dings away.
 
 Storage: its own SQLite file with `registrations(id, merchant_id,
 location_id, endpoint, p256dh, auth, created_at, last_ok_at, failures)`.
 Registrations whose endpoint answers 404/410 are deleted, the same rule as
-monokulo's push targets.
+monokulo's push targets, and so are those whose push service fails
+`bell.registration_failure_limit` dings in a row. A location takes 32.
 
 Settings (TOML options file plus CLI, invalid values stop the process):
-`bell.listen`, `bell.public_uri`, `bell.store_path`,
-`bell.square.application_id`, `bell.square.environment`. Secrets from the
-environment only: `MONOKULAR_BELL_SQUARE_WEBHOOK_KEY` (the webhook signature
-key) and `MONOKULAR_BELL_VAPID_KEY`.
+`bell.listen`, `bell.public_uri` (Square's webhook URL is it followed by
+`/v1/square/webhook`, and the signature covers it), `bell.store_path`,
+`bell.square.application_id`, `bell.square.environment`,
+`bell.square.api_url` (a stand-in Square instead of the environment's),
+`bell.registration_failure_limit`, `bell.registrations_per_minute`,
+`bell.dings_per_merchant_per_minute` (120: a merchant's tills, across its
+locations, get that many dings a minute and the rest are dropped, so one
+merchant can't spend the push relay's per-sender budget, which every
+merchant behind the Bell shares as one VAPID key), `bell.trusted_proxies`, `bell.allow_private_endpoints`, `bell.timeout_ms`.
+Secrets from the environment only: `MONOKULAR_BELL_SQUARE_WEBHOOK_KEY` (the
+webhook signature key) and `MONOKULAR_BELL_VAPID_KEY` (32 bytes as 64 hex
+digits; `/v1/info` gives its public key).
 
 In the app: **Settings › Wake-ups**: "Timer only" (default), "Monokular Bell
 (bell.monokulo.com)", or "My own Bell" with a URL. The app reads
@@ -425,8 +444,12 @@ to the store's tills. The Bell's dings (§3) use the same Web Push transport.
   and signed (VAPID, RFC 8292), from monokulo and from the Bell.
 - UnifiedPush works with no relay at all; APNs and FCM go through a relay
   (`push-relay`), embedded in monokulo or standalone.
-- The relay learns as little as possible: no store, no device-to-store link,
-  ciphertext for every ordinary notification.
+- The relay learns as little as possible: no store, ciphertext for every
+  ordinary notification, and a handles file that can't link a device's
+  handles or name the senders it takes pushes from (each row sealed under a
+  key only its endpoint gives). The relay itself sees a token and its
+  sender together at each registration and push, as it must to hand them
+  on.
 
 ### Why Web Push for everything
 
@@ -445,9 +468,11 @@ lands at a UnifiedPush distributor or the relay is the endpoint's business.
 ### VAPID ties a subscription to one sender
 
 Each monokulo, and each Bell, has one VAPID key pair (P-256), generated on
-first start and kept secret. The public key goes to the app when it connects
-(§2) or reads the Bell's `/v1/info`. The app passes it to whoever issues the
-endpoint:
+first start and kept secret. The app reads the public key from
+`GET /api/v1/push-targets` (`vapid_public_key`, fetched live each time it
+subscribes, so a rotated key is never stale; the connect response is
+unchanged) or from the Bell's `/v1/info`. The app passes it to whoever
+issues the endpoint:
 
 - UnifiedPush: the app gives it to the distributor at registration (the
   AND_3 spec's VAPID field), which then refuses pushes not signed by it.
@@ -465,7 +490,7 @@ store's monokulo, and the Bell if it uses one).
 | Kind | Payload | Used for |
 | --- | --- | --- |
 | `encrypted` | RFC 8291 ciphertext | Every notification and ding, and every Android message |
-| `live-activity` | Plain JSON (iOS applies Live Activity pushes itself, with no extension to decrypt) | Live Activity updates only: `phase`, `sale`, `amount`, `xmr`, `expiresAt`, `waitingCount`, and `paymentURI` only when the device turned on "Show code in island" (§6) |
+| `live-activity` | Plain JSON (iOS applies Live Activity pushes itself, with no extension to decrypt) | Live Activity updates only, about the till's own sales (never another till's: the island would show the wrong sale): `phase`, `sale`, `amount`, `currency`, `xmr`, `expiresAt`, `waitingCount`, and `paymentURI` only when the device turned on "Show code in island" (§6) and only while the sale waits for its first payment (not after a part payment, when the full amount is no longer owed). Never the order's id. |
 
 For `encrypted`, the iOS Notification Service Extension and the Android
 receiver decrypt with the subscription's private key, which never leaves the
@@ -485,8 +510,8 @@ monokulo by default and as `monokulo-engine` when separate.
 Keeping them apart means a monokulo built with `--no-default-features`
 drops the relay's server code, APNs/FCM clients and OAuth entirely, and
 another Rust sender (the Bell) only takes the small crate. The Bell depends
-on `push` from the monokulo repository (a git dependency pinned to a tag
-until `push` is published to crates.io).
+on `push` from the monokulo repository (a git dependency pinned to one
+monokulo commit until `push` is published to crates.io).
 
 ### The `push` crate (`crates/push`)
 
@@ -494,33 +519,55 @@ A library with no monokulo types and no server code.
 
 ```text
 crates/push/src/
-  lib.rs            Subscription, Message, Urgency, Ttl, Topic; re-exports
-  subscription.rs   endpoint + keys + kind; validation (https, length, key sizes)
-  message.rs        payload builders, the 4 KB budget check, Topic for collapsing
-  vapid.rs          VapidKey: generate, load, sign the JWT (aud = endpoint origin, exp ≤ 12 h)
-  encrypt.rs        RFC 8291 encrypt/decrypt (decrypt is used by tests and the relay's own tests)
-  send.rs           Sender: build the request, POST with a shared reqwest::Client,
-                    map the response (201 sent, 404/410 gone, 413 too big,
-                    429/5xx retry with Retry-After)
+  lib.rs            re-exports; what a sender does: encrypt, sign, POST
+  subscription.rs   Endpoint (https, or http to this machine; no onion, no userinfo,
+                    ≤ 2048 chars), Origin, P256dh, AuthSecret, SubscriptionKeys, Subscription
+  message.rs        Urgency, Ttl, Topic (1–32 URL-safe chars), PlainJson (≤ 4096 bytes),
+                    Message { Encrypted | PlainJson }, Options; MAX_PLAINTEXT = 3993
+  encrypt.rs        RFC 8291 aes128gcm: encrypt (fresh salt and key per message);
+                    decrypt and ReceiverKeys behind the test-support feature
+  jwt.rs            Es256Key: compact ES256 JWTs, shared by VAPID and the relay's APNs auth
+  vapid.rs          VapidKey, VapidPublicKey, Contact, Claims, Authorization, verify
+                    (aud = endpoint origin, exp 12 h ahead, at most 24 h)
+  wire.rs           the RFC 8030 headers; PushRequest::parse, what a relay reads
+  send.rs           Sender over the caller's reqwest::Client: one token per origin
+                    for 11 h; answers sorted into Sent or SendError (Gone, TooLarge,
+                    RateLimited / Server with Retry-After, Refused, Request, Vapid)
 ```
+
+Written on `p256` 0.14, `hkdf`, `aes-gcm` and `sha2` (the RustCrypto
+generation already in monokulo's lock), tested against RFC 8291 Appendix A
+and RFC 8292's example token; no `web-push-native` or `jwt-simple`
+(monokulo `docs/decisions/push.md` 3 and 4). Builds on stable.
 
 ### The `push-relay` crate (`crates/push-relay`)
 
 ```text
 crates/push-relay/src/
-  lib.rs            RelayConfig, Relay::new(config, store), Relay::router() -> axum::Router,
-                    run(config) for the standalone binary; the settings declarations
-  routes.rs         /v1/register, /v1/unregister, /v1/push/{handle}
-  handles.rs        HandleStore trait; SqliteHandleStore (rusqlite); an in-memory one for tests
-  apns.rs           APNs provider: HTTP/2, token (.p8) auth, push types alert/background/liveactivity
-  fcm.rs            FCM HTTP v1 provider: service-account OAuth, data messages
-  limits.rs         per-VAPID-key and per-handle token buckets
-  main.rs           `monokulo-push-relay`: read settings, open the store, serve
+  lib.rs            Relay::start(&RelayConfig), Relay::router() -> axum::Router,
+                    Relay::serve(listener, shutdown); the hourly sweep of expired handles
+  settings.rs       the settings, declared once (live-settings): RelayConfig, load(), Host
+  cli.rs            `monokulo-push-relay`'s command line, from the declarations
+  routes.rs         POST /v1/register, POST /v1/push/{handle}  (no unregister: nothing
+                    would call it; handles expire and die when APNs/FCM say the token is gone)
+  handles.rs        Handle, HandleId (ph_…), Platform, DeviceToken; HandleStore on sqlite
+                    (its own file, migrations/0001_handles.sql); no trait, no in-memory store
+  apns.rs           APNs: HTTP/2 (prior knowledge), ES256 provider token renewed at 50 min;
+                    alert, liveactivity (always an update)
+  fcm.rs            FCM HTTP v1: RS256 service-account assertion (rsa) exchanged for an
+                    access token, kept until 5 min before it expires; data messages
+  limits.rs         per sender, per handle and per address, on the workspace's rate-limit crate
+  upstream.rs       what APNs's and FCM's answers mean for the sender (gone, too large,
+                    unavailable with Retry-After, refused)
+  problem.rs        the problem+json answers
+  main.rs           `monokulo-push-relay`: --options, --init, serve until SIGTERM
 ```
 
-The library interface is small on purpose: a config, a store, a router.
-Monokulo and the standalone binary both build a `Relay` the same way and
-differ only in who owns the listener.
+The library interface is small on purpose: settings in, a `Relay` out,
+served on a listener. Monokulo (`crates/monokulo/src/relay.rs`) and the
+standalone binary build it the same way and differ only in who owns the
+listener and where the settings come from (`[relay.*]` of monokulo's
+options file, or `relay.toml`).
 
 ### Crates
 
@@ -529,13 +576,13 @@ RustCrypto, reqwest, axum, tokio.
 
 | Need | Crate | Why |
 | --- | --- | --- |
-| Web Push request building, RFC 8291, VAPID | [`web-push-native`](https://docs.rs/web-push-native) | RustCrypto (`p256`, `aes-gcm`, `hkdf`), no HTTP client of its own (we use reqwest), has `decrypt` for tests. Pin to a version at least two weeks old and review it (0.5.0 is from October 2026). |
-| JWT (VAPID ES256, APNs ES256, FCM RS256) | `jwt-simple` | Already `web-push-native`'s optional JWT dependency. Build it with its pure-Rust feature so no C crypto library enters the tree; check the feature names when adding it. |
-| HTTP | `reqwest` (already used) | Add the `http2` feature for APNs, which requires HTTP/2. |
-| FCM OAuth | `gcp_auth` | Service-account tokens for FCM HTTP v1, rustls. |
+| RFC 8291, VAPID | `p256` 0.14 (`ecdh`, `ecdsa`), `hkdf`, `aes-gcm`, `sha2`, written in `push` | The RustCrypto generation already in the lock; `web-push-native` 0.5 pins the one before it and would duplicate the crates for about 150 lines of well-specified code, tested here against the RFCs' own vectors (`push.md` 3). |
+| JWT (VAPID ES256, APNs ES256) | `push::jwt::Es256Key` on `p256` | One signature over two base64url segments; `jwt-simple` would bring `k256`, `p384`, `ed25519-compact` and more (`push.md` 4). |
+| FCM OAuth (RS256) | `rsa` 0.9 (already in the tree) | A thin client: one service-account assertion exchanged at `token_uri`. `gcp_auth` adds `ring` and discovers credentials by itself, against the settings rule (`push.md` 5). |
+| HTTP | `reqwest` (already used), `http2` feature | APNs requires HTTP/2. The feature reaches every reqwest client in a monokulo built with the relay (`push.md` 118). |
 | Server | `axum`, `tokio` (already used) | Relay and Bell routes. |
-| Rate limits | `governor` | Token buckets keyed by VAPID key and handle. |
-| Storage | `rusqlite` (already used) | Monokulo's tables, the relay's handles, the Bell's registrations. |
+| Rate limits | the workspace's `rate-limit` crate | Fixed windows with `Retry-After`, already serving the engine and monokulo; keyed by VAPID key, handle and address (`push.md` 6). |
+| Storage | `rusqlite` through the workspace's `sqlite` crate | Monokulo's tables, the relay's handles, the Bell's registrations. |
 
 For APNs, `a2` was considered and not used: it hasn't been released since
 2024 and has no Live Activity push type. APNs is a single HTTP/2 POST
@@ -550,7 +597,7 @@ Registration, from the app:
 
 ```http
 POST /v1/register
-{ "platform": "apns" | "apns-liveactivity" | "apns-pushtostart" | "fcm",
+{ "platform": "apns" | "apns-liveactivity" | "fcm",
   "token": "<APNs/FCM device or activity token>",
   "app": "monokular",                   // picks the bundle ID / FCM project
   "vapid_public_key": "BJ…" }           // the sender: a monokulo or a Bell
@@ -558,8 +605,24 @@ POST /v1/register
         "expires_at": … }
 ```
 
-- One registration per (token, VAPID key): a device connected to two stores
-  gets two handles, which the relay can't link to each other.
+- One registration per (platform, token, app, VAPID key): a device connected
+  to two stores gets two handles, which nothing in the relay's file links
+  (the handle id is an HMAC of the four under the relay's handle key,
+  which is never in the file; the row is keyed by the id's hash, and the
+  token and key are sealed under a key derived from the id). A copy of
+  the file alone links nothing; with a sender's endpoints it opens that
+  sender's handles, so their tokens, but not those devices' handles for
+  other senders, which need the key too; with the key as well it links
+  each such device to every sender whose public key is known, so the key
+  is kept apart from the file and its backups. Registering the
+  same four again gives the same endpoint, its expiry pushed back. A handle
+  no push has reached lasts `handles.unused_ttl_days` (7) after its
+  registration, since registering needs no credential; once APNs or FCM
+  has taken a push for it, `handles.ttl_days` (90) after its last
+  registration or delivered push.
+- There is no unregister route: it would be unauthenticated (the app holds
+  no secret the relay knows) or sender-only, and nothing would call it.
+  Handles expire, and die as soon as APNs or FCM says the token is gone.
 - Tokens change; the app re-registers whenever iOS or Android hands it a new
   one and sends the new endpoint to monokulo and the Bell.
 
@@ -571,7 +634,10 @@ Authorization: vapid t=<JWT>, k=<public key>
 Content-Encoding: aes128gcm          (encrypted kind)  |  application/json (live-activity kind)
 TTL: 1800
 Urgency: high | normal | low
-Topic: sale-1042                     (collapses superseded updates)
+Topic: 3f9c0a7e…                     (32 hex digits: a hash of the target and the
+                                      order, which collapses superseded updates,
+                                      differs on every device and tells the relay
+                                      nothing)
 ```
 
 The relay checks the JWT against the handle's key, applies limits, and
@@ -580,13 +646,15 @@ translates:
 | Handle platform | APNs/FCM request |
 | --- | --- |
 | `apns` | `apns-push-type: alert`, `mutable-content: 1`, the ciphertext in a custom key; the Notification Service Extension decrypts and fills in title and body (for a ding, it fetches the sale first, §3). Fallback text: "New sale". |
-| `apns-liveactivity` | `apns-push-type: liveactivity`, topic `<bundle>.push-type.liveactivity`, `aps.content-state` from the plain JSON, `event: update` / `end`, `alert` only for paid / expired. |
-| `apns-pushtostart` | `event: start` (iOS 17.2+), only if the app opted in (it then sends attributes through the relay). |
+| `apns-liveactivity` | `apns-push-type: liveactivity`, topic `<bundle>.push-type.liveactivity`, `aps.content-state` from the plain JSON, always `event: update` (the relay never ends an activity, which the app idles or ends itself), `alert` only for paid ("Paid · 24.50 USD") / expired ("No payment yet"), `stale-date` from `expiresAt` while the sale is open. |
 | `fcm` | Data message, priority from `Urgency`, the ciphertext as data; the app decrypts. |
 
-Answers back to the sender: `201`; `404`/`410` when APNs/FCM say the token
-is dead (the relay deletes the handle; the sender deletes the target);
-`429` with `Retry-After`.
+Answers back to the sender, as problem+json: `201`; `404 unknown-handle`
+when APNs/FCM say the token is dead (the relay deletes the handle; the
+sender deletes the target) or the handle expired; `401` when the VAPID
+signature isn't the handle's sender's; `413`; `429` and `503` with
+`Retry-After`; `502` when APNs or FCM refuse the relay's own setup. The
+full list is the docs page `/push-relay/` (monokulo `xtask/src/pages/docs/push-relay.md`).
 
 ### Running the relay
 
@@ -595,9 +663,19 @@ is dead (the relay deletes the handle; the sender deletes the target);
 ```toml
 [relay]
 enabled = true                 # default false: only useful with APNs/FCM keys
-listen = "0.0.0.0:8443"        # its own listener by default, so its limits and logs
-                               # stay apart from the store pages
+
+[relay.server]
+listen = "0.0.0.0:8444"        # its own listener (8443 is the engine's), so its limits
+                               # and logs stay apart from the store pages
 public_uri = "https://relay.example.org"
+
+[relay.handles.apps.monokular]
+apns_topic = "com.example.monokular"
+fcm_project_id = "monokular-12345"
+
+[relay.apns]
+team_id = "ABCDE12345"
+key_id = "FGHIJ67890"
 ```
 
 **Standalone:**
@@ -607,25 +685,38 @@ monokulo-push-relay --options relay.toml
 ```
 
 Both read the same settings, declared once in `push-relay` and registered
-by both binaries (the same pattern as the engine's `--engine-…` settings in
-monokulo, so they appear on monokulo's admin page when embedded):
-`relay.enabled` (embedded only), `relay.listen`, `relay.public_uri`,
-`relay.apps` (bundle ID / package name / team ID / key ID per app),
-`relay.limits.*`, `relay.handle_ttl_days`, `relay.store_path`. Invalid
-values stop the process, as everywhere else in monokulo. Secrets come only
-from the environment, in both cases:
+by both binaries (the same pattern as the engine's `[engine.*]` /
+`--engine-…` settings in monokulo). Every key has two parts, so it can sit
+under monokulo's `[relay.*]` tables: `server.listen`, `server.public_uri`,
+`server.trusted_proxies`, `server.upstream_timeout_ms`, `store.path`,
+`handles.ttl_days`, `handles.unused_ttl_days`, `handles.apps` (bundle ID
+and FCM project per app), `limits.per_sender_per_minute` (a sender is a
+whole monokulo or a whole Bell, so it is sized for the busiest; a push the
+handle's own limit refuses doesn't count), `limits.per_handle_per_minute`,
+`limits.registrations_per_minute`, `apns.endpoint`, `apns.team_id`,
+`apns.key_id`, `fcm.endpoint`, and for the standalone binary alone
+`logging.level` and `logging.format`. `relay.enabled` is monokulo's own,
+shown read-only on its admin page; the `[relay.*]` settings are read from
+the options file and `--relay-…` at start and are not edited on the admin
+page (a follow-up, `push.md` 16). They are checked at every start, the
+relay on or off, so a mistake stops monokulo then. Invalid values stop the
+process, as everywhere else in monokulo. Secrets come only from the
+environment, in both cases:
 
 ```text
+MONOKULO_RELAY_HANDLE_KEY       (required: every handle id is made under it; openssl rand -hex 32, kept)
 MONOKULO_RELAY_APNS_KEY         (.p8 contents)
 MONOKULO_RELAY_FCM_CREDENTIALS  (service-account JSON)
 ```
 
-**Storage:** the relay always keeps its own SQLite file (`relay.store_path`),
-even when embedded, never tables in monokulo's database. It never touches
-store data, and moving from embedded to standalone is a matter of copying
-that file. It holds only `handles(id, platform, app, token,
-vapid_public_key, created_at, last_used_at)`. No payloads are stored and no
-request bodies are logged.
+**Storage:** the relay always keeps its own SQLite file (`store.path`, by
+default `push-relay.db` beside monokulo's database when embedded), never
+tables in monokulo's database. It never touches store data, and moving
+from embedded to standalone is a matter of copying that file (and keeping
+the same handle key). It holds only `handles(key, platform, app, sealed,
+delivered, expires_at)`: the id's hash, the token and sender key sealed,
+and an expiry to the hour. No payloads are stored and no request bodies,
+tokens or endpoints are logged (a test reads the whole log to check).
 
 **Who runs what:** the project runs the official relay **standalone**, next
 to the official Bell, so both can be deployed and scaled on their own
@@ -652,17 +743,33 @@ stream and the Square timer during a shift (§7).
 ### Push targets in monokulo (`push_targets`)
 
 ```text
-push_targets(id, app_connection_id, kind encrypted|live-activity,
-             endpoint, p256dh, auth, events, created_at, last_ok_at, failures)
+vapid_keys(id, public_key, private_key_encrypted, created_at_utc)
+push_targets(id pt_…, store_id, app_id, client_id, kind encrypted|live-activity,
+             endpoint, p256dh, auth, events, include_payment_uri,
+             created_at_utc, last_ok_at_utc, failures, registered_seq)
 ```
 
-- Registered by the app with its key:
-  a `PUT` of the API's, found from its entry like everything else, per
-  `client_id` (idempotent; the app picks `client_id` per subscription).
-  `/api/v1` has no push-targets resource yet.
-- Removed when the connection is disconnected, when the endpoint answers
-  404/410, or after a run of failures (the same give-up rule as webhooks).
-- `events` filters by event name; Monokular subscribes to `sale.*`.
+- Registered by the app with its key (`ak_` only): `POST` the
+  `register-push-target` form on `GET /api/v1/push-targets` (which carries
+  `vapid_public_key`), found from the entry's `mk:push-targets` like
+  everything else; `GET` and `DELETE /api/v1/push-targets/{id}`. The app
+  picks a `client_id` per subscription; registering it again replaces the
+  subscription on the same target (the design's `PUT`, as `api-macros`
+  has `get`/`post`/`delete` and every link names a `GET`-able resource).
+  At most 8 targets per app. Of a store's targets on one endpoint (one
+  subscription), only the last registered that wants an event is pushed
+  (`registered_seq`, bumped by every registration, in place or new): a
+  device re-paired as a new connection gets the same relay handle with
+  new keys, and is pushed with those (monokulo `push.md` 145).
+- `kind` and keys can't mix: `encrypted` needs `p256dh` and `auth`,
+  `live-activity` takes none and may set `include_payment_uri` (the "Show
+  code in island" switch, decided at registration). A `CHECK` in the table
+  says the same.
+- Removed when the connection is disconnected (cascade), when the endpoint
+  answers 404/410, or after 20 counted failures in a row
+  (`push.target_failure_limit`; `429` doesn't count).
+- `events` is a list of the seven `sale.*` names, every one by default; no
+  glob syntax.
 
 ### Events
 
@@ -672,16 +779,22 @@ the order id, its `merchant_order_id`, the amount, the address,
 
 | Event | From | Urgency | Notification | Live Activity |
 | --- | --- | --- | --- | --- |
-| `sale.waiting` | An app made an order | normal | none (the till that made it already shows it) | phase waiting |
+| `sale.waiting` | An app made an order | normal | none (the till that made it already shows it; the other apps' encrypted targets get it) | phase waiting, only on the till that made it (`order.pending`, waiting again) |
 | `sale.seen` | `order.unconfirmed` | low | none | phase seen |
 | `sale.confirming` | `order.confirming` | low | none | phase confirming |
-| `sale.paid` | `order.paid` / `order.overpaid` | high | "Paid · $24.50" | phase paid, alert, then idle |
-| `sale.partial` | `order.partial` | high | "Part paid" | phase waiting, amount left |
+| `sale.paid` | `order.paid` / `order.overpaid` | high | "Paid · $24.50" | phase paid, alert; the app idles the activity |
+| `sale.partial` | `order.partial` | high | "Part paid" | phase waiting, no `paymentURI` (the engine's event doesn't carry what arrived, so no "amount left", and the full amount is no longer owed: the checkout asks for the rest) |
 | `sale.expired` | `order.expired` | high | "No payment yet" | phase expired, alert |
 | `sale.double_spend` | `order.double_spend_detected` | high | "Payment reversed" | phase expired |
 
 Payloads use the same body versioning as webhooks (`api_version`) so a
-connected app can rely on them.
+connected app can rely on them. `TTL` is the time left on the code (at
+least a minute, at most `push.default_ttl_secs`, 30 minutes) for the
+events before a sale is settled, and 30 minutes for `paid`, `expired` and
+`double_spend`; `Topic` is the first 32 hex digits of SHA-256(target id,
+0x00, order id), the same for every push about one order to one target and
+different on every target, so no two of a store's devices carry the same
+value (monokulo `push.md` 140).
 
 ### Delivery path
 
@@ -698,7 +811,11 @@ push::delivery worker ──Web Push──▶ endpoint (distributor or relay)
 `push_deliveries` reuses the webhook worker's shape (claim, send, back off,
 give up), with two differences: a newer delivery with the same `Topic`
 supersedes an unsent older one, and deliveries past their TTL are dropped,
-not retried (a "Seen" update an hour late is worse than none).
+not retried (a "Seen" update an hour late is worse than none). The row
+keeps the plaintext payload and each attempt encrypts it afresh (RFC 8291
+wants a fresh salt and key per message). Retries wait 5, 20, 80 and 320 s
+or what `Retry-After` says, never past the TTL, five attempts at most.
+Nothing runs until an app registers a target: there is no `push.enabled`.
 
 ---
 
@@ -718,10 +835,11 @@ through the relay): location label, store name.
 | --- | --- | --- |
 | `phase` | idle / waiting / seen / confirming / paid / expired | Layout and colour |
 | `sale` | "#1042" | Label |
-| `amount` | "$24.50" | Large amount |
+| `amount` | "24.50" | Large amount, formatted by the device with `currency` |
+| `currency` | "USD" | With `amount`: no server formats money for the device's locale |
 | `xmr` | "0.1421" | Second line |
-| `expiresAt` | timestamp | A countdown iOS draws itself (`Text(timerInterval:)`), and `stale-date` |
-| `waitingCount` | 2 | "+1 more" when sales overlap |
+| `expiresAt` | 1761312000 | Unix seconds: a countdown iOS draws itself (`Text(timerInterval:)`), and `stale-date` |
+| `waitingCount` | 2 | The till's own app orders still waiting for a payment, this one included while it is: "+1 more" at 2 |
 | `paymentURI` | `monero:…` | **Only** when the device has "Show code in island" on; the plain URI, never the receipt (§4) |
 
 **Show code in island** is a per-device setting, off by default. Turning it
@@ -736,13 +854,22 @@ only in the app.
 | waiting | Logo + "$24.50" | Amount, XMR, countdown, QR if enabled | the app, on finding a sale |
 | seen | Logo + "Seen" | "Seen on the network" | push, silent, low |
 | confirming | Logo + "1/2" | "Confirming" | push, silent, low |
-| paid | Tick + "$24.50" | "Paid · 0.1421 XMR received" | push, alert, high, then idle |
+| paid | Tick + "$24.50" | "Paid · 0.1421 XMR received" | push, alert, high; the app idles the activity |
 | expired | Clock | "No payment yet · refund in Square" | push, alert, high |
 
 Lifecycle: one activity per shift, started by the app (iOS ends it after 8 h;
-the next app launch starts a new one; push-to-start is opt-in because it
-sends the attributes through the relay). Overlapping sales show the newest
-plus "+N more". Tapping opens `monokular://sale/{id}`.
+the next app launch starts a new one). There is no push-to-start: nothing
+would send one, since monokulo's targets carry only the content state, so
+the relay has no platform for it (monokulo `push.md` 157); it comes back
+as a monokulo target kind and a relay platform in one change, with the
+attributes it would send through the relay decided then. Monokulo's pushes
+never end it: the relay sends every state as an `update` (`paid` and
+`expired` with an alert), and the app takes the activity back to idle or ends it itself
+(monokulo `push.md` 113). The island shows only the till's own sales
+(monokulo `push.md` 141): monokulo pushes a till's Live Activity nothing of
+another till's, and sends a target's pushes in the order they were queued,
+so overlapping sales show the newest plus "+N more".
+Tapping opens `monokular://sale/{id}`.
 
 The waiting phase needs the app to run, so on iPhone it appears when the
 cashier opens the app or taps the Bell's alert (§3), not on its own.
@@ -769,6 +896,11 @@ Rules:
   high priority.
 - `Topic` collapses superseded updates; `TTL` equals the time left on the
   code (60 s for dings).
+- Monokulo sends one store's apps at most `push.per_store_per_minute`
+  pushes a minute (120), and targets sharing an endpoint once per event (as
+  the last registered), so
+  one store can't spend the relay's per-sender budget, which every store of
+  an instance shares (monokulo `push.md` 144, 145).
 - iOS: `NSSupportsLiveActivitiesFrequentUpdates` for busy tills.
 - Square requests: one `ListPayments` per tick per till, plus one order read
   per Monero sale. The spike measures Square's limits for a busy store with
@@ -781,20 +913,30 @@ Rules:
 ```text
 crates/push/                    new library (§5): Web Push, VAPID, RFC 8291
 crates/push-relay/              new library + `monokulo-push-relay` binary (§5)
+crates/outbound/                new library: the private-address rule and the checking HTTP client,
+                                for monokulo's webhooks and pushes and the Bell's dings
 crates/monokulo/                depends on push; on push-relay behind feature "relay" (default)
 crates/monokulo/src/
   apps/                         connected apps
     mod.rs                      AppConnection, app keys, connect tokens (the plugins' token model)
     events.rs                   the sale.* event model, shared by SSE and push
   plugins.rs                    PluginSlug and PluginName, now also naming apps
-  push/                         monokulo's side of push: push_targets, push_deliveries,
-                                fan-out from webhooks::subscriber, the delivery worker
+  push/                         monokulo's side of push: Push (the VAPID key), policy.rs (urgency,
+                                TTL, topic per event), payload.rs (the Sale JSON and the Live
+                                Activity state), delivery.rs (the worker); db/push.rs holds the
+                                push_targets and push_deliveries queries, queued from
+                                Db::queue_order_event in the event's transaction
+  outbound.rs                   the checking HTTP client webhooks and pushes share (no private
+                                addresses unless webhooks.allow_private_urls, no redirects, no onion)
+  api/v1/push_targets.rs,
+  api/v1/push_target.rs         GET/POST /api/v1/push-targets, GET/DELETE /api/v1/push-targets/{id}
   http/apps.rs                  /apps/connect (the page and the redeem call)
   api/v1/                       the HTTP API: the entry, store, orders, order, events, app;
                                 an app's key (ak_) is taken wherever the store's secret is
   views/connected_apps.rs       the Connected apps card and Connect an app page
-  relay.rs                      (feature "relay") registers push-relay's settings and, when
-                                relay.enabled, starts a Relay on its own listener
+  relay.rs                      (feature "relay") reads and checks [relay.*] at every start and,
+                                when relay.enabled, starts a Relay on its own listener; without
+                                the feature, relay.enabled and [relay.*] stop monokulo
 ```
 
 There is no Square code in monokulo.
@@ -806,22 +948,32 @@ no data moves: the store's shop plugin stays where it is.
 
 - `app_connections` (store, slug, name, device name, platform, key hash,
   last seen), `app_connect_tokens`
-- `push_targets`, `push_deliveries`
-- `vapid_keys` (encrypted private key)
+- `0052_push_targets.sql`: `vapid_keys` (encrypted private key) and `push_targets`
+- `0053_push_deliveries.sql`: `push_deliveries`, and a nullable
+  `app_orders.last_sale_event` for the Live Activity's `waitingCount`
 - none for the relay: its handles live in its own SQLite file (§5)
 
 ### Settings (registry)
 
-- `push.enabled`, `push.delivery.*` (attempts, backoff), `push.default_ttl`
-- `relay.*` (declared in push-relay, registered by monokulo when built with
-  the relay, §5)
+- `push.delivery_timeout_ms`, `push.max_attempts`, `push.default_ttl_secs`,
+  `push.keep_days`, `push.target_failure_limit` (a "Pushes to apps" card on
+  the admin Payments tab); no `push.enabled`: nothing runs until an app
+  registers a target
+- `relay.enabled` (monokulo's own) and `[relay.*]` (declared in push-relay,
+  read by monokulo at start when built with the relay, §5)
 
 ### Tests
 
-In-process like the rest of monokulo: a test UnifiedPush endpoint and a test
-relay run on the test's own axum router; `push::encrypt::decrypt` checks
-what arrived. APNs and FCM are faked behind their provider traits; one
-`over_http` test per provider talks to a local HTTP/2 stub. App keys on
+In-process like the rest of monokulo wherever a push needn't land
+(queueing, superseding, TTL, give-up, target deletion); where it must, a
+stub UnifiedPush endpoint on `127.0.0.1:0` takes it and
+`push::encrypt::decrypt` checks what arrived, in tests named `over_http`.
+There are no provider traits or in-memory stores for tests: the relay's
+APNs and FCM endpoints are settings, so its tests point them at stand-ins
+on loopback (HTTP/2 with prior knowledge for APNs). Monokulo's
+`push::pipeline_tests::relay_tests` run the whole chain once: a relay
+served in-process, a sale pushed to its handles, and what the stand-in
+APNs and FCM received read as the device would. App keys on
 `/api/v1/orders` are tested for idempotency across two apps, the app
 recorded as the source, and a disconnected app's key refused.
 
@@ -944,6 +1096,13 @@ Choices:
 Android and iPad come first because they work with a timer alone: no relay,
 no Bell, no Mac for Android.
 
+Status, 2026-10-27: the server side of 4, 5 and 6 is built (monokulo's
+`push` crate, push targets and deliveries, `push-relay` standalone and
+embedded; the Bell), reviewed and tested; see [reports/bell.md](reports/bell.md)
+and monokulo's `docs/reports/bell-and-relay.md`. The app wiring (UnifiedPush
+and relay registration, Settings › Wake-ups), the deployments of the official
+relay and Bell, and the Square spike (1) are open.
+
 ---
 
 ## 11. Open questions
@@ -968,5 +1127,10 @@ no Bell, no Mac for Android.
   App Links are on `monokular.monokulo.com` (this repo's GitHub Pages);
   connect codes are on each store's own host.
 - Publishing `push` to crates.io so the Bell needn't use a git dependency.
+  Until then the Bell pins one monokulo commit; after the push PRs merge
+  the pin moves to `main`'s commit.
+- `crypto-bigint` 0.7.5 (under `p256`) is yanked (RUSTSEC-2026-0387); both
+  repositories move to 0.7.10 or later together on 2026-11-09, when it is
+  two weeks old, or sooner if the owner says the fix wins over the rule.
 - App Store review of a crypto-payments companion; Google Play's "display
   over other apps" declaration and its foreground service type for a shift.

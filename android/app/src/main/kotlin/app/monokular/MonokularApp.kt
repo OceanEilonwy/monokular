@@ -5,15 +5,30 @@ import android.os.Build
 import app.monokular.core.AppIdentity
 import app.monokular.core.MonokuloApi
 import app.monokular.core.Tor
+import app.monokular.push.BellAddress
+import app.monokular.push.BellApi
+import app.monokular.push.BellWakeUps
+import app.monokular.push.SquareSide
+import app.monokular.push.UnifiedPushSubscriptions
+import app.monokular.push.WakePushService
+import app.monokular.push.WakeUps
 import app.monokular.sales.SquareApi
 import app.monokular.sales.SquareAuth
 import app.monokular.sales.SquareConfig
+import app.monokular.sales.SquareException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import okhttp3.OkHttpClient
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-class MonokularApp : Application() {
+class MonokularApp : Application(), WakePushService.Host {
     val graph by lazy { Graph(this) }
+
+    // The connector's service hands the Bell's dings to the graph (decision 93).
+    override val pushSubscriptions get() = graph.push
 }
 
 /** The app's long-lived parts. */
@@ -50,6 +65,48 @@ class Graph(app: Application) {
     fun squareAuth() = SquareAuth(http, squareConfig(), stores.tokens)
 
     fun squareApi() = SquareApi(http, squareConfig(), squareAuth())
+
+    /** The project's Bell, `-Pmonokular.bell.url` (decision 98): what "Monokular Bell" registers with and Settings shows. */
+    val monokularBell: BellAddress = requireNotNull(BellAddress.parse(BuildConfig.BELL_URL, allowHttp = BuildConfig.DEBUG)) {
+        "-Pmonokular.bell.url isn't a Bell address this build takes: ${BuildConfig.BELL_URL}"
+    }
+
+    /** The till's push subscription for its Bell (decision 90); a ding goes from here to the running shift. */
+    val push = UnifiedPushSubscriptions(app)
+
+    /**
+     * Settings › Wake-ups (`docs/design.md` §3): made on first use, which
+     * registers with the chosen Bell again (decision 95's app start). A
+     * process the connector started for a ding alone never makes it, so a
+     * ding outside a shift costs the Bell nothing (decision 93).
+     */
+    val wakeUps: WakeUps by lazy {
+        BellWakeUps(
+            push = push,
+            distributors = push,
+            bells = BellApi(http),
+            store = stores.wakeUps,
+            monokular = monokularBell,
+            squareSandbox = BuildConfig.SQUARE_SANDBOX,
+            square = squareSide,
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            now = { System.currentTimeMillis() / 1000 },
+        )
+    }
+
+    /** The till's Square sign-in, as a Bell registration needs it. */
+    private val squareSide = object : SquareSide {
+        override val signedInApplicationId: String?
+            get() = if (stores.withoutSquare || stores.tokens.load() == null) null else squareConfig().applicationId
+
+        override val locationId: String? get() = stores.location?.id
+
+        override suspend fun accessToken(): String? = try {
+            squareAuth().accessToken()
+        } catch (e: SquareException) {
+            if (e.signInAgain) null else throw IOException(e.message, e)
+        }
+    }
 
     val runner = TillRunner(this)
 
