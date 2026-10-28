@@ -212,7 +212,10 @@ class BellWakeUps(
                 unsubscribe()
                 return WakeUpStatus.NoDistributor
             }
-            is Distributor.Choose -> return WakeUpStatus.ChooseDistributor(distributor.packages)
+            is Distributor.Choose -> {
+                release()
+                return WakeUpStatus.ChooseDistributor(distributor.packages)
+            }
             is Distributor.Found -> distributor.packageName
         }
         val subscription = subscription(info.vapidPublicKey, through).let { state ->

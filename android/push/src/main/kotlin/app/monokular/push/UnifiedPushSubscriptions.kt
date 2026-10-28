@@ -56,10 +56,8 @@ class UnifiedPushSubscriptions(private val context: Context) : PushSubscriptions
         }
     }
 
-    override fun distributors(): List<String> = UnifiedPush.getDistributors(context)
-
     override fun resolve(): Distributor {
-        val installed = distributors()
+        val installed = UnifiedPush.getDistributors(context)
         UnifiedPush.getSavedDistributor(context)?.takeIf { it in installed }?.let { return Distributor.Found(it) }
         // The connector's choice without its dialog: the system's default, or the only one.
         return when (val resolved = UnifiedPush.resolveDefaultDistributor(context)) {
@@ -72,7 +70,8 @@ class UnifiedPushSubscriptions(private val context: Context) : PushSubscriptions
     override fun save(packageName: String) = UnifiedPush.saveDistributor(context, packageName)
 
     override fun subscribe(vapidPublicKey: String) {
-        if (UnifiedPush.getSavedDistributor(context) == null) {
+        // None saved (the connector forgot it, decision 114): look again rather than fail with one installed.
+        if (UnifiedPush.getSavedDistributor(context) == null && resolve() !is Distributor.Found) {
             mutableState.value = PushState.Failed(PushFailure.NoDistributor)
             return
         }
@@ -86,7 +85,11 @@ class UnifiedPushSubscriptions(private val context: Context) : PushSubscriptions
 
     override fun unsubscribe() {
         mutableState.value = PushState.None
+        // The connector forgets the saved distributor along with its last registration,
+        // and "bell" is the only one: keep the distributor, the cashier's pick included (decision 114).
+        val distributor = UnifiedPush.getSavedDistributor(context)
         UnifiedPush.unregister(context, INSTANCE)
+        distributor?.let(::save)
     }
 
     /** [WakePushService]: the distributor's endpoint, with the subscription's public keys when it gave them. */

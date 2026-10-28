@@ -55,9 +55,6 @@ sealed interface PushState {
  * so only that Bell can push to it.
  */
 interface PushSubscriptions {
-    /** The UnifiedPush distributors installed, by package name; empty means wake-ups can't be carried. */
-    fun distributors(): List<String>
-
     val state: StateFlow<PushState>
 
     /**

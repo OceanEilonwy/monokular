@@ -66,6 +66,11 @@ class Graph(app: Application) {
 
     fun squareApi() = SquareApi(http, squareConfig(), squareAuth())
 
+    /** The project's Bell, `-Pmonokular.bell.url` (decision 98): what "Monokular Bell" registers with and Settings shows. */
+    val monokularBell: BellAddress = requireNotNull(BellAddress.parse(BuildConfig.BELL_URL, allowHttp = BuildConfig.DEBUG)) {
+        "-Pmonokular.bell.url isn't a Bell address this build takes: ${BuildConfig.BELL_URL}"
+    }
+
     /** The till's push subscription for its Bell (decision 90); a ding goes from here to the running shift. */
     val push = UnifiedPushSubscriptions(app)
 
@@ -81,9 +86,7 @@ class Graph(app: Application) {
             distributors = push,
             bells = BellApi(http),
             store = stores.wakeUps,
-            monokular = requireNotNull(BellAddress.parse(BuildConfig.BELL_URL, allowHttp = BuildConfig.DEBUG)) {
-                "-Pmonokular.bell.url isn't a Bell address this build takes: ${BuildConfig.BELL_URL}"
-            },
+            monokular = monokularBell,
             squareSandbox = BuildConfig.SQUARE_SANDBOX,
             square = squareSide,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),

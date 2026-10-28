@@ -1092,3 +1092,33 @@ written except where an entry below says otherwise.
      release build's R8 pass keeps what the manifest names, but the emulator
      script runs a debug build, so a ding through a minified build is still
      to be seen before a release.
+114. **The connector forgets the distributor with its last registration, so
+     the app keeps it.** In 3.3.5, `UnifiedPush.unregister(context, instance)`
+     removes the instance and then, with no registration left, the saved
+     distributor too (`DistributorStore.remove()`; the distributor is still
+     told to unregister, from the token it kept). The app has one instance,
+     `bell`, so every Timer only, sign-out, Bell switch and rotated VAPID key
+     would forget the distributor: the rotated-key path (unsubscribe, then
+     subscribe for the new key) ended in "Needs a UnifiedPush app" with ntfy
+     installed, and the cashier's pick among several (A7.31) was lost.
+     `UnifiedPushSubscriptions.unsubscribe()` reads the saved distributor
+     first and saves it again after unregistering; `subscribe()` with none
+     saved resolves one (the default, or the only one installed) before it
+     fails with `NoDistributor`. The build has no Robolectric, so this rests
+     on the connector's bytecode, recorded here, and on two emulator checks
+     in the script: pick a distributor among two, Timer only, the Bell again,
+     and no second pick; unsubscribe inside ntfy, `NoDistributor`, and the
+     next shift start connects again by itself. A distributor uninstalled
+     with two others left is taken back as decision 108 says: the pass
+     `DELETE`s the registration before showing the choice, so the Bell isn't
+     ringing a dead endpoint while the cashier picks.
+116. **A missed wake-up is judged at the timer's find, not later.** A
+     timer-started check that finds a sale with no ding in the 60 s before
+     is `MissingWakeups` at once (decision 94). The other way, waiting
+     `MISSED_AFTER` past the find for a ding, would spare one case: a 30 s
+     check landing on a sale whose webhook is still in flight. That case
+     costs one idempotent `POST` and a few seconds at 2 s, since the ding on
+     its way puts the till back to `Connected` when it lands. Waiting costs
+     every real missed wake-up another minute at 30 s, which is what the
+     cashier would notice, and a timer job of its own. So the verdict stays
+     at the find.

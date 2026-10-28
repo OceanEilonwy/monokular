@@ -65,7 +65,6 @@ class BellWakeUpsTest {
         var answer: (String) -> PushState? = { PushState.Subscribed(PushSubscription(endpoint, "BKey", "auth")) }
         override val state = MutableStateFlow<PushState>(PushState.None)
         override val dings = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
-        override fun distributors() = emptyList<String>()
 
         override fun subscribe(vapidPublicKey: String) {
             calls += "subscribe $vapidPublicKey"
@@ -581,6 +580,18 @@ class BellWakeUpsTest {
         distributors.changes.emit(Unit)
         runCurrent()
         assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+    }
+
+    @Test
+    fun `the distributor uninstalled with two others left takes the registration back before the cashier picks (decision 108)`() = runTest {
+        val wakeUps = connected()
+        val left = listOf("org.unifiedpush.distributor.nextpush", "org.unifiedpush.distributor.sunup")
+        distributors.resolved = Distributor.Choose(left)
+        distributors.changes.emit(Unit)
+        runCurrent()
+        assertEquals(listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_1"), bell.calls)
+        assertNull(store.registration)
+        assertEquals(WakeUpStatus.ChooseDistributor(left), wakeUps.status.value)
     }
 
     @Test
