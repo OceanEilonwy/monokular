@@ -21,6 +21,7 @@ use live_settings::{
 use push::{Contact, Endpoint, VapidKey};
 use tracing_subscriber::EnvFilter;
 
+use crate::pos::PointOfSale;
 use crate::square::WebhookKey;
 
 settings! {
@@ -395,17 +396,17 @@ impl SettingValue for ServiceUrl {
 
 /// The Bell's own address, `bell.public_uri`: a [`ServiceUrl`] with no
 /// query or fragment, kept without a trailing slash. A path is allowed
-/// (a reverse proxy serving the Bell under one), and the webhook URL
-/// Square signs is this followed by [`crate::square::WEBHOOK_PATH`].
+/// (a reverse proxy serving the Bell under one), and each point of sale's
+/// webhook URL is this followed by its [`PointOfSale::webhook_path`].
 #[derive(Clone, PartialEq, Eq)]
 pub struct PublicUri {
     base: String,
 }
 
 impl PublicUri {
-    /// The URL Square sends webhooks to, and signs them for.
-    pub fn notification_url(&self) -> String {
-        format!("{}{}", self.base, crate::square::WEBHOOK_PATH)
+    /// The URL `pos` sends webhooks to (and Square signs them for).
+    pub fn notification_url(&self, pos: PointOfSale) -> String {
+        format!("{}{}", self.base, pos.webhook_path())
     }
 
     /// The `sub` of every VAPID token the Bell signs, how a push service's
@@ -787,7 +788,7 @@ pub(crate) mod tests {
             ),
         ] {
             let uri = PublicUri::parse(raw).unwrap();
-            assert_eq!(uri.notification_url(), url, "{raw}");
+            assert_eq!(uri.notification_url(PointOfSale::Square), url, "{raw}");
             assert_eq!(PublicUri::parse(&uri.render()), Ok(uri));
         }
         assert_eq!(

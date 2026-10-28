@@ -27,7 +27,14 @@ async fn registration_over_http_keeps_the_merchant_square_names() {
         .unwrap()
         .to_owned();
     assert!(id.starts_with("br_") && id.len() == 35, "{id}");
-    assert_eq!(answered.json()["square_application_id"], APPLICATION_ID);
+    assert_eq!(
+        answered.json(),
+        serde_json::json!({
+            "registration_id": id,
+            "point_of_sale": "square",
+            "application_id": APPLICATION_ID,
+        })
+    );
 
     let asked = square.next().await;
     assert_eq!(asked.path, format!("/v2/locations/{LOCATION}"));
@@ -467,7 +474,7 @@ async fn a_sandbox_bell_asks_the_square_it_is_pointed_at_over_http() {
         .await;
     assert_eq!(answered.status, StatusCode::CREATED, "{}", answered.text());
     assert_eq!(
-        answered.json()["square_application_id"],
+        answered.json()["application_id"],
         "sandbox-sq0idb-MonokularTest"
     );
     assert_eq!(

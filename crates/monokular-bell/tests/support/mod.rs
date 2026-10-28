@@ -484,12 +484,24 @@ impl Answered {
     }
 }
 
+/// A Square registration, as a till sends it.
 pub fn registration(token: &str, location: &str, subscription: &Value) -> Request<Body> {
+    registration_at("square", token, location, subscription)
+}
+
+/// A registration at `point_of_sale`, as a till sends it.
+pub fn registration_at(
+    point_of_sale: &str,
+    token: &str,
+    location: &str,
+    subscription: &Value,
+) -> Request<Body> {
     json_request(
         Method::POST,
         "/v1/register",
         json!({
-            "square_access_token": token,
+            "point_of_sale": point_of_sale,
+            "access_token": token,
             "location_id": location,
             "subscription": subscription,
         }),

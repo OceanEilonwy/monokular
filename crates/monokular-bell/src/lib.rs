@@ -25,6 +25,7 @@
 
 pub mod cli;
 mod dings;
+mod pos;
 mod problem;
 mod registrations;
 mod routes;
@@ -41,9 +42,10 @@ use push::{Sender, VapidKey};
 use rate_limit::RateLimiter;
 
 use crate::dings::Dings;
+use crate::pos::PointOfSale;
 use crate::registrations::{RegistrationStore, StoreError};
-use crate::settings::{ApplicationId, BellConfig, SquareEnvironment};
-use crate::square::{Square, WebhookKey};
+use crate::settings::BellConfig;
+use crate::square::Square;
 
 /// The `User-Agent` of every request the Bell makes.
 pub(crate) const USER_AGENT: &str = concat!("monokular-bell/", env!("CARGO_PKG_VERSION"));
@@ -62,19 +64,32 @@ pub enum StartError {
     Topic(#[from] push::message::TopicError),
 }
 
+/// The points of sale this Bell serves, each one's adapter: at least one.
+pub(crate) struct Adapters {
+    square: Option<Arc<Square>>,
+}
+
+impl Adapters {
+    /// The points of sale that are on, in [`PointOfSale::ALL`]'s order.
+    fn on(&self) -> Vec<PointOfSale> {
+        PointOfSale::ALL
+            .into_iter()
+            .filter(|pos| match pos {
+                PointOfSale::Square => self.square.is_some(),
+                PointOfSale::Clover => false,
+            })
+            .collect()
+    }
+}
+
 /// What every request reads.
 pub(crate) struct Shared {
-    /// `bell.public_uri` followed by the webhook path: what Square signs.
-    notification_url: String,
-    application_id: ApplicationId,
-    environment: SquareEnvironment,
-    webhook_key: WebhookKey,
+    adapters: Adapters,
     vapid_key: Arc<VapidKey>,
     trusted_proxies: TrustedProxies,
     reach: Reach,
     registrations: RateLimiter<ClientIdentity>,
     store: RegistrationStore,
-    square: Square,
     dings: Arc<Dings>,
 }
 
@@ -139,28 +154,33 @@ impl Bell {
             config.registration_failure_limit,
             config.dings_per_merchant_per_minute,
         )?;
-        let square = Square::new(config.square.api_url.clone(), config.timeout)
-            .map_err(|error| StartError::Client("Square", error))?;
-        let notification_url = public_uri.notification_url();
+        let notification_url = public_uri.notification_url(PointOfSale::Square);
+        let square = Square::new(
+            config.square.api_url.clone(),
+            application_id,
+            config.square.environment,
+            notification_url,
+            webhook_key,
+            config.timeout,
+        )
+        .map_err(|error| StartError::Client("Square", error))?;
         tracing::info!(
-            bell.webhook_url = %notification_url,
-            square.application = application_id.as_str(),
-            square.environment = config.square.environment.as_str(),
+            bell.webhook_url = square.notification_url(),
+            square.application = square.application_id().as_str(),
+            square.environment = square.environment().as_str(),
             vapid_public_key = %vapid_key.public(),
             "the Bell is ready"
         );
         Ok(Bell {
             shared: Arc::new(Shared {
-                notification_url,
-                application_id,
-                environment: config.square.environment,
-                webhook_key,
+                adapters: Adapters {
+                    square: Some(Arc::new(square)),
+                },
                 vapid_key,
                 trusted_proxies: config.trusted_proxies.clone(),
                 reach,
                 registrations: RateLimiter::new(config.registrations_per_minute),
                 store,
-                square,
                 dings: Arc::new(dings),
             }),
         })

@@ -24,8 +24,9 @@ async fn info_shows_the_application_and_the_public_key_of_the_vapid_key() {
     assert_eq!(
         answered.json(),
         json!({
-            "square_application_id": APPLICATION_ID,
-            "environment": "production",
+            "points_of_sale": {
+                "square": {"application_id": APPLICATION_ID, "environment": "production"},
+            },
             "vapid_public_key": public.to_base64url(),
             "version": env!("CARGO_PKG_VERSION"),
         })
@@ -38,10 +39,9 @@ async fn info_shows_the_application_and_the_public_key_of_the_vapid_key() {
     let answered = sandbox
         .call(Request::get("/v1/info").body(Body::empty()).unwrap())
         .await;
-    assert_eq!(answered.json()["environment"], "sandbox");
     assert_eq!(
-        answered.json()["square_application_id"],
-        "sandbox-sq0idb-MonokularTest"
+        answered.json()["points_of_sale"]["square"],
+        json!({"application_id": "sandbox-sq0idb-MonokularTest", "environment": "sandbox"})
     );
 }
 
@@ -161,11 +161,18 @@ async fn a_registration_that_doesnt_read_is_refused() {
     let mut bad_keys = till.subscription();
     bad_keys["keys"]["p256dh"] = json!("AAAA");
     let cases = [
-        json!({"location_id": LOCATION, "subscription": till.subscription()}),
-        json!({"square_access_token": TOKEN, "location_id": "a/b", "subscription": till.subscription()}),
-        json!({"square_access_token": "with space", "location_id": LOCATION, "subscription": till.subscription()}),
-        json!({"square_access_token": TOKEN, "location_id": LOCATION, "subscription": bad_keys}),
-        json!({"square_access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription(), "extra": 1}),
+        json!({"point_of_sale": "square", "location_id": LOCATION, "subscription": till.subscription()}),
+        json!({"point_of_sale": "square", "access_token": TOKEN, "location_id": "a/b", "subscription": till.subscription()}),
+        json!({"point_of_sale": "square", "access_token": "with space", "location_id": LOCATION, "subscription": till.subscription()}),
+        json!({"point_of_sale": "square", "access_token": TOKEN, "location_id": LOCATION, "subscription": bad_keys}),
+        json!({"point_of_sale": "square", "access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription(), "extra": 1}),
+        // The point of sale missing, unknown, or in another case.
+        json!({"access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription()}),
+        json!({"point_of_sale": "toast", "access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription()}),
+        json!({"point_of_sale": "Square", "access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription()}),
+        // The first Bell's shape: no shim (B44).
+        json!({"square_access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription()}),
+        json!({"point_of_sale": "square", "square_access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription()}),
     ];
     for case in cases {
         let answered = bell
