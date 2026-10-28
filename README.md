@@ -22,8 +22,9 @@ alerts and the bubble), a floating bubble over Square that lights up with a
 sale and opens its code over it, a Live Update notification with the
 payment's progress, and the sale full screen in the app, with the receipt
 in the code, until it's paid or refunded. It hasn't met real Square yet
-(the Square spike, design doc §10), push and the Monokular Bell aren't
-built, and iOS hasn't started. Choices made along the way are in
+(the Square spike, design doc §10), the app doesn't use push or the
+Monokular Bell yet (the Bell itself is built: [below](#running-a-bell)), and
+iOS hasn't started. Choices made along the way are in
 [docs/decisions/android.md](docs/decisions/android.md); screenshots are in
 [docs/screenshots/android](docs/screenshots/android).
 
@@ -111,6 +112,76 @@ curl -X POST localhost:8737/__dev/orders/<order id>/paid                       #
 
 Versions live in `android/gradle/libs.versions.toml`; each was released at
 least two weeks before it was added.
+
+## Running a Bell
+
+The Monokular Bell (`crates/monokular-bell`) rings the tills at a Square
+location within a second or two of a payment there, instead of their waiting
+for their next look at Square: Square's payment webhook comes to the Bell, and
+the Bell sends each registered till a Web Push "ding". It needs one Square
+application (the one the tills sign in through) with a webhook subscription
+for `payment.created` and `payment.updated`, and an https address Square can
+reach. Its API is in [docs/bell.md](docs/bell.md); the choices behind it in
+[docs/decisions/bell.md](docs/decisions/bell.md).
+
+```sh
+cargo build --release -p monokular-bell
+target/release/monokular-bell --init      # writes ~/.config/monokulo/bell.toml, every setting described
+```
+
+In `bell.toml` set at least the Bell's address and the application:
+
+```toml
+[bell]
+public_uri = "https://bell.example.org"   # Square's webhook URL is this + /v1/square/webhook
+square.application_id = "sq0idp-…"        # sandbox-sq0idb-… with square.environment = "sandbox"
+```
+
+The two secrets come from the environment only:
+
+```sh
+export MONOKULAR_BELL_SQUARE_WEBHOOK_KEY=…               # the subscription's signature key (Developer Console › Webhooks)
+export MONOKULAR_BELL_VAPID_KEY=$(openssl rand -hex 32)  # once; keep it: the tills' subscriptions are made for its public key
+target/release/monokular-bell
+```
+
+It listens on `127.0.0.1:8445` (`bell.listen`): put an https reverse proxy in
+front, serving `bell.public_uri`; a proxy on the same machine is trusted for
+`X-Forwarded-For` by default (`bell.trusted_proxies`). Registrations are kept
+in `~/.local/share/monokulo/bell.db` (`bell.store_path`). Any setting can be
+given on the command line too (`monokular-bell --help`); anything invalid or
+missing stops it before it listens. Stopping it (SIGTERM) lets requests and
+dings in flight finish.
+
+An iPhone till, or an Android one with only Google's services, takes its
+dings through a push relay (monokulo's `monokulo-push-relay`), and a relay
+counts pushes per sender, which is the Bell's VAPID key: every merchant's
+tills behind it are one sender. A completed payment dings each till
+registered at its location once, so at its busiest a Bell sends about the
+payments a minute across all its merchants times the tills at each
+location; whoever runs the relay sizes its `limits.per_sender_per_minute`
+(600 by default) above that, or the relay answers `429` and those dings
+are lost: a ding is never sent again, as a minute late it is worth
+nothing. Its `limits.per_handle_per_minute` (60) is per till and is never
+what a Bell reaches. So that one busy merchant can't spend the relay's
+budget for all of them, the Bell sends each merchant's tills at most
+`bell.dings_per_merchant_per_minute` dings a minute (120 by default),
+across its locations, and drops the rest: keep it well below the relay's
+per-sender limit.
+
+To try it on one machine against the stand-in Square, with any Web Push
+endpoint on loopback as the till's:
+
+```sh
+FAKE_SQUARE_WEBHOOK_URL=http://127.0.0.1:8445/v1/square/webhook FAKE_SQUARE_WEBHOOK_KEY=dev \
+  python3 -I tools/fake-square/fake_square.py
+MONOKULAR_BELL_SQUARE_WEBHOOK_KEY=dev MONOKULAR_BELL_VAPID_KEY=$(openssl rand -hex 32) \
+  cargo run -p monokular-bell -- --bell-public-uri http://127.0.0.1:8445 \
+  --bell-square-environment sandbox --bell-square-application-id sandbox-sq0idb-dev \
+  --bell-square-api-url http://127.0.0.1:8738 --bell-allow-private-endpoints true
+# register a subscription for L-DEV with the token EAAA-dev-…, then ring up a sale:
+curl -X POST localhost:8738/fake/sale -d '{"items":[["Flat white",2,450]]}'
+```
 
 ## License
 

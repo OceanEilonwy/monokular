@@ -7,6 +7,20 @@ edition = "2024"
 license = "GPL-3.0-only"
 repository = "https://github.com/OceanEilonwy/monokular"
 
+# Crates of the monokulo repository the Monokular Bell builds on (Web Push,
+# settings, storage, limits, client addresses, outbound requests and
+# shutdown), all at one commit of it, so they agree with each other
+# (docs/decisions/bell.md 1).
+# Moved with `cargo update -p push --precise <commit>` after changing `rev`.
+[workspace.dependencies]
+abuse = { git = "https://github.com/OceanEilonwy/monokulo", rev = "2b200ef2a95c0b93e4c6b7e9b78ca9447e319068" }
+live-settings = { git = "https://github.com/OceanEilonwy/monokulo", rev = "2b200ef2a95c0b93e4c6b7e9b78ca9447e319068" }
+outbound = { git = "https://github.com/OceanEilonwy/monokulo", rev = "2b200ef2a95c0b93e4c6b7e9b78ca9447e319068" }
+push = { git = "https://github.com/OceanEilonwy/monokulo", rev = "2b200ef2a95c0b93e4c6b7e9b78ca9447e319068" }
+rate-limit = { git = "https://github.com/OceanEilonwy/monokulo", rev = "2b200ef2a95c0b93e4c6b7e9b78ca9447e319068" }
+service-runtime = { git = "https://github.com/OceanEilonwy/monokulo", rev = "2b200ef2a95c0b93e4c6b7e9b78ca9447e319068" }
+sqlite = { git = "https://github.com/OceanEilonwy/monokulo", rev = "2b200ef2a95c0b93e4c6b7e9b78ca9447e319068" }
+
 # orf-codec-ffi's library as the Android app ships it, once per ABI: small.
 # (Release builds for this machine keep the defaults: UniFFI's bindgen reads
 # its metadata from symbols that LTO and stripping remove.)
