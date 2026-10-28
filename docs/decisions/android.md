@@ -1122,3 +1122,43 @@ written except where an entry below says otherwise.
      every real missed wake-up another minute at 30 s, which is what the
      cashier would notice, and a timer job of its own. So the verdict stays
      at the find.
+118. **A distributor uninstalled ends the subscription twice over, so its
+     end is judged by what is installed.** In 3.3.5,
+     `UnifiedPush.getSavedDistributor()` finding the saved distributor gone
+     broadcasts a local `UNREGISTERED` for each of the instance's tokens
+     without removing them first, and the connector's receiver answers a
+     plain `UNREGISTERED` with `UnifiedPush.unregister(context, instance)`,
+     by instance. So `resolve()` in decision 102's look at a change of apps
+     itself brings a `Lost`, after or before the pass that look started
+     through the distributor left (the worse ordering also ends the `bell`
+     registration that pass just made). `BellWakeUps` remembers the
+     distributor a change of apps took away; at a `Lost` it takes the Bell
+     registration back as decision 91 says and then asks `resolve()`: the
+     same distributor still there, or none, is `NoDistributor` (the
+     distributor itself ended it, decision 91); another, or several to
+     choose from, is a pass that ends `Connected` or `ChooseDistributor`,
+     subscribing afresh. An app updated (`PACKAGE_REMOVED` then
+     `PACKAGE_ADDED`, both with `EXTRA_REPLACING`) is no change at all and
+     no longer drives a look. Tested on virtual time in both orders of the
+     change and the `Lost`; the emulator script's step 27 (two distributors,
+     the used one uninstalled) is where it is seen on a device. The remembered
+     departure lasts until a `Lost` (or an unregistering) uses it: should
+     the connector ever not send one, the next end the distributor still
+     installed makes itself is read as the departure's and subscribes again
+     rather than stopping at `NoDistributor`, which costs a subscription the
+     cashier ended in ntfy, never a till left on the timer.
+120. **A pass never takes the till down.** The graph's scope has a
+     `SupervisorJob` and no exception handler, so anything a pass throws
+     that isn't the Bell's or the network's (a store that can't be read or
+     written, the Keystore under the encrypted preferences, the connector's
+     SQLite or the package manager, Square's client failing some other way)
+     would reach the thread's uncaught handler mid-shift, as `TillRunner`
+     already guards against for Square. A pass catches every `Exception`
+     but cancellation and settles `Unreachable` with decision 110's list
+     joined by "something on this device failed", retried as an unreachable
+     Bell is; the `Lost` handling does the same, a `DELETE` that fails any
+     way is dropped locally as an unreachable Bell's is, and a failing look
+     at installed apps becomes the next pass. Nothing about the failure is
+     logged: its message can carry what the store held. Tested with a Bell
+     client throwing `IllegalStateException`: the status settles, the scope
+     lives, the retry and a later `choose()` connect.

@@ -87,13 +87,16 @@ class BellWakeUps(
 
     /** Held for each pass and each unregistering: what the Bell holds changes under it only. */
     private val lock = Mutex()
-    private var pass: Job? = null
+    @Volatile private var pass: Job? = null
     private var retry: Job? = null
     private var waits = 0
 
     /** The key and the distributor this process subscribed with; null until it has (the connector is asked again at every start). */
     private var subscribedFor: String? = null
     private var subscribedThrough: String? = null
+
+    /** The distributor a change of apps took away, until its [PushFailure.Lost] arrives (decision 118). */
+    @Volatile private var departed: String? = null
 
     @Volatile private var lastDingAt: Long? = null
     @Volatile private var connectedAt: Long? = null
@@ -143,6 +146,7 @@ class BellWakeUps(
     override suspend fun unregister(forget: Boolean) {
         synchronized(this) { retry?.cancel() }
         pass?.cancelAndJoin()
+        departed = null
         lock.withLock {
             store.registration?.let { takeBack(it) }
             unsubscribe()
@@ -184,6 +188,10 @@ class BellWakeUps(
             problemStatus(e, now())
         } catch (e: IOException) {
             WakeUpStatus.Unreachable(unreachableReason(e))
+        } catch (_: Exception) {
+            // The store, the Keystore, the connector or Square failed on this device: a pass
+            // never takes the till down mid-shift, and tries again as an unreachable Bell does (decision 120).
+            WakeUpStatus.Unreachable(TILL_FAILED)
         }
         settle(outcome)
     }
@@ -268,7 +276,9 @@ class BellWakeUps(
             withTimeoutOrNull(UNREGISTER_WAIT) {
                 try {
                     bells.unregister(registration.bell, registration.registrationId)
-                } catch (_: IOException) {
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
                     // The Bell drops a dead endpoint by itself (its failure limit).
                 }
             }
@@ -336,14 +346,32 @@ class BellWakeUps(
         }
     }
 
-    /** The distributor ended the subscription: the Bell's registration goes with it (decision 91). */
+    /**
+     * The subscription ended: the Bell's registration goes with it (decision 91). The distributor
+     * ending it itself is [WakeUpStatus.NoDistributor]; one uninstalled with another left (the
+     * connector reports that as an end too) is a pass through what is installed (decision 118).
+     */
     private suspend fun distributorGone() {
+        val gone = departed ?: subscribedThrough
+        departed = null
         pass?.cancelAndJoin()
         lock.withLock {
-            store.registration?.let { takeBack(it) }
-            subscribedFor = null
-            subscribedThrough = null
-            if (store.choice != WakeUpChoice.TimerOnly) settle(WakeUpStatus.NoDistributor)
+            try {
+                store.registration?.let { takeBack(it) }
+                subscribedFor = null
+                subscribedThrough = null
+                if (store.choice == WakeUpChoice.TimerOnly) return
+                when (val distributor = distributors.resolve()) {
+                    Distributor.None -> settle(WakeUpStatus.NoDistributor)
+                    is Distributor.Found ->
+                        if (distributor.packageName == gone) settle(WakeUpStatus.NoDistributor) else run(restart = false)
+                    is Distributor.Choose -> run(restart = false)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                settle(WakeUpStatus.Unreachable(TILL_FAILED))
+            }
         }
     }
 
@@ -352,7 +380,9 @@ class BellWakeUps(
         if (store.choice == WakeUpChoice.TimerOnly) return
         val waiting = mutableStatus.value is WakeUpStatus.NoDistributor || mutableStatus.value is WakeUpStatus.ChooseDistributor
         val through = subscribedThrough
-        val moved = through != null && distributors.resolve() != Distributor.Found(through)
+        // A failure to look is a look at the next pass, not the end of this collector (decision 120).
+        val moved = through != null && runCatching { distributors.resolve() }.getOrNull() != Distributor.Found(through)
+        if (moved) departed = through
         if (waiting || moved) run(restart = false)
     }
 
@@ -372,6 +402,7 @@ class BellWakeUps(
         const val PUSH_NO_KEYS = "the UnifiedPush app gave no keys"
         const val PUSH_SILENT = "the UnifiedPush app didn't answer"
         const val PUSH_OFFLINE = "the UnifiedPush app has no connection"
+        const val TILL_FAILED = "something on this device failed"
 
         /** Why the Bell couldn't be reached, in the cashier's words (A1.7). */
         fun unreachableReason(e: IOException): String = when (e) {

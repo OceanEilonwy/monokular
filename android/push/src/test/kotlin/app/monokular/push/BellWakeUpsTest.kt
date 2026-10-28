@@ -594,6 +594,69 @@ class BellWakeUpsTest {
         assertEquals(WakeUpStatus.ChooseDistributor(left), wakeUps.status.value)
     }
 
+    /** The used distributor uninstalled with [NEXTPUSH] left: the change of apps, and the connector's end of the subscription in [endFirst] order. */
+    private suspend fun TestScope.uninstalledWithAnotherLeft(endFirst: Boolean) {
+        val wakeUps = connected()
+        val seen = statuses(wakeUps.status)
+        distributors.resolved = Distributor.Found(NEXTPUSH)
+        if (endFirst) push.state.value = PushState.Failed(PushFailure.Lost)
+        distributors.changes.emit(Unit)
+        if (!endFirst) push.state.value = PushState.Failed(PushFailure.Lost)
+        runCurrent()
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        assertFalse(WakeUpStatus.NoDistributor in seen, "$seen")
+        assertNotNull(store.registration)
+        assertEquals(PushState.Subscribed(PushSubscription(push.endpoint, "BKey", "auth")), push.state.value)
+        assertTrue(bell.calls.last().startsWith("POST bell.monokulo.com"), "${bell.calls}")
+        wait(30.minutes)
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+    }
+
+    @Test
+    fun `the distributor uninstalled with another left connects through it when the connector's end comes after (decision 118)`() = runTest {
+        uninstalledWithAnotherLeft(endFirst = false)
+    }
+
+    @Test
+    fun `the distributor uninstalled with another left connects through it when the connector's end comes first (decision 118)`() = runTest {
+        uninstalledWithAnotherLeft(endFirst = true)
+    }
+
+    @Test
+    fun `the distributor uninstalled with two left and the connector's end arriving asks the cashier, never NoDistributor (decision 118)`() = runTest {
+        val wakeUps = connected()
+        val left = listOf(NEXTPUSH, "org.unifiedpush.distributor.sunup")
+        val seen = statuses(wakeUps.status)
+        distributors.resolved = Distributor.Choose(left)
+        distributors.changes.emit(Unit)
+        push.state.value = PushState.Failed(PushFailure.Lost)
+        runCurrent()
+        assertEquals(WakeUpStatus.ChooseDistributor(left), wakeUps.status.value)
+        assertFalse(WakeUpStatus.NoDistributor in seen, "$seen")
+        assertNull(store.registration)
+    }
+
+    @Test
+    fun `a pass failing on this device for any reason leaves the till running and retries (decision 120)`() = runTest {
+        bell.infos[monokular] = { throw IllegalStateException("the store couldn't be read") }
+        val wakeUps = start()
+        wakeUps.choose(WakeUpChoice.MonokularBell)
+        runCurrent()
+        assertEquals(WakeUpStatus.Unreachable(BellWakeUps.TILL_FAILED), wakeUps.status.value)
+        assertTrue(process!!.isActive)
+        bell.infos[monokular] = info()
+        wait(1.minutes)
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        bell.infos[own] = { throw IllegalStateException() }
+        wakeUps.choose(WakeUpChoice.OwnBell(own))
+        runCurrent()
+        assertEquals(WakeUpStatus.Unreachable(BellWakeUps.TILL_FAILED), wakeUps.status.value)
+        bell.infos[own] = info()
+        wakeUps.choose(WakeUpChoice.OwnBell(own))
+        runCurrent()
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+    }
+
     @Test
     fun `an app installed that isn't the distributor changes nothing`() = runTest {
         connected()
@@ -700,5 +763,6 @@ class BellWakeUpsTest {
     private companion object {
         const val APP = "sandbox-sq0idb-dev"
         const val KEY = "BOS-key"
+        const val NEXTPUSH = "org.unifiedpush.distributor.nextpush"
     }
 }

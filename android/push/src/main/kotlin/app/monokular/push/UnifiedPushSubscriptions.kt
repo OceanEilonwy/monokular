@@ -37,7 +37,7 @@ class UnifiedPushSubscriptions(private val context: Context) : PushSubscriptions
     override val changes: SharedFlow<Unit> = mutableChanges.asSharedFlow()
 
     init {
-        // An app installed, updated or removed may be a distributor coming or going
+        // An app installed or removed may be a distributor coming or going
         // (decision 91): the connector has no callback for a distributor uninstalled.
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED)
@@ -46,6 +46,9 @@ class UnifiedPushSubscriptions(private val context: Context) : PushSubscriptions
         }
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
+                // An app updated is removed and added again with EXTRA_REPLACING: nothing came or went,
+                // and a look would have the connector end the subscription it holds (decision 118).
+                if (intent.getBooleanExtra(Intent.EXTRA_REPLACING, false)) return
                 mutableChanges.tryEmit(Unit)
             }
         }
