@@ -38,7 +38,7 @@ class BellWakeUpsTest {
     private class FakeBell : BellClient {
         val calls = mutableListOf<String>()
         val infos = mutableMapOf<BellAddress, () -> BellInfo>()
-        var register: () -> BellRegistered = { BellRegistered("br_${++ids}", APP) }
+        var register: () -> BellRegistered = { BellRegistered("br_${++ids}") }
         var unregister: suspend () -> Unit = {}
         var ids = 0
 
@@ -79,7 +79,7 @@ class BellWakeUpsTest {
     }
 
     private class FakeDistributors : Distributors {
-        var resolved: Distributor = Distributor.Found("io.heckel.ntfy")
+        var resolved: Distributor = Distributor.Found(NTFY)
         val saved = mutableListOf<String>()
         override val changes = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
         override fun resolve() = resolved
@@ -108,7 +108,7 @@ class BellWakeUpsTest {
     private val store = MemoryStore()
     private val square = FakeSquare()
 
-    private fun info(app: String = APP, environment: String = SANDBOX, key: String = KEY) = { BellInfo(app, environment, key, "0.1.0") }
+    private fun info(app: String = APP, environment: String = SANDBOX, key: String = KEY) = { BellInfo(app, environment, key) }
 
     init {
         bell.infos[monokular] = info()
@@ -197,7 +197,7 @@ class BellWakeUpsTest {
         assertEquals("br_1", registration.registrationId)
         assertEquals(monokular, registration.bell)
         assertEquals(KEY, registration.vapidPublicKey)
-        assertEquals("L1", registration.locationId)
+        assertEquals(NTFY, registration.distributor)
         assertEquals("https://ntfy.sh/up1", registration.subscription.endpoint)
     }
 
@@ -334,7 +334,7 @@ class BellWakeUpsTest {
         assertEquals(WakeUpStatus.NoDistributor, wakeUps.status.value)
         assertEquals(WakeUpChoice.MonokularBell, store.choice)
         assertEquals(listOf("GET bell.monokulo.com"), bell.calls, "no POST")
-        distributors.resolved = Distributor.Found("io.heckel.ntfy")
+        distributors.resolved = Distributor.Found(NTFY)
         distributors.changes.emit(Unit)
         runCurrent()
         assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
@@ -404,7 +404,7 @@ class BellWakeUpsTest {
         runCurrent()
         val refused = wakeUps.status.value as WakeUpStatus.Refused
         assertEquals(testScheduler.currentTime / 1000 + 30, refused.retryAt)
-        bell.register = { BellRegistered("br_9", APP) }
+        bell.register = { BellRegistered("br_9") }
         wait(29.seconds)
         assertEquals(4, bell.calls.size)
         wait(1.seconds)
@@ -492,7 +492,7 @@ class BellWakeUpsTest {
     fun `unregistering stops a registration under way, and takes back what it got`() = runTest {
         val wakeUps = start()
         val held = CompletableDeferred<Unit>()
-        bell.register = { BellRegistered("br_1", APP).also { held.complete(Unit) } }
+        bell.register = { BellRegistered("br_1").also { held.complete(Unit) } }
         push.answer = { null }
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
@@ -526,7 +526,7 @@ class BellWakeUpsTest {
 
     @Test
     fun `an app start with timer only finishes taking back a registration left behind`() = runTest {
-        store.registration = BellRegistration(monokular, "br_old", "L1", APP, KEY, PushSubscription("https://ntfy.sh/up0", "BKey", "auth"), 0)
+        store.registration = BellRegistration(monokular, "br_old", KEY, PushSubscription("https://ntfy.sh/up0", "BKey", "auth"), NTFY)
         val wakeUps = start()
         assertEquals(listOf("DELETE bell.monokulo.com br_old"), bell.calls)
         assertNull(store.registration)
@@ -576,7 +576,7 @@ class BellWakeUpsTest {
         assertEquals(WakeUpStatus.NoDistributor, wakeUps.status.value)
         assertEquals(listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_1"), bell.calls)
         assertEquals(listOf("unsubscribe"), push.calls)
-        distributors.resolved = Distributor.Found("io.heckel.ntfy")
+        distributors.resolved = Distributor.Found(NTFY)
         distributors.changes.emit(Unit)
         runCurrent()
         assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
@@ -634,6 +634,51 @@ class BellWakeUpsTest {
         assertEquals(WakeUpStatus.ChooseDistributor(left), wakeUps.status.value)
         assertFalse(WakeUpStatus.NoDistributor in seen, "$seen")
         assertNull(store.registration)
+    }
+
+    @Test
+    fun `a distributor installed after the last one went keeps its own end of the subscription, read as the cashier's (decision 118)`() = runTest {
+        val wakeUps = connected()
+        distributors.resolved = Distributor.None
+        distributors.changes.emit(Unit)
+        runCurrent()
+        assertEquals(WakeUpStatus.NoDistributor, wakeUps.status.value)
+        distributors.resolved = Distributor.Found(NEXTPUSH)
+        push.endpoint = "https://push.example/np1"
+        distributors.changes.emit(Unit)
+        runCurrent()
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        assertEquals(NEXTPUSH, store.registration?.distributor)
+        bell.calls.clear()
+        push.state.value = PushState.Failed(PushFailure.Lost)
+        runCurrent()
+        assertEquals(WakeUpStatus.NoDistributor, wakeUps.status.value)
+        assertEquals(listOf("DELETE bell.monokulo.com br_2"), bell.calls)
+        wait(30.minutes)
+        assertFalse(bell.calls.any { it.startsWith("POST") }, "${bell.calls}")
+    }
+
+    @Test
+    fun `a distributor uninstalled while the app was away is known at the start from the registration (decision 122)`() = runTest {
+        connected()
+        assertEquals(NTFY, store.registration?.distributor)
+        distributors.resolved = Distributor.Found(NEXTPUSH)
+        push.endpoint = "https://push.example/np1"
+        val wakeUps = start()
+        val seen = statuses(wakeUps.status)
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        assertEquals(NEXTPUSH, store.registration?.distributor)
+        bell.calls.clear()
+        // The connector's end of the old distributor's token, broadcast by the start's look.
+        push.state.value = PushState.Failed(PushFailure.Lost)
+        runCurrent()
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        assertFalse(WakeUpStatus.NoDistributor in seen, "$seen")
+        assertEquals(
+            listOf("DELETE bell.monokulo.com br_2", "GET bell.monokulo.com", "POST bell.monokulo.com EAAAtoken L1 https://push.example/np1"),
+            bell.calls,
+        )
+        assertEquals(NEXTPUSH, store.registration?.distributor)
     }
 
     @Test
@@ -763,6 +808,7 @@ class BellWakeUpsTest {
     private companion object {
         const val APP = "sandbox-sq0idb-dev"
         const val KEY = "BOS-key"
+        const val NTFY = "io.heckel.ntfy"
         const val NEXTPUSH = "org.unifiedpush.distributor.nextpush"
     }
 }

@@ -60,7 +60,7 @@ class BellApiTest {
     @Test
     fun `info reads the Bell, with no Authorization and no body`() = runBlocking<Unit> {
         routes["GET /bell/v1/info"] = { json(200, info) }
-        assertEquals(BellInfo("sandbox-sq0idb-dev", "sandbox", "BOS-key", "0.1.0"), api.info(bell))
+        assertEquals(BellInfo("sandbox-sq0idb-dev", "sandbox", "BOS-key"), api.info(bell))
         val request = seen.single()
         assertNull(request.headers["Authorization"])
         assertEquals(0L, request.bodySize)
@@ -69,7 +69,7 @@ class BellApiTest {
     @Test
     fun `register sends exactly the token, the location and the subscription's public half`() = runBlocking<Unit> {
         routes["POST /bell/v1/register"] = { json(201, """{"registration_id":"br_1","square_application_id":"sandbox-sq0idb-dev"}""") }
-        assertEquals(BellRegistered("br_1", "sandbox-sq0idb-dev"), api.register(bell, "EAAAtoken", "L1", subscription))
+        assertEquals(BellRegistered("br_1"), api.register(bell, "EAAAtoken", "L1", subscription))
         val request = seen.single()
         assertNull(request.headers["Authorization"])
         assertEquals(

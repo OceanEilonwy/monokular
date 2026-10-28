@@ -20,7 +20,6 @@ import kotlin.time.Duration.Companion.seconds
 @Serializable
 data class BellRegistered(
     @SerialName("registration_id") val registrationId: String,
-    @SerialName("square_application_id") val squareApplicationId: String,
 )
 
 /** The Bell's three routes a till uses, and nothing else. [BellWakeUps] drives it; tests fake it. */

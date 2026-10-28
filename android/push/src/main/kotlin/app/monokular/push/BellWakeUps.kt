@@ -226,6 +226,9 @@ class BellWakeUps(
             }
             is Distributor.Found -> distributor.packageName
         }
+        // Another distributor than the one subscribed through: that one went, and its end is on its way (decision 122).
+        val before = subscribedThrough ?: store.registration?.distributor
+        if (before != null && before != through) departed = before
         val subscription = subscription(info.vapidPublicKey, through).let { state ->
             when (state) {
                 is PushState.Subscribed -> state.subscription
@@ -245,11 +248,9 @@ class BellWakeUps(
                 store.registration = BellRegistration(
                     bell = bell,
                     registrationId = answer.registrationId,
-                    locationId = locationId,
-                    squareApplicationId = answer.squareApplicationId,
                     vapidPublicKey = info.vapidPublicKey,
                     subscription = subscription,
-                    registeredAt = now(),
+                    distributor = through,
                 )
             }
         }
@@ -291,10 +292,14 @@ class BellWakeUps(
         store.registration?.let { takeBack(it) }
     }
 
-    /** End the distributor's subscription, one an earlier run of the app made included. */
+    /**
+     * End the distributor's subscription, one an earlier run of the app made included. The
+     * app ending it is owed no [PushFailure.Lost], so no departure waits for one (decision 118).
+     */
     private fun unsubscribe() {
         subscribedFor = null
         subscribedThrough = null
+        departed = null
         push.unsubscribe()
     }
 
@@ -379,7 +384,7 @@ class BellWakeUps(
     private fun distributorsChanged() {
         if (store.choice == WakeUpChoice.TimerOnly) return
         val waiting = mutableStatus.value is WakeUpStatus.NoDistributor || mutableStatus.value is WakeUpStatus.ChooseDistributor
-        val through = subscribedThrough
+        val through = subscribedThrough ?: store.registration?.distributor
         // A failure to look is a look at the next pass, not the end of this collector (decision 120).
         val moved = through != null && runCatching { distributors.resolve() }.getOrNull() != Distributor.Found(through)
         if (moved) departed = through

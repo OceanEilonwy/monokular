@@ -1142,11 +1142,16 @@ written except where an entry below says otherwise.
      no longer drives a look. Tested on virtual time in both orders of the
      change and the `Lost`; the emulator script's step 27 (two distributors,
      the used one uninstalled) is where it is seen on a device. The remembered
-     departure lasts until a `Lost` (or an unregistering) uses it: should
-     the connector ever not send one, the next end the distributor still
-     installed makes itself is read as the departure's and subscribes again
-     rather than stopping at `NoDistributor`, which costs a subscription the
-     cashier ended in ntfy, never a till left on the timer.
+     departure lasts until a `Lost` uses it or the app ends the subscription
+     itself, which is owed no `Lost`: the last distributor uninstalled has
+     the pass unsubscribe before the connector's `Lost` lands, and
+     `UnifiedPushSubscriptions` drops a `Lost` with nothing subscribed, so
+     without that the departure outlived it and a later distributor's own
+     end (the cashier ending the subscription in it) read as the old
+     departure and subscribed again instead of showing `NoDistributor`.
+     Tested: connected through ntfy, ntfy uninstalled (`NoDistributor`),
+     NextPush installed (`Connected`), then NextPush's `Lost` is
+     `NoDistributor` with no `POST` after it.
 120. **A pass never takes the till down.** The graph's scope has a
      `SupervisorJob` and no exception handler, so anything a pass throws
      that isn't the Bell's or the network's (a store that can't be read or
@@ -1162,3 +1167,25 @@ written except where an entry below says otherwise.
      logged: its message can carry what the store held. Tested with a Bell
      client throwing `IllegalStateException`: the status settles, the scope
      lives, the retry and a later `choose()` connect.
+122. **The registration remembers the distributor it was made through, and
+     drops what nothing reads.** `BellRegistration` kept the location, the
+     Square application the Bell answered with and the time it was made,
+     and `BellInfo`/`BellRegistered` decoded the Bell's version and
+     application id for them; nothing read any of it, so they are gone (the
+     Bell's answers still decode: the client ignores unknown keys). In their
+     place it keeps `distributor`, the package the subscription was made
+     through, read as `subscribedThrough ?: registration.distributor` by
+     decision 102's look and by the pass before it subscribes, which records
+     a departure when `resolve()` gives another distributor. That covers a
+     distributor uninstalled while the app was away: at the next start the
+     connector's `getDistributor()` broadcasts the `UNREGISTERED` for the old
+     token during the start's `resolve()` (3.3.5 broadcasts per token and
+     removes nothing), the pass connects through the distributor left, and
+     the `Lost` arrives after it with this process never having subscribed
+     through the old one; without the stored package that `Lost` read as the
+     new distributor's own end, `NoDistributor` with one installed until the
+     next shift start. Now it is a pass that ends `Connected` through the new
+     distributor with the registration posted again. Tested: a registration
+     made through ntfy, a start with only NextPush, then the `Lost`.
+     Registrations stored by earlier builds of this branch lack the field
+     and read as none (the branch was never released).
