@@ -101,4 +101,14 @@ class CloverReceiptsTest {
         assertEquals(100.0, receipt.tax!!.taxLines.single().taxAmount)
         assertEquals(0.1, receipt.tax!!.taxLines.single().rate)
     }
+
+    @Test
+    fun `an order of as many line items as Clover expands may be cut short, so it gets the plain code`() {
+        // 140 coffees rung up, of which Clover sends the first 100: the other 40's money isn't tax.
+        val coffees = List(CloverReceipts.EXPANDED_MAX) { CloverOrder.LineItem("L$it", "Drip coffee", 300) }
+        val cut = CloverOrder("ORDER_BIG_01", "USD", total = 140 * 300, createdTime = 1793177758000, lineItems = Elements(coffees))
+        assertNull(CloverReceipts.of(cut, merchant, sale))
+        val whole = cut.copy(lineItems = Elements(coffees.dropLast(1)), total = 99 * 300)
+        assertEquals(99.0, assertNotNull(CloverReceipts.of(whole, merchant, sale)).lineItems.single().quantity, "one fewer is the whole order")
+    }
 }

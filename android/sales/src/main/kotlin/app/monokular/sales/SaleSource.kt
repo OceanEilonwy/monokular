@@ -68,4 +68,6 @@ data class FoundSale(
     val createdAt: String,
     /** The device that took it, when the POS says: to show it on its own till only. */
     val deviceId: String?,
+    /** The name the cashier gave the order ("Table 4"), when the POS has one: Clover's title; Square leaves it null. */
+    val title: String? = null,
 )

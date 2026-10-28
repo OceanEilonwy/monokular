@@ -15,11 +15,23 @@ import java.time.Instant
  * included, but its tax only per line behind another expand: the receipt
  * shows one tax line, the total less the lines, as Clover's paper receipt
  * does.
+ *
+ * Clover returns at most [EXPANDED_MAX] elements of an expanded collection,
+ * so an order with that many line items may have lost some, and the total
+ * less the lines would print the lost items' money as tax. Such an order
+ * gets no receipt at all, the plain code, rather than one without its tax
+ * line: a receipt that lists only some of what was bought, under a total
+ * its lines don't add up to, is a wrong receipt, while the plain code still
+ * takes the payment and the merchant's own receipt stays whole.
  */
 object CloverReceipts {
-    /** Null when the merchant's country isn't known: a receipt must name it. */
+    /**
+     * Null when the merchant's country isn't known (a receipt must name it),
+     * or when the order's line items may have been cut at [EXPANDED_MAX].
+     */
     fun of(order: CloverOrder, merchant: CloverMerchant, sale: FoundSale): Receipt? {
         val country = merchant.country ?: return null
+        if (order.lineItems.elements.size >= EXPANDED_MAX) return null
         val currency = order.currency ?: merchant.currency
         val digits = minorDigits(currency)
         val lines = lines(order.lineItems.elements)
@@ -90,6 +102,9 @@ object CloverReceipts {
     }
 
     private fun decimal(minor: Long, digits: Int): BigDecimal = BigDecimal.valueOf(minor).movePointLeft(digits)
+
+    /** The most elements Clover returns of an expanded collection, such as an order's `lineItems`. */
+    internal const val EXPANDED_MAX = 100
 
     /** A tax rate to a thousandth of a percent: 8.875% is 0.08875. */
     private const val RATE_DIGITS = 5

@@ -35,7 +35,6 @@ data class CloverMerchant(
 data class CloverTender(
     val id: String,
     val label: String? = null,
-    val labelKey: String? = null,
     val enabled: Boolean = true,
     val visible: Boolean = true,
 )
@@ -51,16 +50,20 @@ data class CloverPayment(
     val createdTime: Long,
     val voided: Boolean = false,
     val tender: Ref? = null,
-    val order: Ref? = null,
+    val order: Order? = null,
     val device: Ref? = null,
     val refunds: Elements<CloverRefund> = Elements(),
 ) {
     @Serializable
     data class Ref(val id: String)
+
+    /** The payment's order, expanded: its id, and the title the cashier gave it ("Table 4"). */
+    @Serializable
+    data class Order(val id: String, val title: String? = null)
 }
 
 @Serializable
-data class CloverRefund(val id: String, val amount: Long, val createdTime: Long? = null, val voided: Boolean = false)
+data class CloverRefund(val id: String, val amount: Long, val voided: Boolean = false)
 
 /** The parts of a Clover order a receipt is made from. */
 @Serializable
@@ -69,7 +72,6 @@ data class CloverOrder(
     val currency: String? = null,
     /** In the currency's minor unit, tax included. */
     val total: Long,
-    val title: String? = null,
     val createdTime: Long,
     /** `OPEN`, `PAID`, `REFUNDED`, `PARTIALLY_REFUNDED`, … */
     val paymentState: String? = null,

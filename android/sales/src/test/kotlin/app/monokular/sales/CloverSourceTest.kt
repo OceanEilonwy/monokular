@@ -148,7 +148,8 @@ class CloverSourceTest {
         val sales = source.newSales()
         assertEquals(listOf("PAY_MONERO_0", "PAY_MONERO_1", "PAY_MONERO_2"), sales.map { it.id }, "a voided refund doesn't count")
         val sale = sales[1]
-        assertEquals(FoundSale("PAY_MONERO_1", 2205, "USD", null, "ORDER_CL_1", "2026-10-28T08:56:00Z", "DEV_FRONT"), sale)
+        assertEquals(FoundSale("PAY_MONERO_1", 2205, "USD", null, "ORDER_CL_1", "2026-10-28T08:56:00Z", "DEV_FRONT", "Table 4"), sale)
+        assertEquals(listOf(null, "Table 4", null), sales.map { it.title }, "an order with no title has none")
         val request = server.takeRequest()
         assertEquals("/v3/merchants/MCLOVER00001/payments", request.url.encodedPath)
         assertEquals(
