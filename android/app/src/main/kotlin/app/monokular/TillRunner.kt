@@ -1,10 +1,12 @@
 package app.monokular
 
 import app.monokular.core.Connection
+import app.monokular.core.PointOfSale
 import app.monokular.core.MonokuloException
 import app.monokular.core.Problems
 import app.monokular.core.StreamEvent
 import app.monokular.push.interval
+import app.monokular.sales.CloverSource
 import app.monokular.sales.FoundSale
 import app.monokular.sales.Refunds
 import app.monokular.sales.SaleSource
@@ -34,10 +36,12 @@ data class RunnerState(
     val disconnected: Boolean = false,
     /** What the event stream's last failure said, while it's closed: `too-many-streams`, say. */
     val streamProblem: String? = null,
+    /** The till's point of sale can't refund through its API: the cashier refunds there (decision A130). */
+    val refundsInPos: Refunds.InPos? = null,
     val till: TillState = TillState(),
 )
 
-/** A source for a till that runs without Square: it shows other tills' sales only. */
+/** A source for a till that runs without a point of sale: it shows other tills' sales only. */
 private object NoSource : SaleSource {
     override suspend fun newSales() = emptyList<FoundSale>()
     override suspend fun receipt(sale: FoundSale) = null
@@ -98,14 +102,23 @@ class TillRunner(private val graph: Graph) {
         show(newTill(connection))
     }
 
+    /** The till for the point of sale the cashier chose and signed in to, or one that only shows other tills' sales. */
     private fun newTill(connection: Connection): Till {
-        val location = graph.stores.location
-        val source: SaleSource = if (location != null && graph.squareAuth().signedIn) {
-            SquareSource(graph.squareApi(), graph.squareConfig(), location, graph.stores.cursor)
-        } else {
-            NoSource
+        val stores = graph.stores
+        val location = stores.location
+        val merchant = stores.cloverMerchant
+        val source: SaleSource = when (stores.pointOfSale) {
+            PointOfSale.Square -> if (location != null && graph.squareAuth().signedIn) {
+                SquareSource(graph.squareApi(), graph.squareConfig(), location, stores.cursor)
+            } else {
+                NoSource
+            }
+            // The phone isn't the Clover device, so every sale at the merchant is the till's (no device filter).
+            PointOfSale.Clover -> if (merchant != null && graph.cloverAuth().signedIn) graph.cloverSource(merchant) else NoSource
+            null -> NoSource
         }
-        return Till(source, graph.monokulo, connection, store = graph.stores.shift)
+        mutable.update { it.copy(refundsInPos = source.refunds as? Refunds.InPos) }
+        return Till(source, graph.monokulo, connection, store = stores.shift)
     }
 
     private fun show(till: Till) {
@@ -147,6 +160,9 @@ class TillRunner(private val graph: Graph) {
             till.refund(orderId)
         }
     }
+
+    /** The refund sheet's "I've refunded it": whether the point of sale now shows the sale refunded (decision A130). */
+    suspend fun confirmRefund(orderId: String): Boolean = till?.confirmRefund(orderId) ?: false
 
     /** Closes the sale for now (the close sheet's "Not sure"): its code comes down, it stays in the shift. */
     fun close(orderId: String) {

@@ -8,18 +8,23 @@ import androidx.lifecycle.viewModelScope
 import app.monokular.core.ConnectCode
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloException
+import app.monokular.core.PointOfSale
 import app.monokular.core.Problems
 import app.monokular.core.Tor
 import app.monokular.notify.SaleNotifications
 import app.monokular.push.BellAddress
 import app.monokular.push.WakeUpChoice
 import app.monokular.push.WakeUpStatus
+import app.monokular.sales.CloverMerchant
 import app.monokular.sales.Pkce
+import app.monokular.sales.PosException
 import app.monokular.sales.SquareAuth
-import app.monokular.sales.SquareException
 import app.monokular.sales.SquareLocation
+import app.monokular.sales.TenderState
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
+import app.monokular.ui.CloverTender
+import app.monokular.ui.RefundSheet
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -39,8 +44,8 @@ sealed interface Screen {
     /** 3: connect to the server, then check the store it is. */
     data class Confirm(val code: ConnectCode) : Screen
     data class Connected(val connection: Connection) : Screen
-    /** 4: Square's sign-in and location. */
-    data object Square : Screen
+    /** 4: the point of sale, chosen from Square and Clover, and the chosen one's sign-in (Square's location next). */
+    data object PointOfSale : Screen
     data class Locations(val locations: List<SquareLocation>) : Screen
     /** 5: notifications, then the bubble over other apps. */
     data object Alerts : Screen
@@ -56,6 +61,13 @@ sealed interface Screen {
     /** What a live sale's customer bought, every line (PanelE, from the sale's order card). */
     data class Order(val orderId: String) : Screen
     data object Settings : Screen
+}
+
+/** Clover's payment type in the screens' terms. */
+fun TenderState?.forScreen(): CloverTender = when (this) {
+    is TenderState.Ready -> CloverTender.Ready
+    is TenderState.AddInClover -> CloverTender.AddInClover
+    null -> CloverTender.Looking
 }
 
 class AppViewModel(app: Application) : AndroidViewModel(app) {
@@ -80,8 +92,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Where Settings was opened from, to go back to. */
     private var beforeSettings: Screen? = null
 
-    /** The Square sign-in under way went through a Bell's application, from Settings: back there once it's done. */
+    /** The sign-in under way went through a Bell's application, from Settings: back there once it's done. */
     private var bellSignIn = false
+
+    /** Step 4 was opened from Settings ("Change the point of sale"): back there once the new sign-in is done. */
+    private var fromSettings = false
+
+    /** Clover's Monero payment type at the merchant, as the sign-in card shows it (decision A129); null while not known. */
+    val tenderState = MutableStateFlow<TenderState?>(null)
+
+    /** The refund sheet over the sale on screen, at a point of sale the till can't refund through (decision A130). */
+    val refundSheet = MutableStateFlow<RefundSheet?>(null)
 
     /** The sales that were live at the last look, to tell a sale paid on screen. */
     private var liveBefore = emptySet<String>()
@@ -111,6 +132,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { graph.runner.state.collect { follow(it.till.sales) } }
         // Not watching: the shift's sales still list, to open and refund.
         if (!stores.shiftOn) graph.runner.showSaved()
+        // Signed in to Clover: what its card and Settings say about the payment type. A remembered
+        // tender answers without asking Clover; nothing here ever adds one (decision A129).
+        if (stores.pointOfSale == PointOfSale.Clover) stores.cloverMerchant?.let { merchant ->
+            viewModelScope.launch { tenderState.value = runCatching { graph.cloverSource(merchant).ensureTender() }.getOrNull() }
+        }
     }
 
     /** The sales changed: bring up a new one, move off a code that's down, and step back from one paid on screen. */
@@ -156,17 +182,42 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         go(TillNav.follow(before, graph.runner.state.value.till.sales, left.value))
     }
     val location: SquareLocation? get() = stores.location
-    val squareSignedIn: Boolean get() = graph.squareAuth().signedIn
+    val cloverMerchant: CloverMerchant? get() = stores.cloverMerchant
+
+    /** The point of sale chosen, null until the cashier taps one (or with a till that runs without one). */
+    val pointOfSale: PointOfSale? get() = stores.pointOfSale
+
+    /** Signed in to the chosen point of sale. */
+    val posSignedIn: Boolean
+        get() = when (stores.pointOfSale) {
+            PointOfSale.Square -> graph.squareAuth().signedIn
+            PointOfSale.Clover -> graph.cloverAuth().signedIn
+            null -> false
+        }
+
+    /** Where the till watches, by name: the Square location, or the Clover merchant. */
+    val placeName: String? get() = stores.placeName
+
     val shiftOn: Boolean get() = stores.shiftOn
     val shiftStartedAt: Long? get() = stores.shiftStartedAt
     val debug: Boolean get() = BuildConfig.DEBUG
     val deviceName: String get() = graph.identity.deviceName
-    val tenderName: String get() = graph.squareConfig().tenderName
-    var squareBaseUrl: String?
-        get() = stores.squareBaseUrl
-        set(value) {
-            stores.squareBaseUrl = value
+    val tenderName: String
+        get() = when (stores.pointOfSale) {
+            PointOfSale.Clover -> graph.cloverConfig().tenderLabel
+            PointOfSale.Square, null -> graph.squareConfig().tenderName
         }
+
+    val setupDone: Boolean get() = stores.setupDone
+
+    /** Debug builds: the stand-ins' addresses (acceptance T6.5). */
+    val baseUrls: Map<PointOfSale, String?>
+        get() = mapOf(PointOfSale.Square to stores.squareBaseUrl, PointOfSale.Clover to stores.cloverBaseUrl)
+
+    fun setBaseUrl(pos: PointOfSale, url: String) = when (pos) {
+        PointOfSale.Square -> stores.squareBaseUrl = url
+        PointOfSale.Clover -> stores.cloverBaseUrl = url
+    }
 
     fun overlayAllowed(): Boolean = Settings.canDrawOverlays(getApplication())
 
@@ -175,7 +226,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun home(): Screen = when {
         stores.connection == null -> Screen.Welcome
         stores.setupDone -> Screen.Till
-        stores.location == null && !stores.withoutSquare -> Screen.Square
+        // Not yet at a Square location or a Clover merchant.
+        stores.placeName == null && !stores.withoutPos -> Screen.PointOfSale
         else -> Screen.Alerts
     }
 
@@ -194,8 +246,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         Screen.Settings -> closeSettings()
         Screen.Scan -> go(Screen.Welcome)
         is Screen.Confirm -> go(Screen.Scan)
-        is Screen.Locations -> go(Screen.Square)
-        Screen.Alerts -> go(Screen.Square)
+        is Screen.Locations -> go(Screen.PointOfSale)
+        Screen.PointOfSale -> if (stores.setupDone) closePointOfSale() else goHome()
+        Screen.Alerts -> go(Screen.PointOfSale)
         Screen.Float -> go(Screen.Alerts)
         Screen.Ready -> go(Screen.Float)
         else -> goHome()
@@ -234,54 +287,174 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Step 4 from Settings ("Change the point of sale", acceptance T1.2): back to Settings once done. */
+    fun openPointOfSale() {
+        fromSettings = true
+        go(Screen.PointOfSale)
+    }
+
+    /** Back from step 4 opened from Settings. */
+    private fun closePointOfSale() {
+        fromSettings = false
+        go(Screen.Settings)
+    }
+
     /**
-     * Square's sign-in page, for this attempt: through [applicationId]
-     * when that's a Bell's (Settings › Wake-ups' "Sign in to Square",
-     * decision 96), else through the application the till signs in
-     * through now. The application is kept with the attempt, and becomes
-     * the till's only once the sign-in finishes, so the working sign-in
-     * stands until then.
+     * A point of sale tapped, in step 4 or Settings: saved at once; choosing the one chosen
+     * changes nothing; choosing another while signed in to the first takes the Bell's
+     * registration back and signs out of it first ([PosSwitch], acceptance D6).
      */
-    fun squareSignInUrl(applicationId: String? = null): String {
+    fun choosePointOfSale(pos: PointOfSale) = work {
+        val from = stores.pointOfSale
+        val changed = PosSwitch.choose(switchSide, from, signedIn = from != null && posSignedIn, to = pos)
+        if (!changed) return@work
+        stores.withoutPos = false
+        tenderState.value = null
+        restart()
+        // Settings' rows (not signed in) stay in Settings, its sign-in row beneath them; step 4 shows the new card.
+        if (screenState.value != Screen.Settings) go(Screen.PointOfSale)
+    }
+
+    /** What changing the point of sale touches: the Bell, the old sign-in, the choice. */
+    private val switchSide = object : PosSwitchSide {
+        override suspend fun takeBellRegistrationBack() = graph.wakeUps.unregister()
+        override fun signOut(pos: PointOfSale) = signOutHere(pos)
+        override fun choose(pos: PointOfSale) {
+            stores.pointOfSale = pos
+        }
+    }
+
+    /**
+     * Forgets the sign-in to [pos] on this device: its tokens, its location or merchant, where
+     * its search for sales had got to, and the remembered tender id (acceptance T1.4).
+     */
+    private fun signOutHere(pos: PointOfSale) {
+        when (pos) {
+            PointOfSale.Square -> {
+                graph.squareAuth().signOut()
+                stores.location = null
+            }
+            PointOfSale.Clover -> {
+                graph.cloverAuth().signOut()
+                stores.cloverMerchant?.let { stores.tenders.save(it.id, null) }
+                stores.cloverMerchant = null
+                tenderState.value = null
+            }
+        }
+        stores.forgetCursor(pos)
+    }
+
+    /**
+     * The chosen point of sale's sign-in page, for this attempt: through [applicationId] when
+     * that's a Bell's (Settings › Wake-ups' "Sign in to …", decision 96), else through the
+     * application the till signs in through now. The application is kept with the attempt,
+     * and becomes the till's only once the sign-in finishes, so the working sign-in stands
+     * until then. Null with no point of sale chosen.
+     */
+    fun signInUrl(pos: PointOfSale? = stores.pointOfSale, applicationId: String? = null): String? {
         val pkce = Pkce.create()
-        val through = applicationId?.takeIf { it != graph.squareConfig().applicationId }
-        stores.pendingSignIn = PendingSignIn(pkce, through)
-        return squareAuth(through).authorizeUrl(pkce)
+        return when (pos) {
+            PointOfSale.Square -> {
+                val through = applicationId?.takeIf { it != graph.squareConfig().applicationId }
+                stores.pendingSignIn = PendingSignIn(pos, pkce, through)
+                squareAuth(through).authorizeUrl(pkce)
+            }
+            PointOfSale.Clover -> {
+                val through = applicationId?.takeIf { it != graph.cloverConfig().applicationId }
+                stores.pendingSignIn = PendingSignIn(pos, pkce, through)
+                cloverAuth(through).authorizeUrl(pkce)
+            }
+            null -> null
+        }
     }
 
     /** Square's sign-in through [applicationId], or through the till's own application when null. */
     private fun squareAuth(applicationId: String?): SquareAuth =
         if (applicationId == null) graph.squareAuth() else SquareAuth(graph.http, graph.squareConfig().copy(applicationId = applicationId), stores.tokens)
 
-    /** Square's redirect back into the app. */
-    fun onSquareRedirect(uri: Uri) = work {
-        val pending = stores.pendingSignIn ?: run {
-            problem.value = "That Square sign-in wasn't started here. Try again."
+    /** Clover's sign-in through [applicationId], or through the till's own application when null. */
+    private fun cloverAuth(applicationId: String?) =
+        if (applicationId == null) graph.cloverAuth() else graph.cloverAuth(graph.cloverConfig().copy(applicationId = applicationId))
+
+    /**
+     * A point of sale's redirect back into the app: [pos] is the one whose return address it
+     * came to. A redirect with no sign-in of that point of sale pending is dropped (decision A127).
+     */
+    fun onPosRedirect(pos: PointOfSale, uri: Uri) = work {
+        val pending = stores.pendingSignIn?.takeIf { it.pointOfSale == pos } ?: run {
+            problem.value = "That ${pos.displayName} sign-in wasn't started here. Try again."
             return@work
         }
         try {
-            squareAuth(pending.applicationId)
-                .finish(pending.pkce, uri.getQueryParameter("state"), uri.getQueryParameter("code"), uri.getQueryParameter("error"))
-            stores.pendingSignIn = null
-            if (pending.applicationId != null) {
-                // Signed in through the Bell's application: the till's from now on (decision 96).
-                stores.squareApplicationId = pending.applicationId
-                bellSignIn = true
+            when (pos) {
+                PointOfSale.Square -> finishSquare(pending, uri)
+                PointOfSale.Clover -> finishClover(pending, uri)
             }
-            val locations = graph.squareApi().locations()
-            when {
-                locations.size == 1 -> chooseLocation(locations.single())
-                else -> {
-                    // The running till still asks Square as the old application: it starts again as the new one.
-                    if (pending.applicationId != null) restart()
-                    go(Screen.Locations(locations))
-                }
-            }
-        } catch (e: SquareException) {
-            // A failed sign-in after a good one (Square's locations) leaves no Bell sign-in pending.
+        } catch (e: PosException) {
+            // A failed sign-in after a good one (the locations, the merchant) leaves no Bell sign-in pending.
             bellSignIn = false
-            // go() clears the problem, so Square's words come after it.
-            go(if (pending.applicationId != null && stores.setupDone) Screen.Settings else Screen.Square)
+            // go() clears the problem, so the point of sale's words come after it.
+            go(if (pending.applicationId != null && stores.setupDone) Screen.Settings else Screen.PointOfSale)
+            problem.value = e.message
+        }
+    }
+
+    private suspend fun finishSquare(pending: PendingSignIn, uri: Uri) {
+        squareAuth(pending.applicationId)
+            .finish(pending.pkce, uri.getQueryParameter("state"), uri.getQueryParameter("code"), uri.getQueryParameter("error"))
+        stores.pendingSignIn = null
+        stores.pointOfSale = PointOfSale.Square
+        if (pending.applicationId != null) {
+            // Signed in through the Bell's application: the till's from now on (decision 96).
+            stores.squareApplicationId = pending.applicationId
+            bellSignIn = true
+        }
+        val locations = graph.squareApi().locations()
+        when {
+            locations.size == 1 -> chooseLocation(locations.single())
+            else -> {
+                // The running till still asks Square as the old application: it starts again as the new one.
+                if (pending.applicationId != null) restart()
+                go(Screen.Locations(locations))
+            }
+        }
+    }
+
+    /**
+     * Clover's redirect: the tokens for the redirect's merchant, the merchant read, then the
+     * Monero payment type found or added (decision A129); the merchant is the till's place,
+     * with no locations to pick (decision A127).
+     */
+    private suspend fun finishClover(pending: PendingSignIn, uri: Uri) {
+        val tokens = cloverAuth(pending.applicationId).finish(
+            pending.pkce,
+            merchantId = uri.getQueryParameter("merchant_id"),
+            code = uri.getQueryParameter("code"),
+            state = uri.getQueryParameter("state"),
+            error = uri.getQueryParameter("error"),
+        )
+        stores.pendingSignIn = null
+        if (pending.applicationId != null) {
+            stores.cloverApplicationId = pending.applicationId
+            bellSignIn = true
+        }
+        val merchant = graph.cloverApi().merchant(tokens.merchantId)
+        stores.cloverMerchant = merchant
+        stores.pointOfSale = PointOfSale.Clover
+        stores.location = null
+        stores.withoutPos = false
+        tenderState.value = graph.cloverSource(merchant).ensureTender()
+        signedIn()
+    }
+
+    /** "Look again" on Clover's card or in Settings: the Monero payment type, found or added now. */
+    fun lookAgain() = work {
+        val merchant = stores.cloverMerchant ?: return@work
+        try {
+            tenderState.value = graph.cloverSource(merchant).ensureTender()
+            // A sale rung up with the tender just found is the till's from now.
+            restart()
+        } catch (e: PosException) {
             problem.value = e.message
         }
     }
@@ -290,31 +463,41 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun changeLocation() = work {
         try {
             go(Screen.Locations(graph.squareApi().locations()))
-        } catch (e: SquareException) {
+        } catch (e: PosException) {
             problem.value = e.message
         }
     }
 
     fun chooseLocation(location: SquareLocation) {
         stores.location = location
-        stores.withoutSquare = false
-        // The Bell rings this till for the location it registers: registered again for this one.
+        stores.withoutPos = false
+        signedIn()
+    }
+
+    /**
+     * Signed in at a Square location or a Clover merchant: the Bell rings this till for the place
+     * it registers, so it registers again for this one; the till starts watching now, so setup
+     * can show the test sale; and the cashier goes back where the sign-in started.
+     */
+    private fun signedIn() {
         graph.wakeUps.recheck()
-        // The till starts watching now, so setup can show the test sale.
         restart()
         val forBell = bellSignIn
+        val settings = fromSettings
         bellSignIn = false
+        fromSettings = false
         go(
             when {
-                forBell && stores.setupDone -> Screen.Settings
+                (forBell || settings) && stores.setupDone -> Screen.Settings
                 stores.setupDone -> Screen.Till
-                else -> Screen.Square
+                else -> Screen.PointOfSale
             },
         )
     }
 
-    fun withoutSquare() {
-        stores.withoutSquare = true
+    /** "Not now: only show other tills' sales". */
+    fun withoutPos() {
+        stores.withoutPos = true
         restart()
         go(if (stores.setupDone) Screen.Till else Screen.Alerts)
     }
@@ -372,16 +555,17 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun torRunning(): Boolean = withContext(Dispatchers.IO) { Tor.running() }
 
     /**
-     * Signs out of Square. The Bell's registration is taken back first,
-     * awaited, while what it needs is still here; the Wake-ups choice
-     * stays, so signing in again registers again (acceptance A10.2).
+     * Signs out of the point of sale. The Bell's registration is taken back
+     * first, awaited, while what it needs is still here; the Wake-ups choice
+     * and the point of sale chosen stay, so signing in again registers again
+     * (acceptance A10.2).
      */
-    fun signOutOfSquare() = work {
+    fun signOutOfPos() = work {
+        val pos = stores.pointOfSale ?: return@work
         graph.wakeUps.unregister()
-        graph.squareAuth().signOut()
-        stores.location = null
+        signOutHere(pos)
         restart()
-        go(Screen.Square)
+        go(Screen.PointOfSale)
     }
 
     fun disconnect() = work {
@@ -405,6 +589,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private fun forgetHere() {
         TillService.stop(getApplication())
         graph.squareAuth().signOut()
+        graph.cloverAuth().signOut()
+        tenderState.value = null
+        refundSheet.value = null
         stores.forgetAll()
         graph.store.forget()
         left.value = emptySet()
@@ -425,12 +612,38 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** The UnifiedPush app to deliver wake-ups through, picked from several. */
     fun chooseDistributor(packageName: String) = graph.wakeUps.chooseDistributor(packageName)
 
-    /** Refunds a sale's Square sale ([close] it first: the close sheet's "No"); its button waits for the POS's answer. */
+    /**
+     * Refunds a sale's point-of-sale sale ([close] it first: the close sheet's "No"); its button
+     * waits for the point of sale's answer. Where the till can't refund (Clover), the sale is
+     * marked for the cashier to refund there and the refund sheet opens (decision A130).
+     */
     fun refund(orderId: String, close: Boolean = false) {
         if (orderId in refunding.value) return
         val job = graph.runner.refund(orderId, close) ?: return
+        graph.runner.state.value.refundsInPos?.let { refunds -> refundSheet.value = RefundSheet(orderId, refunds.posName, refunds.where) }
         refunding.update { it + orderId }
         job.invokeOnCompletion { refunding.update { it - orderId } }
+    }
+
+    /** The refund sheet's "I've refunded it": the point of sale asked now; the sheet goes once it shows the refund. */
+    fun refundDone(orderId: String) {
+        val sheet = refundSheet.value?.takeIf { it.orderId == orderId && !it.checking } ?: return
+        refundSheet.value = sheet.copy(checking = true, notSeen = false)
+        viewModelScope.launch {
+            val seen = graph.runner.confirmRefund(orderId)
+            refundSheet.update { current ->
+                when {
+                    current?.orderId != orderId -> current
+                    seen -> null
+                    else -> current.copy(checking = false, notSeen = true)
+                }
+            }
+        }
+    }
+
+    /** "Not yet", Back or the scrim: the sale stays pending, under Needs action. */
+    fun refundSheetDismissed() {
+        refundSheet.value = null
     }
 
     /** The close sheet's answer for the sale on screen ([Closing]). */

@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,13 +51,22 @@ import androidx.compose.ui.unit.sp
 import app.monokular.CloseChoice
 import app.monokular.Closing
 import app.monokular.Ground
+import app.monokular.PosText
 import app.monokular.SaleText
+import app.monokular.core.PointOfSale
 import app.monokular.StateIcon
 import app.monokular.Tone
 import app.monokular.receipt.Receipt
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import kotlinx.coroutines.delay
+
+/**
+ * The till's point of sale, for every word on its screens that names it
+ * ([PosText]): provided where the app's and the bubble's screens are set, null
+ * for a till that runs without one.
+ */
+val LocalPointOfSale = compositionLocalOf<PointOfSale?> { null }
 
 /** Seconds left until [expiresAt], ticking. */
 @Composable
@@ -99,11 +109,21 @@ class TillActions(
     val onReopen: (String) -> Unit,
     val onCopy: (TillSale) -> Unit,
     val onCopyXmr: (TillSale) -> Unit,
-    /** Null when Square is already beside Monokular (split screen). */
-    val onBackToSquare: (() -> Unit)?,
+    /**
+     * Back to the point-of-sale app on this phone: Square's only, null for Clover, whose
+     * point of sale is a device of its own (decision A135), and when Square is already beside
+     * Monokular (split screen).
+     */
+    val onBackToPos: (() -> Unit)?,
+    /** The refund sheet's "I've refunded it" (decision A130): ask the point of sale now. */
+    val onRefundDone: (String) -> Unit,
+    /** The refund sheet went away: "Not yet", Back or the scrim. */
+    val onRefundSheetDismissed: () -> Unit,
     val onSignIn: () -> Unit,
     val onForget: () -> Unit,
     val onStartShift: () -> Unit,
+    /** The till's point of sale can't refund through its API: the cashier refunds there, guided ([RefundSheet]). */
+    val refundsInPos: Boolean = false,
 )
 
 /**
@@ -112,8 +132,15 @@ class TillActions(
  * paid or ends while on screen turns into its page in place.
  */
 @Composable
-fun SaleScreen(sale: TillSale, location: String?, refunding: Boolean, refundProblem: String?, actions: TillActions) {
-    if (sale.live) LiveSale(sale, location, actions) else SaleDetail(sale, location, refunding, refundProblem, actions)
+fun SaleScreen(
+    sale: TillSale,
+    location: String?,
+    refunding: Boolean,
+    refundProblem: String?,
+    refundSheet: RefundSheet?,
+    actions: TillActions,
+) {
+    if (sale.live) LiveSale(sale, location, actions) else SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions)
 }
 
 /** A live sale full screen, for the customer to scan (SaleA); split in two on a wide window (decision 45). */
@@ -171,7 +198,7 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
         }
     }
     if (asking) {
-        CloseSheet(sale, onChoice = { actions.onClose(sale.orderId, it) }, onDismiss = { asking = false })
+        CloseSheet(sale, actions.refundsInPos, onChoice = { actions.onClose(sale.orderId, it) }, onDismiss = { asking = false })
     }
 }
 
@@ -247,7 +274,7 @@ private fun StatusPill(sale: TillSale) = Row(
     PhaseRing(sale.phase, 30.dp)
     Column {
         Text(
-            SaleText.status(sale), fontSize = 16.sp, fontWeight = FontWeight.Bold,
+            SaleText.status(sale, LocalPointOfSale.current), fontSize = 16.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
         Text(SaleText.hint(sale, secondsLeft(sale.expiresAt)), fontSize = 13.sp, color = mk.muted)
@@ -257,7 +284,9 @@ private fun StatusPill(sale: TillSale) = Row(
 @Composable
 private fun Buttons(sale: TillSale, actions: TillActions) = Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
     OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), height = 56.dp)
-    actions.onBackToSquare?.let { PrimaryButton("Back to Square", it, Modifier.weight(1f), height = 56.dp, size = 16) }
+    actions.onBackToPos?.let { back ->
+        PrimaryButton(PosText.backTo(LocalPointOfSale.current), back, Modifier.weight(1f), height = 56.dp, size = 16)
+    }
 }
 
 /**
@@ -279,7 +308,7 @@ fun OrderCard(receipt: Receipt, withTime: Boolean, onOpen: (() -> Unit)? = null)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("ORDER", fontSize = 12.sp, letterSpacing = 0.6.sp, color = mk.muted, modifier = Modifier.semantics { heading() })
             Text(
-                SaleText.receiptLabel(receipt, withTime).uppercase(), fontSize = 12.sp, letterSpacing = 0.6.sp, color = mk.muted,
+                SaleText.receiptLabel(receipt, LocalPointOfSale.current, withTime).uppercase(), fontSize = 12.sp, letterSpacing = 0.6.sp, color = mk.muted,
                 textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
         }

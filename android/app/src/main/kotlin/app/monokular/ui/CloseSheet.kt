@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.monokular.CloseChoice
 import app.monokular.Closing
+import app.monokular.core.PointOfSale
 import app.monokular.sales.TillSale
 import kotlinx.coroutines.launch
 
@@ -43,7 +44,8 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CloseSheet(sale: TillSale, onChoice: (CloseChoice) -> Unit, onDismiss: () -> Unit) {
+fun CloseSheet(sale: TillSale, refundsInPos: Boolean, onChoice: (CloseChoice) -> Unit, onDismiss: () -> Unit) {
+    val pos = LocalPointOfSale.current
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val title = "Is the customer paying?"
@@ -65,11 +67,11 @@ fun CloseSheet(sale: TillSale, onChoice: (CloseChoice) -> Unit, onDismiss: () ->
         ) {
             Column(Modifier.padding(horizontal = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(title, style = display(22), modifier = Modifier.semantics { heading() })
-                Text(Closing.subtitle(sale), fontSize = 14.sp, color = mk.muted)
+                Text(Closing.subtitle(sale, pos), fontSize = 14.sp, color = mk.muted)
             }
             val left = secondsLeft(sale.expiresAt)
             for (choice in Closing.choices(sale)) {
-                Answer(choice, sale, left) {
+                Answer(choice, sale, pos, refundsInPos, left) {
                     // Only once the sheet is down: a sale paid meanwhile swaps
                     // the screen out, cancels the hide and drops the answer.
                     scope.launch { state.hide() }.invokeOnCompletion { cause ->
@@ -86,7 +88,14 @@ fun CloseSheet(sale: TillSale, onChoice: (CloseChoice) -> Unit, onDismiss: () ->
 
 /** One answer: its icon on its tint, what it says and what it does. */
 @Composable
-private fun Answer(choice: CloseChoice, sale: TillSale, secondsLeft: Long, onClick: () -> Unit) = Row(
+private fun Answer(
+    choice: CloseChoice,
+    sale: TillSale,
+    pos: PointOfSale?,
+    refundsInPos: Boolean,
+    secondsLeft: Long,
+    onClick: () -> Unit,
+) = Row(
     Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(18.dp)).background(mk.ground)
         .clickable(role = Role.Button, onClick = onClick).padding(14.dp),
     verticalAlignment = Alignment.CenterVertically,
@@ -98,8 +107,8 @@ private fun Answer(choice: CloseChoice, sale: TillSale, secondsLeft: Long, onCli
         CloseChoice.KeepUp -> Glyph(mk.warnGround) { PhaseRing(sale.phase, 22.dp, track = mk.edge) }
     }
     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(Closing.title(choice, sale), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Text(Closing.detail(choice, sale, secondsLeft), fontSize = 13.sp, color = mk.muted)
+        Text(Closing.title(choice, sale, pos), fontSize = 16.sp, fontWeight = FontWeight.Bold)
+        Text(Closing.detail(choice, sale, pos, refundsInPos, secondsLeft), fontSize = 13.sp, color = mk.muted)
     }
 }
 

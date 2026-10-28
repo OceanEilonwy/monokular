@@ -37,7 +37,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.monokular.PosText
 import app.monokular.SaleText
+import app.monokular.core.PointOfSale
 import app.monokular.receipt.Receipt
 import app.monokular.sales.TillSale
 import kotlinx.serialization.json.JsonObject
@@ -84,14 +86,20 @@ object OrderText {
     fun total(receipt: Receipt): String = "${SaleText.plain(receipt.total, receipt.currency)} ${receipt.currency}"
 
     /**
-     * "Sale #k4Rt · Square receipt k4Rt · 4:07 pm": the sale, its Square
-     * receipt when Square gave one, and when the receipt was issued.
+     * "Sale #k4Rt · Square receipt k4Rt · 4:07 pm": the sale, the point of
+     * sale's receipt when it gave one, and when the receipt was issued.
      */
-    fun subtitle(sale: TillSale, receipt: Receipt, locale: Locale = Locale.getDefault(), zone: ZoneId = ZoneId.systemDefault()): String {
+    fun subtitle(
+        sale: TillSale,
+        receipt: Receipt,
+        pos: PointOfSale?,
+        locale: Locale = Locale.getDefault(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): String {
         val issued = runCatching { OffsetDateTime.parse(receipt.receipt.issueTimestamp).toEpochSecond() }.getOrNull()
         return listOfNotNull(
             SaleText.title(sale),
-            sale.reference?.let { "Square receipt ${receipt.receipt.receiptId}" },
+            sale.reference?.let { PosText.receiptLabel(pos, receipt.receipt.receiptId) },
             issued?.let { SaleText.time(it, locale, zone) },
         ).joinToString(" · ")
     }
@@ -131,7 +139,7 @@ fun OrderContent(sale: TillSale, backLabel: String, onBack: () -> Unit, onShowCo
         Column(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }) {
             Text("The order", fontSize = 20.sp, fontWeight = FontWeight.Medium)
             if (receipt != null) {
-                Text(OrderText.subtitle(sale, receipt), fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(OrderText.subtitle(sale, receipt, LocalPointOfSale.current), fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -207,7 +215,7 @@ private fun ShowCodeBar(sale: TillSale, onShowCode: () -> Unit) = Box(Modifier.f
         Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
             Text("Show the code", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = mk.onAccent)
             Text(
-                "${SaleText.amount(sale)} · ${CodeText.under(sale, secondsLeft(sale.expiresAt))}",
+                "${SaleText.amount(sale)} · ${CodeText.under(sale, LocalPointOfSale.current, secondsLeft(sale.expiresAt))}",
                 fontSize = 13.sp, color = mk.onAccent, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }

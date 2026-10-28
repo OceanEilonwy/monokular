@@ -1,5 +1,6 @@
 package app.monokular
 
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
 import app.monokular.receipt.PaymentCode
 import app.monokular.receipt.Receipt
@@ -87,9 +88,9 @@ class OrderPageTest {
     @Test
     fun `the subtitle names the sale, its Square receipt and when it was issued`() {
         val la = ZoneId.of("America/Los_Angeles")
-        assertEquals("Sale #k4Rt · Square receipt k4Rt · 4:07 PM", OrderText.subtitle(sale(), receipt, Locale.US, la))
-        assertEquals("Sale #k4Rt · Square receipt k4Rt · 16:07", OrderText.subtitle(sale(), receipt, Locale.UK, la))
-        assertEquals("Monero sale · 4:07 PM", OrderText.subtitle(sale(reference = null), receipt, Locale.US, la), "no Square reference, no Square receipt")
+        assertEquals("Sale #k4Rt · Square receipt k4Rt · 4:07 PM", OrderText.subtitle(sale(), receipt, PointOfSale.Square, Locale.US, la))
+        assertEquals("Sale #k4Rt · Square receipt k4Rt · 16:07", OrderText.subtitle(sale(), receipt, PointOfSale.Square, Locale.UK, la))
+        assertEquals("Monero sale · 4:07 PM", OrderText.subtitle(sale(reference = null), receipt, PointOfSale.Square, Locale.US, la), "no Square reference, no Square receipt")
     }
 
     @Test
@@ -97,8 +98,8 @@ class OrderPageTest {
         assertEquals("14:52 left", CodeText.left(sale(), 892))
         assertEquals("9:12 left", CodeText.left(sale(SalePhase.Partial), 552))
         assertNull(CodeText.left(sale(SalePhase.Seen), 892))
-        assertEquals("0.31684 XMR · 14:52 left", CodeText.under(sale(), 892))
-        assertEquals("0.31684 XMR · Seen on the network", CodeText.under(sale(SalePhase.Seen), 892))
-        assertEquals("0.31684 XMR · Confirming", CodeText.under(sale(SalePhase.Confirming), 892))
+        assertEquals("0.31684 XMR · 14:52 left", CodeText.under(sale(), PointOfSale.Square, 892))
+        assertEquals("0.31684 XMR · Seen on the network", CodeText.under(sale(SalePhase.Seen), PointOfSale.Square, 892))
+        assertEquals("0.31684 XMR · Confirming", CodeText.under(sale(SalePhase.Confirming), PointOfSale.Square, 892))
     }
 }

@@ -1,5 +1,6 @@
 package app.monokular
 
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
 import app.monokular.sales.Standing
 import app.monokular.sales.TillSale
@@ -17,7 +18,7 @@ data class Note(val text: String, val ground: Ground = Ground.Card)
 /** A line of the timeline card: "Rung up" and its time, or "Till" and the till's name. */
 data class Fact(val label: String, val value: String)
 
-/** What a page offers: refund the Square sale, put the code back up. */
+/** What a page offers: refund the point of sale's sale, put the code back up. */
 enum class PageAction { Refund, ShowCodeAgain }
 
 /** A sale's page when it isn't live (the design's row 2b), in words and roles. */
@@ -41,10 +42,21 @@ data class SalePageModel(
  * The detail pages (PaidDetail, LatePaidDetail, ClosedDetail,
  * ExpiredDetail, ReversedDetail, RefundedDetail, OtherTillDetail): what
  * each says, from where the sale stands. Times the app doesn't know aren't
- * written (decision 71).
+ * written (decision 71). [till] is the till's point of sale, which names the
+ * sale's ([PosText.of]).
  */
 object SalePage {
-    fun of(sale: TillSale, now: Long, locale: Locale = Locale.getDefault(), zone: ZoneId = ZoneId.systemDefault()): SalePageModel {
+    fun of(
+        sale: TillSale,
+        till: PointOfSale?,
+        now: Long,
+        locale: Locale = Locale.getDefault(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): SalePageModel {
+        val pos = PosText.of(sale, till)
+        val name = PosText.name(pos)
+        val status = SaleText.status(sale, till)
+        val hasIt = PosText.hasItAsMonero(pos)
         fun time(at: Long) = SaleText.time(at, locale, zone)
         fun fact(label: String, at: Long?) = at?.takeIf { it > 0 }?.let { Fact(label, time(it)) }
         val xmr = SaleText.xmr(sale)
@@ -58,27 +70,27 @@ object SalePage {
             is Standing.Paid -> {
                 val closed = sale.closedAt != null
                 val note = when {
-                    standing.afterRefund -> Note("$xmr arrived after the Square sale was refunded. Ring the sale up in Square again, or return the payment.")
-                    closed -> Note("The customer paid ${after(sale.closedAt, sale.paidAt)}after the sale was closed. $NOTHING_TO_DO")
-                    standing.late -> Note("The customer paid ${after(sale.endedAt, sale.paidAt)}after the code ran out. $NOTHING_TO_DO")
+                    standing.afterRefund -> Note("$xmr arrived after the $name sale was refunded. Ring the sale up in $name again, or return the payment.")
+                    closed -> Note("The customer paid ${after(sale.closedAt, sale.paidAt)}after the sale was closed. ${nothingToDo(pos)}")
+                    standing.late -> Note("The customer paid ${after(sale.endedAt, sale.paidAt)}after the code ran out. ${nothingToDo(pos)}")
                     else -> null
                 }
                 val facts = when {
-                    standing.afterRefund -> listOf(rungUp, refundedBecause(sale, ::fact), fact("Refunded in Square", sale.refundedAt), fact("Paid", sale.paidAt))
+                    standing.afterRefund -> listOf(rungUp, refundedBecause(sale, ::fact), fact(PosText.refundedIn(pos), sale.refundedAt), fact("Paid", sale.paidAt))
                     closed -> listOf(rungUp, fact("Closed", sale.closedAt), fact("Paid", sale.paidAt))
                     standing.late -> listOf(rungUp, ended, fact("Paid", sale.paidAt))
                     else -> listOf(rungUp, fact("Seen on the network", sale.seenAt), fact("Paid", sale.paidAt))
                 }
                 SalePageModel(
-                    StateIcon.Tick, Ground.Paid, SaleText.status(sale), headingWarn = standing.afterRefund, amountMuted = false,
+                    StateIcon.Tick, Ground.Paid, status, headingWarn = standing.afterRefund, amountMuted = false,
                     line = "$xmr received" + sale.paidAt?.let { " · " + time(it) }.orEmpty(),
                     note = note, order = true, facts = facts.filterNotNull(), actions = emptyList(),
                 )
             }
             Standing.Closed -> SalePageModel(
-                StateIcon.Clock, Ground.Warn, SaleText.status(sale), headingWarn = false, amountMuted = false, line = xmr,
+                StateIcon.Clock, Ground.Warn, status, headingWarn = false, amountMuted = false, line = xmr,
                 note = Note(
-                    "Square has this sale as Monero. If the customer isn't paying, refund it. " + when {
+                    "$hasIt. If the customer isn't paying, refund it. " + when {
                         sale.settled -> "Monokulo has stopped watching it."
                         sale.expiresAt > now -> "The code is still live until ${time(sale.expiresAt)}, and Monokulo keeps watching for a late payment after that: if one arrives, this sale turns paid."
                         else -> watching
@@ -88,46 +100,46 @@ object SalePage {
                 actions = listOf(PageAction.Refund, PageAction.ShowCodeAgain),
             )
             Standing.Expired -> SalePageModel(
-                StateIcon.Clock, Ground.Warn, SaleText.status(sale), headingWarn = false, amountMuted = false, line = xmr,
+                StateIcon.Clock, Ground.Warn, status, headingWarn = false, amountMuted = false, line = xmr,
                 note = Note(
                     if (sale.phase == SalePhase.Cancelled) {
-                        "The order was cancelled in Monokulo. Square has this sale as Monero: refund it if the customer isn't paying."
+                        "The order was cancelled in Monokulo. $hasIt: refund it if the customer isn't paying."
                     } else {
-                        "The code ran out at ${time(sale.expiresAt)} with no payment. Square has this sale as Monero: refund it if the customer isn't paying. $watching"
+                        "The code ran out at ${time(sale.expiresAt)} with no payment. $hasIt: refund it if the customer isn't paying. $watching"
                     },
                 ),
                 order = true, facts = listOfNotNull(rungUp, ended), actions = listOf(PageAction.Refund),
             )
             Standing.Reversed -> SalePageModel(
-                StateIcon.Warning, Ground.Danger, SaleText.status(sale), headingWarn = false, amountMuted = false, line = "$xmr · no longer counts",
-                note = Note("The payment was spent twice, so it doesn't count. Don't hand anything over. Square has this sale as Monero: refund it there.", Ground.Danger),
+                StateIcon.Warning, Ground.Danger, status, headingWarn = false, amountMuted = false, line = "$xmr · no longer counts",
+                note = Note("The payment was spent twice, so it doesn't count. Don't hand anything over. $hasIt: refund it there.", Ground.Danger),
                 order = true, facts = listOfNotNull(rungUp, fact("Seen on the network", sale.seenAt), ended),
                 actions = listOf(PageAction.Refund),
             )
             Standing.Refunded -> SalePageModel(
-                StateIcon.Refund, Ground.Chip, SaleText.status(sale), headingWarn = false, amountMuted = true,
+                StateIcon.Refund, Ground.Chip, status, headingWarn = false, amountMuted = true,
                 line = listOfNotNull(sale.refundedAt?.let { "Refunded " + time(it) }, "nothing was paid").joinToString(" · "),
                 note = Note("Nothing more to do. If the customer pays after all, Monokular tells you straight away and this sale shows Paid after the refund."),
-                order = true, facts = listOfNotNull(rungUp, refundedBecause(sale, ::fact), fact("Refunded in Square", sale.refundedAt)),
+                order = true, facts = listOfNotNull(rungUp, refundedBecause(sale, ::fact), fact(PosText.refundedIn(pos), sale.refundedAt)),
                 actions = emptyList(),
             )
             Standing.RefundInPos -> SalePageModel(
-                StateIcon.Refund, Ground.Warn, SaleText.status(sale), headingWarn = false, amountMuted = false, line = "$xmr · not paid",
-                note = Note("Refund this sale in the POS. Monokular will notice when it's done."),
-                order = true, facts = listOfNotNull(rungUp, refundedBecause(sale, ::fact)),
+                StateIcon.Refund, Ground.Warn, status, headingWarn = false, amountMuted = false, line = "$xmr · not paid",
+                note = Note("Refund this sale in $name, then tap Refund to say it's done. While the shift is on, Monokular notices by itself too."),
+                order = true, facts = listOfNotNull(rungUp, refundedBecause(sale, ::fact), fact("Told to refund it", sale.refundPendingAt)),
                 actions = listOf(PageAction.Refund),
             )
             Standing.OtherTill -> {
-                val till = sale.deviceName
+                val other = sale.deviceName
                 SalePageModel(
-                    StateIcon.Close, Ground.Chip, SaleText.status(sale), headingWarn = false, amountMuted = false, line = "$xmr · not paid",
+                    StateIcon.Close, Ground.Chip, status, headingWarn = false, amountMuted = false, line = "$xmr · not paid",
                     note = Note(
-                        (if (till != null) "$till rang this sale up." else "Another till rang this sale up.") +
-                            " Its Square sale and what was bought stay on that till, so refund it there if the customer isn't paying. A late payment still shows here.",
+                        (if (other != null) "$other rang this sale up." else "Another till rang this sale up.") +
+                            " Its $name sale and what was bought stay on that till, so refund it there if the customer isn't paying. A late payment still shows here.",
                     ),
                     order = false,
                     facts = listOfNotNull(
-                        till?.let { Fact("Till", it) },
+                        other?.let { Fact("Till", it) },
                         rungUp,
                         if (sale.phase.isFinal) ended else fact("Closed here", sale.closedAt),
                     ),
@@ -136,7 +148,7 @@ object SalePage {
             }
             // A live sale shows its code, not a page; this is only what it would say.
             is Standing.Live -> SalePageModel(
-                StateIcon.Ring, Ground.Chip, SaleText.status(sale), headingWarn = false, amountMuted = false, line = xmr,
+                StateIcon.Ring, Ground.Chip, status, headingWarn = false, amountMuted = false, line = xmr,
                 note = null, order = true, facts = listOfNotNull(rungUp, fact("Seen on the network", sale.seenAt)), actions = emptyList(),
             )
         }
@@ -168,7 +180,8 @@ object SalePage {
         else -> "Code expired"
     }
 
-    private const val NOTHING_TO_DO = "Square already has it as Monero, so there's nothing to do. Hand over the order if they're still here."
+    private fun nothingToDo(pos: PointOfSale?) =
+        "${PosText.nameFirst(pos)} already has it as Monero, so there's nothing to do. Hand over the order if they're still here."
 }
 
 /** The close sheet's three answers to "Is the customer paying?" (the design's CloseAsk). */
@@ -212,18 +225,23 @@ object Closing {
         CloseChoice.KeepUp -> CloseOutcome(close = false, refund = false, then = CloseOutcome.Then.Stay)
     }
 
-    /** An answer's words: another till's sale's "No" only closes it. */
-    fun title(choice: CloseChoice, sale: TillSale): String = when (choice) {
-        CloseChoice.RefundIt -> "No: refund it in Square"
+    /** An answer's words at a till on [till]: another till's sale's "No" only closes it. */
+    fun title(choice: CloseChoice, sale: TillSale, till: PointOfSale?): String = when (choice) {
+        CloseChoice.RefundIt -> "No: " + PosText.refundItIn(PosText.of(sale, till))
         CloseChoice.CloseForNow -> if (sale.found == null) "No: close it" else "Not sure: close it for now"
         CloseChoice.KeepUp -> "Yes: keep the code up"
     }
 
-    /** The line under an answer, with [secondsLeft] on the code for "Yes". */
-    fun detail(choice: CloseChoice, sale: TillSale, secondsLeft: Long): String = when (choice) {
-        CloseChoice.RefundIt -> "Monokular refunds the sale and closes it."
+    /**
+     * The line under an answer, with [secondsLeft] on the code for "Yes". [refundsInPos]: the
+     * till can't refund at its point of sale, the cashier does it there (decision A130).
+     */
+    fun detail(choice: CloseChoice, sale: TillSale, till: PointOfSale?, refundsInPos: Boolean, secondsLeft: Long): String = when (choice) {
+        CloseChoice.RefundIt ->
+            if (refundsInPos) "Monokular closes it and shows you how to refund it in ${PosText.name(PosText.of(sale, till))}."
+            else "Monokular refunds the sale and closes it."
         CloseChoice.CloseForNow -> if (sale.found == null) {
-            "Refund it in Square on ${sale.deviceName ?: "the till that rang it up"}. A late payment still shows here."
+            PosText.refundOnOtherTill(PosText.of(sale, till), sale.deviceName ?: "the till that rang it up") + " A late payment still shows here."
         } else {
             "It stays in the shift. A late payment still counts, and you can refund it there."
         }
@@ -234,7 +252,7 @@ object Closing {
     }
 
     /** "Sale #bP9m · $13.88 · Square has it as Monero", or "… · From Back till" for another till's sale. */
-    fun subtitle(sale: TillSale): String =
+    fun subtitle(sale: TillSale, till: PointOfSale?): String =
         "${SaleText.title(sale)} · ${SaleText.amount(sale)} · " +
-            if (sale.found != null) "Square has it as Monero" else SaleText.place(sale, null)
+            if (sale.found != null) "${PosText.nameFirst(PosText.of(sale, till))} has it as Monero" else SaleText.place(sale, null)
 }

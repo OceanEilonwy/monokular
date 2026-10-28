@@ -1,5 +1,6 @@
 package app.monokular
 
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
 import app.monokular.overlay.Panel
 import app.monokular.receipt.PaymentCode
@@ -61,15 +62,15 @@ class PanelTest {
 
     @Test
     fun `a sale that ends while the panel is up sends the cashier to refund it`() {
-        assertEquals("Code expired · not paid", Panel.endedHeading(sale(SalePhase.Expired)))
-        assertEquals("Cancelled · not paid", Panel.endedHeading(sale(SalePhase.Cancelled)))
-        assertEquals("Payment reversed · don't hand it over", Panel.endedHeading(sale(SalePhase.DoubleSpend)))
-        assertEquals("Payment reversed · don't hand it over", Panel.endedHeading(sale(SalePhase.DoubleSpend, found = false)))
-        assertEquals("Open the shift to refund it in Square.", Panel.endedLine(sale(SalePhase.Expired)))
-        assertEquals("Refund it in Square on Back till.", Panel.endedLine(sale(SalePhase.Expired, found = false)))
-        assertEquals("Refund it in Square on the till that took it.", Panel.endedLine(sale(SalePhase.Expired, found = false, device = null)))
-        assertEquals("Refunded in Square", Panel.endedHeading(sale(SalePhase.DoubleSpend, refundedAt = 9)))
-        assertEquals("Nothing more to do.", Panel.endedLine(sale(SalePhase.Expired, refundedAt = 9)))
+        assertEquals("Code expired · not paid", Panel.endedHeading(sale(SalePhase.Expired), PointOfSale.Square))
+        assertEquals("Cancelled · not paid", Panel.endedHeading(sale(SalePhase.Cancelled), PointOfSale.Square))
+        assertEquals("Payment reversed · don't hand it over", Panel.endedHeading(sale(SalePhase.DoubleSpend), PointOfSale.Square))
+        assertEquals("Payment reversed · don't hand it over", Panel.endedHeading(sale(SalePhase.DoubleSpend, found = false), PointOfSale.Square))
+        assertEquals("Open the shift to refund it in Square.", Panel.endedLine(sale(SalePhase.Expired), PointOfSale.Square))
+        assertEquals("Refund it in Square on Back till.", Panel.endedLine(sale(SalePhase.Expired, found = false), PointOfSale.Square))
+        assertEquals("Refund it in Square on the till that took it.", Panel.endedLine(sale(SalePhase.Expired, found = false, device = null), PointOfSale.Square))
+        assertEquals("Refunded in Square", Panel.endedHeading(sale(SalePhase.DoubleSpend, refundedAt = 9), PointOfSale.Square))
+        assertEquals("Nothing more to do.", Panel.endedLine(sale(SalePhase.Expired, refundedAt = 9), PointOfSale.Square))
     }
 
     @Test

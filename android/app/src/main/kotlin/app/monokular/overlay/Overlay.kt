@@ -13,6 +13,7 @@ import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -30,6 +31,7 @@ import app.monokular.Graph
 import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
+import app.monokular.ui.LocalPointOfSale
 import app.monokular.ui.MonokularTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -106,7 +108,7 @@ class Overlay(
                 focusLive = sale?.live == true
                 // The whole order is about the sale whose code is up: another sale, or this one ending, brings the code back.
                 if (focus != previous || sale?.live != true || sale.receipt == null) page.value = PanelPage.Code
-                val where = sale?.let { Panel.where(it, graph.stores.location?.name) }.orEmpty()
+                val where = sale?.let { Panel.where(it, graph.stores.placeName) }.orEmpty()
                 state.value = OverlayState(Bubble.look(sales, paid || landed), sale, where, if (sale?.live == true) shown else PanelPage.Code)
                 val usable = wanted && runner.running && !runner.disconnected && !visible && allowed()
                 usable to (open && sale != null)
@@ -169,7 +171,9 @@ class Overlay(
     private fun compose(content: @androidx.compose.runtime.Composable () -> Unit) = ComposeView(context).apply {
         setViewTreeLifecycleOwner(owner)
         setViewTreeSavedStateRegistryOwner(owner)
-        setContent { MonokularTheme { content() } }
+        setContent {
+            MonokularTheme { CompositionLocalProvider(LocalPointOfSale provides graph.stores.pointOfSale) { content() } }
+        }
     }
 
     private fun overlayParams(width: Int, height: Int, touchThrough: Boolean) = WindowManager.LayoutParams(

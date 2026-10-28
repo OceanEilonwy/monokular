@@ -12,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.browser.customtabs.CustomTabsIntent
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -19,6 +20,7 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import app.monokular.core.PointOfSale
 import app.monokular.notify.SaleNotifications
 import app.monokular.push.WakeUpStatus
 import app.monokular.ui.AlertsScreen
@@ -32,7 +34,11 @@ import app.monokular.ui.ScanScreen
 import app.monokular.ui.SettingsActions
 import app.monokular.ui.SettingsScreen
 import app.monokular.ui.SettingsState
-import app.monokular.ui.SquareScreen
+import app.monokular.ui.LocalPointOfSale
+import app.monokular.ui.PointOfSaleScreen
+import app.monokular.ui.PosSetup
+import app.monokular.ui.PosSetupActions
+import app.monokular.ui.PosState
 import app.monokular.ui.CodeScreen
 import app.monokular.ui.OrderPage
 import app.monokular.ui.SaleScreen
@@ -70,37 +76,54 @@ class MainActivity : ComponentActivity() {
                 val refunding by model.refunding.collectAsStateWithLifecycle()
                 val bubbleWanted by model.bubbleWanted.collectAsStateWithLifecycle()
                 val store by model.store.collectAsStateWithLifecycle()
+                val tenderState by model.tenderState.collectAsStateWithLifecycle()
+                val refundSheet by model.refundSheet.collectAsStateWithLifecycle()
                 // Read so that coming back from Android's settings recomposes.
                 @Suppress("UNUSED_VARIABLE") val tick = resumed.intValue
                 // Re-read on every bump of `resumed`, which onMultiWindowModeChanged makes, so the till's actions follow it.
                 val multiWindow = isInMultiWindowMode
-                BackHandler(enabled = screen != Screen.Welcome && screen != Screen.Till && screen != Screen.Square) { model.back() }
-                when (val s = screen) {
+                // Step 4 has no Back in setup (as Square's had none), but goes back to Settings when opened from there.
+                val stepFour = screen == Screen.PointOfSale && !model.setupDone
+                BackHandler(enabled = screen != Screen.Welcome && screen != Screen.Till && !stepFour) { model.back() }
+                CompositionLocalProvider(LocalPointOfSale provides model.pointOfSale) { when (val s = screen) {
                     Screen.Welcome -> WelcomeScreen(onStart = { model.go(Screen.Scan) })
                     Screen.Scan -> ScanScreen(onCode = model::onCode, onBack = model::back)
                     is Screen.Confirm -> ConfirmScreen(s.code, model.deviceName, busy, problem, { model.connect(s.code) }, model::back)
                     is Screen.Connected -> ConnectedScreen(
                         s.connection, store,
-                        onNext = { model.go(Screen.Square) }, onRetry = model::readStore, onWrong = model::disconnect,
+                        onNext = { model.go(Screen.PointOfSale) }, onRetry = model::readStore, onWrong = model::disconnect,
                     )
-                    Screen.Square -> SquareScreen(
-                        location = model.location,
-                        signedIn = model.squareSignedIn,
-                        busy = busy,
-                        problem = problem ?: runner.till.problem,
-                        testSale = runner.till.sales.firstOrNull { it.found != null },
-                        onSignIn = ::signInToSquare,
-                        onChangeLocation = model::changeLocation,
-                        onSkip = model::withoutSquare,
-                        onContinue = {
-                            // The test sale has done its job: the till opens on its idle screen, the sale in its list.
-                            runner.till.sales.forEach { model.leave(it.orderId) }
-                            model.go(Screen.Alerts)
-                        },
+                    Screen.PointOfSale -> PointOfSaleScreen(
+                        PosSetup(
+                            chosen = model.pointOfSale,
+                            location = model.location,
+                            merchant = model.cloverMerchant?.name,
+                            signedIn = model.posSignedIn,
+                            tender = tenderState.forScreen(),
+                            busy = busy,
+                            problem = problem ?: runner.till.problem,
+                            testSale = runner.till.sales.firstOrNull { it.found != null },
+                        ),
+                        PosSetupActions(
+                            onChoose = model::choosePointOfSale,
+                            onSignIn = ::signIn,
+                            onChangeLocation = model::changeLocation,
+                            onLookAgain = model::lookAgain,
+                            onSkip = model::withoutPos,
+                            onContinue = {
+                                if (model.setupDone) {
+                                    model.back()
+                                } else {
+                                    // The test sale has done its job: the till opens on its idle screen, the sale in its list.
+                                    runner.till.sales.forEach { model.leave(it.orderId) }
+                                    model.go(Screen.Alerts)
+                                }
+                            },
+                        ),
                     )
                     is Screen.Locations -> LocationsScreen(s.locations, model::chooseLocation, model::back)
                     Screen.Alerts -> AlertsScreen(
-                        place = model.location?.name,
+                        place = model.placeName,
                         currency = model.location?.currency ?: store.store?.baseCurrency ?: "USD",
                         allowed = model.notificationsAllowed(),
                         onAllow = ::allowNotifications,
@@ -108,6 +131,7 @@ class MainActivity : ComponentActivity() {
                         onBack = model::back,
                     )
                     Screen.Float -> FloatScreen(
+                        pos = model.pointOfSale,
                         allowed = model.overlayAllowed(),
                         onOpenSettings = { model.setBubble(true); openOverlaySettings() },
                         onNotificationsOnly = { model.setBubble(false); model.go(Screen.Ready) },
@@ -115,8 +139,9 @@ class MainActivity : ComponentActivity() {
                         onBack = model::back,
                     )
                     Screen.Ready -> ReadyScreen(
+                        pos = model.pointOfSale,
                         store = store.store?.name.orEmpty(),
-                        location = model.location?.name,
+                        location = model.placeName,
                         alerts = model.notificationsAllowed(),
                         bubble = bubbleWanted && model.overlayAllowed(),
                         onStart = model::startShift,
@@ -129,14 +154,18 @@ class MainActivity : ComponentActivity() {
                             is Screen.Order -> s.orderId
                             else -> null
                         }?.let { id -> sales.firstOrNull { it.orderId == id } }
-                        val actions = remember(multiWindow) { tillActions(multiWindow) }
+                        val pos = model.pointOfSale
+                        val refundsInPos = runner.refundsInPos != null
+                        val actions = remember(multiWindow, pos, refundsInPos) { tillActions(multiWindow, pos, refundsInPos) }
                         when {
                             // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
                             // a disconnected till shows why, whatever was on screen.
                             shown == null || runner.disconnected -> ShiftScreen(tillStatus(runner, store), sales, actions)
                             s is Screen.Code -> CodeScreen(shown, onBack = { model.back(s) })
                             s is Screen.Order -> OrderPage(shown, "Back to the sale", onBack = { model.back(s) }, onShowCode = { model.back(s) })
-                            else -> SaleScreen(shown, model.location?.name, shown.orderId in refunding, runner.till.refundProblems[shown.orderId], actions)
+                            else -> SaleScreen(
+                                shown, model.placeName, shown.orderId in refunding, runner.till.refundProblems[shown.orderId], refundSheet, actions,
+                            )
                         }
                     }
                     Screen.Settings -> {
@@ -149,16 +178,21 @@ class MainActivity : ComponentActivity() {
                             SettingsState(
                                 connection = model.connection,
                                 store = store,
-                                location = model.location,
-                                squareSignedIn = model.squareSignedIn,
-                                tenderName = model.tenderName,
+                                pos = PosState(
+                                    chosen = model.pointOfSale,
+                                    signedIn = model.posSignedIn,
+                                    location = model.location,
+                                    merchant = model.cloverMerchant?.name,
+                                    tenderName = model.tenderName,
+                                    tender = tenderState.forScreen(),
+                                ),
                                 live = runner.live,
                                 shiftOn = model.shiftOn,
                                 alerts = model.notificationsAllowed(),
                                 bubbleWanted = bubbleWanted,
                                 bubbleAllowed = model.overlayAllowed(),
                                 debug = model.debug,
-                                squareBaseUrl = model.squareBaseUrl,
+                                baseUrls = model.baseUrls,
                                 torRunning = torRunning,
                                 wakeUps = WakeUpsState(
                                     choice = wakeUpChoice,
@@ -177,30 +211,33 @@ class MainActivity : ComponentActivity() {
                                     model.setBubble(on)
                                     if (on && !model.overlayAllowed()) openOverlaySettings()
                                 },
-                                onSquare = { model.go(Screen.Square) },
+                                onChoosePos = model::choosePointOfSale,
+                                onSignIn = ::signIn,
                                 onChangeLocation = model::changeLocation,
-                                onSignOutSquare = model::signOutOfSquare,
+                                onSignOut = model::signOutOfPos,
+                                onChangePos = model::openPointOfSale,
+                                onLookAgain = model::lookAgain,
                                 onDisconnect = model::disconnect,
-                                onSquareBaseUrl = { model.squareBaseUrl = it },
+                                onBaseUrl = model::setBaseUrl,
                                 onCopyAddress = { SaleNotifications.copyAddress(this, it) },
                                 onTor = model::setTor,
                                 onWakeUps = model::chooseWakeUps,
                                 onOwnBell = model::useOwnBell,
                                 onDistributor = model::chooseDistributor,
                                 onGetDistributor = { openInTab(NTFY) },
-                                onBellSignIn = { openInTab(model.squareSignInUrl(it)) },
+                                onBellSignIn = { pos, applicationId -> model.signInUrl(pos, applicationId)?.let(::openInTab) },
                                 onBack = model::closeSettings,
                             ),
                         )
                     }
-                }
+                } }
             }
         }
     }
 
     private fun tillStatus(runner: RunnerState, store: StoreNow) = TillStatus(
         store = store.store?.name,
-        location = model.location?.name,
+        location = model.placeName,
         running = runner.running,
         live = runner.live,
         disconnected = runner.disconnected,
@@ -209,7 +246,7 @@ class MainActivity : ComponentActivity() {
         startedAt = model.shiftStartedAt,
     )
 
-    private fun tillActions(multiWindow: Boolean) = TillActions(
+    private fun tillActions(multiWindow: Boolean, pos: PointOfSale?, refundsInPos: Boolean) = TillActions(
         onSettings = model::openSettings,
         onOpen = model::open,
         onBack = model::leave,
@@ -220,10 +257,14 @@ class MainActivity : ComponentActivity() {
         onReopen = model::reopen,
         onCopy = { SaleNotifications.copyAddress(this, it.address) },
         onCopyXmr = { SaleNotifications.copyXmr(this, it.xmr) },
-        onBackToSquare = if (multiWindow) null else ::backToSquare,
-        onSignIn = ::signInToSquare,
+        // Square's app is on this phone; a Clover point of sale is a device of its own (decision A135).
+        onBackToPos = if (multiWindow || pos != PointOfSale.Square) null else ::backToSquare,
+        onRefundDone = model::refundDone,
+        onRefundSheetDismissed = model::refundSheetDismissed,
+        onSignIn = ::signIn,
         onForget = model::forget,
         onStartShift = { model.setShift(true) },
+        refundsInPos = refundsInPos,
     )
 
     override fun onStart() {
@@ -262,7 +303,7 @@ class MainActivity : ComponentActivity() {
         when (intent?.action) {
             Intent.ACTION_VIEW -> {
                 val uri = intent.data ?: return
-                if (isSquareRedirect(uri)) model.onSquareRedirect(uri)
+                posRedirect(uri)?.let { model.onPosRedirect(it, uri) }
             }
             Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)?.let { text ->
                 text.split(Regex("\\s+")).firstOrNull { model.onCode(it) }
@@ -270,12 +311,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun isSquareRedirect(uri: Uri): Boolean {
-        val expected = BuildConfig.SQUARE_RETURN_URI.toUri()
-        return uri.scheme == expected.scheme && uri.host == expected.host && uri.path.orEmpty() == expected.path.orEmpty()
+    /** The point of sale whose sign-in [uri] returns from, by its return address; null for anything else. */
+    private fun posRedirect(uri: Uri): PointOfSale? = PointOfSale.entries.firstOrNull { pos ->
+        val expected = when (pos) {
+            PointOfSale.Square -> BuildConfig.SQUARE_RETURN_URI
+            PointOfSale.Clover -> BuildConfig.CLOVER_RETURN_URI
+        }.toUri()
+        uri.scheme == expected.scheme && uri.host == expected.host && uri.path.orEmpty() == expected.path.orEmpty()
     }
 
-    private fun signInToSquare() = openInTab(model.squareSignInUrl())
+    /** The chosen point of sale's sign-in, in a Custom Tab. */
+    private fun signIn() {
+        model.signInUrl()?.let(::openInTab)
+    }
 
     private fun openInTab(url: String) {
         CustomTabsIntent.Builder().build().launchUrl(this, url.toUri())

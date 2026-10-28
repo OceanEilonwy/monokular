@@ -1,6 +1,7 @@
 package app.monokular
 
 import app.monokular.core.Amounts
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
 import app.monokular.sales.Standing
 import app.monokular.sales.TillSale
@@ -69,11 +70,18 @@ object ShiftList {
     /** Where a row goes: a live sale's code, any other sale's page (the design's note s2). */
     fun opens(sale: TillSale): RowOpens = if (sale.standing is Standing.Live) RowOpens.Code else RowOpens.Details
 
-    /** The row for [sale], with [secondsLeft] on its code when it's waiting or part paid. */
-    fun row(sale: TillSale, secondsLeft: Long, locale: Locale = Locale.getDefault(), zone: ZoneId = ZoneId.systemDefault()): ShiftRow {
+    /** The row for [sale] at a till on [till], with [secondsLeft] on its code when it's waiting or part paid. */
+    fun row(
+        sale: TillSale,
+        till: PointOfSale?,
+        secondsLeft: Long,
+        locale: Locale = Locale.getDefault(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): ShiftRow {
+        val pos = PosText.of(sale, till)
         fun at(time: Long?) = time?.let { " · " + SaleText.time(it, locale, zone) }.orEmpty()
         val left = " · ${SaleText.clock(secondsLeft)} left"
-        val till = sale.deviceName ?: "another till"
+        val other = sale.deviceName ?: "another till"
         val standing = sale.standing
         val (sub, tone, icon) = when (standing) {
             is Standing.Live -> Triple(
@@ -86,7 +94,7 @@ object ShiftList {
                 Tone.Link, StateIcon.Ring,
             )
             is Standing.Paid -> Triple(
-                SaleText.status(sale) + at(sale.paidAt),
+                SaleText.status(sale, till) + at(sale.paidAt),
                 when {
                     standing.afterRefund -> Tone.Warn
                     standing.late -> Tone.Paid
@@ -94,13 +102,16 @@ object ShiftList {
                 },
                 StateIcon.Tick,
             )
-            Standing.Closed -> Triple("Closed · not paid · refund it in Square", Tone.Warn, StateIcon.Clock)
-            Standing.Expired -> Triple(SaleText.status(sale), Tone.Warn, StateIcon.Clock)
+            Standing.Closed -> Triple("Closed · not paid · " + PosText.refundItIn(pos), Tone.Warn, StateIcon.Clock)
+            Standing.Expired -> Triple(SaleText.status(sale, till), Tone.Warn, StateIcon.Clock)
             Standing.Reversed -> Triple("Payment reversed · don't hand it over", Tone.Danger, StateIcon.Warning)
-            Standing.Refunded -> Triple("Refunded in Square" + at(sale.refundedAt), Tone.Muted, StateIcon.Refund)
-            Standing.RefundInPos -> Triple("Refund it in the POS" + at(sale.refundPendingAt), Tone.Warn, StateIcon.Refund)
+            Standing.Refunded -> Triple(PosText.refundedIn(pos) + at(sale.refundedAt), Tone.Muted, StateIcon.Refund)
+            Standing.RefundInPos -> Triple(
+                PosText.refundItIn(pos).replaceFirstChar(Char::uppercase) + orderOf(sale) + at(sale.refundPendingAt),
+                Tone.Warn, StateIcon.Refund,
+            )
             Standing.OtherTill -> Triple(
-                if (sale.phase.isFinal) "${SaleText.status(sale)} · on $till" else "Closed · not paid · refund it on $till",
+                if (sale.phase.isFinal) "${SaleText.status(sale, till)} · on $other" else "Closed · not paid · refund it on $other",
                 Tone.Muted, StateIcon.Close,
             )
         }
@@ -113,6 +124,9 @@ object ShiftList {
             opens = opens(sale),
         )
     }
+
+    /** " · order 7F3K…": the point of sale's order to refund, by the start of its id, when the till has it. */
+    private fun orderOf(sale: TillSale): String = sale.found?.orderId?.let { " · order ${it.take(4)}…" }.orEmpty()
 
     /** What an empty filter says where its rows would be. */
     fun empty(filter: ShiftFilter): String = when (filter) {

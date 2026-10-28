@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import app.monokular.SaleText
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
@@ -48,8 +49,9 @@ object CodeText {
         else -> null
     }
 
-    /** "0.05552 XMR · 14:52 left", or "0.05552 XMR · Seen on the network" once seen. */
-    fun under(sale: TillSale, secondsLeft: Long): String = "${SaleText.xmr(sale)} · ${left(sale, secondsLeft) ?: SaleText.status(sale)}"
+    /** "0.05552 XMR · 14:52 left", or "0.05552 XMR · Seen on the network" once seen, at a till on [till]. */
+    fun under(sale: TillSale, till: PointOfSale?, secondsLeft: Long): String =
+        "${SaleText.xmr(sale)} · ${left(sale, secondsLeft) ?: SaleText.status(sale, till)}"
 }
 
 /**
@@ -79,7 +81,7 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(SaleText.amount(sale), style = display(30, -0.5), color = ink)
-                    Text(CodeText.under(sale, secondsLeft(sale.expiresAt)), fontSize = 15.sp, color = muted)
+                    Text(CodeText.under(sale, LocalPointOfSale.current, secondsLeft(sale.expiresAt)), fontSize = 15.sp, color = muted)
                 }
                 Box(
                     Modifier.size(48.dp).clip(CircleShape).background(LightTokens.inset).clickable(role = Role.Button, onClick = onBack),

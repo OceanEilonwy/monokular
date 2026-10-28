@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import app.monokular.Fact
 import app.monokular.Ground
 import app.monokular.PageAction
+import app.monokular.PosText
 import app.monokular.SalePage
 import app.monokular.SaleText
 import app.monokular.sales.TillSale
@@ -38,11 +39,14 @@ import app.monokular.sales.TillSale
  * A sale's page when its code isn't up (the design's row 2b): paid, paid
  * late, closed, expired, reversed, refunded, or another till's. What it
  * says comes from [SalePage]; a refund's answer turns it into the
- * Refunded page in place, or shows [refundProblem] above its buttons.
+ * Refunded page in place, or shows [refundProblem] above its buttons. At a
+ * point of sale the till can't refund through, Refund opens [refundSheet]
+ * (decision A130) until the sale shows refunded.
  */
 @Composable
-fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProblem: String?, actions: TillActions) {
-    val page = SalePage.of(sale, now = System.currentTimeMillis() / 1000)
+fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProblem: String?, refundSheet: RefundSheet?, actions: TillActions) {
+    val pos = LocalPointOfSale.current
+    val page = SalePage.of(sale, pos, now = System.currentTimeMillis() / 1000)
     val subtitle = SaleText.place(sale, location) + sale.createdAt.takeIf { it > 0 }?.let { " · " + SaleText.time(it) }.orEmpty()
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
@@ -80,7 +84,7 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
                         for (action in page.actions) {
                             when (action) {
                                 PageAction.Refund -> PrimaryButton(
-                                    "Refund ${SaleText.amount(sale)} in Square", { actions.onRefund(sale.orderId) }, Modifier.fillMaxWidth(),
+                                    PosText.refundButton(PosText.of(sale, pos), SaleText.amount(sale)), { actions.onRefund(sale.orderId) }, Modifier.fillMaxWidth(),
                                     enabled = !refunding, height = 56.dp, size = 16,
                                 )
                                 PageAction.ShowCodeAgain -> OutlineButton(
@@ -92,6 +96,9 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
                 }
             }
         }
+    }
+    if (refundSheet != null && refundSheet.orderId == sale.orderId && !sale.refunded) {
+        RefundInPosSheet(sale, refundSheet, onRefunded = { actions.onRefundDone(sale.orderId) }, onNotYet = actions.onRefundSheetDismissed)
     }
 }
 

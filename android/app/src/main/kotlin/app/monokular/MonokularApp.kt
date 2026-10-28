@@ -14,10 +14,16 @@ import app.monokular.push.PosSignIn
 import app.monokular.push.UnifiedPushSubscriptions
 import app.monokular.push.WakePushService
 import app.monokular.push.WakeUps
+import app.monokular.sales.CloverApi
+import app.monokular.sales.CloverAuth
+import app.monokular.sales.CloverConfig
+import app.monokular.sales.CloverEnvironment
+import app.monokular.sales.CloverMerchant
+import app.monokular.sales.CloverSource
+import app.monokular.sales.PosException
 import app.monokular.sales.SquareApi
 import app.monokular.sales.SquareAuth
 import app.monokular.sales.SquareConfig
-import app.monokular.sales.SquareException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -68,13 +74,34 @@ class Graph(app: Application) {
 
     fun squareApi() = SquareApi(http, squareConfig(), squareAuth())
 
+    /** Clover's region, `-Pmonokular.clover.environment`: a build whose property isn't one fails here, as BELL_URL's does. */
+    private val cloverEnvironment: CloverEnvironment = requireNotNull(CloverEnvironment.fromWire(BuildConfig.CLOVER_ENVIRONMENT)) {
+        "-Pmonokular.clover.environment isn't sandbox, north_america, europe or latin_america: ${BuildConfig.CLOVER_ENVIRONMENT}"
+    }
+
+    fun cloverConfig() = CloverConfig(
+        // A Bell's application once the till has signed in through it (decision A132).
+        applicationId = stores.cloverApplicationId ?: BuildConfig.CLOVER_APPLICATION_ID,
+        environment = cloverEnvironment,
+        redirectUri = BuildConfig.CLOVER_REDIRECT_URI,
+        userAgent = "Monokular/${BuildConfig.VERSION_NAME}",
+        baseUrl = if (BuildConfig.DEBUG) stores.cloverBaseUrl ?: BuildConfig.CLOVER_BASE_URL.ifEmpty { null } else null,
+    )
+
+    fun cloverAuth(config: CloverConfig = cloverConfig()) = CloverAuth(http, config, stores.cloverTokens)
+
+    fun cloverApi() = CloverApi(http, cloverConfig(), cloverAuth())
+
+    /** Clover's sales at [merchant], for the till and for finding the Monero payment type. */
+    fun cloverSource(merchant: CloverMerchant) = CloverSource(cloverApi(), cloverConfig(), merchant, stores.cloverCursor, stores.tenders)
+
     /** The project's Bell, `-Pmonokular.bell.url` (decision 98): what "Monokular Bell" registers with and Settings shows. */
     val monokularBell: BellAddress = requireNotNull(BellAddress.parse(BuildConfig.BELL_URL, allowHttp = BuildConfig.DEBUG)) {
         "-Pmonokular.bell.url isn't a Bell address this build takes: ${BuildConfig.BELL_URL}"
     }
 
     /** The till's push subscription for its Bell (decision 90); a ding goes from here to the running shift. */
-    val push = UnifiedPushSubscriptions(app) { PointOfSale.Square }
+    val push = UnifiedPushSubscriptions(app) { stores.pointOfSale }
 
     /**
      * Settings › Wake-ups (`docs/design.md` §3): made on first use, which
@@ -95,19 +122,38 @@ class Graph(app: Application) {
         )
     }
 
-    /** The till's Square sign-in, as a Bell registration needs it. */
+    /** The till's point-of-sale sign-in, as a Bell registration needs it (decision A132). */
     private val posSide = object : PosSide {
         override val signedIn: PosSignIn?
-            get() {
-                val location = stores.location ?: return null
-                if (stores.withoutSquare || stores.tokens.load() == null) return null
-                val environment = if (BuildConfig.SQUARE_SANDBOX) "sandbox" else "production"
-                return PosSignIn(PointOfSale.Square, squareConfig().applicationId, environment, location.id)
+            get() = if (stores.withoutPos) null else when (stores.pointOfSale) {
+                PointOfSale.Square -> {
+                    val location = stores.location
+                    if (location == null || stores.tokens.load() == null) {
+                        null
+                    } else {
+                        val environment = if (BuildConfig.SQUARE_SANDBOX) "sandbox" else "production"
+                        PosSignIn(PointOfSale.Square, squareConfig().applicationId, environment, location.id)
+                    }
+                }
+                // A Clover merchant is its own location (acceptance D1).
+                PointOfSale.Clover -> {
+                    val merchant = stores.cloverMerchant
+                    if (merchant == null || stores.cloverTokens.load() == null) {
+                        null
+                    } else {
+                        PosSignIn(PointOfSale.Clover, cloverConfig().applicationId, cloverEnvironment.wire, merchant.id)
+                    }
+                }
+                null -> null
             }
 
         override suspend fun accessToken(): String? = try {
-            squareAuth().accessToken()
-        } catch (e: SquareException) {
+            when (stores.pointOfSale) {
+                PointOfSale.Square -> squareAuth().accessToken()
+                PointOfSale.Clover -> cloverAuth().accessToken()
+                null -> null
+            }
+        } catch (e: PosException) {
             if (e.signInAgain) null else throw IOException(e.message, e)
         }
     }

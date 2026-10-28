@@ -26,7 +26,9 @@ import androidx.core.content.ContextCompat
 import androidx.core.graphics.createBitmap
 import app.monokular.MainActivity
 import app.monokular.R
+import app.monokular.PosText
 import app.monokular.SaleText
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
@@ -58,7 +60,7 @@ data class Face(
         private val accent = Fixed.Accent.toArgb()
         private val paidGreen = Fixed.Paid.toArgb()
 
-        /** A sale whose code is up, in [location] (the till's Square location). */
+        /** A sale whose code is up, in [location] (the till's Square location or Clover merchant). */
         fun of(sale: TillSale, location: String?): Face {
             val (icon, title, phrase) = when (sale.phase) {
                 SalePhase.Seen -> Triple(R.drawable.ic_mark_q2, "Seen on the network", "waiting for confirmation")
@@ -247,15 +249,19 @@ class SaleNotifications(private val context: Context) {
             .build(),
     )
 
-    /** A sale that ended without its money: open it to refund the Square sale. */
-    fun unpaid(sale: TillSale, quiet: Boolean) = post(
+    /** A sale that ended without its money, at a till on [till]: open it to refund the point of sale's sale. */
+    fun unpaid(sale: TillSale, till: PointOfSale?, quiet: Boolean) = post(
         sale,
         NotificationCompat.Builder(context, CHANNEL_SALES)
             .setSmallIcon(R.drawable.ic_mark)
             .setColor(accent)
-            .setContentTitle("${SaleText.status(sale)} · ${SaleText.title(sale)}")
+            .setContentTitle("${SaleText.status(sale, till)} · ${SaleText.title(sale)}")
             .setContentText(
-                "${SaleText.amount(sale)}. " + if (sale.found != null) "Refund it in Square if the customer isn't paying." else "Refund it in Square on the till that took it.",
+                "${SaleText.amount(sale)}. " + if (sale.found != null) {
+                    PosText.refundItIn(PosText.of(sale, till)).replaceFirstChar(Char::uppercase) + " if the customer isn't paying."
+                } else {
+                    PosText.refundOnOtherTill(PosText.of(sale, till), "the till that took it")
+                },
             )
             .setCategory(NotificationCompat.CATEGORY_STATUS)
             .setGroup(GROUP_ENDED)
