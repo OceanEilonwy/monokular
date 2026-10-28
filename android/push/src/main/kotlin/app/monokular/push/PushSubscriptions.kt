@@ -59,7 +59,7 @@ interface PushSubscriptions {
 
     /**
      * Each ding the Bell sent, once the connector has decrypted it and it
-     * reads as `{"wake":"square"}`. Nothing else about it: a ding carries
+     * reads as `{"wake":"<the till's point of sale>"}`. Nothing else about it: a ding carries
      * no sale. Dropped when nothing collects (no shift is running).
      */
     val dings: SharedFlow<Unit>

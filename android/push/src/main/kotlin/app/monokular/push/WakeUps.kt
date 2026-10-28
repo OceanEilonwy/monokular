@@ -1,5 +1,6 @@
 package app.monokular.push
 
+import app.monokular.core.PointOfSale
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -8,11 +9,11 @@ import kotlin.time.Duration.Companion.seconds
 
 /**
  * Settings › Wake-ups (`docs/design.md` §3): what makes the till check
- * Square, as the cashier chose it (the acceptance criteria's "mode").
+ * its point of sale, as the cashier chose it (the acceptance criteria's "mode").
  */
 @Serializable
 sealed interface WakeUpChoice {
-    /** The default: the till checks Square every 2 seconds during a shift. */
+    /** The default: the till checks its point of sale every 2 seconds during a shift. */
     @Serializable
     @SerialName("timer")
     data object TimerOnly : WakeUpChoice
@@ -38,12 +39,25 @@ sealed interface WakeUpChoice {
 /** What a Bell says about itself: `GET /v1/info` (`docs/bell.md`). */
 @Serializable
 data class BellInfo(
-    /** The Square application the till must sign in through for this Bell to hear its sales. */
-    @SerialName("square_application_id") val squareApplicationId: String,
-    /** `production` or `sandbox`. */
-    val environment: String,
+    /**
+     * The points of sale this Bell rings tills for, by wire name ([PointOfSale.wire]):
+     * one it doesn't run is absent. A name this build doesn't know is kept and never read.
+     */
+    @SerialName("points_of_sale") val pointsOfSale: Map<String, BellPointOfSale>,
     /** The key every ding is signed with: what the subscription is made for. */
     @SerialName("vapid_public_key") val vapidPublicKey: String,
+) {
+    /** The Bell's entry for [pointOfSale], or null when it doesn't ring that point of sale's tills. */
+    operator fun get(pointOfSale: PointOfSale): BellPointOfSale? = pointsOfSale[pointOfSale.wire]
+}
+
+/** One point of sale a Bell runs: the application it hears that point of sale through, and where. */
+@Serializable
+data class BellPointOfSale(
+    /** The application the till must sign in through for this Bell to hear its sales. */
+    @SerialName("application_id") val applicationId: String,
+    /** Square's `production` or `sandbox`; Clover's `sandbox`, `north_america`, `europe` or `latin_america`. */
+    val environment: String,
 )
 
 /** A registration the Bell holds for this till: `POST /v1/register`'s answer and what it was made with. */
@@ -72,8 +86,8 @@ sealed interface WakeUpStatus {
     /** Timer only: no Bell, no status card. */
     data object Off : WakeUpStatus
 
-    /** A Bell is chosen, but the till isn't signed in to Square, which registering needs. */
-    data object NoSquare : WakeUpStatus
+    /** A Bell is chosen, but the till isn't signed in to a point of sale, which registering needs. */
+    data object NoPos : WakeUpStatus
 
     /** A Bell is chosen, but no UnifiedPush distributor is installed to carry its dings. */
     data object NoDistributor : WakeUpStatus
@@ -110,11 +124,14 @@ sealed interface WakeUpStatus {
      */
     data class Refused(val reason: String, val retryAt: Long? = null) : WakeUpStatus
 
-    /** The Bell hears Square through another application, [applicationId]: the till must sign in through it (decision 96). */
-    data class SignInNeeded(val applicationId: String) : WakeUpStatus
+    /**
+     * The Bell hears [pointOfSale] through another application, [applicationId]:
+     * the till must sign in to it through that one (decision 96, A132).
+     */
+    data class SignInNeeded(val pointOfSale: PointOfSale, val applicationId: String) : WakeUpStatus
 }
 
-/** How often the shift's timer checks Square: 30 s only while [WakeUpStatus.Connected], else 2 s (`docs/design.md` §3, §7). */
+/** How often the shift's timer checks the point of sale: 30 s only while [WakeUpStatus.Connected], else 2 s (`docs/design.md` §3, §7). */
 val WakeUpStatus.interval: Duration
     get() = if (this is WakeUpStatus.Connected) 30.seconds else 2.seconds
 
@@ -155,15 +172,15 @@ interface WakeUps {
 
     /**
      * Register again (`POST /v1/register` with the current subscription;
-     * the Bell keeps the id): an app start, a shift starting, a new Square
-     * sign-in, a changed location, or a status to retry. Nothing happens
+     * the Bell keeps the id): an app start, a shift starting, a new
+     * point-of-sale sign-in, a changed location, or a status to retry. Nothing happens
      * for [WakeUpChoice.TimerOnly] or while a registration is under way.
      */
     fun recheck()
 
     /**
      * A check the shift's *timer* started (not a ding, not the app opening)
-     * found [sales] new Square sales. With a Bell connected and no ding in
+     * found [sales] new sales at the point of sale. With a Bell connected and no ding in
      * the 60 s before, that is a wake-up the Bell missed (decision 94):
      * the status becomes [WakeUpStatus.MissingWakeups] and the till
      * registers once again.
@@ -172,8 +189,8 @@ interface WakeUps {
 
     /**
      * Take the registration back (`DELETE`, awaited, 10 s at most) and end
-     * the subscription: the cashier signed out of Square, or the device
-     * was disconnected. The choice stays (status [WakeUpStatus.NoSquare])
+     * the subscription: the cashier signed out of the point of sale or changed
+     * it, or the device was disconnected. The choice stays (status [WakeUpStatus.NoPos])
      * unless [forget], which puts it back to Timer only.
      */
     suspend fun unregister(forget: Boolean = false)

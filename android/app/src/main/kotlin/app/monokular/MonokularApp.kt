@@ -3,12 +3,14 @@ package app.monokular
 import android.app.Application
 import android.os.Build
 import app.monokular.core.AppIdentity
+import app.monokular.core.PointOfSale
 import app.monokular.core.MonokuloApi
 import app.monokular.core.Tor
 import app.monokular.push.BellAddress
 import app.monokular.push.BellApi
 import app.monokular.push.BellWakeUps
-import app.monokular.push.SquareSide
+import app.monokular.push.PosSide
+import app.monokular.push.PosSignIn
 import app.monokular.push.UnifiedPushSubscriptions
 import app.monokular.push.WakePushService
 import app.monokular.push.WakeUps
@@ -72,7 +74,7 @@ class Graph(app: Application) {
     }
 
     /** The till's push subscription for its Bell (decision 90); a ding goes from here to the running shift. */
-    val push = UnifiedPushSubscriptions(app)
+    val push = UnifiedPushSubscriptions(app) { PointOfSale.Square }
 
     /**
      * Settings › Wake-ups (`docs/design.md` §3): made on first use, which
@@ -87,19 +89,21 @@ class Graph(app: Application) {
             bells = BellApi(http),
             store = stores.wakeUps,
             monokular = monokularBell,
-            squareSandbox = BuildConfig.SQUARE_SANDBOX,
-            square = squareSide,
+            pos = posSide,
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             now = { System.currentTimeMillis() / 1000 },
         )
     }
 
     /** The till's Square sign-in, as a Bell registration needs it. */
-    private val squareSide = object : SquareSide {
-        override val signedInApplicationId: String?
-            get() = if (stores.withoutSquare || stores.tokens.load() == null) null else squareConfig().applicationId
-
-        override val locationId: String? get() = stores.location?.id
+    private val posSide = object : PosSide {
+        override val signedIn: PosSignIn?
+            get() {
+                val location = stores.location ?: return null
+                if (stores.withoutSquare || stores.tokens.load() == null) return null
+                val environment = if (BuildConfig.SQUARE_SANDBOX) "sandbox" else "production"
+                return PosSignIn(PointOfSale.Square, squareConfig().applicationId, environment, location.id)
+            }
 
         override suspend fun accessToken(): String? = try {
             squareAuth().accessToken()

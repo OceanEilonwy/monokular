@@ -1,5 +1,6 @@
 package app.monokular.push
 
+import app.monokular.core.PointOfSale
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -26,17 +27,34 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
 
+/** A till signed in to one point of sale, as [WakeUpsScenarios] runs for it. */
+data class TestTill(
+    val pointOfSale: PointOfSale,
+    val applicationId: String,
+    val environment: String,
+    /** Another environment of the same point of sale. */
+    val otherEnvironment: String,
+    /** Another application of the same point of sale and environment: a Bell's. */
+    val otherApplicationId: String,
+    val locationId: String,
+    val token: String,
+)
+
 /**
  * Wake-ups' registration lifecycle against a recording Bell, distributor and
- * Square (A13): every transition of A3, A6, A7, A10 and A11, on virtual time.
+ * point of sale (A13): every transition of A3, A6, A7, A10 and A11, on virtual
+ * time, for a Square till ([BellWakeUpsTest]) and a Clover one
+ * ([CloverBellWakeUpsTest]), acceptance T5.4.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
-class BellWakeUpsTest {
+abstract class WakeUpsScenarios(private val till: TestTill) {
     private val monokular = BellAddress.parse("bell.monokulo.com")!!
     private val own = BellAddress.parse("bell.thebeanroom.coffee")!!
 
     private class FakeBell : BellClient {
         val calls = mutableListOf<String>()
+        /** The point of sale each POST registered for. */
+        val registeredFor = mutableListOf<PointOfSale>()
         val infos = mutableMapOf<BellAddress, () -> BellInfo>()
         var register: () -> BellRegistered = { BellRegistered("br_${++ids}") }
         var unregister: suspend () -> Unit = {}
@@ -47,8 +65,15 @@ class BellWakeUpsTest {
             return (infos[bell] ?: { throw ConnectException() })()
         }
 
-        override suspend fun register(bell: BellAddress, accessToken: String, locationId: String, subscription: PushSubscription): BellRegistered {
+        override suspend fun register(
+            bell: BellAddress,
+            pointOfSale: PointOfSale,
+            accessToken: String,
+            locationId: String,
+            subscription: PushSubscription,
+        ): BellRegistered {
             calls += "POST ${bell.display} $accessToken $locationId ${subscription.endpoint}"
+            registeredFor += pointOfSale
             return register()
         }
 
@@ -95,10 +120,14 @@ class BellWakeUpsTest {
         override var registration: BellRegistration? = null
     }
 
-    private class FakeSquare : SquareSide {
-        override var signedInApplicationId: String? = APP
-        override var locationId: String? = "L1"
-        var token: String? = "EAAAtoken"
+    private class FakePos(till: TestTill) : PosSide {
+        val pointOfSale = till.pointOfSale
+        /** Null: not signed in. */
+        var applicationId: String? = till.applicationId
+        var environment = till.environment
+        val locationId = till.locationId
+        var token: String? = till.token
+        override val signedIn get() = applicationId?.let { PosSignIn(pointOfSale, it, environment, locationId) }
         override suspend fun accessToken() = token
     }
 
@@ -106,9 +135,14 @@ class BellWakeUpsTest {
     private val push = FakePush()
     private val distributors = FakeDistributors()
     private val store = MemoryStore()
-    private val square = FakeSquare()
+    private val pos = FakePos(till)
 
-    private fun info(app: String = APP, environment: String = SANDBOX, key: String = KEY) = { BellInfo(app, environment, key) }
+    /** What the till posts: its token, its location and the endpoint. */
+    private val posted = "${till.token} ${till.locationId}"
+
+    /** A Bell's info with an entry for the till's point of sale only. */
+    private fun info(app: String = till.applicationId, environment: String = till.environment, key: String = KEY) =
+        { BellInfo(mapOf(till.pointOfSale.wire to BellPointOfSale(app, environment)), key) }
 
     init {
         bell.infos[monokular] = info()
@@ -128,8 +162,7 @@ class BellWakeUpsTest {
             bells = bell,
             store = store,
             monokular = monokular,
-            squareSandbox = true,
-            square = square,
+            pos = pos,
             scope = CoroutineScope(backgroundScope.coroutineContext + job),
             now = { testScheduler.currentTime / 1000 },
         ).also { runCurrent() }
@@ -159,9 +192,9 @@ class BellWakeUpsTest {
     @Test
     fun `the pace is 30 s while connected and 2 s for every other status`() {
         val statuses = listOf(
-            WakeUpStatus.Off, WakeUpStatus.NoSquare, WakeUpStatus.NoDistributor, WakeUpStatus.ChooseDistributor(listOf("a", "b")),
+            WakeUpStatus.Off, WakeUpStatus.NoPos, WakeUpStatus.NoDistributor, WakeUpStatus.ChooseDistributor(listOf("a", "b")),
             WakeUpStatus.Connecting, WakeUpStatus.MissingWakeups(5), WakeUpStatus.Unreachable("no connection"),
-            WakeUpStatus.Refused("x", 5), WakeUpStatus.SignInNeeded("sq0idp-x"),
+            WakeUpStatus.Refused("x", 5), WakeUpStatus.SignInNeeded(till.pointOfSale, "sq0idp-x"),
         )
         statuses.forEach { assertEquals(2.seconds, it.interval, "$it") }
         assertEquals(30.seconds, WakeUpStatus.Connected(null).interval)
@@ -191,7 +224,7 @@ class BellWakeUpsTest {
         assertEquals(WakeUpStatus.Connecting, wakeUps.status.value)
         runCurrent()
         assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
-        assertEquals(listOf("GET bell.monokulo.com", "POST bell.monokulo.com EAAAtoken L1 https://ntfy.sh/up1"), bell.calls)
+        assertEquals(listOf("GET bell.monokulo.com", "POST bell.monokulo.com $posted https://ntfy.sh/up1"), bell.calls)
         assertEquals(listOf("subscribe $KEY"), push.calls)
         val registration = assertNotNull(store.registration)
         assertEquals("br_1", registration.registrationId)
@@ -264,11 +297,11 @@ class BellWakeUpsTest {
 
     @Test
     fun `a Bell for the other environment is refused for good, with no sign-in and no post (A3_14)`() = runTest {
-        bell.infos[monokular] = info(app = "sq0idp-other", environment = PRODUCTION)
+        bell.infos[monokular] = info(app = till.otherApplicationId, environment = till.otherEnvironment)
         val wakeUps = start()
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
-        assertEquals(WakeUpStatus.Refused(BellWakeUps.FOR_PRODUCTION), wakeUps.status.value)
+        assertEquals(WakeUpStatus.Refused(PosWords.environment(till.pointOfSale, till.otherEnvironment)!!), wakeUps.status.value)
         wait(60.minutes)
         assertEquals(listOf("GET bell.monokulo.com"), bell.calls, "no retry on its own")
         assertEquals(emptyList(), push.calls)
@@ -278,49 +311,102 @@ class BellWakeUpsTest {
     }
 
     @Test
-    fun `a sandbox Bell in a production build is refused too`() = runTest {
-        val wakeUps = BellWakeUps(push, distributors, bell, store, monokular, squareSandbox = false, square, backgroundScope, { 0 })
+    fun `a till signed in elsewhere is refused by a Bell for this environment too`() = runTest {
+        pos.environment = till.otherEnvironment
+        val wakeUps = BellWakeUps(push, distributors, bell, store, monokular, pos, backgroundScope, { 0 })
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
-        assertEquals(WakeUpStatus.Refused(BellWakeUps.FOR_SANDBOX), wakeUps.status.value)
+        assertEquals(WakeUpStatus.Refused(PosWords.environment(till.pointOfSale, till.environment)!!), wakeUps.status.value)
     }
 
     @Test
-    fun `a Bell on another Square application asks for a sign-in through it, and registers nothing until then (A6_26)`() = runTest {
-        bell.infos[monokular] = info(app = "sandbox-sq0idb-other")
+    fun `a Bell that doesn't run the till's point of sale is refused for good, before its environment or application (T5_2)`() = runTest {
+        val other = PointOfSale.entries.single { it != till.pointOfSale }
+        bell.infos[monokular] = { BellInfo(mapOf(other.wire to BellPointOfSale("someone-else", "elsewhere")), KEY) }
         val wakeUps = start()
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
-        assertEquals(WakeUpStatus.SignInNeeded("sandbox-sq0idb-other"), wakeUps.status.value)
+        assertEquals(WakeUpStatus.Refused("it doesn't ring ${till.pointOfSale.displayName} tills"), wakeUps.status.value)
+        wait(60.minutes)
+        assertEquals(listOf("GET bell.monokulo.com"), bell.calls, "no retry on its own")
+        assertEquals(emptyList(), push.calls)
+    }
+
+    @Test
+    fun `the environment is checked before the application (T5_2)`() = runTest {
+        bell.infos[monokular] = info(app = till.otherApplicationId, environment = till.otherEnvironment)
+        val wakeUps = start()
+        wakeUps.choose(WakeUpChoice.MonokularBell)
+        runCurrent()
+        assertTrue(wakeUps.status.value is WakeUpStatus.Refused, "${wakeUps.status.value}")
+    }
+
+    @Test
+    fun `an environment the point of sale doesn't have isn't a Bell's answer`() = runTest {
+        bell.infos[monokular] = info(environment = "staging")
+        val wakeUps = start()
+        wakeUps.choose(WakeUpChoice.MonokularBell)
+        runCurrent()
+        assertEquals(WakeUpStatus.Unreachable("it isn't a Bell"), wakeUps.status.value)
+        assertFalse(bell.calls.any { it.startsWith("POST") })
+    }
+
+    @Test
+    fun `a Bell for both points of sale registers the till for its own, with its own location`() = runTest {
+        val other = PointOfSale.entries.single { it != till.pointOfSale }
+        bell.infos[monokular] = {
+            BellInfo(
+                mapOf(
+                    other.wire to BellPointOfSale("someone-else", "elsewhere"),
+                    till.pointOfSale.wire to BellPointOfSale(till.applicationId, till.environment),
+                ),
+                KEY,
+            )
+        }
+        val wakeUps = start()
+        wakeUps.choose(WakeUpChoice.MonokularBell)
+        runCurrent()
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        assertEquals(listOf(till.pointOfSale), bell.registeredFor)
+        assertEquals("POST bell.monokulo.com $posted https://ntfy.sh/up1", bell.calls.last())
+    }
+
+    @Test
+    fun `a Bell on another application asks for a sign-in through it, and registers nothing until then (A6_26)`() = runTest {
+        bell.infos[monokular] = info(app = till.otherApplicationId)
+        val wakeUps = start()
+        wakeUps.choose(WakeUpChoice.MonokularBell)
+        runCurrent()
+        assertEquals(WakeUpStatus.SignInNeeded(till.pointOfSale, till.otherApplicationId), wakeUps.status.value)
         assertEquals(listOf("GET bell.monokulo.com"), bell.calls)
         assertEquals(emptyList(), push.calls, "no distributor registration")
         wait(60.minutes)
         assertEquals(1, bell.calls.size, "no retry on its own")
         // The sign-in through the Bell's application finished; the app asks again.
-        square.signedInApplicationId = "sandbox-sq0idb-other"
+        pos.applicationId = till.otherApplicationId
         wakeUps.recheck()
         runCurrent()
         assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
     }
 
     @Test
-    fun `without a Square sign-in the Bell waits for one (A3_14)`() = runTest {
-        square.signedInApplicationId = null
+    fun `without a sign-in the Bell waits for one (A3_14)`() = runTest {
+        pos.applicationId = null
         val wakeUps = start()
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
-        assertEquals(WakeUpStatus.NoSquare, wakeUps.status.value)
+        assertEquals(WakeUpStatus.NoPos, wakeUps.status.value)
         assertEquals(WakeUpChoice.MonokularBell, store.choice)
         assertEquals(listOf("GET bell.monokulo.com"), bell.calls)
     }
 
     @Test
-    fun `a sign-in Square ended at the token is NoSquare, and takes back what was registered`() = runTest {
+    fun `a sign-in the point of sale ended at the token is NoPos, and takes back what was registered`() = runTest {
         val wakeUps = connected()
-        square.token = null
+        pos.token = null
         wakeUps.recheck()
         runCurrent()
-        assertEquals(WakeUpStatus.NoSquare, wakeUps.status.value)
+        assertEquals(WakeUpStatus.NoPos, wakeUps.status.value)
         assertEquals(listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_1"), bell.calls)
         assertNull(store.registration)
     }
@@ -374,9 +460,22 @@ class BellWakeUpsTest {
 
     @Test
     fun `each problem type is its refusal, and only rate-limited retries by itself (A1_7, A11_5, A11_6)`() {
-        fun problem(status: Int, type: String?, detail: String? = null, retryAfter: Long? = null) =
-            BellWakeUps.problemStatus(BellException(status, type, detail, retryAfter), now = 1000)
+        fun problem(status: Int, type: String?, detail: String? = null, retryAfter: Long? = null, at: PointOfSale? = PointOfSale.Square) =
+            BellWakeUps.problemStatus(BellException(status, type, detail, retryAfter), at, now = 1000)
         assertEquals(WakeUpStatus.Refused("Square didn't confirm this location. Sign in to Square again."), problem(401, "square-refused"))
+        assertEquals(
+            WakeUpStatus.Refused("Clover didn't confirm this merchant. Sign in to Clover again."),
+            problem(401, "clover-refused", at = PointOfSale.Clover),
+        )
+        assertEquals(WakeUpStatus.Refused("this merchant already has 32 tills registered"), problem(409, "too-many-registrations", at = PointOfSale.Clover))
+        assertEquals(
+            WakeUpStatus.Refused("this device is registered under another Clover account"),
+            problem(409, "endpoint-registered", at = PointOfSale.Clover),
+        )
+        assertEquals(WakeUpStatus.Unreachable("it answered 503"), problem(503, "clover-unavailable", at = PointOfSale.Clover))
+        // Another point of sale's slug is a refusal like any other, in the Bell's words.
+        assertEquals(WakeUpStatus.Refused("Refused by Clover"), problem(401, "clover-refused", "Refused by Clover"))
+        assertEquals(WakeUpStatus.Refused("it answered 401"), problem(401, "square-refused", at = null))
         assertEquals(WakeUpStatus.Refused("this location already has 32 tills registered"), problem(409, "too-many-registrations"))
         assertEquals(WakeUpStatus.Refused("this device is registered under another Square account"), problem(409, "endpoint-registered"))
         assertEquals(
@@ -401,7 +500,7 @@ class BellWakeUpsTest {
         val wakeUps = start()
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
-        assertEquals(WakeUpStatus.Refused("this device is registered under another Square account"), wakeUps.status.value)
+        assertEquals(WakeUpStatus.Refused("this device is registered under another ${till.pointOfSale.displayName} account"), wakeUps.status.value)
         wait(60.minutes)
         assertEquals(2, bell.calls.size)
         bell.register = { throw BellException(429, "rate-limited", null, 30) }
@@ -423,7 +522,7 @@ class BellWakeUpsTest {
         wakeUps.choose(WakeUpChoice.OwnBell(own))
         runCurrent()
         assertEquals(
-            listOf("DELETE bell.monokulo.com br_1", "GET bell.thebeanroom.coffee", "POST bell.thebeanroom.coffee EAAAtoken L1 https://ntfy.sh/up1"),
+            listOf("DELETE bell.monokulo.com br_1", "GET bell.thebeanroom.coffee", "POST bell.thebeanroom.coffee $posted https://ntfy.sh/up1"),
             bell.calls,
         )
         assertEquals(own, store.registration?.bell)
@@ -454,7 +553,7 @@ class BellWakeUpsTest {
         assertEquals(listOf("unsubscribe"), push.calls)
         assertNull(store.registration)
         assertEquals(WakeUpChoice.MonokularBell, store.choice)
-        assertEquals(WakeUpStatus.NoSquare, wakeUps.status.value)
+        assertEquals(WakeUpStatus.NoPos, wakeUps.status.value)
         // Signed in again (same application): registers with no re-pick.
         wakeUps.recheck()
         runCurrent()
@@ -490,7 +589,7 @@ class BellWakeUpsTest {
         wakeUps.unregister()
         assertEquals(10_000L, testScheduler.currentTime - started)
         assertNull(store.registration)
-        assertEquals(WakeUpStatus.NoSquare, wakeUps.status.value)
+        assertEquals(WakeUpStatus.NoPos, wakeUps.status.value)
     }
 
     @Test
@@ -513,7 +612,7 @@ class BellWakeUpsTest {
         connected()
         val second = start()
         assertEquals(WakeUpChoice.MonokularBell, second.choice.value)
-        assertEquals(listOf("GET bell.monokulo.com", "POST bell.monokulo.com EAAAtoken L1 https://ntfy.sh/up1"), bell.calls)
+        assertEquals(listOf("GET bell.monokulo.com", "POST bell.monokulo.com $posted https://ntfy.sh/up1"), bell.calls)
         assertEquals(listOf("subscribe $KEY"), push.calls, "the connector asked again, as its docs say")
         assertEquals(WakeUpStatus.Connected(null), second.status.value)
     }
@@ -524,7 +623,7 @@ class BellWakeUpsTest {
         val seen = statuses(wakeUps.status)
         wakeUps.recheck()
         runCurrent()
-        assertEquals(listOf("GET bell.monokulo.com", "POST bell.monokulo.com EAAAtoken L1 https://ntfy.sh/up1"), bell.calls)
+        assertEquals(listOf("GET bell.monokulo.com", "POST bell.monokulo.com $posted https://ntfy.sh/up1"), bell.calls)
         assertEquals(emptyList(), push.calls, "the subscription this run made is still good")
         assertTrue(seen.all { it is WakeUpStatus.Connected }, "$seen")
     }
@@ -544,7 +643,7 @@ class BellWakeUpsTest {
         push.state.value = PushState.Subscribed(PushSubscription("https://ntfy.sh/up2", "BKey2", "auth2"))
         runCurrent()
         assertEquals(
-            listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_1", "POST bell.monokulo.com EAAAtoken L1 https://ntfy.sh/up2"),
+            listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_1", "POST bell.monokulo.com $posted https://ntfy.sh/up2"),
             bell.calls,
         )
         assertEquals("https://ntfy.sh/up2", store.registration?.subscription?.endpoint)
@@ -557,7 +656,7 @@ class BellWakeUpsTest {
         push.endpoint = "https://ntfy.sh/up2"
         start()
         assertEquals(
-            listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_1", "POST bell.monokulo.com EAAAtoken L1 https://ntfy.sh/up2"),
+            listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_1", "POST bell.monokulo.com $posted https://ntfy.sh/up2"),
             bell.calls,
         )
     }
@@ -680,7 +779,7 @@ class BellWakeUpsTest {
         assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
         assertFalse(WakeUpStatus.NoDistributor in seen, "$seen")
         assertEquals(
-            listOf("DELETE bell.monokulo.com br_2", "GET bell.monokulo.com", "POST bell.monokulo.com EAAAtoken L1 https://push.example/np1"),
+            listOf("DELETE bell.monokulo.com br_2", "GET bell.monokulo.com", "POST bell.monokulo.com $posted https://push.example/np1"),
             bell.calls,
         )
         assertEquals(NEXTPUSH, store.registration?.distributor)
@@ -724,7 +823,7 @@ class BellWakeUpsTest {
         runCurrent()
         assertEquals(listOf("unsubscribe", "subscribe BNewKey"), push.calls)
         assertEquals(
-            listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_1", "POST bell.monokulo.com EAAAtoken L1 https://ntfy.sh/up2"),
+            listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_1", "POST bell.monokulo.com $posted https://ntfy.sh/up2"),
             bell.calls,
         )
         assertEquals("BNewKey", store.registration?.vapidPublicKey)
@@ -746,7 +845,7 @@ class BellWakeUpsTest {
         assertEquals(WakeUpStatus.MissingWakeups(null), wakeUps.status.value)
         assertEquals(2.seconds, wakeUps.status.value.interval)
         runCurrent()
-        assertEquals(listOf("GET bell.monokulo.com", "POST bell.monokulo.com EAAAtoken L1 https://ntfy.sh/up1"), bell.calls)
+        assertEquals(listOf("GET bell.monokulo.com", "POST bell.monokulo.com $posted https://ntfy.sh/up1"), bell.calls)
         assertEquals(WakeUpStatus.MissingWakeups(null), wakeUps.status.value, "registering again proves nothing")
         wakeUps.timerFound(2)
         runCurrent()
@@ -811,7 +910,7 @@ class BellWakeUpsTest {
         push.state.value = PushState.Subscribed(PushSubscription(push.endpoint, "BKey", "auth"))
         runCurrent()
         assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
-        assertEquals(listOf("GET bell.monokulo.com", "GET bell.monokulo.com", "POST bell.monokulo.com EAAAtoken L1 https://ntfy.sh/up1"), bell.calls)
+        assertEquals(listOf("GET bell.monokulo.com", "GET bell.monokulo.com", "POST bell.monokulo.com $posted https://ntfy.sh/up1"), bell.calls)
         assertEquals(listOf("subscribe $KEY"), push.calls, "the subscription held is the one registered")
         // The wait that was set is gone with it: nothing more is asked of the Bell.
         wait(20.minutes)
@@ -835,19 +934,58 @@ class BellWakeUpsTest {
 
     @Test
     fun `a ding while not connected changes no status`() = runTest {
-        square.signedInApplicationId = null
+        pos.applicationId = null
         val wakeUps = start()
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
         push.dings.emit(Unit)
         runCurrent()
-        assertEquals(WakeUpStatus.NoSquare, wakeUps.status.value)
+        assertEquals(WakeUpStatus.NoPos, wakeUps.status.value)
     }
 
-    private companion object {
-        const val APP = "sandbox-sq0idb-dev"
+    @Test
+    fun `the Bell's refusals and outages for the till's point of sale are its words (T5_4)`() = runTest {
+        bell.register = { throw BellException(401, "${till.pointOfSale.wire}-refused", null, null) }
+        val wakeUps = start()
+        wakeUps.choose(WakeUpChoice.MonokularBell)
+        runCurrent()
+        assertEquals(WakeUpStatus.Refused(PosWords.refused(till.pointOfSale)), wakeUps.status.value)
+        bell.register = { throw BellException(503, "${till.pointOfSale.wire}-unavailable", null, null) }
+        wakeUps.recheck()
+        runCurrent()
+        assertEquals(WakeUpStatus.Unreachable("it answered 503"), wakeUps.status.value)
+        bell.register = { BellRegistered("br_7") }
+        wait(1.minutes)
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value, "an outage is retried by itself")
+    }
+
+    companion object {
+        val SQUARE = TestTill(
+            pointOfSale = PointOfSale.Square,
+            applicationId = "sandbox-sq0idb-dev",
+            environment = "sandbox",
+            otherEnvironment = "production",
+            otherApplicationId = "sandbox-sq0idb-other",
+            locationId = "L1",
+            token = "EAAAtoken",
+        )
+        val CLOVER = TestTill(
+            pointOfSale = PointOfSale.Clover,
+            applicationId = "MONOKULARBELL",
+            environment = "north_america",
+            otherEnvironment = "europe",
+            otherApplicationId = "OTHERCLOVERAP",
+            locationId = "MCLOVERDEV001",
+            token = "clv-access-token",
+        )
         const val KEY = "BOS-key"
         const val NTFY = "io.heckel.ntfy"
         const val NEXTPUSH = "org.unifiedpush.distributor.nextpush"
     }
 }
+
+/** Every scenario for a till signed in to Square. */
+class BellWakeUpsTest : WakeUpsScenarios(SQUARE)
+
+/** Every scenario for a till signed in to Clover, its merchant as the location (acceptance T5.4). */
+class CloverBellWakeUpsTest : WakeUpsScenarios(CLOVER)

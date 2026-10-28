@@ -1,5 +1,6 @@
 package app.monokular
 
+import app.monokular.core.PointOfSale
 import app.monokular.push.BellAddress
 import app.monokular.push.WakeUpStatus
 import java.time.Instant
@@ -18,7 +19,7 @@ class WakeUpsTextTest {
     /** One of every status. */
     private val every = listOf(
         WakeUpStatus.Off,
-        WakeUpStatus.NoSquare,
+        WakeUpStatus.NoPos,
         WakeUpStatus.NoDistributor,
         WakeUpStatus.ChooseDistributor(listOf("io.heckel.ntfy", "org.unifiedpush.distributor.sunup")),
         WakeUpStatus.Connecting,
@@ -26,7 +27,7 @@ class WakeUpsTextTest {
         WakeUpStatus.MissingWakeups(lastDingAt = ding),
         WakeUpStatus.Unreachable("no connection"),
         WakeUpStatus.Refused("this location already has 32 tills registered"),
-        WakeUpStatus.SignInNeeded("sandbox-sq0idb-other"),
+        WakeUpStatus.SignInNeeded(PointOfSale.Square, "sandbox-sq0idb-other"),
     )
 
     @Test

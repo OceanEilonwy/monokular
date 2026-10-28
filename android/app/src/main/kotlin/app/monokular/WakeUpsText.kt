@@ -49,7 +49,7 @@ object WakeUpsText {
     /** The status card's Bell row. */
     fun word(status: WakeUpStatus): String = when (status) {
         WakeUpStatus.Off -> "Off"
-        WakeUpStatus.NoSquare -> "Sign in needed"
+        WakeUpStatus.NoPos -> "Sign in needed"
         WakeUpStatus.NoDistributor -> "Needs a UnifiedPush app"
         is WakeUpStatus.ChooseDistributor -> "Choose a UnifiedPush app"
         WakeUpStatus.Connecting -> "Connecting…"
@@ -76,7 +76,7 @@ object WakeUpsText {
     /** The footnote under the cards. */
     fun footnote(status: WakeUpStatus): String = when (status) {
         WakeUpStatus.Off -> TIMER_ONLY
-        WakeUpStatus.NoSquare -> "Sign in to Square to use the Bell. Until then Monokular shows other tills' sales only."
+        WakeUpStatus.NoPos -> "Sign in to Square to use the Bell. Until then Monokular shows other tills' sales only."
         WakeUpStatus.NoDistributor -> "Wake-ups need a UnifiedPush app such as ntfy to reach this till. Install one, then come back here. " +
             "Until then Monokular checks every 2 seconds."
         is WakeUpStatus.ChooseDistributor -> "Deliver wake-ups through one of the UnifiedPush apps above. " +
@@ -96,7 +96,7 @@ object WakeUpsText {
     fun shift(status: WakeUpStatus): String = when (status) {
         is WakeUpStatus.Connected -> "While it's on, the Bell wakes Monokular when a sale comes in and it checks Square every 30 seconds " +
             "between wake-ups. Turn it off at the end of the day."
-        WakeUpStatus.Off, WakeUpStatus.NoSquare, WakeUpStatus.NoDistributor, is WakeUpStatus.ChooseDistributor,
+        WakeUpStatus.Off, WakeUpStatus.NoPos, WakeUpStatus.NoDistributor, is WakeUpStatus.ChooseDistributor,
         WakeUpStatus.Connecting, is WakeUpStatus.MissingWakeups, is WakeUpStatus.Unreachable, is WakeUpStatus.Refused,
         is WakeUpStatus.SignInNeeded,
         -> "While it's on, Monokular checks Square every 2 seconds and keeps a notification. Turn it off at the end of the day."

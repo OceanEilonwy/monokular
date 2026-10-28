@@ -1,18 +1,34 @@
 package app.monokular.push
 
+import app.monokular.core.PointOfSale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** What the connector's callbacks mean: only a decrypted `{"wake":"square"}` is a ding (A8.35, A8.36). */
+/** What the connector's callbacks mean: only a decrypted `{"wake":"<the till's point of sale>"}` is a ding (A8.35, A8.36, A133). */
 class PushEventsTest {
-    private fun ding(text: String, decrypted: Boolean = true) = PushEvents.isDing(text.toByteArray(), decrypted)
+    private fun ding(text: String, decrypted: Boolean = true, pos: PointOfSale? = PointOfSale.Square) =
+        PushEvents.isDing(text.toByteArray(), decrypted, pos)
 
     @Test
     fun `a ding is the decrypted object with wake square and nothing else`() {
         assertTrue(ding("""{"wake":"square"}"""))
         assertTrue(ding(""" { "wake" : "square" } """), "whitespace doesn't matter")
+    }
+
+    @Test
+    fun `a Clover till takes wake clover, and each point of sale drops the other's`() {
+        assertTrue(ding("""{"wake":"clover"}""", pos = PointOfSale.Clover))
+        assertFalse(ding("""{"wake":"square"}""", pos = PointOfSale.Clover), "Square's ding on a Clover till")
+        assertFalse(ding("""{"wake":"clover"}""", pos = PointOfSale.Square), "Clover's ding on a Square till")
+        assertFalse(ding("""{"wake":"Clover"}""", pos = PointOfSale.Clover), "the wire name is lowercase")
+        assertFalse(ding("""{"wake":"clover"}""", decrypted = false, pos = PointOfSale.Clover), "not decrypted")
+    }
+
+    @Test
+    fun `a till with no point of sale takes no ding`() {
+        PointOfSale.entries.forEach { assertFalse(ding("""{"wake":"${it.wire}"}""", pos = null), it.wire) }
     }
 
     @Test
@@ -27,7 +43,7 @@ class PushEventsTest {
         assertFalse(ding("""{"wake":["square"]}"""), "not a string")
         assertFalse(ding("""{"wake":null}"""), "null")
         assertFalse(ding("""{}"""), "nothing")
-        assertFalse(PushEvents.isDing(byteArrayOf(0xC3.toByte(), 0x28), decrypted = true), "not UTF-8")
+        assertFalse(PushEvents.isDing(byteArrayOf(0xC3.toByte(), 0x28), decrypted = true, PointOfSale.Square), "not UTF-8")
     }
 
     @Test
