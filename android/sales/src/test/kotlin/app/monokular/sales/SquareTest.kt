@@ -16,9 +16,9 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-class MemoryTokens(var tokens: SquareTokens? = null) : TokenStore {
+class MemoryTokens(var tokens: PosTokens? = null) : TokenStore {
     override fun load() = tokens
-    override fun save(tokens: SquareTokens?) {
+    override fun save(tokens: PosTokens?) {
         this.tokens = tokens
     }
 }
@@ -89,7 +89,7 @@ class SquareTest {
 
     @Test
     fun `a token about to expire is refreshed and the new refresh token kept`() = runBlocking {
-        tokens.tokens = SquareTokens("old", "2026-10-22T20:00:00Z", "r1", "M1")
+        tokens.tokens = PosTokens("old", "2026-10-22T20:00:00Z", "r1", "M1")
         server.enqueue(json("""{"access_token":"new","expires_at":"2026-11-21T16:10:00Z","refresh_token":"r2","merchant_id":"M1"}"""))
         assertEquals("new", auth.accessToken())
         assertEquals("r2", tokens.tokens?.refreshToken)
@@ -100,7 +100,7 @@ class SquareTest {
 
     @Test
     fun `a refused refresh means signing in again`() = runBlocking {
-        tokens.tokens = SquareTokens("old", "2026-10-22T20:00:00Z", "r1", "M1")
+        tokens.tokens = PosTokens("old", "2026-10-22T20:00:00Z", "r1", "M1")
         server.enqueue(MockResponse.Builder().code(401).body("""{"errors":[{"code":"UNAUTHORIZED","detail":"Refresh token expired"}]}""").build())
         val e = assertFailsWith<SquareException> { auth.accessToken() }
         assertTrue(e.signInAgain)
@@ -108,7 +108,7 @@ class SquareTest {
     }
 
     private fun source(cursor: MemoryCursor): SquareSource {
-        tokens.tokens = SquareTokens("EAAA1", "2026-11-21T16:10:00Z", "r1", "M1")
+        tokens.tokens = PosTokens("EAAA1", "2026-11-21T16:10:00Z", "r1", "M1")
         val api = SquareApi(OkHttpClient(), config, auth)
         val location = SquareLocation("L1", "Front Counter", "The Bean Room", "US", "USD", "America/Los_Angeles")
         return SquareSource(api, config, location, cursor) { now }
@@ -167,7 +167,7 @@ class SquareTest {
     fun `a refund is the whole sale, once`() = runBlocking {
         val source = source(MemoryCursor("2026-10-22T16:05:00Z"))
         server.enqueue(json("""{"refund":{"id":"r"}}"""))
-        source.refund(FoundSale("pay_monero", 1388, "USD", "bP9m", "ord_sq_1", "2026-10-22T16:07:00Z", null))
+        source.refunds.refund(FoundSale("pay_monero", 1388, "USD", "bP9m", "ord_sq_1", "2026-10-22T16:07:00Z", null))
         val body = server.takeRequest().body!!.utf8()
         assertTrue(body.contains(""""payment_id":"pay_monero"""") && body.contains(""""amount":1388"""), body)
         assertTrue(body.contains(""""idempotency_key":"monokular-refund-pay_monero""""), body)

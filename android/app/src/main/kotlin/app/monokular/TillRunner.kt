@@ -6,6 +6,7 @@ import app.monokular.core.Problems
 import app.monokular.core.StreamEvent
 import app.monokular.push.interval
 import app.monokular.sales.FoundSale
+import app.monokular.sales.Refunds
 import app.monokular.sales.SaleSource
 import app.monokular.sales.Shift
 import app.monokular.sales.SquareSource
@@ -40,7 +41,7 @@ data class RunnerState(
 private object NoSource : SaleSource {
     override suspend fun newSales() = emptyList<FoundSale>()
     override suspend fun receipt(sale: FoundSale) = null
-    override suspend fun refund(sale: FoundSale) = Unit
+    override val refunds = Refunds.ByTill {}
     override fun handled(sale: FoundSale) = Unit
 }
 

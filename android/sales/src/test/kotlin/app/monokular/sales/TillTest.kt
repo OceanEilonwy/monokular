@@ -34,9 +34,34 @@ class FakeSource(var sales: List<FoundSale>, private val receipt: Receipt? = nul
     var refusal: String? = null
     override suspend fun newSales() = sales.filter { it.id !in handledIds }
     override suspend fun receipt(sale: FoundSale) = receipt
-    override suspend fun refund(sale: FoundSale) {
+    override val refunds = Refunds.ByTill { sale ->
         refusal?.let { throw SquareException(503, it) }
         refunded += sale.id
+    }
+    override fun handled(sale: FoundSale) {
+        handledIds += sale.id
+    }
+}
+
+/** A POS where the cashier refunds a sale themselves (Clover): the till can only look. */
+class InPosSource(var sales: List<FoundSale>) : SaleSource {
+    val handledIds = mutableListOf<String>()
+    /** The sales the POS shows refunded. */
+    val refundedThere = mutableSetOf<String>()
+    /** How often the till asked. */
+    var looks = 0
+    /** The POS can't be reached: looks fail. */
+    var down = false
+    override suspend fun newSales() = sales.filter { it.id !in handledIds }
+    override suspend fun receipt(sale: FoundSale) = null
+    override val refunds = object : Refunds.InPos {
+        override val posName = "Clover"
+        override val where = "Clover's Orders app"
+        override suspend fun refunded(sale: FoundSale): Boolean {
+            looks++
+            if (down) throw PosException(503, "Clover is down.")
+            return sale.id in refundedThere
+        }
     }
     override fun handled(sale: FoundSale) {
         handledIds += sale.id
@@ -466,6 +491,109 @@ class TillTest {
         till.onEvent(SaleEvent("sale.paid", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 30))
         assertEquals(Standing.Paid(late = true, afterRefund = true), till.sales.value.sales.single().standing)
         assertTrue(till.sales.value.sales.single().needsAction, "ring it up again, or return the payment")
+    }
+
+    @Test
+    fun `where the cashier refunds in the POS, refunding marks the sale to refund there and sends nothing`() = runBlocking {
+        var clock = 10L
+        val source = InPosSource(listOf(sale))
+        val shift = MemoryShift()
+        val till = Till(source, monokulo, connection, now = { clock }, store = shift)
+        server.enqueue(order())
+        till.check()
+        till.close("ord_1")
+        clock = 20
+        till.refund("ord_1")
+        val pending = till.sales.value.sales.single()
+        assertEquals(Standing.RefundInPos, pending.standing)
+        assertEquals(20L, pending.refundPendingAt)
+        assertEquals(null, pending.refundedAt, "not refunded until the POS shows it")
+        assertTrue(pending.needsAction, "the cashier still has to refund it there")
+        assertEquals(0, source.looks, "refunding asks the POS nothing")
+        clock = 25
+        till.refund("ord_1")
+        assertEquals(20L, till.sales.value.sales.single().refundPendingAt, "told once, when first told")
+        assertEquals(Standing.RefundInPos, Till(source, monokulo, connection, store = shift).sales.value.sales.single().standing, "and saved")
+    }
+
+    @Test
+    fun `I've refunded it marks the sale refunded when the POS shows it, and leaves it pending otherwise`() = runBlocking {
+        var clock = 10L
+        val source = InPosSource(listOf(sale))
+        val till = Till(source, monokulo, connection, now = { clock })
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Expired)
+        till.refund("ord_1")
+        assertFalse(till.confirmRefund("ord_1"), "the POS doesn't show it yet")
+        assertEquals(Standing.RefundInPos, till.sales.value.sales.single().standing)
+        source.down = true
+        assertFalse(till.confirmRefund("ord_1"), "the POS couldn't be asked")
+        assertEquals(Standing.RefundInPos, till.sales.value.sales.single().standing)
+        source.down = false
+        source.refundedThere += "pay_monero"
+        clock = 40
+        assertTrue(till.confirmRefund("ord_1"))
+        val refunded = till.sales.value.sales.single()
+        assertEquals(Standing.Refunded, refunded.standing)
+        assertEquals(40L, refunded.refundedAt)
+        assertFalse(refunded.needsAction)
+        val looks = source.looks
+        assertTrue(till.confirmRefund("ord_1"), "refunded already: nothing to ask")
+        assertEquals(looks, source.looks)
+        till.onEvent(SaleEvent("sale.paid", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 50))
+        assertEquals(Standing.Paid(late = true, afterRefund = true), till.sales.value.sales.single().standing, "paid after the refund, as at Square")
+    }
+
+    @Test
+    fun `the till looks for a refund in the POS at most every 30 seconds, and marks the one it sees`() = runBlocking {
+        var clock = 100L
+        val source = InPosSource(listOf(sale))
+        val till = Till(source, monokulo, connection, now = { clock })
+        server.enqueue(order())
+        till.check()
+        assertEquals(0, source.looks, "nothing pending, nothing asked")
+        till.onStatus("ord_1", SalePhase.Expired)
+        till.refund("ord_1")
+        till.check()
+        assertEquals(1, source.looks)
+        clock = 129
+        till.check()
+        assertEquals(1, source.looks, "not again within ${Till.REFUND_LOOK_SECONDS} s")
+        clock = 130
+        source.down = true
+        assertEquals(0, till.check(), "a failed look is no problem for the check")
+        assertEquals(2, source.looks)
+        assertEquals(null, till.sales.value.problem)
+        assertEquals(Standing.RefundInPos, till.sales.value.sales.single().standing)
+        source.down = false
+        source.refundedThere += "pay_monero"
+        clock = 159
+        till.check()
+        assertEquals(2, source.looks)
+        clock = 160
+        till.check()
+        assertEquals(3, source.looks)
+        assertEquals(Standing.Refunded, till.sales.value.sales.single().standing)
+        assertEquals(160L, till.sales.value.sales.single().refundedAt)
+        clock = 300
+        till.check()
+        assertEquals(3, source.looks, "nothing pending any more")
+    }
+
+    @Test
+    fun `a paid sale is never marked to refund in the POS`() = runBlocking {
+        val source = InPosSource(listOf(sale))
+        val till = Till(source, monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        till.onEvent(SaleEvent("sale.paid", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 2))
+        till.refund("ord_1")
+        val paid = till.sales.value.sales.single()
+        assertEquals(null, paid.refundPendingAt)
+        assertEquals(Standing.Paid(), paid.standing)
+        till.check()
+        assertEquals(0, source.looks)
     }
 
     @Test

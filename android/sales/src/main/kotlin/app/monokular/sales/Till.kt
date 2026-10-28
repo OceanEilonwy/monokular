@@ -11,6 +11,7 @@ import app.monokular.core.SalePhase
 import app.monokular.receipt.PaymentCode
 import app.monokular.receipt.Receipt
 import app.monokular.receipt.ReceiptCode
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -65,8 +66,17 @@ data class TillSale(
     val endedAt: Long? = null,
     /** When the cashier closed it on this till (the close sheet's "Not sure" or "No"), if they did. */
     val closedAt: Long? = null,
-    /** When the cashier refunded it in Square from this till, if they did. */
+    /**
+     * When it was refunded in the POS: by this till through the POS's API
+     * ([Refunds.ByTill]), or when the till saw the cashier had done it there
+     * ([Refunds.InPos]).
+     */
     val refundedAt: Long? = null,
+    /**
+     * When the cashier was told to refund it in the POS themselves
+     * ([Refunds.InPos]): until [refundedAt], the till looks for the refund.
+     */
+    val refundPendingAt: Long? = null,
 ) {
     /** Worth reading again: Monokulo may still move it on. */
     val open: Boolean get() = !settled && phase != SalePhase.Paid
@@ -123,6 +133,8 @@ class Till(
     /** The sales the last [check] found, by id: what the next one's count leaves out. */
     private var lastFound: Set<String> = emptySet()
     private val saving = Any()
+    /** When the timer last asked the POS about pending refunds ([REFUND_LOOK_SECONDS]). */
+    private var lastRefundLookAt: Long? = null
 
     /**
      * Changes the till's state, keeping at most [MAX_SALES] sales, and saves
@@ -150,7 +162,7 @@ class Till(
     suspend fun check(): Int = checking.withLock {
         val found = try {
             source.newSales()
-        } catch (e: SquareException) {
+        } catch (e: PosException) {
             change { it.copy(problem = e.message, signInAgain = e.signInAgain) }
             return@withLock 0
         } catch (e: Exception) {
@@ -182,7 +194,41 @@ class Till(
             add(order, ReceiptCode.of(order.paymentUri, receipt), receipt, sale)
         }
         change { it.copy(problem = problem, signInAgain = false) }
+        lookForRefunds()
         fresh
+    }
+
+    /**
+     * Asks the POS whether the sales the cashier was told to refund there
+     * are refunded now, at most every [REFUND_LOOK_SECONDS]: a check runs
+     * every 2 s without a Bell, and each pending sale costs a request. The
+     * sheet's "I've refunded it" ([confirmRefund]) asks at once, so the
+     * cashier never waits on this. A failure waits for the next look.
+     */
+    private suspend fun lookForRefunds() {
+        val refunds = source.refunds as? Refunds.InPos ?: return
+        val pending = state.value.sales.filter { it.refundPendingAt != null && it.refundedAt == null && it.found != null }
+        if (pending.isEmpty()) return
+        val at = now()
+        if (lastRefundLookAt?.let { at - it < REFUND_LOOK_SECONDS } == true) return
+        lastRefundLookAt = at
+        for (sale in pending) {
+            if (seenRefunded(refunds, sale.found ?: continue)) markRefunded(sale.orderId)
+        }
+    }
+
+    /** Whether the POS shows [found] refunded; false when it couldn't be asked. */
+    private suspend fun seenRefunded(refunds: Refunds.InPos, found: FoundSale): Boolean = try {
+        refunds.refunded(found)
+    } catch (e: CancellationException) {
+        throw e
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun markRefunded(orderId: String) {
+        val at = now()
+        change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(refundedAt = it.refundedAt ?: at) else it }) }
     }
 
     /**
@@ -270,7 +316,9 @@ class Till(
     }
 
     /**
-     * Refunds the POS sale of an order that was never paid. A paid sale is
+     * Refunds the POS sale of an order that was never paid: through the POS
+     * when the till can ([Refunds.ByTill]), else marks it for the cashier to
+     * refund there ([Refunds.InPos]), which sends nothing. A paid sale is
      * never refunded from here, nor one already refunded: the payment may
      * land while the cashier's "No" is on its way.
      */
@@ -279,13 +327,34 @@ class Till(
         if (sale.phase == SalePhase.Paid || sale.refundedAt != null) return
         val found = sale.found ?: return
         change { it.copy(refundProblems = it.refundProblems - orderId) }
-        try {
-            source.refund(found)
-            val at = now()
-            change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(refundedAt = it.refundedAt ?: at) else it }) }
-        } catch (e: Exception) {
-            change { it.copy(refundProblems = it.refundProblems + (orderId to "Couldn't refund it in the POS: ${e.message}. Refund it there instead.")) }
+        when (val refunds = source.refunds) {
+            is Refunds.ByTill -> try {
+                refunds.refund(found)
+                markRefunded(orderId)
+            } catch (e: Exception) {
+                change { it.copy(refundProblems = it.refundProblems + (orderId to "Couldn't refund it in the POS: ${e.message}. Refund it there instead.")) }
+            }
+            is Refunds.InPos -> {
+                val at = now()
+                change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(refundPendingAt = it.refundPendingAt ?: at) else it }) }
+            }
         }
+    }
+
+    /**
+     * The refund sheet's "I've refunded it", for a POS where the cashier
+     * refunds ([Refunds.InPos]): asks the POS now. True, and the sale is
+     * refunded, when it shows the refund; false, and the sale stays as it
+     * was, when it doesn't yet or couldn't be asked.
+     */
+    suspend fun confirmRefund(orderId: String): Boolean {
+        val sale = state.value.sales.firstOrNull { it.orderId == orderId } ?: return false
+        if (sale.refundedAt != null) return true
+        val refunds = source.refunds as? Refunds.InPos ?: return false
+        val found = sale.found ?: return false
+        if (!seenRefunded(refunds, found)) return false
+        markRefunded(orderId)
+        return true
     }
 
     private fun add(order: Order, code: PaymentCode, receipt: Receipt?, found: FoundSale) {
@@ -315,6 +384,7 @@ class Till(
                 endedAt = known?.endedAt,
                 closedAt = known?.closedAt,
                 refundedAt = known?.refundedAt,
+                refundPendingAt = known?.refundPendingAt,
             )
             s.copy(sales = listOf(sale) + s.sales.filterNot { it.orderId == order.orderId })
         }
@@ -338,6 +408,9 @@ class Till(
     companion object {
         /** The most sales a shift keeps, newest first: older ones drop off the list and the saved shift. */
         const val MAX_SALES = 500
+
+        /** The timer asks the POS about pending refunds at most this often, in seconds (decision A130). */
+        const val REFUND_LOOK_SECONDS = 30L
 
         /** `sq:` and the start of SHA-256 of the POS's payment id: the same for every till, and opaque. */
         fun idempotencyKey(sale: FoundSale): String {

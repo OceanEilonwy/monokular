@@ -4,8 +4,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import kotlinx.serialization.SerialName
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -18,24 +16,8 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.time.Duration
 import java.time.Instant
 
-/** The till's own Square sign-in. */
-@Serializable
-data class SquareTokens(
-    @SerialName("access_token") val accessToken: String,
-    /** RFC 3339. */
-    @SerialName("expires_at") val expiresAt: String,
-    @SerialName("refresh_token") val refreshToken: String? = null,
-    @SerialName("merchant_id") val merchantId: String,
-)
-
-/** Where the sign-in is kept, encrypted (the app's `Keystore`-backed store). */
-interface TokenStore {
-    fun load(): SquareTokens?
-    fun save(tokens: SquareTokens?)
-}
-
 /** Square answered with an error, or the sign-in is gone and must be done again. */
-class SquareException(val status: Int, message: String, val signInAgain: Boolean = false) : Exception(message)
+class SquareException(status: Int, message: String, signInAgain: Boolean = false) : PosException(status, message, signInAgain)
 
 /**
  * Square OAuth with PKCE, on the device (`docs/design.md` §1): no secret
@@ -67,7 +49,7 @@ class SquareAuth(
     val signedIn: Boolean get() = store.load() != null
 
     /** Square's redirect, back in the app: the code for this attempt's [pkce]. */
-    suspend fun finish(pkce: Pkce, state: String?, code: String?, error: String?): SquareTokens {
+    suspend fun finish(pkce: Pkce, state: String?, code: String?, error: String?): PosTokens {
         if (error != null) throw SquareException(0, "Square sign-in was cancelled or refused ($error).")
         if (state != pkce.state || code.isNullOrEmpty()) {
             throw SquareException(0, "That sign-in wasn't the one this app started. Try again.")
@@ -108,7 +90,7 @@ class SquareAuth(
 
     fun signOut() = store.save(null)
 
-    private suspend fun token(body: Map<String, String>): SquareTokens = withContext(Dispatchers.IO) {
+    private suspend fun token(body: Map<String, String>): PosTokens = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("${config.connectBase}/oauth2/token")
             .header("Square-Version", SquareConfig.API_VERSION)
@@ -117,7 +99,7 @@ class SquareAuth(
         http.newCall(request).execute().use { response ->
             val text = response.body.string()
             if (!response.isSuccessful) throw SquareException(response.code, squareError(text) ?: "Square said ${response.code}.")
-            json.decodeFromString(SquareTokens.serializer(), text)
+            json.decodeFromString(PosTokens.serializer(), text)
         }
     }
 }

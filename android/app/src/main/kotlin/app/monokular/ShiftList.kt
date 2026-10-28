@@ -98,6 +98,7 @@ object ShiftList {
             Standing.Expired -> Triple(SaleText.status(sale), Tone.Warn, StateIcon.Clock)
             Standing.Reversed -> Triple("Payment reversed · don't hand it over", Tone.Danger, StateIcon.Warning)
             Standing.Refunded -> Triple("Refunded in Square" + at(sale.refundedAt), Tone.Muted, StateIcon.Refund)
+            Standing.RefundInPos -> Triple("Refund it in the POS" + at(sale.refundPendingAt), Tone.Warn, StateIcon.Refund)
             Standing.OtherTill -> Triple(
                 if (sale.phase.isFinal) "${SaleText.status(sale)} · on $till" else "Closed · not paid · refund it on $till",
                 Tone.Muted, StateIcon.Close,

@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 
 /**
  * A point of sale the till watches for Monero sales (`docs/design.md` §1,
- * "POS sources"). Square is the first; another POS is another source.
+ * "POS sources"): Square, Clover.
  */
 interface SaleSource {
     /**
@@ -18,11 +18,38 @@ interface SaleSource {
     /** The sale's receipt, or null when it can't be read. */
     suspend fun receipt(sale: FoundSale): Receipt?
 
-    /** Refunds a sale that was never paid in Monero. */
-    suspend fun refund(sale: FoundSale)
+    /** How a sale never paid in Monero is refunded at this point of sale. */
+    val refunds: Refunds
 
     /** [sale] has its order: don't give it again. */
     fun handled(sale: FoundSale)
+}
+
+/**
+ * Who refunds a sale never paid in Monero (decision A130). A type rather
+ * than a `refund()` that does nothing at a point of sale with no refund in
+ * its API: there, the till can only look, by construction.
+ */
+sealed interface Refunds {
+    /** The till does, through the point of sale's API (Square). */
+    fun interface ByTill : Refunds {
+        suspend fun refund(sale: FoundSale)
+    }
+
+    /**
+     * The cashier does, in the point of sale, and the till watches for it
+     * (Clover: no API refunds an external-tender payment).
+     */
+    interface InPos : Refunds {
+        /** The point of sale's name: "Clover". */
+        val posName: String
+
+        /** Where, in the cashier's words: "Clover's Orders app". */
+        val where: String
+
+        /** Whether the point of sale now shows [sale] refunded. */
+        suspend fun refunded(sale: FoundSale): Boolean
+    }
 }
 
 /** A Monero sale the POS closed. */
