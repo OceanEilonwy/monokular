@@ -3,10 +3,12 @@ package app.monokular.push
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Settings › Wake-ups (`docs/design.md` §3): what makes the till check
- * Square, as the cashier chose it.
+ * Square, as the cashier chose it (the acceptance criteria's "mode").
  */
 @Serializable
 sealed interface WakeUpChoice {
@@ -55,54 +57,75 @@ data class BellRegistration(
     @SerialName("location_id") val locationId: String,
     /** The Square application the Bell answered with. */
     @SerialName("square_application_id") val squareApplicationId: String,
+    /** The Bell's key the subscription was made for: another one means subscribing again (decision 95). */
+    @SerialName("vapid_public_key") val vapidPublicKey: String,
     /** The subscription registered, to tell when the distributor has changed it. */
     val subscription: PushSubscription,
     /** Unix seconds. */
     @SerialName("registered_at") val registeredAt: Long,
 )
 
-/** Where Wake-ups stands, for the service's pacing and the Settings screen. */
+/**
+ * What the app knows about the Bell it chose (the acceptance criteria's
+ * "Bell status"): one value at a time, for the shift's pace and the Settings
+ * card. Times are Unix seconds.
+ */
 sealed interface WakeUpStatus {
-    /** Timer only: nothing to register. */
+    /** Timer only: no Bell, no status card. */
     data object Off : WakeUpStatus
+
+    /** A Bell is chosen, but the till isn't signed in to Square, which registering needs. */
+    data object NoSquare : WakeUpStatus
 
     /** A Bell is chosen, but no UnifiedPush distributor is installed to carry its dings. */
     data object NoDistributor : WakeUpStatus
 
+    /** Several distributors are installed and none is the default: the cashier picks one ([packages]: their package names). */
+    data class ChooseDistributor(val packages: List<String>) : WakeUpStatus
+
     /** Reading the Bell, subscribing with the distributor, or registering. */
-    data class Registering(val bell: BellAddress) : WakeUpStatus
+    data object Connecting : WakeUpStatus
 
-    /** Registered: the Bell's dings reach the till, and the timer can slow down. */
-    data class On(val bell: BellAddress, val registration: BellRegistration) : WakeUpStatus
-
-    /**
-     * The Bell needs a Square sign-in the till doesn't have: none at all,
-     * or one through another application ([applicationId] is the Bell's,
-     * which the till must sign in through: `docs/design.md` §3).
-     */
-    data class NeedsSquareSignIn(val bell: BellAddress, val applicationId: String) : WakeUpStatus
+    /** Registered: dings reach the till, so the timer runs at 30 s. [lastDingAt] is the last ding's time, null for none yet. */
+    data class Connected(val lastDingAt: Long?) : WakeUpStatus
 
     /**
-     * Registration failed, or was lost: [problem] says why in the cashier's
-     * words. [retryAt] (Unix seconds) is when it tries again by itself;
-     * null when only "Try again" will.
+     * The timer found a sale the Bell hadn't rung for (decision 94): the
+     * timer is back at 2 s and the till has registered again; the next
+     * ding makes it [Connected].
      */
-    data class Failing(val bell: BellAddress, val problem: String, val retryAt: Long? = null) : WakeUpStatus
+    data class MissingWakeups(val lastDingAt: Long?) : WakeUpStatus
+
+    /**
+     * The Bell couldn't be reached, or isn't one: [reason] is short, in
+     * the cashier's words ("no connection", "it didn't answer", "it
+     * answered 503", "it isn't a Bell", "the UnifiedPush app refused").
+     * Retried by itself, with a growing wait.
+     */
+    data class Unreachable(val reason: String) : WakeUpStatus
+
+    /**
+     * The Bell answered with a problem: [reason] in the cashier's words
+     * (`docs/bell.md`'s types, decision 95). [retryAt] is when it tries
+     * again by itself (`rate-limited`); null when only a re-pick, a
+     * sign-in, an app start or a shift start will.
+     */
+    data class Refused(val reason: String, val retryAt: Long? = null) : WakeUpStatus
+
+    /** The Bell hears Square through another application, [applicationId]: the till must sign in through it (decision 96). */
+    data class SignInNeeded(val applicationId: String) : WakeUpStatus
 }
 
-/** The Bell this status is about, if any. */
-val WakeUpStatus.bell: BellAddress?
-    get() = when (this) {
-        WakeUpStatus.Off, WakeUpStatus.NoDistributor -> null
-        is WakeUpStatus.Registering -> bell
-        is WakeUpStatus.On -> bell
-        is WakeUpStatus.NeedsSquareSignIn -> bell
-        is WakeUpStatus.Failing -> bell
-    }
+/** How often the shift's timer checks Square: 30 s only while [WakeUpStatus.Connected], else 2 s (`docs/design.md` §3, §7). */
+val WakeUpStatus.interval: Duration
+    get() = if (this is WakeUpStatus.Connected) 30.seconds else 2.seconds
 
 /** What Wake-ups keeps between runs, encrypted with the rest of the till's state. */
 interface WakeUpStore {
     var choice: WakeUpChoice
+
+    /** The last "My own Bell" address entered, kept through Timer only so the row still shows it (decision 97). */
+    var ownBell: BellAddress?
 
     /** The registration the Bell holds, while it does. */
     var registration: BellRegistration?
@@ -111,29 +134,49 @@ interface WakeUpStore {
 /**
  * Wake-ups, the Bell side (`docs/design.md` §3): keeps the till registered
  * with the chosen Bell while there is one, and takes the registration back
- * when there isn't. The service reads [status] to pace its timer; Settings
- * shows it.
+ * when there isn't. The service paces its timer by [status]; Settings
+ * shows it. Implemented over [PushSubscriptions] and the Bell's API; the
+ * app wires it in its graph.
  */
 interface WakeUps {
     val choice: StateFlow<WakeUpChoice>
 
     val status: StateFlow<WakeUpStatus>
 
-    /** The cashier chose (Settings): registers with the Bell, or takes the registration back. */
+    /**
+     * The cashier chose (Settings): saved at once, then the old
+     * registration is taken back and the new Bell registered with, as
+     * decision 95 orders it. Choosing what is already chosen does nothing,
+     * unless the status is [WakeUpStatus.Refused] or
+     * [WakeUpStatus.Unreachable], which tries again.
+     */
     fun choose(choice: WakeUpChoice)
 
+    /** The cashier picked a distributor from [WakeUpStatus.ChooseDistributor]: saved, then registration goes on. */
+    fun chooseDistributor(packageName: String)
+
     /**
-     * Register again from the start: "Try again", a new Square sign-in, a
-     * changed location, a shift starting, or the timer finding a sale the
-     * Bell didn't ring for. Nothing happens for [WakeUpChoice.TimerOnly]
-     * or while a registration is already under way.
+     * Register again (`POST /v1/register` with the current subscription;
+     * the Bell keeps the id): an app start, a shift starting, a new Square
+     * sign-in, a changed location, or a status to retry. Nothing happens
+     * for [WakeUpChoice.TimerOnly] or while a registration is under way.
      */
     fun recheck()
 
     /**
-     * Take the registration back and end the subscription: the cashier
-     * signed out of Square, or the device was disconnected. The choice
-     * stays unless [forget]; the next sign-in registers again.
+     * A check the shift's *timer* started (not a ding, not the app opening)
+     * found [sales] new Square sales. With a Bell connected and no ding in
+     * the 60 s before, that is a wake-up the Bell missed (decision 94):
+     * the status becomes [WakeUpStatus.MissingWakeups] and the till
+     * registers once again.
+     */
+    fun timerFound(sales: Int)
+
+    /**
+     * Take the registration back (`DELETE`, awaited, 10 s at most) and end
+     * the subscription: the cashier signed out of Square, or the device
+     * was disconnected. The choice stays (status [WakeUpStatus.NoSquare])
+     * unless [forget], which puts it back to Timer only.
      */
     suspend fun unregister(forget: Boolean = false)
 }

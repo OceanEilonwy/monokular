@@ -824,141 +824,170 @@ detail pages), recorded by the developers and folded in by the lead.
 
 Made by the team's tech lead and product owner while wiring the app to the
 Bell (`docs/design.md` §3, §5, §7; `docs/bell.md`), with the owner away.
+The product owner's acceptance criteria (D1–D16 there) are taken as
+written except where an entry below says otherwise.
 
 90. **UnifiedPush's connector, `org.unifiedpush.android:connector` 3.3.5**
-    (Apache-2.0, released 2026-08-22), in a `push` module that depends on
-    `core` alone (decision 56's module, back as the design's `push/`).
-    `UnifiedPush.register(context, instance, null, vapid)` hands the Bell's
-    `vapid_public_key` (base64url, as `/v1/info` gives it) to the
+    (Apache-2.0, released 2026-08-22 on Maven Central), in a `push` module
+    that depends on `core` alone (decision 56's module, back as the design's
+    `push/`). `UnifiedPush.register(context, "bell", null, vapid)` hands the
+    Bell's `vapid_public_key` (base64url, as `/v1/info` gives it) to the
     distributor, which then takes pushes signed by that key only; the
     connector throws `VapidNotValidException` for a key that isn't a P-256
-    point. One instance, `bell`, for the Bell in use; choosing another Bell
-    unregisters it and registers again for the new key. FCM is not a path:
-    the embedded FCM distributor needs Firebase keys and a deployed relay,
-    and neither exists yet. The connector is wrapped behind
-    `PushSubscriptions` so the registration logic and its tests never see
+    point. One instance for the Bell in use; another Bell, or the same
+    Bell with a rotated key (D16: the key is kept in `BellRegistration`),
+    unregisters the instance and registers again for the new key. FCM is
+    not a path this release (D14): the embedded FCM distributor needs
+    Firebase keys and a deployed relay, and neither exists; the app ships
+    no Firebase dependency. The connector is wrapped behind
+    `PushSubscriptions`, so the registration logic and its tests never see
     Android.
 91. **Without a distributor, Wake-ups says so and stays on the timer.** The
-    connector's own dialogs (`tryUseDefaultDistributor`, the `unifiedpush://link`
-    deep link) are not used: Settings › Wake-ups shows the Bell rows with a
-    notice, "Wake-ups need a UnifiedPush app such as ntfy to carry them",
-    and a link to ntfy. The choice is kept, so installing a distributor and
-    coming back registers without choosing again. With one distributor it
-    is used; with several and none saved, the first by package name is saved
-    (`UnifiedPush.saveDistributor`) and Settings shows which under the Bell
-    rows, where the cashier can pick another from a list. A saved one that
-    is no longer installed counts as none.
+    connector's dialogs and its `unifiedpush://link` deep link are not
+    used: `UnifiedPush.resolveDefaultDistributor(context)` decides without
+    an Activity. None installed: status `NoDistributor`, the card names
+    ntfy, the choice is kept, and the app looks again at every app start
+    and Settings open, so installing one and coming back connects without
+    choosing again. One, or a default: saved (`saveDistributor`) and used.
+    Several and no default: status `ChooseDistributor(packages)`, and the
+    status card lists them as radio rows in the app's own style (D8); the
+    pick is `saveDistributor`, and registration goes on. A saved one that
+    is gone, or that unregisters the app (`onUnregistered`), takes the Bell
+    registration back (`DELETE`) and is `NoDistributor`.
 92. **The subscription's keys are the connector's, on this device.** The
     connector's `DefaultKeyManager` makes the P-256 pair and auth secret per
     instance, keeps the private key in the app's SharedPreferences encrypted
     AES-GCM under a key in the Android Keystore, and decrypts each push
     (RFC 8291) before `PushService.onMessage`: the app sees
     `PushMessage(content, decrypted)`. The private key never leaves the
-    device and is never ours to hold; `allowBackup=false` keeps it out of
-    backups. A ding is taken only when `decrypted` is true and the content
-    reads as JSON with `"wake": "square"`; anything else is dropped and
-    counted, never logged in full. Holding the private key in the Keystore
-    itself (EC key agreement there needs API 31) is a follow-up, not this.
+    device and is never ours to hold; `allowBackup=false` and the backup
+    rules keep it out of backups, and a restored till re-registers at its
+    first start anyway (A12.3). A ding is taken only when `decrypted` is
+    true and the content is the JSON object `{"wake":"square"}` and
+    nothing else; anything else is dropped, never logged. Holding the
+    private key in the Keystore itself (EC key agreement there needs
+    API 31) is a follow-up, not this.
 93. **A ding reaches the shift through the app's graph, and is dropped
     outside one.** `WakePushService` (the connector's `PushService`, in the
-    app's process) gives each ding to `Graph.push`, a `SharedFlow<Unit>`
+    app's process) gives each ding to `Graph.push.dings`, a `SharedFlow<Unit>`
     without replay; `TillRunner` collects it while a shift runs and calls
-    `Shift.wake(WakeCause.Ding)`. No shift (watching off, or the process
-    was started by the ding alone): nothing checks Square, by the design's
-    "outside a shift nothing runs", and no foreground service is started
-    from a push (Android 14's rules make that a fight not worth having for
-    a sale the cashier isn't watching for). The registration itself stays
-    with the Bell across shifts: registering costs a Square request and one
-    of the Bell's 32 places per location, a ding outside a shift costs
-    nothing.
-94. **The timer's pace is a state machine, `WakePacing` in `sales`, pure and
-    tested.** Three states: `Timer` (2 s), `Bell` (30 s), `Doubt` (2 s, for
-    10 minutes). Events: the registration coming on or going off (from
-    `WakeUps.status`), a ding, and a *timer* check finding a new sale.
-    `Timer` + on → `Bell`. `Bell` + off → `Timer`. `Bell` + a ding → `Bell`.
-    `Bell` + the timer finding a sale (one the Bell should have rung for) →
-    `Doubt`, and `WakeUps.recheck()` is asked to register again. `Doubt` + a
-    ding → `Bell` (the Bell proved itself); `Doubt` + the timer finding
-    another sale → `Doubt` for 10 more minutes; `Doubt` running out → `Bell`;
-    `Doubt` + off → `Timer`. The 30 s tick is itself the backstop for a lost
-    ding, as §3 says; the app opening wakes the shift as before, without
-    touching the pace. `Shift.run` tells the pacing why it checked and
-    whether it found anything (`Till.check` answers how many sales it
-    found), and reads the interval afresh on every pass, so a change of
-    pace needs no restart. `RunnerState` carries the interval for Settings
-    ("Every 2 s" / "Every 30 s").
-95. **Registering, and registering again.** Choosing a Bell: `GET /v1/info`;
-    its `environment` must match the build's (`sandbox` or `production`), or
-    the status is `Failing` with "This Bell is for Square's sandbox" (or the
-    reverse); its `square_application_id` must be the one the till signed
-    in through, or the status is `NeedsSquareSignIn(bell, applicationId)`
-    (also when the till runs without Square). Then
-    `PushSubscriptions.subscribe(vapid)`, waiting for `Subscribed`; then
-    `POST /v1/register` with `SquareAuth.accessToken()`, the location and the
-    subscription, kept as `BellRegistration` in the encrypted store, status
-    `On`. Registered again, from the start, on: `recheck()` (Try again, a
-    shift starting, a location change, a new Square sign-in, the pacing's
-    doubt); a new endpoint from the distributor (the old id is deleted
-    first, as the Bell keys registrations by endpoint); the distributor
-    ending the subscription (`Failing`, then subscribe again). Retries by
-    problem: `square-unavailable`, `internal`, 5xx and no answer wait 1 min,
-    doubling to 30 min, while the choice stands; `rate-limited` waits its
-    `Retry-After`; `square-refused` goes to `NeedsSquareSignIn` (the token
-    lapsed, or the location isn't this merchant's); `invalid-request`,
-    `too-many-registrations` and `endpoint-registered` are `Failing` with the
-    Bell's own detail and wait for Try again (a configuration problem a
-    retry won't mend). The connector's `NETWORK` failure is retried the same
-    way; `ACTION_REQUIRED` is `Failing` naming the distributor. Problems are
-    read as RFC 9457 `type`s, as `Problems` reads Monokulo's, with the
-    Bell's own `detail` as the fallback.
+    `Shift.wake(WakeCause.Ding)`, and `BellWakeUps` collects it for "Last
+    wake-up" and to end `MissingWakeups`. No shift (watching off, or the
+    process was started by the ding alone): nothing checks Square, by the
+    design's "outside a shift nothing runs" (D9), and no foreground service
+    is started from a push (Android 14's rules make that a fight not worth
+    having for a sale the cashier isn't watching for). The registration
+    lives with the choice, not the shift (D4): registering costs a Square
+    request and one of the Bell's 32 places per location, a ding outside a
+    shift costs nothing, and the Bell never learns when shifts start.
+94. **The pace follows the status, and a missed wake-up is detected by the
+    timer.** `WakeUpStatus.interval` is 30 s for `Connected` and 2 s for
+    every other status: one function, one test over all of them. `Shift.run`
+    reads it afresh on every pass, so a change needs no restart, and tells
+    the runner why it checked (`WakeCause`: `Timer`, `Ding`, `Opened`) and
+    how many sales it found (`Till.check` answers the count). A *timer*
+    check that finds a sale while `Connected`, with no ding in the 60 s
+    before it, is a wake-up the Bell missed (D12): status
+    `MissingWakeups`, pace 2 s, and one `POST /v1/register` again (the Bell
+    may have deleted the registration after failed dings; it keeps the id
+    for the same subscription). The next ding returns it to `Connected`.
+    Replaces the lead's first cut, a ten-minute "doubt" that went back to
+    30 s on its own: an unproven Bell should not slow the till. The app
+    opening wakes the shift as before, in every status.
+95. **Registering, in order, and registering again.** Choosing a Bell: the
+    choice is saved, the old registration (another Bell's) is taken back,
+    then `GET /v1/info` (10 s timeout; failure → `Unreachable(reason)`,
+    with "no connection", "it didn't answer", "it answered 503" or "it
+    isn't a Bell" for an answer that isn't `/v1/info`'s). Its `environment`
+    must match the build's (`sandbox` or `production`), or it is
+    `Refused("it's for Square's sandbox" | "it's for Square's production
+    accounts")`, final. Its `square_application_id` must be the one the
+    till signed in through, or `SignInNeeded(id)` (decision 96). No Square
+    sign-in at all (or the till runs without Square): `NoSquare`. Then the
+    distributor (decision 91), `PushSubscriptions.subscribe(vapid)`, and on
+    `Subscribed`, `POST /v1/register` with `SquareAuth.accessToken()`, the
+    location and the subscription: `201` → `Connected`, kept as
+    `BellRegistration` in the encrypted store. Problems, read as RFC 9457
+    `type`s with the Bell's `detail` as the fallback: `square-refused` →
+    `Refused("Square didn't confirm this location. Sign in to Square
+    again.")`; `too-many-registrations`, `endpoint-registered`,
+    `invalid-request` → `Refused` with the acceptance criteria's words, no
+    retry on their own; `rate-limited` → `Refused(…, retryAt)`, retried
+    after `Retry-After`; `square-unavailable`, `internal`, other 5xx and no
+    answer → `Unreachable`, retried with a growing wait, 1 min doubling to
+    15 min (D5). Every app start and shift start with a Bell chosen
+    registers again (`recheck()`: the Bell answers the same id); so do a
+    new Square sign-in, a changed location, and a new endpoint from the
+    distributor (`DELETE` of the old id first, since the Bell keys
+    registrations by endpoint). The retries live in the graph's coroutine
+    scope: no WorkManager and no alarm (D13); a process that dies retries
+    at its next start. The connector's `NETWORK` failure is `Unreachable`;
+    `ACTION_REQUIRED` and `VAPID_REQUIRED` are `Unreachable("the
+    UnifiedPush app refused")`, an endpoint without keys `Unreachable("the
+    UnifiedPush app gave no keys")`.
 96. **A Bell with another Square application means signing in through it.**
     The till's Square application is `Stores.squareApplicationId ?:
-    BuildConfig.SQUARE_APPLICATION_ID`, read by `Graph.squareConfig()`. For
-    `NeedsSquareSignIn`, Settings shows "This Bell hears Square through a
-    different application. Sign in to Square again to use it" with a Sign in
-    row; the sign-in is started with that application's id (kept with the
-    pending PKCE state), and only once it finishes is the id saved as the
-    till's and the old sign-in replaced, so an abandoned sign-in leaves the
-    working one alone. The location is chosen again if the new account has
-    several. Back to the project's Bell is the same flow the other way;
-    Timer only keeps whatever sign-in there is. The handled-payments cursor
-    is the location's and carries over.
-97. **Unregistering.** `DELETE /v1/register/{id}` (a `404` is as good as a
-    `204`), then `PushSubscriptions.unsubscribe()`, then the registration is
-    forgotten, on: Timer only chosen (the choice is saved first, so a failed
-    DELETE can't undo it); signing out of Square (the choice stays and
-    Wake-ups says it needs Square); disconnecting the device (before
-    `forgetAll`, which also sets the choice back to Timer only). A Bell that
-    can't be reached for the DELETE is tried once; the Bell deletes a dead
-    endpoint by itself after its push service answers 404/410.
-98. **A Bell's address is `BellAddress`**: `https`, or `http` to an onion
-    address (through Orbot, as the store is reached: decision 55) and to
-    anything in a debug build (a Bell on the developer's machine); a path
-    is kept (a Bell under one); no user name, query or fragment; a missing
-    scheme means https; shown as its host. An onion Bell with Orbot not
-    running is `Failing` "Orbot isn't running", retried as a network
-    problem. The project's Bell is `BuildConfig.BELL_URL`
-    (`-Pmonokular.bell.url`, default `https://bell.monokulo.com`, a
-    placeholder until one is deployed), and Settings names its host from
-    it. The subscription's endpoint is the distributor's and must be public
-    https for the Bell to take it, whatever the Bell's own address.
-99. **Settings › Wake-ups, in the app's own parts.** Under the section
-    label, one `Group` of three `ChoiceRow`s (new in `Parts.kt`: label,
-    muted detail, a tick at the end for the chosen one, `Role.RadioButton`
-    semantics, the whole row selectable): "Timer only" (detail "Checks
-    Square every 2 seconds"), "Monokular Bell" (detail: its host), "My own
-    Bell" (detail: its host, or "Enter its address"). With "My own Bell"
-    chosen, an `OutlinedTextField` "Bell address" and an `OutlineButton`
-    "Use it" follow in the group, as the debug stand-in field does, with
-    `BellAddress.problem` as the field's error. Then a second `Group`:
-    `FactRow("Checking Square", "Every 2 s" | "Every 30 s")` and a status row
-    with the Online/Offline dot: "Listening" (green) for `On`, "Setting up…"
-    with the `LoadingMark` for `Registering`, "Not set up" otherwise; for
-    `Failing` an `ActionRow("Try again")`, for `NeedsSquareSignIn` an
-    `ActionRow("Sign in to Square")`. A `Notice` above the second group
-    carries a `Failing` problem, the no-distributor message (with "Get ntfy"
-    as a `LinkButton`) or the Square mismatch. The footnote says what the
-    Bell is told: "Monokular gives the Bell your Square sign-in once, to
-    prove the location, and nothing about your sales; the Bell only says
-    when to look." The Shift footnote reads "every 2 seconds (30 with a
-    Bell)". Everything in `Theme.kt` tokens; both themes.
+    BuildConfig.SQUARE_APPLICATION_ID`, read by `Graph.squareConfig()`
+    (D7: the application in use is saved with the sign-in). For
+    `SignInNeeded`, the status card says "This Bell uses a different Square
+    application. Sign in to Square through it to use the Bell" with a
+    "Sign in to Square" row; the sign-in is started with that application's
+    id (kept with the pending PKCE state), and only once it finishes is the
+    id saved as the till's and the old sign-in replaced, so an abandoned
+    sign-in leaves the working one alone (D6). The location is chosen again
+    if the new account has several; the sales cursor is the location's and
+    carries over. Back to the project's Bell is the same flow the other way;
+    Timer only keeps whatever sign-in there is.
+97. **Unregistering is awaited.** `DELETE /v1/register/{id}` (a `404` is as
+    good as a `204`; 10 s at most), then `PushSubscriptions.unsubscribe()`,
+    then the registration is forgotten, on: Timer only chosen (the choice
+    is saved first; the "My own Bell" address is kept for next time, D11);
+    another Bell chosen (before the new one's `POST`); signing out of Square
+    (the `DELETE` before the sign-out, since it is awaited and needs only
+    the id and the address; the choice stays, status `NoSquare`, and the
+    next sign-in registers again); disconnecting the device (before
+    `forgetAll`, which puts the choice back to Timer only); the distributor
+    gone (decision 91). A Bell that can't be reached for the `DELETE` is
+    tried once and the registration dropped locally; the Bell deletes a
+    dead endpoint by itself after its push service answers 404/410, or
+    after its failure limit.
+98. **A Bell's address is `BellAddress`**: `https`, a path kept (a Bell
+    under one), a trailing slash dropped, a missing scheme meaning https,
+    shown as its host and path without the scheme; a user name, a query or
+    a fragment is refused, and plain `http` is taken in a debug build only
+    (a Bell on the developer's machine) (D2). An onion address is refused,
+    and a Bell is reached directly, never through Orbot (D10): Square's
+    webhooks force every Bell onto a public https address anyway, the ding
+    goes through a public push service the till talks to regardless, and
+    the Bell is told what it learns in the card's footnote; the lead's
+    first cut, onion Bells through Orbot with an "Orbot isn't running"
+    state, bought nothing for its two more states. The project's Bell is
+    `BuildConfig.BELL_URL` from `-Pmonokular.bell.url` (default
+    `https://bell.monokulo.com`, a placeholder until one is deployed), which
+    takes whatever the field takes (a host, or `http://10.0.2.2:8445` for a
+    debug build): a whole address rather than D1's host, so a Bell under a
+    path works too. The subscription's endpoint is the distributor's and
+    must be public https for the Bell to take it.
+99. **Settings › Wake-ups, in the app's own parts, as the acceptance
+    criteria's A1 lays it out.** Not a setup step; a fresh install and every
+    updated one is Timer only (D3). Under the section label, one `Group` of
+    three `ChoiceRow`s (new in `Parts.kt`: label, muted detail, a tick in
+    the ink colour at the end of the chosen one, `selectableGroup` on the
+    group and `Role.RadioButton` with `selected` on each row, the whole row
+    tappable): "Timer only" / "Checks Square every 2 seconds", "Monokular
+    Bell" / its host, "My own Bell" / its saved address or "Enter its
+    address". With "My own Bell" chosen, a fourth row holds an
+    `OutlinedTextField` "Bell address" (`KeyboardType.Uri`) and an
+    `OutlineButton` "Use this Bell", enabled only when the field differs
+    from the saved address and parses, with `BellAddress.problem` as a
+    `Muted` line under the field. With a Bell chosen, a second `Group`:
+    `FactRow("Checking Square", "Every 30 s" | "Every 2 s")`, `FactRow("Bell",
+    …)` with the status word ("Connected" in `mk.paid`, "Connecting…", "Not
+    connected", "Needs a UnifiedPush app", "Sign in needed", "Wake-ups not
+    arriving"), "Last wake-up" while `Connected` or `MissingWakeups`, the
+    distributor rows for `ChooseDistributor`, and an `ActionRow("Sign in to
+    Square")` for `SignInNeeded`. The footnotes are A1.7's words, status by
+    status, plus the privacy footnote on every Bell choice, and the Shift
+    footnote changes with the pace (A1.8). All of it from one exhaustive
+    `when` over `WakeUpStatus` in a pure `WakeUpsText`, tested string by
+    string (D15). `Theme.kt` tokens only; both themes; 200% font scale wraps.

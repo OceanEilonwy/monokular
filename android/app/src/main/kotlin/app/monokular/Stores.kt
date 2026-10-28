@@ -1,6 +1,7 @@
 package app.monokular
 
 import app.monokular.core.Connection
+import app.monokular.push.BellAddress
 import app.monokular.push.BellRegistration
 import app.monokular.push.WakeUpChoice
 import app.monokular.push.WakeUpStore
@@ -92,6 +93,10 @@ class Stores(private val secure: SecureStore) {
             get() = read("wakeups.choice", WakeUpChoice.serializer()) ?: WakeUpChoice.TimerOnly
             set(value) = write("wakeups.choice", WakeUpChoice.serializer(), value.takeIf { it != WakeUpChoice.TimerOnly })
 
+        override var ownBell: BellAddress?
+            get() = read("wakeups.own", BellAddress.serializer())
+            set(value) = write("wakeups.own", BellAddress.serializer(), value)
+
         override var registration: BellRegistration?
             get() = read("wakeups.registration", BellRegistration.serializer())
             set(value) = write("wakeups.registration", BellRegistration.serializer(), value)
@@ -139,6 +144,7 @@ class Stores(private val secure: SecureStore) {
         shiftStartedAt = null
         squareApplicationId = null
         wakeUps.choice = WakeUpChoice.TimerOnly
+        wakeUps.ownBell = null
         wakeUps.registration = null
     }
 }
