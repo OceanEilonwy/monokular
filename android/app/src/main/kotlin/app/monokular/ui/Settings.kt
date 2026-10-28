@@ -63,6 +63,8 @@ data class SettingsState(
     /** Orbot's proxy answers; null while that's being checked. */
     val torRunning: Boolean? = null,
     val wakeUps: WakeUpsState,
+    /** What went wrong on the way back here, such as Square's words on a failed sign-in through a Bell (decision 105). */
+    val problem: String? = null,
 )
 
 /** Settings › Wake-ups' state (acceptance A1). */
@@ -101,7 +103,7 @@ class SettingsActions(
     val onDistributor: (String) -> Unit,
     /** "Get ntfy": a UnifiedPush app to install. */
     val onGetDistributor: () -> Unit,
-    /** Sign in to Square through the Bell's application, [String]. */
+    /** Sign in to Square through the Bell's application, by its application id. */
     val onBellSignIn: (String) -> Unit,
     val onBack: () -> Unit,
 )
@@ -212,7 +214,7 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions) = Page(
         },
     )
 
-    WakeUpsSection(s.wakeUps, a)
+    WakeUpsSection(s.wakeUps, s.problem, a)
 
     if (s.debug) {
         SectionLabel("Developer (debug builds)")
@@ -261,7 +263,7 @@ private fun TorSection(connection: Connection, onionApi: String?, running: Boole
  * what the Bell learns.
  */
 @Composable
-private fun WakeUpsSection(w: WakeUpsState, a: SettingsActions) {
+private fun WakeUpsSection(w: WakeUpsState, problem: String?, a: SettingsActions) {
     // My own Bell picked with no address saved yet: ticked here, chosen once "Use this Bell" is pressed (decision 103).
     var ownPicked by rememberSaveable { mutableStateOf(false) }
     val ownShown = ownPicked || w.choice is WakeUpChoice.OwnBell
@@ -270,6 +272,7 @@ private fun WakeUpsSection(w: WakeUpsState, a: SettingsActions) {
         a.onWakeUps(choice)
     }
     SectionLabel("Wake-ups")
+    Notice(problem, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
     Group(
         Modifier.selectableGroup(),
         rows = listOfNotNull(
@@ -282,7 +285,13 @@ private fun WakeUpsSection(w: WakeUpsState, a: SettingsActions) {
                 }, WakeUpsText.ownDetail(w.ownBell))
             },
             if (ownShown) {
-                { OwnBellField(w, a.onOwnBell) }
+                {
+                    OwnBellField(w) { text ->
+                        // Chosen now: the status card shows this Bell's, as a pick does.
+                        ownPicked = false
+                        a.onOwnBell(text)
+                    }
+                }
             } else {
                 null
             },

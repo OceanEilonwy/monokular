@@ -1040,9 +1040,10 @@ written except where an entry below says otherwise.
     application, the location chosen again when the account has several,
     and the cashier taken back to Settings, where `chooseLocation`'s
     `recheck()` carries the registration on to `Connected`. A sign-in that
-    fails goes back to Settings with Square's words and leaves the old
-    sign-in working. "Sign out of Square" now runs as the view model's
-    other network work does: `unregister()` awaited, then the sign-out.
+    fails goes back to Settings with Square's words, shown above the
+    Wake-ups cards, and leaves the old sign-in working. "Sign out of
+    Square" now runs as the view model's other network work does:
+    `unregister()` awaited, then the sign-out.
     "Disconnect this device" awaits `unregister(forget = true)` before
     Monokulo's disconnect (the Bell's `DELETE` comes first in its log, as
     the emulator script's step 22 expects), and "Connect again" after the

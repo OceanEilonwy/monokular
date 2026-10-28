@@ -143,6 +143,8 @@ class MainActivity : ComponentActivity() {
                         val torRunning by produceState<Boolean?>(null, store) { value = model.torRunning() }
                         val wakeUpChoice by model.wakeUpChoice.collectAsStateWithLifecycle()
                         val wakeUpStatus by model.wakeUpStatus.collectAsStateWithLifecycle()
+                        // PackageManager is asked for the UnifiedPush apps' names only when the status changes.
+                        val distributorNames = remember(wakeUpStatus) { distributorNames(wakeUpStatus) }
                         SettingsScreen(
                             SettingsState(
                                 connection = model.connection,
@@ -163,9 +165,10 @@ class MainActivity : ComponentActivity() {
                                     status = wakeUpStatus,
                                     monokular = model.monokularBell,
                                     ownBell = model.ownBell,
-                                    distributorNames = distributorNames(wakeUpStatus),
+                                    distributorNames = distributorNames,
                                     allowHttp = BuildConfig.DEBUG,
                                 ),
+                                problem = problem,
                             ),
                             SettingsActions(
                                 onShift = { model.setShift(it); model.go(Screen.Settings) },

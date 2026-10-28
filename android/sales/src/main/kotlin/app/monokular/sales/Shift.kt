@@ -80,6 +80,6 @@ class Shift(
 
     companion object {
         /** The longest the timer waits before reading [interval] again: the shortest pace. */
-        val TICK: Duration = 2.seconds
+        private val TICK: Duration = 2.seconds
     }
 }

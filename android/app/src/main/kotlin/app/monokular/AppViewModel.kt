@@ -266,8 +266,11 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 }
             }
         } catch (e: SquareException) {
-            problem.value = e.message
+            // A failed sign-in after a good one (Square's locations) leaves no Bell sign-in pending.
+            bellSignIn = false
+            // go() clears the problem, so Square's words come after it.
             go(if (pending.applicationId != null && stores.setupDone) Screen.Settings else Screen.Square)
+            problem.value = e.message
         }
     }
 
