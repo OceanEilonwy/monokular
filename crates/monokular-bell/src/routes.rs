@@ -30,7 +30,8 @@ use push::Subscription;
 use serde::ser::SerializeMap as _;
 use serde::{Deserialize, Serialize, Serializer};
 
-use crate::pos::{AccessToken, LocationId, PointOfSale, ProofError, Ring};
+use crate::clover::{self, AuthError, Clover, Incoming, VerificationCode};
+use crate::pos::{AccessToken, LocationId, MerchantId, PointOfSale, ProofError, Ring};
 use crate::problem::{Problem, ProblemDetails};
 use crate::registrations::{NewRegistration, RegisterError, RegistrationId, StoreError};
 use crate::square::{self, Notification, Square};
@@ -41,6 +42,11 @@ const MAX_REGISTRATION: usize = 8 * 1024;
 
 /// The largest webhook read. A payment's is a few kilobytes.
 const MAX_WEBHOOK: usize = 256 * 1024;
+
+/// The most of a Clover webhook without its auth header that is read: its
+/// verification handshake is some 60 bytes, and nothing else comes
+/// without the header.
+const MAX_VERIFICATION: usize = 1024;
 
 /// The routes, with a webhook route for each point of sale this Bell
 /// serves and none for the others: a webhook to one that is off is `404`,
@@ -56,6 +62,13 @@ pub fn router(shared: Arc<Shared>) -> Router {
             Router::new()
                 .route(PointOfSale::Square.webhook_path(), post(square_webhook))
                 .with_state((Arc::clone(&shared), Arc::clone(square))),
+        );
+    }
+    if let Some(clover) = &shared.adapters.clover {
+        router = router.merge(
+            Router::new()
+                .route(PointOfSale::Clover.webhook_path(), post(clover_webhook))
+                .with_state((Arc::clone(&shared), Arc::clone(clover))),
         );
     }
     router
@@ -122,7 +135,20 @@ async fn register(
                 .map_err(|error| refused(point_of_sale, error))?;
             (merchant, square.application_id().as_str())
         }
-        PointOfSale::Clover => return Err(not_served(&shared.adapters, point_of_sale)),
+        PointOfSale::Clover => {
+            let clover = shared
+                .adapters
+                .clover
+                .as_ref()
+                .ok_or_else(|| not_served(&shared.adapters, point_of_sale))?;
+            // A Clover merchant is its own location (B48).
+            let merchant = MerchantId::from(location_id.clone());
+            clover
+                .prove(access_token, &merchant)
+                .await
+                .map_err(|error| refused(point_of_sale, error))?;
+            (merchant, clover.application_id().as_str())
+        }
     };
     let id = shared
         .store
@@ -239,7 +265,10 @@ impl Serialize for PointsOfSale<'_> {
                     application_id: square.application_id().as_str(),
                     environment: square.environment().as_str(),
                 }),
-                PointOfSale::Clover => None,
+                PointOfSale::Clover => adapters.clover.as_ref().map(|clover| PosInfo {
+                    application_id: clover.application_id().as_str(),
+                    environment: clover.environment().as_str(),
+                }),
             };
             if let Some(info) = info {
                 map.serialize_entry(pos.as_str(), &info)?;
@@ -291,6 +320,64 @@ async fn square_webhook(
         Err(error) => tracing::warn!(error = %error, "a signed webhook was dropped"),
     }
     Ok(StatusCode::OK)
+}
+
+/// A webhook from Clover: authenticated by its `X-Clover-Auth` header
+/// alone, as Clover signs nothing (B49). Without the header, it may be the
+/// verification handshake and nothing else: read no further than that
+/// takes, answered `200` with the code logged for the operator, or `401`
+/// with nothing logged, so nobody writes into the Bell's log.
+async fn clover_webhook(
+    State((shared, clover)): State<(Arc<Shared>, Arc<Clover>)>,
+    headers: HeaderMap,
+    body: Body,
+) -> Result<StatusCode, ProblemDetails> {
+    let Some(header) = headers.get(clover::AUTH_HEADER) else {
+        let body = axum::body::to_bytes(body, MAX_VERIFICATION).await.ok();
+        return match body.as_deref().and_then(clover::read_verification) {
+            Some(code) => {
+                verification(&code);
+                Ok(StatusCode::OK)
+            }
+            None => Err(not_from_clover(AuthError::Missing)),
+        };
+    };
+    clover.verify(Some(header.as_bytes())).map_err(|error| {
+        tracing::warn!(error = %error, "a webhook not from Clover was refused");
+        not_from_clover(error)
+    })?;
+    let body = read(body, MAX_WEBHOOK).await?;
+    match clover.read_webhook(&body) {
+        Ok(Incoming::Updates(rings)) => {
+            for ring in rings {
+                shared.dings.ring(ring);
+            }
+        }
+        Ok(Incoming::Verification(code)) => verification(&code),
+        Ok(Incoming::OtherApplication) => {
+            tracing::warn!("another application's Clover webhook was dropped");
+        }
+        // Clover's own, so answered as taken, as Square's are.
+        Err(error) => tracing::warn!(error = %error, "a Clover webhook was dropped"),
+    }
+    Ok(StatusCode::OK)
+}
+
+/// Clover's verification code, for the operator to enter in its developer
+/// dashboard: the one value of a body the Bell ever logs.
+fn verification(code: &VerificationCode) {
+    tracing::info!(
+        "Clover webhook verification code: {code} (enter it on the Webhooks page of the app's developer dashboard, then Verify)"
+    );
+}
+
+fn not_from_clover(error: AuthError) -> ProblemDetails {
+    Problem::InvalidSignature(PointOfSale::Clover).detail(match error {
+        AuthError::Missing => {
+            "There is no x-clover-auth header: Clover sends the app's Auth Code with every webhook."
+        }
+        AuthError::Mismatch => "The x-clover-auth header isn't this Bell's Clover Auth Code.",
+    })
 }
 
 /// The body, refused as too large past `limit` bytes without reading
