@@ -380,9 +380,14 @@ class BellWakeUpsTest {
         assertEquals(WakeUpStatus.Refused("this location already has 32 tills registered"), problem(409, "too-many-registrations"))
         assertEquals(WakeUpStatus.Refused("this device is registered under another Square account"), problem(409, "endpoint-registered"))
         assertEquals(
-            WakeUpStatus.Refused("too many registrations from this network: trying again in 42 seconds", retryAt = 1042),
+            WakeUpStatus.Refused("too many registrations from this network: trying again in about a minute", retryAt = 1042),
             problem(429, "rate-limited", retryAfter = 42),
         )
+        assertEquals(
+            WakeUpStatus.Refused("too many registrations from this network: trying again in about 10 minutes", retryAt = 1600),
+            problem(429, "rate-limited", retryAfter = 600),
+        )
+        assertEquals(listOf("about a minute", "about a minute", "about 2 minutes", "about 15 minutes"), listOf(1L, 90L, 91L, 900L).map(BellWakeUps::about))
         assertEquals(WakeUpStatus.Refused("subscription.keys.p256dh isn't a P-256 point"), problem(400, "invalid-request", "subscription.keys.p256dh isn't a P-256 point"))
         assertEquals(WakeUpStatus.Refused("it answered 413"), problem(413, "payload-too-large"))
         assertEquals(WakeUpStatus.Unreachable("it answered 503"), problem(503, "square-unavailable", "Square didn't answer"))
@@ -792,6 +797,40 @@ class BellWakeUpsTest {
         wait(10.seconds)
         wakeUps.timerFound(3)
         assertEquals(WakeUpStatus.Unreachable("no connection"), wakeUps.status.value)
+    }
+
+    @Test
+    fun `an endpoint the distributor gives after the pass stopped waiting registers at once (decision 123)`() = runTest {
+        push.answer = { null }
+        val wakeUps = start()
+        wakeUps.choose(WakeUpChoice.MonokularBell)
+        wait(BellWakeUps.SUBSCRIBE_WAIT)
+        assertEquals(WakeUpStatus.Unreachable(BellWakeUps.PUSH_SILENT), wakeUps.status.value)
+        assertEquals(listOf("GET bell.monokulo.com"), bell.calls)
+        // The distributor, opened at last, answers the registration it was sent.
+        push.state.value = PushState.Subscribed(PushSubscription(push.endpoint, "BKey", "auth"))
+        runCurrent()
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        assertEquals(listOf("GET bell.monokulo.com", "GET bell.monokulo.com", "POST bell.monokulo.com EAAAtoken L1 https://ntfy.sh/up1"), bell.calls)
+        assertEquals(listOf("subscribe $KEY"), push.calls, "the subscription held is the one registered")
+        // The wait that was set is gone with it: nothing more is asked of the Bell.
+        wait(20.minutes)
+        assertEquals(3, bell.calls.size)
+    }
+
+    @Test
+    fun `an unreachable Bell is tried again on recheck, before its wait is out (decision 123)`() = runTest {
+        push.answer = { null }
+        val wakeUps = start()
+        wakeUps.choose(WakeUpChoice.MonokularBell)
+        wait(BellWakeUps.SUBSCRIBE_WAIT)
+        assertEquals(WakeUpStatus.Unreachable(BellWakeUps.PUSH_SILENT), wakeUps.status.value)
+        push.answer = { PushState.Subscribed(PushSubscription(push.endpoint, "BKey", "auth")) }
+        wait(5.seconds)
+        wakeUps.recheck()
+        runCurrent()
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        assertEquals(1, bell.calls.count { it.startsWith("POST") })
     }
 
     @Test

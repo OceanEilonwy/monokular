@@ -231,6 +231,7 @@ class MainActivity : ComponentActivity() {
         model.setVisible(true)
         if (model.connection != null && model.shiftOn) model.restartIfStopped()
         model.wake()
+        model.retryWakeUps()
     }
 
     override fun onResume() {

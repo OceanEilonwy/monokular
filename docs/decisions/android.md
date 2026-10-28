@@ -1006,7 +1006,12 @@ written except where an entry below says otherwise.
      message receiver, its link activity (unused: decision 91) and an
      exported `RaiseToForegroundService` that a distributor binds to raise
      the app's priority while it delivers; the app declares only
-     `WakePushService` (`exported="false"`, `PUSH_EVENT`), A12.1.
+     `WakePushService` (`exported="false"`, `PUSH_EVENT`), A12.1. The one
+     thing in the app's logcat from Wake-ups is the connector's own debug
+     line, "Found distributor with package name …", once per look at the
+     installed distributors (each pass and each change of apps: QA counted
+     125 in a 35-minute run); it names a package and nothing of the till's,
+     so it stands (A9.5).
 101. **The shift says why it checked, counts what is new, and re-reads its
     pace every 2 s** (dev-2; refines 94). `WakeCause` gains `Started`, the
     shift's first check: sales rung while nothing watched (a ding outside a
@@ -1181,7 +1186,14 @@ written except where an entry below says otherwise.
      its way puts the till back to `Connected` when it lands. Waiting costs
      every real missed wake-up another minute at 30 s, which is what the
      cashier would notice, and a timer job of its own. So the verdict stays
-     at the find.
+     at the find. QA measured the cost on the emulator against fake-square,
+     whose webhook follows the sale within milliseconds: twice in 35 minutes
+     a 30 s check landed within 200 ms of a sale, before its ding, and the
+     till showed "Wake-ups not arriving" and `POST`ed again, back to
+     `Connected` within the second. Against Square, whose webhook takes
+     seconds, the coincidence is likelier (a few per cent of sales) and
+     costs the same: accepted as this decision says, and the first thing to
+     revisit if the flicker is seen on a till.
 118. **A distributor uninstalled ends the subscription twice over, so its
      end is judged by what is installed.** In 3.3.5,
      `UnifiedPush.getSavedDistributor()` finding the saved distributor gone
@@ -1249,3 +1261,71 @@ written except where an entry below says otherwise.
      made through ntfy, a start with only NextPush, then the `Lost`.
      Registrations stored by earlier builds of this branch lack the field
      and read as none (the branch was never released).
+123. **A distributor that answers late, or after being opened, connects
+     the till at once** (lead, after QA round 1). QA's one major finding: a
+     ntfy just installed sits in Android's stopped state until it is opened,
+     so the connector's `REGISTER` to it goes unanswered, the pass settles
+     "the UnifiedPush app didn't answer" after decision 110's 30 s, and the
+     till waited out decision 95's first minute (83 s from the install to
+     `Connected`) although the cashier had opened ntfy at once. Three
+     things, none of them a change to the retry schedule: (1) an endpoint
+     the connector delivers while no pass runs and no registration holds it
+     starts a pass, so a distributor that answers after the 30 s connects
+     the till the moment it does (`pushChanged` no longer needs a
+     registration to act on `Subscribed`; a `Lost` still does; a
+     subscription the last pass already took is nothing new, so a `POST`
+     the Bell refused isn't tried again on the strength of the endpoint it
+     was made with, which keeps decision 95's rule for refusals); (2) the
+     activity coming to the foreground and Settings opening call
+     `recheck()` when the status is `Unreachable`, and only then, so coming
+     back from the distributor (or from the network settings) tries the Bell
+     now rather than at the end of the wait, while `Connected` isn't
+     `POST`ed again on every return and a `Refused` keeps decision 95's
+     rules; (3) the reason reads "the UnifiedPush app didn't answer: open it
+     once", which says what to do and stops the words from reading as a
+     fault in the app just installed. Tested on virtual time: a late
+     endpoint after `PUSH_SILENT` ends `Connected` with the subscription
+     held registered and no second subscribe, and the wait that was set is
+     cancelled with it; a `recheck()` 5 s into the wait connects. The
+     foreground call is in the activity and view model, the one place the
+     app knows it came forward; the push module stays without a lifecycle.
+     Reading the status there makes the activity's first start decision
+     100's first use of `Graph.wakeUps`, so the app-start registration now
+     happens when the app is opened rather than at Settings or a shift; a
+     process the distributor starts for a ding still touches `Graph.push`
+     only.
+124. **Settings › Wake-ups after QA round 1** (lead; refines 99, 103). Four
+     findings on the screen, each taken: "Every 30 s" wrapped as "Every 30"
+     and "s" at font scale 2.0, so the pace's space is a non-breaking one
+     (` `); a debug build's http Bell showed the same detail as an
+     https one of the same host ("10.0.2.2:8445" for both), so a Bell's row
+     detail keeps its scheme when it isn't https, for the Monokular Bell row
+     and My own Bell alike (`WakeUpsText.bell`), and the address field
+     starts with the same text; the rate-limited refusal said "trying again
+     in 58 seconds" for the whole minute, since the footnote doesn't count
+     down, so it says "trying again in about a minute" (or "about N
+     minutes" from `Retry-After`), which stays true while it shows; and
+     tapping My own Bell with no address saved moved the tick and hid the
+     status card while the saved Bell was still registered and `Connected`,
+     so now the tap opens the address field and its footnote ("… Until then
+     Wake-ups stay as they were.") above the saved choice's status card,
+     and the tick stays with the saved choice until "Use this Bell", as
+     A3.13 ties it to a saved mode. Decision 103's "ticked here" is
+     superseded by this.
+125. **What QA round 1 left, and why.** Recorded rather than fixed in this
+     PR: a `DELETE` that the Bell was down for (decision 97's one try,
+     then dropped locally) is not remembered, so the Bell keeps the old
+     row until its failure limit trips, and ntfy.sh never fails a topic, so
+     for a till that left while its Bell was down the row stays until the
+     Bell's operator clears it; remembering the undelivered id and address
+     in the store and sending it before the next `POST` to that Bell is the
+     fix, and needs a store field, so it is a follow-up and not this
+     round's change. Two findings are the till's, not Wake-ups': ten sales
+     in one second stack ten code screens on the back stack (a new sale
+     should replace an open code screen), and "Sign in to Square" from
+     Settings › Square after a sign-out goes through onboarding's Connect
+     Square step and lands on an already-seen sale's code (the Wake-ups
+     card's own sign-in row returns to Settings correctly); both predate
+     this branch, Wake-ups only makes the burst arrive faster, and both are
+     follow-ups. Decision 116's coincidence and decision 100's log line are
+     recorded there.

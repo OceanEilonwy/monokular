@@ -98,6 +98,12 @@ class BellWakeUps(
     /** The distributor a change of apps took away, until its [PushFailure.Lost] arrives (decision 118). */
     @Volatile private var departed: String? = null
 
+    /**
+     * The subscription the last pass took from the distributor, whether or not the Bell then
+     * took it: an endpoint arriving outside a pass is news only when it isn't this one (decision 123).
+     */
+    @Volatile private var taken: PushSubscription? = null
+
     @Volatile private var lastDingAt: Long? = null
     @Volatile private var connectedAt: Long? = null
 
@@ -261,14 +267,19 @@ class BellWakeUps(
     /** The subscription for [vapidPublicKey] through [through]: the one held, or a new one the distributor gives. */
     private suspend fun subscription(vapidPublicKey: String, through: String): PushState {
         val held = push.state.value
-        if (held is PushState.Subscribed && subscribedFor == vapidPublicKey && subscribedThrough == through) return held
-        // A rotated key, or another distributor: the old subscription ends first (D16).
-        val previousKey = subscribedFor ?: store.registration?.vapidPublicKey
-        if (previousKey != null && previousKey != vapidPublicKey) push.unsubscribe()
-        subscribedFor = vapidPublicKey
-        subscribedThrough = through
-        push.subscribe(vapidPublicKey)
-        return withTimeoutOrNull(SUBSCRIBE_WAIT) { push.state.first { it !is PushState.Subscribing } } ?: PushState.Subscribing
+        val state = if (held is PushState.Subscribed && subscribedFor == vapidPublicKey && subscribedThrough == through) {
+            held
+        } else {
+            // A rotated key, or another distributor: the old subscription ends first (D16).
+            val previousKey = subscribedFor ?: store.registration?.vapidPublicKey
+            if (previousKey != null && previousKey != vapidPublicKey) push.unsubscribe()
+            subscribedFor = vapidPublicKey
+            subscribedThrough = through
+            push.subscribe(vapidPublicKey)
+            withTimeoutOrNull(SUBSCRIBE_WAIT) { push.state.first { it !is PushState.Subscribing } } ?: PushState.Subscribing
+        }
+        taken = (state as? PushState.Subscribed)?.subscription
+        return state
     }
 
     /** Take a registration back: `DELETE`, tried once within the time it gets, and forgotten here whatever the answer (decision 97). */
@@ -300,6 +311,7 @@ class BellWakeUps(
         subscribedFor = null
         subscribedThrough = null
         departed = null
+        taken = null
         push.unsubscribe()
     }
 
@@ -341,13 +353,17 @@ class BellWakeUps(
         }
     }
 
-    /** The distributor changed things outside a pass: a new endpoint, or the subscription ended. */
+    /**
+     * The distributor changed things outside a pass: a new endpoint, one it gives after the
+     * pass stopped waiting for it (decision 123), or the subscription ended. A subscription
+     * the last pass already took is nothing new, whatever the Bell made of it.
+     */
     private fun pushChanged(state: PushState) {
         if (store.choice == WakeUpChoice.TimerOnly) return
-        val held = store.registration ?: return
+        val held = store.registration
         when {
-            state is PushState.Subscribed && state.subscription != held.subscription -> run(restart = false)
-            state is PushState.Failed && state.reason == PushFailure.Lost -> scope.launch { distributorGone() }
+            state is PushState.Subscribed && state.subscription != held?.subscription && state.subscription != taken -> run(restart = false)
+            state is PushState.Failed && state.reason == PushFailure.Lost && held != null -> scope.launch { distributorGone() }
         }
     }
 
@@ -365,6 +381,7 @@ class BellWakeUps(
                 store.registration?.let { takeBack(it) }
                 subscribedFor = null
                 subscribedThrough = null
+                taken = null
                 if (store.choice == WakeUpChoice.TimerOnly) return
                 when (val distributor = distributors.resolve()) {
                     Distributor.None -> settle(WakeUpStatus.NoDistributor)
@@ -405,7 +422,8 @@ class BellWakeUps(
         const val FOR_PRODUCTION = "it's for Square's production accounts"
         const val PUSH_REFUSED = "the UnifiedPush app refused"
         const val PUSH_NO_KEYS = "the UnifiedPush app gave no keys"
-        const val PUSH_SILENT = "the UnifiedPush app didn't answer"
+        /** A distributor just installed answers nothing until it has been opened once (decision 123). */
+        const val PUSH_SILENT = "the UnifiedPush app didn't answer: open it once"
         const val PUSH_OFFLINE = "the UnifiedPush app has no connection"
         const val TILL_FAILED = "something on this device failed"
 
@@ -424,12 +442,21 @@ class BellWakeUps(
             "endpoint-registered" -> WakeUpStatus.Refused("this device is registered under another Square account")
             "rate-limited" -> {
                 val wait = (e.retryAfter ?: FIRST_RETRY.inWholeSeconds).coerceAtLeast(1)
-                WakeUpStatus.Refused("too many registrations from this network: trying again in $wait seconds", retryAt = now + wait)
+                WakeUpStatus.Refused("too many registrations from this network: trying again in ${about(wait)}", retryAt = now + wait)
             }
             "square-unavailable", "internal" -> WakeUpStatus.Unreachable(unreachableReason(e))
             else ->
                 if (e.status >= 500) WakeUpStatus.Unreachable(unreachableReason(e))
                 else WakeUpStatus.Refused(e.detail ?: "it answered ${e.status}")
+        }
+
+        /**
+         * A wait of [seconds] in words loose enough to stay true while the footnote
+         * shows them, since it doesn't count down (decision 124).
+         */
+        fun about(seconds: Long): String = when {
+            seconds <= 90 -> "about a minute"
+            else -> "about ${(seconds + 30) / 60} minutes"
         }
 
         /** The distributor couldn't make the subscription (decision 95). */

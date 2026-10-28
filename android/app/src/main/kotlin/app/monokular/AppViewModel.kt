@@ -13,6 +13,7 @@ import app.monokular.core.Tor
 import app.monokular.notify.SaleNotifications
 import app.monokular.push.BellAddress
 import app.monokular.push.WakeUpChoice
+import app.monokular.push.WakeUpStatus
 import app.monokular.sales.Pkce
 import app.monokular.sales.SquareAuth
 import app.monokular.sales.SquareException
@@ -132,8 +133,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Settings, with the store read again as it opens. */
     fun openSettings() {
         readStore()
+        retryWakeUps()
         beforeSettings = screenState.value.takeIf { it is Screen.Till || it is Screen.Sale || it is Screen.Code || it is Screen.Order }
         go(Screen.Settings)
+    }
+
+    /**
+     * The app came forward, or Settings opened: a Bell that couldn't be reached is tried
+     * again now rather than at the end of its wait, since what was in the way (a UnifiedPush
+     * app just installed and not yet opened, say) may have been seen to (decision 123).
+     * Nothing else is retried here: a refusal keeps decision 95's rules.
+     */
+    fun retryWakeUps() {
+        if (graph.wakeUps.status.value is WakeUpStatus.Unreachable) graph.wakeUps.recheck()
     }
 
     /** Back from Settings: to the sale or the shift it was opened from. */

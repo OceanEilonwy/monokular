@@ -264,7 +264,8 @@ private fun TorSection(connection: Connection, onionApi: String?, running: Boole
  */
 @Composable
 private fun WakeUpsSection(w: WakeUpsState, problem: String?, a: SettingsActions) {
-    // My own Bell picked with no address saved yet: ticked here, chosen once "Use this Bell" is pressed (decision 103).
+    // My own Bell tapped with no address saved yet: its field opens, but the tick and the status
+    // card stay with the saved choice until "Use this Bell" is pressed (decisions 103, 124).
     var ownPicked by rememberSaveable { mutableStateOf(false) }
     val ownShown = ownPicked || w.choice is WakeUpChoice.OwnBell
     fun pick(choice: WakeUpChoice) {
@@ -276,10 +277,10 @@ private fun WakeUpsSection(w: WakeUpsState, problem: String?, a: SettingsActions
     Group(
         Modifier.selectableGroup(),
         rows = listOfNotNull(
-            { ChoiceRow("Timer only", w.choice == WakeUpChoice.TimerOnly && !ownPicked, { pick(WakeUpChoice.TimerOnly) }, WakeUpsText.TIMER_DETAIL) },
-            { ChoiceRow("Monokular Bell", w.choice == WakeUpChoice.MonokularBell && !ownPicked, { pick(WakeUpChoice.MonokularBell) }, w.monokular.display) },
+            { ChoiceRow("Timer only", w.choice == WakeUpChoice.TimerOnly, { pick(WakeUpChoice.TimerOnly) }, WakeUpsText.TIMER_DETAIL) },
+            { ChoiceRow("Monokular Bell", w.choice == WakeUpChoice.MonokularBell, { pick(WakeUpChoice.MonokularBell) }, WakeUpsText.bell(w.monokular)) },
             {
-                ChoiceRow("My own Bell", ownShown, {
+                ChoiceRow("My own Bell", w.choice is WakeUpChoice.OwnBell, {
                     val saved = w.ownBell
                     if (saved != null) pick(WakeUpChoice.OwnBell(saved)) else ownPicked = true
                 }, WakeUpsText.ownDetail(w.ownBell))
@@ -297,9 +298,10 @@ private fun WakeUpsSection(w: WakeUpsState, problem: String?, a: SettingsActions
             },
         ),
     )
-    // The status is the saved choice's: none to show while My own Bell waits for its address.
-    if (w.choice == WakeUpChoice.TimerOnly || ownPicked) {
-        Footnote(if (ownPicked) WakeUpsText.NO_OWN_BELL_YET else WakeUpsText.TIMER_ONLY)
+    // The status is the saved choice's, and stays up while My own Bell waits for its address.
+    if (ownPicked) Footnote(WakeUpsText.NO_OWN_BELL_YET)
+    if (w.choice == WakeUpChoice.TimerOnly) {
+        if (!ownPicked) Footnote(WakeUpsText.TIMER_ONLY)
         return
     }
     val status = w.status

@@ -30,22 +30,21 @@ object WakeUpsText {
     const val TIMER_ONLY = "Monokular checks Square every 2 seconds during a shift. A Bell lets Square wake the till within a second " +
         "or two of a sale, so it can check every 30 seconds instead."
 
-    /** The My own Bell row's detail: the saved address without its scheme, or how to start. */
-    fun ownDetail(saved: BellAddress?): String = saved?.display ?: NO_OWN_BELL
-
     /**
-     * What the address field starts with: the saved address as the row
-     * shows it, with its scheme only when that isn't https (a debug
-     * build's http Bell), so the field reads back as the same address.
+     * A Bell's row detail: its address without its scheme, with the scheme
+     * only when that isn't https (a debug build's http Bell), so two Bells
+     * that differ in nothing else can be told apart (decision 124).
      */
-    fun ownField(saved: BellAddress?): String = when {
-        saved == null -> ""
-        saved.url == "https://${saved.display}" -> saved.display
-        else -> saved.url
-    }
+    fun bell(address: BellAddress): String = if (address.url == "https://${address.display}") address.display else address.url
 
-    /** The status card's Checking Square row: the pace the shift's timer runs at. */
-    fun pace(status: WakeUpStatus): String = "Every ${status.interval.inWholeSeconds} s"
+    /** The My own Bell row's detail: the saved address, or how to start. */
+    fun ownDetail(saved: BellAddress?): String = saved?.let(::bell) ?: NO_OWN_BELL
+
+    /** What the address field starts with: the saved address as its row shows it, so it reads back as the same address. */
+    fun ownField(saved: BellAddress?): String = saved?.let(::bell) ?: ""
+
+    /** The status card's Checking Square row: the pace the shift's timer runs at, on one line at any font scale. */
+    fun pace(status: WakeUpStatus): String = "Every ${status.interval.inWholeSeconds} s"
 
     /** The status card's Bell row. */
     fun word(status: WakeUpStatus): String = when (status) {

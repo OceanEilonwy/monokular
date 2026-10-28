@@ -41,11 +41,9 @@ class WakeUpsTextTest {
     }
 
     @Test
-    fun `Checking Square says 30 s while connected and 2 s otherwise`() {
-        assertEquals(
-            listOf("Every 2 s", "Every 2 s", "Every 2 s", "Every 2 s", "Every 2 s", "Every 30 s", "Every 2 s", "Every 2 s", "Every 2 s", "Every 2 s"),
-            every.map(WakeUpsText::pace),
-        )
+    fun `Checking Square says 30 s while connected and 2 s otherwise, the unit on the number's line`() {
+        val two = "Every 2 s"
+        assertEquals(listOf(two, two, two, two, two, "Every 30 s", two, two, two, two), every.map(WakeUpsText::pace))
     }
 
     @Test
@@ -97,9 +95,14 @@ class WakeUpsTextTest {
             WakeUpsText.footnote(WakeUpStatus.Refused("Square didn't confirm this location. Sign in to Square again.")),
         )
         assertEquals(
-            "The Bell refused this till: too many registrations from this network: trying again in 40 seconds. " +
+            "The Bell refused this till: too many registrations from this network: trying again in about a minute. " +
                 "Monokular is checking Square every 2 seconds.",
-            WakeUpsText.footnote(WakeUpStatus.Refused("too many registrations from this network: trying again in 40 seconds", retryAt = 1)),
+            WakeUpsText.footnote(WakeUpStatus.Refused("too many registrations from this network: trying again in about a minute", retryAt = 1)),
+        )
+        assertEquals(
+            "Monokular couldn't reach the Bell (the UnifiedPush app didn't answer: open it once). " +
+                "It's checking Square every 2 seconds and will try the Bell again.",
+            WakeUpsText.footnote(WakeUpStatus.Unreachable("the UnifiedPush app didn't answer: open it once")),
         )
     }
 
@@ -121,6 +124,10 @@ class WakeUpsTextTest {
         )
         assertEquals("bell.thebeanroom.coffee", WakeUpsText.ownDetail(BellAddress.parse("bell.thebeanroom.coffee")))
         assertEquals("bell.example.org/bell", WakeUpsText.ownDetail(BellAddress.parse("https://bell.example.org/bell/")))
+        // A debug build's http Bell shows its scheme, so it isn't mistaken for the https one of the same host (decision 124).
+        assertEquals("http://10.0.2.2:8445", WakeUpsText.ownDetail(BellAddress.parse("http://10.0.2.2:8445", allowHttp = true)))
+        assertEquals("http://10.0.2.2:8445", WakeUpsText.bell(BellAddress.parse("http://10.0.2.2:8445", allowHttp = true)!!))
+        assertEquals("bell.monokulo.com", WakeUpsText.bell(BellAddress.parse("https://bell.monokulo.com")!!))
         assertEquals(
             "The Bell learns which Square location this till is at and when it takes payments, not what was sold. " +
                 "Your Square sign-in is shown to it once, to prove the location, and never kept.",
