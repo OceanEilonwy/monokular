@@ -25,6 +25,16 @@ android {
         buildConfigField("String", "SQUARE_REDIRECT_URI", "\"https://monokular.monokulo.com/square\"")
         buildConfigField("String", "SQUARE_RETURN_URI", "\"https://monokular.monokulo.com/square\"")
         buildConfigField("String", "SQUARE_BASE_URL", "\"\"")
+        // The project's Clover application and the region it is in (sandbox,
+        // north_america, europe or latin_america). Public too: Clover's
+        // low-trust sign-in is PKCE with no secret (decision A127). Replace the
+        // placeholder once the Clover application exists.
+        buildConfigField("String", "CLOVER_APPLICATION_ID", "\"${providers.gradleProperty("monokular.clover.applicationId").getOrElse("REPLACE-ME-CLOVER")}\"")
+        buildConfigField("String", "CLOVER_ENVIRONMENT", "\"${providers.gradleProperty("monokular.clover.environment").getOrElse("north_america")}\"")
+        // Clover sends the sign-in to a path under the application's Site URL, https only: the App Link.
+        buildConfigField("String", "CLOVER_REDIRECT_URI", "\"https://monokular.monokulo.com/clover\"")
+        buildConfigField("String", "CLOVER_RETURN_URI", "\"https://monokular.monokulo.com/clover\"")
+        buildConfigField("String", "CLOVER_BASE_URL", "\"\"")
         // The project's Monokular Bell (docs/design.md §3), which Settings ›
         // Wake-ups offers by name. A placeholder until one is deployed.
         buildConfigField("String", "BELL_URL", "\"${providers.gradleProperty("monokular.bell.url").getOrElse("https://bell.monokulo.com")}\"")
@@ -46,6 +56,15 @@ android {
                 .getOrElse(if (squareBase.isEmpty()) "https://monokular.monokulo.com/square/debug/" else "monokular-debug://square")
             buildConfigField("String", "SQUARE_REDIRECT_URI", "\"$squareRedirect\"")
             buildConfigField("String", "SQUARE_RETURN_URI", "\"monokular-debug://square\"")
+            // The same for Clover: -Pmonokular.clover.baseUrl=http://10.0.2.2:8740 for
+            // tools/fake-clover, which plays both Clover's web and API hosts; else
+            // site/clover/debug/ opens the scheme.
+            val cloverBase = providers.gradleProperty("monokular.clover.baseUrl").getOrElse("")
+            buildConfigField("String", "CLOVER_BASE_URL", "\"$cloverBase\"")
+            val cloverRedirect = providers.gradleProperty("monokular.clover.redirectUri")
+                .getOrElse(if (cloverBase.isEmpty()) "https://monokular.monokulo.com/clover/debug/" else "monokular-debug://clover")
+            buildConfigField("String", "CLOVER_REDIRECT_URI", "\"$cloverRedirect\"")
+            buildConfigField("String", "CLOVER_RETURN_URI", "\"monokular-debug://clover\"")
         }
         release {
             isMinifyEnabled = true
