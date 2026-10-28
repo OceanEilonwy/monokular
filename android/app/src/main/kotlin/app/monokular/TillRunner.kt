@@ -10,6 +10,7 @@ import app.monokular.sales.Shift
 import app.monokular.sales.SquareSource
 import app.monokular.sales.Till
 import app.monokular.sales.TillState
+import app.monokular.sales.WakeCause
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -123,7 +124,7 @@ class TillRunner(private val graph: Graph) {
     }
 
     /** Check the POS now (the app came to the front). */
-    fun wake() = shift?.wake()
+    fun wake() = shift?.wake(WakeCause.Opened)
 
     /** Refunds the sale's POS sale; [close] it first (the close sheet's "No"). The job ends when the POS has answered. */
     fun refund(orderId: String, close: Boolean = false): Job? {

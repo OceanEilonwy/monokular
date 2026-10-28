@@ -120,6 +120,8 @@ class Till(
     private val state = MutableStateFlow(TillState(sales = store?.load().orEmpty().take(MAX_SALES)))
     val sales: StateFlow<TillState> = state.asStateFlow()
     private val checking = Mutex()
+    /** The sales the last [check] found, by id: what the next one's count leaves out. */
+    private var lastFound: Set<String> = emptySet()
     private val saving = Any()
 
     /**
@@ -138,17 +140,25 @@ class Till(
         if (moved && store != null) synchronized(saving) { store.save(state.value.sales) }
     }
 
-    /** Looks for new sales; makes each an order with its code. */
-    suspend fun check() = checking.withLock {
+    /**
+     * Looks for new sales; makes each an order with its code. Answers how
+     * many of the POS's sales this check found that the last one hadn't,
+     * another device's included (the Bell rings for every sale at the
+     * location): a sale whose order failed, found again, isn't counted
+     * twice. 0 when the POS couldn't be read.
+     */
+    suspend fun check(): Int = checking.withLock {
         val found = try {
             source.newSales()
         } catch (e: SquareException) {
             change { it.copy(problem = e.message, signInAgain = e.signInAgain) }
-            return@withLock
+            return@withLock 0
         } catch (e: Exception) {
             change { it.copy(problem = "Couldn't reach the POS: ${e.message}") }
-            return@withLock
+            return@withLock 0
         }
+        val fresh = found.count { it.id !in lastFound }
+        lastFound = found.mapTo(HashSet()) { it.id }
         var problem: String? = null
         for (sale in found) {
             if (deviceId != null && sale.deviceId != null && sale.deviceId != deviceId) {
@@ -172,6 +182,7 @@ class Till(
             add(order, ReceiptCode.of(order.paymentUri, receipt), receipt, sale)
         }
         change { it.copy(problem = problem, signInAgain = false) }
+        fresh
     }
 
     /**
