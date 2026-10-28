@@ -111,6 +111,12 @@ object SalePage {
                 order = true, facts = listOfNotNull(rungUp, refundedBecause(sale, ::fact), fact("Refunded in Square", sale.refundedAt)),
                 actions = emptyList(),
             )
+            Standing.RefundInPos -> SalePageModel(
+                StateIcon.Refund, Ground.Warn, SaleText.status(sale), headingWarn = false, amountMuted = false, line = "$xmr · not paid",
+                note = Note("Refund this sale in the POS. Monokular will notice when it's done."),
+                order = true, facts = listOfNotNull(rungUp, refundedBecause(sale, ::fact)),
+                actions = listOf(PageAction.Refund),
+            )
             Standing.OtherTill -> {
                 val till = sale.deviceName
                 SalePageModel(

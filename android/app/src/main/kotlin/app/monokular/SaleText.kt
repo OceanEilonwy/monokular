@@ -62,6 +62,7 @@ object SaleText {
         Standing.Closed -> "Closed · not paid"
         Standing.Expired, Standing.Reversed, Standing.OtherTill -> ended(sale.phase)
         Standing.Refunded -> "Refunded in Square"
+        Standing.RefundInPos -> "Not paid · refund it in the POS"
     }
 
     /** How a sale that isn't live ended, or that it was closed here while still waiting. */

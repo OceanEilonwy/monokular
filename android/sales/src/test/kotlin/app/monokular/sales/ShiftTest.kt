@@ -25,7 +25,7 @@ private class SlowSource(private val takes: Duration = Duration.ZERO) : SaleSour
         return emptyList()
     }
     override suspend fun receipt(sale: FoundSale): Receipt? = null
-    override suspend fun refund(sale: FoundSale) = Unit
+    override val refunds = Refunds.ByTill {}
     override fun handled(sale: FoundSale) = Unit
 }
 
