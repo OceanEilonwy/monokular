@@ -20,6 +20,7 @@ import androidx.compose.runtime.remember
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.monokular.notify.SaleNotifications
+import app.monokular.push.WakeUpStatus
 import app.monokular.ui.AlertsScreen
 import app.monokular.ui.ConfirmScreen
 import app.monokular.ui.ConnectedScreen
@@ -38,6 +39,7 @@ import app.monokular.ui.SaleScreen
 import app.monokular.ui.ShiftScreen
 import app.monokular.ui.TillActions
 import app.monokular.ui.TillStatus
+import app.monokular.ui.WakeUpsState
 import app.monokular.ui.WelcomeScreen
 
 class MainActivity : ComponentActivity() {
@@ -139,6 +141,8 @@ class MainActivity : ComponentActivity() {
                     }
                     Screen.Settings -> {
                         val torRunning by produceState<Boolean?>(null, store) { value = model.torRunning() }
+                        val wakeUpChoice by model.wakeUpChoice.collectAsStateWithLifecycle()
+                        val wakeUpStatus by model.wakeUpStatus.collectAsStateWithLifecycle()
                         SettingsScreen(
                             SettingsState(
                                 connection = model.connection,
@@ -154,6 +158,14 @@ class MainActivity : ComponentActivity() {
                                 debug = model.debug,
                                 squareBaseUrl = model.squareBaseUrl,
                                 torRunning = torRunning,
+                                wakeUps = WakeUpsState(
+                                    choice = wakeUpChoice,
+                                    status = wakeUpStatus,
+                                    monokular = model.monokularBell,
+                                    ownBell = model.ownBell,
+                                    distributorNames = distributorNames(wakeUpStatus),
+                                    allowHttp = BuildConfig.DEBUG,
+                                ),
                             ),
                             SettingsActions(
                                 onShift = { model.setShift(it); model.go(Screen.Settings) },
@@ -169,6 +181,11 @@ class MainActivity : ComponentActivity() {
                                 onSquareBaseUrl = { model.squareBaseUrl = it },
                                 onCopyAddress = { SaleNotifications.copyAddress(this, it) },
                                 onTor = model::setTor,
+                                onWakeUps = model::chooseWakeUps,
+                                onOwnBell = model::useOwnBell,
+                                onDistributor = model::chooseDistributor,
+                                onGetDistributor = { openInTab(NTFY) },
+                                onBellSignIn = { openInTab(model.squareSignInUrl(it)) },
                                 onBack = model::closeSettings,
                             ),
                         )
@@ -254,8 +271,18 @@ class MainActivity : ComponentActivity() {
         return uri.scheme == expected.scheme && uri.host == expected.host && uri.path.orEmpty() == expected.path.orEmpty()
     }
 
-    private fun signInToSquare() {
-        CustomTabsIntent.Builder().build().launchUrl(this, model.squareSignInUrl().toUri())
+    private fun signInToSquare() = openInTab(model.squareSignInUrl())
+
+    private fun openInTab(url: String) {
+        CustomTabsIntent.Builder().build().launchUrl(this, url.toUri())
+    }
+
+    /** The UnifiedPush apps' names, for the rows to pick one from; a package Android can't name shows as itself. */
+    private fun distributorNames(status: WakeUpStatus): Map<String, String> {
+        if (status !is WakeUpStatus.ChooseDistributor) return emptyMap()
+        return status.packages.associateWith { pkg ->
+            runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
+        }
     }
 
     private fun allowNotifications() {
@@ -288,6 +315,9 @@ class MainActivity : ComponentActivity() {
 
         /** Open on the shift (the panel's "Open the shift"), whatever sale is live. */
         const val EXTRA_SHIFT = "app.monokular.SHIFT"
+
+        /** Where to get ntfy, a UnifiedPush app that carries the Bell's wake-ups (decision 91). */
+        const val NTFY = "https://ntfy.sh/"
 
         /** Square Point of Sale's package. */
         const val SQUARE_POS = "com.squareup"

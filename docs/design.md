@@ -372,10 +372,20 @@ Settings (TOML options file plus CLI, invalid values stop the process):
 environment only: `MONOKULAR_BELL_SQUARE_WEBHOOK_KEY` (the webhook signature
 key) and `MONOKULAR_BELL_VAPID_KEY`.
 
-In the app: **Settings › Wake-ups**: "Timer only" (default), "Monokular Bell
-(bell.monokulo.com)", or "My own Bell" with a URL. The app reads
-`/v1/info` and, if the Square application differs, asks for a new Square
-sign-in.
+In the app: **Settings › Wake-ups**: "Timer only" (default), "Monokular Bell"
+(the build's `-Pmonokular.bell.url`, `bell.monokulo.com` by default), or "My
+own Bell" with its address. Built on Android (decisions 90–99 and on): picking
+a Bell reads its `/v1/info`, asks for a new Square sign-in through its
+application if that differs (the working sign-in stands until the new one
+finishes), subscribes through the UnifiedPush app installed (ntfy, say; none
+installed says so, and the till stays on the timer) for the Bell's VAPID key,
+and registers. A status card under the choices says how often the till checks
+Square, where the Bell stands and when the last wake-up came; the timer runs
+at 30 s only while the Bell is connected, and drops back to 2 s within a tick
+when it isn't, or when the timer finds a sale the Bell didn't ring for. A ding
+wakes the running shift's check; outside a shift it does nothing. Signing out
+of Square, choosing Timer only and disconnecting take the registration back
+first.
 
 ---
 
@@ -756,8 +766,8 @@ cashier opens the app or taps the Bell's alert (§3), not on its own.
 | App in the foreground | 2 s timer (30 s with the Bell) | SSE to the store's monokulo | Normal app use |
 | iPad in Slide Over | Same | Same | Normal app use; tills are usually on chargers |
 | iPhone in the background | Bell alert + Notification Service Extension; nothing without the Bell | APNs via the relay | Close to nothing |
-| Android with a UnifiedPush distributor | Foreground service: Bell ding or 2 s timer | Direct Web Push to the distributor | The distributor's one connection, plus the timer during a shift |
-| Android with Google services | Same, dings via FCM | FCM via the relay | Close to nothing beyond the timer |
+| Android with a UnifiedPush distributor | Foreground service: Bell ding, and a 30 s timer while the Bell is connected (2 s otherwise) | Direct Web Push to the distributor | The distributor's one connection, plus the timer during a shift |
+| Android with Google services | Same, dings via FCM (not built yet: no FCM keys or deployed relay, so without a UnifiedPush app it is the row below) | FCM via the relay | Close to nothing beyond the timer |
 | Android with neither | Foreground service on the 2 s timer | SSE in the same service, heartbeat 25 s | Small; only during a shift |
 
 Rules:

@@ -19,6 +19,9 @@ import kotlinx.serialization.builtins.SetSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 
+/** A Square sign-in under way: its PKCE, and the application it signs in through when that is a Bell's. */
+data class PendingSignIn(val pkce: Pkce, val applicationId: String? = null)
+
 /** Everything the app keeps, by name, in its [SecureStore]. */
 class Stores(private val secure: SecureStore) {
     private val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
@@ -73,10 +76,14 @@ class Stores(private val secure: SecureStore) {
         get() = secure.get("bubble.y")?.toIntOrNull()
         set(value) = secure.put("bubble.y", value?.toString())
 
-    /** A Square sign-in under way, kept in case Android ends the app meanwhile. */
-    var pendingSignIn: Pkce?
-        get() = read("square.pending", PkceState.serializer())?.let { Pkce(it.verifier, it.state) }
-        set(value) = write("square.pending", PkceState.serializer(), value?.let { PkceState(it.verifier, it.state) })
+    /**
+     * A Square sign-in under way, kept in case Android ends the app
+     * meanwhile, and the Square application it goes through when that is a
+     * Bell's rather than the one the till signs in through now (decision 96).
+     */
+    var pendingSignIn: PendingSignIn?
+        get() = read("square.pending", PkceState.serializer())?.let { PendingSignIn(Pkce(it.verifier, it.state), it.applicationId) }
+        set(value) = write("square.pending", PkceState.serializer(), value?.let { PkceState(it.pkce.verifier, it.pkce.state, it.applicationId) })
 
     /**
      * The Square application the till signs in through when it isn't the
@@ -108,7 +115,7 @@ class Stores(private val secure: SecureStore) {
         set(value) = secure.put("debug.square.base", value?.takeIf { it.isNotBlank() })
 
     @Serializable
-    private data class PkceState(val verifier: String, val state: String)
+    private data class PkceState(val verifier: String, val state: String, val applicationId: String? = null)
 
     val tokens = object : TokenStore {
         override fun load() = read("square.tokens", SquareTokens.serializer())
