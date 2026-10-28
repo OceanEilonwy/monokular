@@ -10,7 +10,7 @@
 //! one exception: Clover's handshake value, logged once for the operator.
 //!
 //! Clover has no location below a merchant, so a Clover merchant is its own
-//! one location (B48).
+//! one location (decision 48).
 
 use std::collections::HashMap;
 use std::fmt;
@@ -30,7 +30,7 @@ use crate::settings::{CloverApplicationId, CloverEnvironment, ServiceUrl};
 pub const AUTH_HEADER: &str = "x-clover-auth";
 
 /// The Clover app's Auth Code (`MONOKULAR_BELL_CLOVER_AUTH_CODE`): the
-/// whole of a webhook's authentication, as Clover signs nothing (B49).
+/// whole of a webhook's authentication, as Clover signs nothing (decision 49).
 #[derive(Clone, PartialEq)]
 pub struct AuthCode(Secret);
 
@@ -161,7 +161,7 @@ enum UpdateType {
 
 /// What `body` is: the handshake, if it is exactly one; else a batch, of
 /// which a payment's `CREATE` rings, at its merchant, which is its own
-/// location (B50). Updates, deletes and every other object are dropped:
+/// location (decision 50). Updates, deletes and every other object are dropped:
 /// with no status in the body, a payment's update could be a refund or a
 /// void days later. A batch of another app than `application_id` is
 /// [`Incoming::OtherApplication`].
@@ -262,7 +262,7 @@ impl Clover {
     }
 
     /// Checks `merchant` is `token`'s, asked of Clover
-    /// (`GET /v3/merchants/{id}`, B55): a token is one merchant's, and Clover
+    /// (`GET /v3/merchants/{id}`, decision 55): a token is one merchant's, and Clover
     /// answers for that merchant alone, so the answer proves both. The
     /// token is dropped once the request is sent.
     pub async fn prove(&self, token: AccessToken, merchant: &MerchantId) -> Result<(), ProofError> {

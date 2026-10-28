@@ -24,7 +24,7 @@
 //! restart forgets them, which costs one extra ding at most.
 //!
 //! A merchant, for its share and for the memory, is its point of sale and
-//! its id (B52): two points of sale may give out the same id text.
+//! its id (decision 52): two points of sale may give out the same id text.
 
 use std::collections::{HashSet, VecDeque};
 use std::sync::{Arc, Mutex, PoisonError};

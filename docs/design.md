@@ -97,9 +97,16 @@ place for it, a device the merchant controls, but it should be said.
 ### POS sources
 
 A POS is a **sale source** in the app: "the new Monero sales since my
-cursor", plus "refund this one". Square is the first. Another POS adds a
-source (and, if it has webhooks, a Bell receiver, §3); monokulo, the receipt,
-wake-ups and the screens don't change.
+cursor", plus "refund this one". Square is the first and Clover the second.
+Another POS adds a source and, if it has webhooks, a Bell adapter (§3);
+monokulo, the receipt, wake-ups and the screens don't change.
+
+| | Square | Clover |
+| --- | --- | --- |
+| Monero tender | Other, with the note "Monero" | a tender labelled "Monero" (`labelKey com.clover.tender.external_payment`), known by its id |
+| Webhook the Bell reads | `payment.created`/`payment.updated` of a `COMPLETED` payment, signed (HMAC over URL and body) | a batch of `P:` `CREATE` updates, ids only, with a static `X-Clover-Auth` header: every payment dings, as the body carries no tender |
+| Location | a location of the merchant | the merchant itself |
+| A sale never paid | refunded by the till over Square's API | refunded by the cashier in Clover's Orders app (no API refunds an external-tender payment); the till confirms it from the payment's refunds |
 
 ---
 
@@ -284,7 +291,7 @@ so the sale source never cares why it was woken.
 | Trigger | Where | When |
 | --- | --- | --- |
 | **Timer** | Every platform | Always, during a shift: every 2 s without the Bell, every 30 s with it (as a backstop for a lost ding) |
-| **Ding** from the Monokular Bell | Every platform that registered with one | Within a second or two of Square's webhook |
+| **Ding** from the Monokular Bell | Every platform that registered with one | Within a second or two of the POS's webhook |
 | **App opened / brought forward** | Every platform | Immediately |
 
 Every trigger does the same thing: fetch since the cursor, idempotently. A
@@ -324,77 +331,111 @@ dependencies pinned to one monokulo commit, so it is configured, stores and
 limits the way monokulo does. Its API is in [bell.md](bell.md).
 
 ```text
-Square ──payment.created webhook──▶ Bell: verify signature, read merchant_id
-                                         + location_id, drop the body
-Bell ──Web Push (empty, encrypted)──▶ each till registered for that location
+a POS's payment webhook ──▶ Bell: verify it (Square: signature; Clover: X-Clover-Auth),
+                                  read the merchant, location and payment id, drop the body
+Bell ──Web Push (empty, encrypted)──▶ each till registered at that POS and location
         (UnifiedPush distributor directly, or APNs/FCM via push-relay, §5)
 ```
 
+- **One Bell, any of its points of sale.** Each POS is an adapter: a
+  variant of one `PointOfSale` enum (`square`, `clover`, the wire name
+  everywhere) and a module (`square.rs`, `clover.rs`) that checks the POS's
+  webhooks, reads their routing fields and proves a registration with the
+  till's token. An adapter is on when its settings table names an
+  application; an operator turns on the ones they have developer apps for.
 - **Dings go over Web Push**, exactly like monokulo's own pushes (§5): the
   till hands the Bell a Web Push subscription, so the Bell never talks to
   Apple or Google and UnifiedPush needs no relay. The payload is an
-  encrypted `{"wake":"square"}`; `Urgency: high`, `TTL: 60`, `Topic: wake`
-  so a burst collapses into one.
-- **One Square application per Bell.** Square sends webhooks to the
-  application a merchant signed in through, so a Bell and the tills that use
-  it share one. The project's Bell (`bell.monokulo.com`) uses the project's
-  application. A self-hosted Bell is configured with its own application,
-  and tills that connect to it sign in to Square through that one (the app
-  asks the cashier to sign in again when they switch).
+  encrypted `{"wake":"square"}` or `{"wake":"clover"}`, the POS to ask;
+  `Urgency: high`, `TTL: 60`, `Topic: wake` so a burst collapses into one.
+- **One application per POS per Bell.** Square and Clover send webhooks to
+  the application a merchant signed in through, so a Bell and the tills that
+  use it share one for each POS it serves. The project's Bell
+  (`bell.monokulo.com`) uses the project's applications. A self-hosted Bell
+  is configured with its own, and tills that connect to it sign in through
+  those (the app asks the cashier to sign in again when they switch).
 - **What the Bell sees:** Square's webhook bodies, which include each
-  payment's amount and card details, for every merchant signed in through
-  its application. It reads `merchant_id`, `location_id`, the payment's id
-  and status and whether it was refunded, then drops the body: none of it is
-  stored or logged. It remembers the payments it rang, in memory for ten
-  minutes, so a payment's later `payment.updated` (a fee filled in, a
-  refund) doesn't ding again: on iPhone and iPad a ding is an alert. It never sees orders and holds no
-  Square token. This is why the Bell is optional and anyone can run their
-  own.
+  payment's amount and card details, and Clover's, which hold ids and times
+  only, for every merchant signed in through its applications. It reads the
+  merchant, the location (Clover: the merchant), the payment's id, and for
+  Square its status and whether it was refunded, then drops the body: none
+  of it is stored or logged (Clover's one-off verification code aside,
+  logged for the operator). It remembers the payments it rang, in memory
+  for ten minutes, so a payment's later updates don't ding again: on iPhone
+  and iPad a ding is an alert. Square's payment dings when it completes;
+  Clover's when it is created (an update could be a refund days later), and
+  as Clover's webhook doesn't say how a payment was paid, every payment at a
+  Clover merchant dings and the till sorts it out. It never sees orders and
+  holds no POS token. This is why the Bell is optional and anyone can run
+  their own.
 
-Registration, from the app:
+Registration, from the app, one body for every POS:
 
 ```http
 POST https://bell.monokulo.com/v1/register
-{ "square_access_token": "…",           (used once for GET /v2/locations/{location_id},
-                                          whose merchant_id proves both the token and
-                                          the location; never stored)
-  "location_id": "L…",
+{ "point_of_sale": "square" | "clover",
+  "access_token": "…",                    (used once, never stored: Square
+                                            GET /v2/locations/{location_id}, whose
+                                            merchant_id proves the token and the location;
+                                            Clover GET /v3/merchants/{location_id}, whose
+                                            id must be the one asked)
+  "location_id": "L…" | "<Clover merchant id>",
   "subscription": { "endpoint", "keys": { "p256dh", "auth" } } }
-→ 201 { "registration_id": "br_…", "square_application_id": "…" }
+→ 201 { "registration_id": "br_…", "point_of_sale": "…", "application_id": "…" }
 DELETE /v1/register/{registration_id}
-GET    /v1/info → { "square_application_id", "environment", "vapid_public_key", "version" }
+GET    /v1/info → { "points_of_sale": { "square": { "application_id", "environment" },
+                                        "clover": { "application_id", "environment" } },
+                    "vapid_public_key", "version" }
+POST   /v1/square/webhook, /v1/clover/webhook   (only for the POSs that are on)
 ```
 
 The token check stops anyone from subscribing to dings for a business they
 don't control (which would tell them when it takes payments). An endpoint
-already registered moves only for its own merchant, or for a caller giving
-the subscription's own auth secret: an endpoint is no secret (push services
-and distributors see it), so knowing one doesn't take a till's dings away.
+already registered moves only for its own merchant at its own POS, or for a
+caller giving the subscription's own auth secret: an endpoint is no secret
+(push services and distributors see it), so knowing one doesn't take a
+till's dings away.
 
-Storage: its own SQLite file with `registrations(id, merchant_id,
-location_id, endpoint, p256dh, auth, created_at, last_ok_at, failures)`.
-Registrations whose endpoint answers 404/410 are deleted, the same rule as
-monokulo's push targets, and so are those whose push service fails
-`bell.registration_failure_limit` dings in a row. A location takes 32.
+Clover's webhook is a batch, `{"appId", "merchants": {"<mId>": [{"objectId":
+"P:<payment>", "type": "CREATE", "ts"}]}}`, authenticated by the app's Auth
+Code in `X-Clover-Auth` alone (Clover signs nothing). Setting the webhook URL
+up, Clover first posts `{"verificationCode": "<uuid>"}` without the header:
+the Bell answers `200` and logs the code for the operator to enter in
+Clover's dashboard; anything else without the header is refused, unlogged.
+
+Storage: its own SQLite file with `registrations(id, point_of_sale,
+merchant_id, location_id, endpoint, p256dh, auth, created_at, last_ok_at,
+failures)` (`point_of_sale` added by migration 0002; the first Bell's rows
+are Square's). Registrations whose endpoint answers 404/410 are deleted, the
+same rule as monokulo's push targets, and so are those whose push service
+fails `bell.registration_failure_limit` dings in a row. A location takes 32,
+counted within its POS.
 
 Settings (TOML options file plus CLI, invalid values stop the process):
-`bell.listen`, `bell.public_uri` (Square's webhook URL is it followed by
-`/v1/square/webhook`, and the signature covers it), `bell.store_path`,
-`bell.square.application_id`, `bell.square.environment`,
-`bell.square.api_url` (a stand-in Square instead of the environment's),
+`bell.listen`, `bell.public_uri` (each POS's webhook URL is it followed by
+`/v1/<pos>/webhook`; Square's signature covers it), `bell.store_path`,
+`[bell.square]` `application_id`, `environment`, `api_url` (a stand-in
+Square instead of the environment's), `[bell.clover]` `application_id`,
+`environment` (`sandbox`, `north_america`, `europe`, `latin_america`: one
+Bell serves one Clover region), `api_url`,
 `bell.registration_failure_limit`, `bell.registrations_per_minute`,
 `bell.dings_per_merchant_per_minute` (120: a merchant's tills, across its
 locations, get that many dings a minute and the rest are dropped, so one
 merchant can't spend the push relay's per-sender budget, which every
-merchant behind the Bell shares as one VAPID key), `bell.trusted_proxies`, `bell.allow_private_endpoints`, `bell.timeout_ms`.
-Secrets from the environment only: `MONOKULAR_BELL_SQUARE_WEBHOOK_KEY` (the
-webhook signature key) and `MONOKULAR_BELL_VAPID_KEY` (32 bytes as 64 hex
-digits; `/v1/info` gives its public key).
+merchant behind the Bell shares as one VAPID key; a merchant is its POS and
+its id), `bell.trusted_proxies`, `bell.allow_private_endpoints`,
+`bell.timeout_ms`. A POS is on iff its `application_id` is set, and its
+secret must be set then and only then; at least one is on. Secrets from the
+environment only: `MONOKULAR_BELL_SQUARE_WEBHOOK_KEY` (Square's webhook
+signature key), `MONOKULAR_BELL_CLOVER_AUTH_CODE` (Clover's Auth Code) and
+`MONOKULAR_BELL_VAPID_KEY` (32 bytes as 64 hex digits; `/v1/info` gives its
+public key).
 
 In the app: **Settings › Wake-ups**: "Timer only" (default), "Monokular Bell
 (bell.monokulo.com)", or "My own Bell" with a URL. The app reads
-`/v1/info` and, if the Square application differs, asks for a new Square
-sign-in.
+`/v1/info` and registers for the till's point of sale: a Bell without it
+refuses the till ("it doesn't ring Clover tills"), and if its application
+for that POS differs, the app asks for a new sign-in through it.
 
 ---
 
@@ -999,6 +1040,9 @@ monokular/
     orf-codec-ffi/              UniFFI bindings: a Kotlin package and a Swift package
     monokular-bell/             the Bell (§3): library + `monokular-bell` binary
   tools/receipt-qr/             corpus, dictionary training and QR size measurements
+  tools/fake-square/            a stand-in Square (sign-in, payments, orders, signed webhooks to a Bell)
+  tools/fake-clover/            a stand-in Clover (PKCE sign-in, tenders, payments, orders,
+                                refunds, webhooks with X-Clover-Auth to a Bell)
   protocol/                     the contract with monokulo and the Bell
                                 (Monokulo's own OpenAPI document isn't kept here: it is
                                 generated from the commit in android/gradle.properties'
@@ -1086,7 +1130,7 @@ Choices:
    **iPad** follows the same way (Slide Over, timer only).
 4. **`crates/push`** and push targets in monokulo; UnifiedPush end to end
    with ntfy for order updates.
-5. **The Monokular Bell:** Square webhooks, registration with the token
+5. **The Monokular Bell:** Square webhooks (and Clover's, in its second build), registration with the token
    check, dings over Web Push; UnifiedPush dings on Android.
 6. **`push-relay`**: APNs (alert, liveactivity) and FCM, the standalone
    binary and the embedded mount; the official relay and Bell deployed.

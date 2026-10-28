@@ -50,7 +50,7 @@ const MAX_VERIFICATION: usize = 1024;
 
 /// The routes, with a webhook route for each point of sale this Bell
 /// serves and none for the others: a webhook to one that is off is `404`,
-/// its body never read (B51).
+/// its body never read (decision 51).
 pub fn router(shared: Arc<Shared>) -> Router {
     let mut router = Router::new()
         .route("/v1/register", post(register))
@@ -75,7 +75,7 @@ pub fn router(shared: Arc<Shared>) -> Router {
 }
 
 /// A registration as a till sends it, one shape for every point of sale
-/// (B44): for Clover, the location is the merchant. A field the Bell
+/// (decision 44): for Clover, the location is the merchant. A field the Bell
 /// doesn't know is refused, as one misspelt would otherwise go unnoticed.
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -141,7 +141,7 @@ async fn register(
                 .clover
                 .as_ref()
                 .ok_or_else(|| not_served(&shared.adapters, point_of_sale))?;
-            // A Clover merchant is its own location (B48).
+            // A Clover merchant is its own location (decision 48).
             let merchant = MerchantId::from(location_id.clone());
             clover
                 .prove(access_token, &merchant)
@@ -323,7 +323,7 @@ async fn square_webhook(
 }
 
 /// A webhook from Clover: authenticated by its `X-Clover-Auth` header
-/// alone, as Clover signs nothing (B49). Without the header, it may be the
+/// alone, as Clover signs nothing (decision 49). Without the header, it may be the
 /// verification handshake and nothing else: read no further than that
 /// takes, answered `200` with the code logged for the operator, or `401`
 /// with nothing logged, so nobody writes into the Bell's log.

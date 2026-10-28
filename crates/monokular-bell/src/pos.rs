@@ -4,7 +4,7 @@
 //!
 //! Each point of sale is an adapter of its own ([`crate::square`],
 //! [`crate::clover`]) behind a `match` on [`PointOfSale`], not a trait
-//! object (`docs/decisions/bell.md` B43): the two check their webhooks in
+//! object (`docs/decisions/bell.md`, decision 43): the two check their webhooks in
 //! different kinds of way, and the compiler lists every place a third must
 //! touch.
 
@@ -56,7 +56,7 @@ impl PointOfSale {
     }
 
     /// What a ding for one of its payments says, before it is encrypted:
-    /// which point of sale to ask (B53).
+    /// which point of sale to ask (decision 53).
     pub const fn wake(self) -> &'static [u8] {
         match self {
             PointOfSale::Square => br#"{"wake":"square"}"#,
@@ -137,7 +137,7 @@ pos_id!(
 );
 pos_id!(
     /// One of a merchant's locations. A Clover merchant is its own one
-    /// location (B48), so for Clover this is the merchant's id.
+    /// location (decision 48), so for Clover this is the merchant's id.
     LocationId,
     "location"
 );

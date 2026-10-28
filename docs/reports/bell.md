@@ -111,3 +111,83 @@ fix and its report in; decision 33). Against it, on stable, 2026-10-28:
 orf-codec-ffi -p monokular-bell`, `cargo clippy --locked --workspace
 --all-targets -- -D warnings` and `cargo nextest run --locked -p
 monokular-bell` (76 passed, 1.2 s), all passed.
+
+## Second build: points of sale
+
+Branch `bell-pos` (PR against `main`), 2026-10-28, for the owner's decision
+"keep the Bell's name and make it generic for multiple POS; Clover next".
+The Bell's API is version 0.2.0 ([bell.md](../bell.md)); the calls made
+without the owner are decisions 43 to 57.
+
+What was built:
+
+- **Points of sale as adapters.** `PointOfSale { Square, Clover }` is the
+  wire name everywhere; `square.rs` is the Square adapter, unchanged in
+  behaviour (its signature, body-reading and location-proof tests keep
+  their assertions, and every Square test from `main` passes with the new
+  registration body); `clover.rs` is the Clover adapter. An adapter is on
+  when its `[bell.square]` or `[bell.clover]` table has an
+  `application_id`, its secret then required and otherwise refused, and
+  its webhook route exists only then.
+- **One registration body** `{point_of_sale, access_token, location_id,
+  subscription}`, answered `{registration_id, point_of_sale,
+  application_id}`; `/v1/info` lists `points_of_sale`. A clean break from
+  the first Bell's `square_access_token` and `square_application_id`: the
+  Bell's PR and the app's say they land together, or the app's first.
+- **Clover's webhook:** `X-Clover-Auth` compared in constant time with
+  `MONOKULAR_BELL_CLOVER_AUTH_CODE`; the verification handshake answered
+  and its code logged once at info, anything else without the header `401`
+  and unlogged; `P:` `CREATE` alone dings, at its merchant (its own
+  location); another app's batch dropped. A registration is proved with
+  `GET /v3/merchants/{id}` and the till's token, used once.
+- **Dings** `{"wake":"square"}` or `{"wake":"clover"}`; the rung-payment
+  memory and each merchant's ding share keyed by point of sale and id;
+  migration 0002 adds `point_of_sale` (the first Bell's rows are Square's)
+  and leads the location index with it.
+- **`tools/fake-clover`**, a stdlib-only stand-in Clover (PKCE sign-in,
+  merchant, tenders, payments, orders, refunds, webhooks into a Bell, QA's
+  switches), cherried onto the app branch.
+
+Tests: 112 (`cargo nextest run -p monokular-bell`, about 1.3 s): 25
+in-process (the info per adapter, routes off, a registration for an
+adapter that is off, Clover's auth header, the handshake and its log, the
+1 KiB read without the header), 39 over real HTTP (the 29 from `main`, and
+for Clover: the proof and its token nowhere, every Clover answer's problem,
+dings and their payload, `CREATE` only and once, a batch per merchant, no
+trace of a webhook in the database or a trace-level log, no redirect
+followed, Square and Clover as separate rooms and shares, a till moving
+between them only with its keys), 4 of the binary (`--init` with
+`[bell.clover]`, the three secrets, every on/off rule stopping it, listening
+for Square alone and for Clover alone), 44 unit (the adapters, settings,
+the store with a database from migration 1, the problems).
+
+Gates on stable (1.98.1) against the same monokulo pin, 2026-10-28:
+`cargo fmt -p monokular-bell --check`, `cargo clippy --locked --workspace
+--all-targets -- -D warnings`, `cargo nextest run --locked -p
+monokular-bell` (112 passed) and `cargo test --locked -p orf-codec -p
+orf-codec-ffi -p monokular-bell`, all passed. (`cargo fmt --all --check`
+fails on `main` already, in `crates/orf-codec`, which this build doesn't
+touch; `rust.yml` runs no fmt step.) A one-machine run, the binary against
+fake-clover: `/v1/info`, a registration with fake-clover's test token, a
+refusal for the other merchant's, a Square registration refused by a
+Clover-only Bell, `/v1/square/webhook` `404`, a Monero and a Cash sale each
+dinging, an `O:` webhook not, the handshake's code in the log and a
+`<script>` "code" refused unlogged.
+
+Risks that are the Bell's (from the research; nothing here resolves them):
+
+- **Clover's webhook authentication is a static header** (R5): a leaked
+  Auth Code lets anyone ding tills, one request to Clover each, within the
+  merchant's share; rotating it is manual in Clover's dashboard and the
+  Bell reads it at start only.
+- **Whether a payment by a REST-created tender emits a `P:` webhook** (R3,
+  research assumption A2) is unverified: Clover documents payment events
+  with no tender restriction, but nobody here has a sandbox dev kit. If it
+  doesn't, the Clover adapter dings nothing and the till relies on its
+  timer.
+- **Every Clover payment dings**, card or Monero, as the webhook says
+  neither: at a busy merchant that spends `bell.dings_per_merchant_per_minute`
+  on card sales and wakes each till for one request to Clover.
+- Clover's proof (`GET /v3/merchants/{id}` answering only the token's
+  merchant, A6) and its shapes were tested against stand-ins built from
+  Clover's documentation, not against Clover.

@@ -21,7 +21,7 @@ pub enum Problem {
     /// isn't one.
     InvalidRequest,
     /// The point of sale refused the access token, or the location isn't
-    /// its merchant's: `square-refused`, `clover-refused` (B46).
+    /// its merchant's: `square-refused`, `clover-refused` (decision 46).
     Refused(PointOfSale),
     /// The point of sale didn't answer, or couldn't: try again later.
     /// `square-unavailable`, `clover-unavailable`.

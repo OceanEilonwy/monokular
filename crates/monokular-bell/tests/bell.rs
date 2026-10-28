@@ -170,7 +170,7 @@ async fn a_registration_that_doesnt_read_is_refused() {
         json!({"access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription()}),
         json!({"point_of_sale": "toast", "access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription()}),
         json!({"point_of_sale": "Square", "access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription()}),
-        // The first Bell's shape: no shim (B44).
+        // The first Bell's shape: no shim (decision 44).
         json!({"square_access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription()}),
         json!({"point_of_sale": "square", "square_access_token": TOKEN, "location_id": LOCATION, "subscription": till.subscription()}),
     ];

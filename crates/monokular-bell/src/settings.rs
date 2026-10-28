@@ -7,7 +7,7 @@
 //!
 //! A point of sale is on when its table has an `application_id`
 //! (`[bell.square]`, `[bell.clover]`), and its secret must be set then and
-//! only then (B51); the Bell serves at least one ([`crate::Bell::start`]).
+//! only then (decision 51); the Bell serves at least one ([`crate::Bell::start`]).
 //!
 //! The Bell reads its settings once, at start: nothing here reloads.
 
@@ -386,7 +386,7 @@ impl Section for BellConfig {
 }
 
 /// A point of sale's secret is set when, and only when, its application
-/// is (B51): missing, the Bell would refuse every webhook; set for one
+/// is (decision 51): missing, the Bell would refuse every webhook; set for one
 /// that is off, it is most likely a section misnamed, which would
 /// otherwise pass unnoticed.
 fn secret_matches_application<T: live_settings::SettingValue>(
