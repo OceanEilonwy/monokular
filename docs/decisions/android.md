@@ -991,3 +991,104 @@ written except where an entry below says otherwise.
     footnote changes with the pace (A1.8). All of it from one exhaustive
     `when` over `WakeUpStatus` in a pure `WakeUpsText`, tested string by
     string (D15). `Theme.kt` tokens only; both themes; 200% font scale wraps.
+100. **The connector's service reaches the graph through the
+     application, and a ding alone never makes Wake-ups.** `push` can't see
+     `MonokularApp`, so `WakePushService` asks the application for a
+     `WakePushService.Host` (`MonokularApp` is one) and hands each callback
+     to its `UnifiedPushSubscriptions` (`Graph.push`), which turns them into
+     `state` and `dings` and returns: no work, no service started, nothing
+     logged. `Graph.wakeUps` is made on first use (the view model, Settings
+     or a shift starting), and that first use is decision 95's "app start"
+     (it registers again when a Bell is chosen); a process the distributor
+     started for a ding outside a shift touches only `Graph.push`, so it
+     costs the Bell no registration and Square no request. The connector's
+     own manifest brings its distributor `<queries>`, `WAKE_LOCK`, its
+     message receiver, its link activity (unused: decision 91) and an
+     exported `RaiseToForegroundService` that a distributor binds to raise
+     the app's priority while it delivers; the app declares only
+     `WakePushService` (`exported="false"`, `PUSH_EVENT`), A12.1.
+102. **The app sees a distributor come or go by itself.** The connector has
+     no callback for a distributor uninstalled, and decision 91's "looks
+     again at every Settings open" would have put a `recheck()` (a
+     `POST /v1/register`, and a request to Square) on every visit to
+     Settings. `UnifiedPushSubscriptions` registers, for the life of the
+     process, a receiver for packages added and removed (a system
+     broadcast, delivered for the distributors the connector's `<queries>`
+     make visible), and `BellWakeUps` looks again only when it is waiting
+     for a distributor (`NoDistributor`, `ChooseDistributor`) or when the
+     one it subscribed through is no longer what `resolve()` gives:
+     installing ntfy connects while Settings is open (A7.30), and
+     uninstalling it takes the Bell registration back at once (A7.32); the
+     emulator script's step 17 is where that is seen. The
+     distributor is `Distributors.resolve()`: the saved one while it is
+     installed, else the connector's `resolveDefaultDistributor` (the
+     default or the only one, saved), else the list for the cashier.
+104. **The Bell client is three suspending calls behind `BellClient`, and
+     its errors are two exceptions.** `BellApi` takes the graph's client,
+     with `Proxy.NO_PROXY` (decision 98: never Orbot, whatever the store
+     does) and a 10 s `callTimeout` per call. A problem is `BellException
+     (status, type, detail, retryAfter)`, `type` being the slug after the
+     `#` of the Bell's problem address (`…/docs/bell.md#rate-limited`) and
+     `retryAfter` from `Retry-After` or the body's `retry_after`; an answer
+     that isn't the Bell's (a `/v1/info` that isn't its shape, an unknown
+     `environment`, a `4xx` page without a problem) is
+     `NotABellException`; no answer is the `IOException` OkHttp gives, a
+     timeout an `InterruptedIOException`. `register` answers
+     `BellRegistered(registrationId, squareApplicationId)`, and
+     `BellWakeUps` makes the `BellRegistration` from it with what it sent.
+     `BellApiTest` records the requests at a `MockWebServer`: the three
+     routes only, no `Authorization` header on any, the token in
+     `register`'s body and nowhere else, that body exactly the three fields
+     and the subscription's public half (A9.1, A9.2).
+106. **One pass at a time brings the Bell into line with the choice.**
+     `BellWakeUps` doesn't keep a state machine beside the store: a pass
+     reads the choice and the registration and does what decision 95
+     orders, under one lock, and `status` is where it stopped. Choosing
+     cancels a pass under way and starts one; `recheck()` joins one under
+     way; a retry is a pass after a wait (`delay` on the graph's scope, so
+     tests run it on virtual time). Once `POST /v1/register` is sent, it
+     and saving its answer can't be cancelled, so a choice changed meanwhile
+     always finds the registration to take back. `unregister` cancels the
+     pass, then takes the lock: the `DELETE` (once, 10 s at most), the
+     distributor's subscription ended, the registration forgotten. A pass
+     that starts `Connected` (a shift starting, an app start) stays
+     `Connected` while it registers again, so the pace doesn't drop to 2 s
+     for a second; one that fails leaves it. The connector is asked for the
+     subscription once per process (its docs: register at every start) and
+     again only for another key or another distributor; an endpoint other
+     than the registered one, at a start or from the distributor later, is
+     a `DELETE` of the old registration and a `POST` of the new.
+108. **A till that can't use its registration doesn't keep it.** A pass
+     that ends at `NoSquare` (no sign-in, or Square ended it), at
+     `SignInNeeded`, at the other environment's `Refused` or at
+     `NoDistributor` takes back a registration it finds (`DELETE`): the
+     Bell would otherwise ring a till that can't check Square for it, or
+     keep a location for a till that left. Refusals from the `POST` itself
+     leave it (the Bell says it left the registration as it was), and so do
+     `Unreachable` and `MissingWakeups`, which retry. A missed wake-up
+     (decision 94) also needs 60 s since the till connected, not only since
+     the last ding: the first timer check after connecting can find a sale
+     rung up just before, which no ding was ever going to announce.
+110. **The distributor's failures have words too.** Decision 95's
+     `Unreachable` reasons for the Bell are joined by the distributor's: "the
+     UnifiedPush app refused" (`ACTION_REQUIRED`, `VAPID_REQUIRED`, an
+     internal error, or a key the connector takes for no P-256 point), "the
+     UnifiedPush app gave no keys" (an endpoint without them), "the
+     UnifiedPush app has no connection" (`NETWORK`) and "the UnifiedPush app
+     didn't answer" (no endpoint within 30 s: the distributor may have to
+     reach its server first). All are retried as an unreachable Bell is.
+     They fill A1.7's `reason` and nothing else changes on the screen.
+112. **What the connector brings, checked.** `org.unifiedpush.android:connector`
+     3.3.5's POM gives the Apache License 2.0; it depends on
+     `com.google.crypto.tink:tink` 1.23.0 (the JVM Tink, with `protobuf-java`
+     and `gson`, not `tink-android`, so there is nothing to force) and on
+     nothing from Google's services: `./gradlew :app:dependencies` has no
+     `com.google.firebase` or `com.google.android.gms` (A7.34). It keeps
+     its registrations in a SQLite database and its keys in
+     SharedPreferences, both under domains the backup rules already exclude
+     with everything else (`allowBackup="false"` too), so the rules are
+     unchanged (A12.3) and a restored or new phone subscribes and registers
+     afresh at its first start. Its AAR carries no ProGuard rules; the
+     release build's R8 pass keeps what the manifest names, but the emulator
+     script runs a debug build, so a ding through a minified build is still
+     to be seen before a release.
