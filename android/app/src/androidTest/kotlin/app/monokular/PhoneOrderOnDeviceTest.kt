@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.IntSize
 import app.monokular.overlay.ORDER_TAG
 import app.monokular.overlay.PanelActions
@@ -26,6 +27,7 @@ import org.junit.Rule
 import org.junit.Test
 import kotlin.math.abs
 import kotlin.test.assertEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
@@ -42,10 +44,11 @@ class PhoneOrderOnDeviceTest {
     private var backdrop = Color.Unspecified
     private var ground = Color.Unspecified
 
+    private val raised = PanelMotion(1f, mutableStateOf<Offset?>(null))
+
     private fun panel(motion: Motion) {
         compose.mainClock.autoAdvance = false
         val sale = testSale("o1")
-        val raised = PanelMotion(1f, mutableStateOf<Offset?>(null))
         compose.setContent {
             Till(motion) {
                 // A colour that is no part of the panel behind it, so a frame shows where the container is.
@@ -83,6 +86,30 @@ class PhoneOrderOnDeviceTest {
         assertTrue(cornerFilledAt > 2, "the window's corner is not the order's ground until the container reaches it (frame $cornerFilledAt)")
         assertTrue(corner().near(ground), "at rest the order fills the window, its corners square")
         assertEquals(window, sizes.single(), "laid out at the window's size")
+    }
+
+    /** The top of the order's heading on screen, where it is placed on this frame. */
+    private fun headingTop(): Float = compose.onNodeWithText("The order", useUnmergedTree = true).fetchSemanticsNode().positionOnScreen.y
+
+    @Test
+    fun theOrdersHeadingRidesTheGrowingCardsTopSoTheCardIsNeverAnEmptyGround() {
+        panel(Motion.Full)
+        val card = assertNotNull(raised.card, "the code's card is placed")
+        page = PanelPage.Order
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeByFrame()
+        // The heading is inside the container (at or below the card's top, the clip's top at the start) from the
+        // grow's first frames, while the order's fade is under way, instead of waiting above the clip.
+        val early = headingTop()
+        assertTrue(early >= card.top, "the heading starts at the card's top ($early), not above it (${card.top})")
+        var last = early
+        repeat(40) {
+            compose.mainClock.advanceTimeBy(16)
+            val top = headingTop()
+            assertTrue(top <= last + 0.5f, "the heading only rises with the container's top: $last then $top")
+            last = top
+        }
+        assertTrue(last < card.top, "at rest the heading is at the top of the window it was laid out for ($last)")
     }
 
     @Test
