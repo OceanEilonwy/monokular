@@ -2322,3 +2322,23 @@ design unchanged.
     `PhaseRingOnDeviceTest` reads the arc on every frame of Confirming to
     Paid to Waiting and fails on any colour that isn't the fill or the
     paid colour over the track.
+134. **A card's shadow fades with the card** (dev1, round 3; review: the
+    grey box left by the lower). The panel's grow and collapse fade the
+    card per draw (`CompositingStrategy.ModulateAlpha`, so there is no
+    window-sized offscreen buffer), and a parent's alpha drawn that way
+    never reaches a child's elevation shadow: the renderer draws shadows
+    with the casting node's own alpha only. So the card faded out of a
+    shadow that stayed whole (`frames/phone-lower-q2.png`), a grey square
+    over Square for the last frames of every lower. The card's own layer
+    now casts its shadow from `16 dp × Panel.shown(raise)` in
+    `DefaultShadowColor` at that same alpha, `Panel.shown` being the one
+    rule the grow's fade already used (opaque by a third of the way). An
+    offscreen layer for the fade was the other fix and the one ruled out by
+    decision 125's reasoning: a screen-sized texture per window for a
+    shadow. Every surface with a shadow under a per-draw fade gets the
+    same: the phone's card, the tablet's floating card and its order card,
+    and the free bubble's circle, whose window fades it in and out on
+    appear and go (`BubbleFace(presence)`). `OverlayFramesTest` lowers the
+    panel over white and fails when the band under the card is darker than
+    the card's opacity allows (`frames/phone-lower-light-q*.png`); on the
+    old build it read 0.14 dark under a card 5 % opaque.

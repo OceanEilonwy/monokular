@@ -17,11 +17,14 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.test.platform.app.InstrumentationRegistry
 import app.monokular.core.SalePhase
+import app.monokular.overlay.CARD_TAG
 import app.monokular.overlay.CODE_TAG
+import app.monokular.overlay.Panel
 import app.monokular.overlay.PanelActions
 import app.monokular.overlay.PanelMotion
 import app.monokular.overlay.PanelPage
 import app.monokular.overlay.PhonePanel
+import app.monokular.ui.Fixed
 import app.monokular.ui.mk
 import org.junit.Rule
 import org.junit.Test
@@ -52,13 +55,14 @@ class OverlayFramesTest {
     /** `motion.surface` settles in about this long (`docs/motion.md` §2): the seek points are its quarters. */
     private val surfaceMs = 450L
 
-    private fun panel(raised: Float) {
+    /** The panel over a backdrop: a strong colour by default, so the card's edges show; [white] for Square's own ground. */
+    private fun panel(raised: Float, white: Boolean = false) {
         compose.mainClock.autoAdvance = false
         motion = PanelMotion(raised, mutableStateOf<Offset?>(Offset(1200f, 900f)))
         compose.setContent {
             Till {
                 motion.raise.Attach()
-                Box(Modifier.fillMaxSize().background(mk.danger).testTag("window")) {
+                Box(Modifier.fillMaxSize().background(if (white) Fixed.White else mk.danger).testTag("window")) {
                     PhonePanel(sale, "Front Counter", BubbleLook.Lit, page, actions, motion)
                 }
             }
@@ -66,9 +70,8 @@ class OverlayFramesTest {
         compose.mainClock.advanceTimeBy(100)
     }
 
-    private fun save(move: String, quarter: Int) {
+    private fun save(move: String, quarter: Int, image: Bitmap = compose.onNodeWithTag("window").captureToImage().asAndroidBitmap()) {
         val dir = File(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null), "frames").apply { mkdirs() }
-        val image = compose.onNodeWithTag("window").captureToImage().asAndroidBitmap()
         val small = Bitmap.createScaledBitmap(image, image.width / 4, image.height / 4, true)
         File(dir, "phone-$move-q$quarter.png").outputStream().use { small.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
@@ -106,6 +109,45 @@ class OverlayFramesTest {
     fun thePanelsLower() {
         panel(raised = 1f)
         seek("lower") { motion.raise.exit() }
+    }
+
+    /**
+     * How dark the band just under the card is on a white backdrop, 0 to 1:
+     * the card's shadow, which nothing else draws there.
+     */
+    private fun shadowUnderCard(image: Bitmap): Float {
+        val card = compose.onNodeWithTag(CARD_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val top = card.bottom.toInt() + 2
+        val bottom = (card.bottom + card.height * 0.04f).toInt().coerceAtMost(image.height - 1)
+        var darkest = 0f
+        for (y in top..bottom) {
+            for (x in (card.left + card.width / 4).toInt()..(card.right - card.width / 4).toInt()) {
+                val p = image.getPixel(x, y)
+                val light = (android.graphics.Color.red(p) + android.graphics.Color.green(p) + android.graphics.Color.blue(p)) / (3f * 255f)
+                darkest = maxOf(darkest, 1f - light)
+            }
+        }
+        return darkest
+    }
+
+    /** Lowered over Square's white, the shadow goes with the card: never darker than the card is opaque (decision 134). */
+    @Test
+    fun theLowersShadowGoesWithTheCard() {
+        panel(raised = 1f, white = true)
+        val atRest = shadowUnderCard(compose.onNodeWithTag("window").captureToImage().asAndroidBitmap())
+        assertTrue(atRest > 0.03f, "the card casts a shadow at rest ($atRest)")
+        motion.raise.exit()
+        var at = 0L
+        for (quarter in 1..3) {
+            val to = surfaceMs * quarter / 4
+            compose.mainClock.advanceTimeBy(to - at)
+            at = to
+            val image = compose.onNodeWithTag("window").captureToImage().asAndroidBitmap()
+            save("lower-light", quarter, image)
+            val shown = Panel.shown(motion.raise.value)
+            val shadow = shadowUnderCard(image)
+            assertTrue(shadow <= atRest * shown + 0.02f, "q$quarter: the shadow is $shadow dark under a card $shown opaque (at rest $atRest)")
+        }
     }
 
     @Test
