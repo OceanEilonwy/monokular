@@ -1,7 +1,15 @@
 package app.monokular
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.TransformOrigin
 import app.monokular.core.SalePhase
+import app.monokular.overlay.Handoff
+import app.monokular.overlay.Life
 import app.monokular.overlay.Panel
+import app.monokular.overlay.WindowAct
+import app.monokular.overlay.WindowEvent
+import app.monokular.overlay.Windows
 import app.monokular.receipt.PaymentCode
 import app.monokular.sales.FoundSale
 import app.monokular.sales.TillSale
@@ -93,5 +101,78 @@ class PanelTest {
         assertFalse(Panel.pulses(BubbleLook.Lit, SalePhase.Confirming, panelUp = false))
         assertFalse(Panel.pulses(BubbleLook.Paid, SalePhase.Paid, panelUp = false))
         assertFalse(Panel.pulses(BubbleLook.Idle, SalePhase.Waiting, panelUp = false))
+    }
+
+    @Test
+    fun `a phone's panel grows about its docked bubble, a tablet's about its corner nearest the bubble`() {
+        val card = Rect(100f, 200f, 500f, 1000f)
+        assertEquals(TransformOrigin(0.875f, -0.05f), Panel.origin(Offset(450f, 160f), card, corner = false), "above the card's end: the dock")
+        assertEquals(TransformOrigin(1f, 0f), Panel.origin(Offset(1200f, 300f), card, corner = true), "bubble high on the right")
+        assertEquals(TransformOrigin(0f, 1f), Panel.origin(Offset(20f, 900f), card, corner = true), "bubble low on the left")
+        assertEquals(TransformOrigin(1f, 1f), Panel.origin(Offset(400f, 700f), card, corner = true), "behind the card: the nearest corner still")
+        assertEquals(TransformOrigin.Center, Panel.origin(Offset(20f, 900f), Rect(0f, 0f, 0f, 0f), corner = true), "not placed yet")
+    }
+
+    private fun want(w: Windows, usable: Boolean, open: Boolean, wide: Boolean = false) = Handoff.next(w, WindowEvent.Want(usable, open, wide))
+
+    @Test
+    fun `on a phone the free bubble goes only once the panel has drawn the docked one, and comes back before the panel goes`() {
+        var w = want(Windows(), usable = true, open = false).also { assertEquals(listOf(WindowAct.AddBubble), it.acts) }.windows
+        assertEquals(Windows(usable = true, bubble = Life.Up), w)
+        w = want(w, usable = true, open = true).also { assertEquals(listOf(WindowAct.AddPanel), it.acts, "the panel goes up at 0 over the bubble") }.windows
+        assertEquals(Life.Up, w.bubble, "no frame with no bubble")
+        assertEquals(w, want(w, usable = true, open = true).windows, "asked again, nothing changes")
+        assertTrue(want(w, usable = true, open = true).acts.isEmpty())
+        w = Handoff.next(w, WindowEvent.PanelDrawn).also {
+            assertEquals(listOf(WindowAct.RemoveBubble, WindowAct.OpenPanel), it.acts, "then the free bubble goes and the panel grows")
+        }.windows
+        w = want(w, usable = true, open = false).also { assertEquals(listOf(WindowAct.ClosePanel), it.acts, "no free bubble yet") }.windows
+        assertEquals(Life.Gone, w.bubble)
+        w = Handoff.next(w, WindowEvent.PanelLanded).also { assertEquals(listOf(WindowAct.AddBubbleAtRest), it.acts) }.windows
+        assertEquals(Life.Landed, w.panel, "the panel stays until the free bubble has drawn over its docked one")
+        w = Handoff.next(w, WindowEvent.BubbleDrawn).also { assertEquals(listOf(WindowAct.RemovePanel), it.acts) }.windows
+        assertEquals(Windows(usable = true, bubble = Life.Up), w)
+    }
+
+    @Test
+    fun `a tap mid-collapse grows the panel again from where it is`() {
+        var w = Windows(usable = true, bubble = Life.Gone, panel = Life.Up, panelDrawn = true)
+        w = want(w, usable = true, open = false).windows
+        w = want(w, usable = true, open = true).also { assertEquals(listOf(WindowAct.OpenPanel), it.acts) }.windows
+        assertEquals(Life.Up, w.panel)
+        assertTrue(Handoff.next(w, WindowEvent.PanelLanded).acts.isEmpty(), "the interrupted collapse's landing is nothing")
+        // Reopened in the frame the free bubble came back: it goes again at once, the panel being drawn.
+        val landed = Windows(usable = true, bubble = Life.Up, panel = Life.Landed, panelDrawn = true)
+        assertEquals(listOf(WindowAct.OpenPanel, WindowAct.RemoveBubble), want(landed, usable = true, open = true).acts)
+    }
+
+    @Test
+    fun `on a tablet the bubble stays beside the panel`() {
+        var w = want(Windows(), usable = true, open = true, wide = true).also {
+            assertEquals(listOf(WindowAct.AddPanel, WindowAct.AddBubble), it.acts)
+        }.windows
+        w = Handoff.next(w, WindowEvent.PanelDrawn).also { assertEquals(listOf(WindowAct.OpenPanel), it.acts) }.windows
+        w = want(w, usable = true, open = false, wide = true).also { assertEquals(listOf(WindowAct.ClosePanel), it.acts) }.windows
+        w = Handoff.next(w, WindowEvent.PanelLanded).also { assertEquals(listOf(WindowAct.RemovePanel), it.acts) }.windows
+        assertEquals(Windows(usable = true, wide = true, bubble = Life.Up), w)
+    }
+
+    @Test
+    fun `a panel of the other kind is swapped without motion`() {
+        val phone = Windows(usable = true, panel = Life.Up, panelDrawn = true)
+        val step = want(phone, usable = true, open = true, wide = true)
+        assertEquals(listOf(WindowAct.RemovePanel, WindowAct.AddPanelOpen, WindowAct.AddBubble), step.acts)
+    }
+
+    @Test
+    fun `Monokular coming to the front collapses the panel and the bubble goes with it`() {
+        var w = Windows(usable = true, panel = Life.Up, panelDrawn = true)
+        w = want(w, usable = false, open = false).also { assertEquals(listOf(WindowAct.ClosePanel), it.acts) }.windows
+        w = Handoff.next(w, WindowEvent.PanelLanded).also { assertEquals(listOf(WindowAct.RemovePanel), it.acts, "no free bubble over the app") }.windows
+        assertEquals(Windows(), w)
+        var free = Windows(usable = true, bubble = Life.Up)
+        free = want(free, usable = false, open = false).also { assertEquals(listOf(WindowAct.HideBubble), it.acts) }.windows
+        assertEquals(listOf(WindowAct.ShowBubble), want(free, usable = true, open = false).acts, "back before it went: it grows again")
+        assertEquals(listOf(WindowAct.RemoveBubble), Handoff.next(free, WindowEvent.BubbleLeft).acts)
     }
 }

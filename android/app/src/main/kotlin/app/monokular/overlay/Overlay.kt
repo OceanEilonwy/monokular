@@ -10,13 +10,20 @@ import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
+import androidx.compose.foundation.layout.Box
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleRegistry
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -77,9 +84,13 @@ class Overlay(
     private val page = MutableStateFlow<PanelPage>(PanelPage.Code)
     private val justPaid = MutableStateFlow(false)
     private var bubble: BubbleFrame? = null
+    private var bubbleIn: Presence? = null
     private var panel: View? = null
-    /** Whether the panel up is the floating one; null while none is up. */
-    private var panelWide: Boolean? = null
+    private var panelMotion: PanelMotion? = null
+    /** The windows as the handoff between them sees them (M1). */
+    private var windows = Windows()
+    /** The free bubble's centre on screen, where the docked bubble comes from and goes back to. */
+    private val bubbleAt = mutableStateOf<Offset?>(null)
     /** The last usable and open shown, shown again when the configuration changes. */
     private var showing: Pair<Boolean, Boolean>? = null
     private var job: Job? = null
@@ -118,8 +129,14 @@ class Overlay(
     fun stop() {
         job?.cancel()
         paidTimer?.cancel()
-        removeBubble()
-        removePanel()
+        // The service is going: no exits to wait for.
+        bubble?.let { runCatching { wm.removeViewImmediate(it) } }
+        panel?.let { runCatching { wm.removeViewImmediate(it) } }
+        bubble = null
+        bubbleIn = null
+        panel = null
+        panelMotion = null
+        windows = Windows()
         owner.stop()
     }
 
@@ -142,6 +159,8 @@ class Overlay(
 
     /** The screen changed under the windows (a fold opened, split screen): the panel's kind is judged again. */
     fun configurationChanged() {
+        // Where the free bubble was is somewhere else on a turned or unfolded screen: the panel collapses into its dock.
+        if (bubble == null) bubbleAt.value = null
         showing?.let { (usable, open) -> show(usable, open) }
     }
 
@@ -150,15 +169,28 @@ class Overlay(
 
     private fun show(usable: Boolean, open: Boolean) {
         showing = usable to open
-        val wide = wide()
-        val panelShown = usable && open
-        // On a phone the panel docks the bubble at its top; on a tablet the bubble stays where it was.
-        val bubbleShown = usable && !(panelShown && !wide)
-        if (bubbleShown) addBubble() else removeBubble()
-        // A panel of the other kind is put up again, as the floating one would be clipped on a phone.
-        if (panelShown && panelWide != null && panelWide != wide) removePanel()
-        if (panelShown) addPanel(wide) else removePanel()
+        on(WindowEvent.Want(usable, open, wide()))
         if (!usable) lower()
+    }
+
+    /** Moves the windows on by [event], in the handoff's order. */
+    private fun on(event: WindowEvent) {
+        val step = Handoff.next(windows, event)
+        windows = step.windows
+        for (act in step.acts) {
+            when (act) {
+                WindowAct.AddBubble -> addBubble(atRest = false)
+                WindowAct.AddBubbleAtRest -> addBubble(atRest = true)
+                WindowAct.ShowBubble -> bubbleIn?.enter()
+                WindowAct.HideBubble -> bubbleIn?.exit { on(WindowEvent.BubbleLeft) }
+                WindowAct.RemoveBubble -> removeBubble()
+                WindowAct.AddPanel -> addPanel(windows.wide, open = false)
+                WindowAct.AddPanelOpen -> addPanel(windows.wide, open = true)
+                WindowAct.OpenPanel -> panelMotion?.raise?.enter()
+                WindowAct.ClosePanel -> panelMotion?.raise?.exit { on(WindowEvent.PanelLanded) }
+                WindowAct.RemovePanel -> removePanel()
+            }
+        }
     }
 
     /** Lowers the panel to the bubble, its code face up for next time. */
@@ -183,7 +215,8 @@ class Overlay(
         PixelFormat.TRANSLUCENT,
     )
 
-    private fun addBubble() {
+    /** Adds the free bubble's window: growing in, or [atRest] where the docked bubble just landed. */
+    private fun addBubble(atRest: Boolean) {
         if (bubble != null) return
         val prefs = graph.stores
         val params = overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, touchThrough = true).apply {
@@ -191,29 +224,57 @@ class Overlay(
             x = 0
             y = prefs.bubbleY ?: (context.resources.displayMetrics.heightPixels / 3)
         }
+        val presence = Presence(if (atRest) 1f else 0f)
         // On a tablet the bubble stays up beside the floating panel: a second tap lowers it.
-        val frame = BubbleFrame(context, wm, params, onTap = { if (panelOpen.value) lower() else panelOpen.value = true }) { left, y ->
+        lateinit var frame: BubbleFrame
+        frame = BubbleFrame(context, wm, params, onTap = { if (panelOpen.value) lower() else panelOpen.value = true }) { left, y ->
             prefs.bubbleOnLeft = left
             prefs.bubbleY = y
+            frame.doOnPreDraw { locate(frame) }
         }
         frame.setViewTreeLifecycleOwner(owner)
         frame.setViewTreeSavedStateRegistryOwner(owner)
         frame.addView(
             compose {
+                presence.Attach()
                 val s by state.collectAsStateWithLifecycle()
-                androidx.compose.runtime.SideEffect { frame.describe(Bubble.label(s.look)) }
-                BubbleFace(s.look, phase = s.sale?.phase ?: SalePhase.Waiting)
+                SideEffect { frame.describe(Bubble.label(s.look)) }
+                // Appearing and going, the circle scales and fades inside its window (M4).
+                Box(
+                    Modifier.graphicsLayer {
+                        val p = presence.value
+                        alpha = p
+                        scaleX = 0.6f + 0.4f * p
+                        scaleY = scaleX
+                    },
+                ) { BubbleFace(s.look, phase = s.sale?.phase ?: SalePhase.Waiting) }
             }.apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS },
         )
-        runCatching { wm.addView(frame, params) }.onSuccess { bubble = frame }
+        runCatching { wm.addView(frame, params) }.onSuccess {
+            bubble = frame
+            bubbleIn = presence
+            if (!atRest) presence.enter()
+            frame.doOnPreDraw {
+                locate(frame)
+                frame.post { if (bubble === frame) on(WindowEvent.BubbleDrawn) }
+            }
+        }
+    }
+
+    /** Notes where the free bubble's centre is on screen. */
+    private fun locate(frame: View) {
+        val at = IntArray(2).also(frame::getLocationOnScreen)
+        bubbleAt.value = Offset(at[0] + frame.width / 2f, at[1] + frame.height / 2f)
     }
 
     private fun removeBubble() {
-        bubble?.let { runCatching { wm.removeViewImmediate(it) } }
+        bubble?.let { runCatching { wm.removeView(it) } }
         bubble = null
+        bubbleIn = null
     }
 
-    private fun addPanel(wide: Boolean) {
+    /** Adds the panel's window at progress 0 (it grows once drawn), or already [open] when its kind was swapped. */
+    private fun addPanel(wide: Boolean, open: Boolean) {
         if (panel != null) return
         val density = context.resources.displayMetrics.density
         val params = if (wide) {
@@ -245,22 +306,50 @@ class Overlay(
             onCopyXmr = onCopyXmr,
             onFullScreen = { lower(); onFullScreen(it) },
         )
+        val motion = PanelMotion(if (open) 1f else 0f, bubbleAt)
         val view = compose {
+            motion.raise.Attach()
             val s by state.collectAsStateWithLifecycle()
             val sale = s.sale ?: return@compose
-            if (wide) FloatingPanel(sale, s.where, s.page, actions) else PhonePanel(sale, s.where, s.look, s.page, actions)
+            if (wide) FloatingPanel(sale, s.where, s.page, actions, motion) else PhonePanel(sale, s.where, s.look, s.page, actions, motion)
         }
         runCatching { wm.addView(view, params) }.onSuccess {
             panel = view
-            panelWide = wide
+            panelMotion = motion
+            // The free bubble goes once a frame shows the docked one where it is, never before (amendment 6).
+            view.afterPlaced({ wide || motion.placed }) { if (panel === view) on(WindowEvent.PanelDrawn) }
         }
     }
 
     private fun removePanel() {
-        panel?.let { runCatching { wm.removeViewImmediate(it) } }
+        panel?.let { runCatching { wm.removeView(it) } }
         panel = null
-        panelWide = null
+        panelMotion = null
     }
+}
+
+/**
+ * Calls [then] after the first frame drawn once [placed] holds: a pre-draw
+ * listener that sees it, asks for one more frame (the one drawn with what
+ * was placed), and removes itself at that frame's pre-draw. Frames, not a
+ * delay: under reduced motion nothing else would ask for the second one.
+ */
+private fun View.afterPlaced(placed: () -> Boolean, then: () -> Unit) {
+    val listener = object : ViewTreeObserver.OnPreDrawListener {
+        private var seen = false
+
+        override fun onPreDraw(): Boolean {
+            if (seen) {
+                viewTreeObserver.removeOnPreDrawListener(this)
+                post(then)
+            } else if (placed()) {
+                seen = true
+                invalidate()
+            }
+            return true
+        }
+    }
+    viewTreeObserver.addOnPreDrawListener(listener)
 }
 
 /** The lifecycle and saved state Compose needs to run in a window that has no activity. */

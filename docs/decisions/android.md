@@ -1023,3 +1023,25 @@ design unchanged.
     integration branch. A change wanted in the other track's file is a
     message to its owner; the integration branch takes each track's PR by
     rebase, dev1 first.
+100. **The phone's panel grows once it has drawn, and the free bubble
+    comes back only where the collapse landed** (refines 92 and amendment
+    6; dev1). The panel window goes up at progress 0 with its docked
+    bubble placed exactly over the free one (hidden until its slot is
+    placed, so its first frame isn't a second bubble somewhere else); the
+    free bubble window goes on the frame after one is drawn that way, and
+    only then does the grow start, so the docked bubble always leaves from
+    where the free one was. Started on add, the emulator showed two
+    bubbles for a frame or two while the grow ran ahead of the handoff.
+    Lowered, the order is the other way from §11's first wording: the
+    panel collapses first, the docked bubble riding the same progress back
+    to the free bubble's place, and the free bubble is added at rest there
+    once the collapse lands; the panel window goes after the free bubble
+    has drawn. Adding the free bubble before the collapse would show it at
+    the edge while the docked one is still in its slot. The docked
+    bubble's slide rides the panel's `raise` (one `Animatable`, one
+    spring) rather than a second `settle` spring, so the card's origin and
+    the bubble never part; it draws over the card (`zIndex`), which grows
+    out of it. The order is a pure state machine (`overlay/Windows.kt`,
+    `Handoff.next`) tested on the JVM; "drawn" is a pre-draw listener that
+    asks for one more frame once the slot is placed, so reduced motion,
+    which asks for no frames, still hands over.
