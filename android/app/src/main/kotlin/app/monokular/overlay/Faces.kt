@@ -4,13 +4,13 @@ import android.os.Build
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -43,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -54,10 +55,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -71,10 +77,12 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.zIndex
 import app.monokular.BubbleLook
 import app.monokular.PosText
 import app.monokular.SaleText
@@ -152,6 +160,19 @@ object Panel {
      */
     fun pulses(look: BubbleLook, phase: SalePhase, panelUp: Boolean): Boolean =
         look == BubbleLook.Lit && !panelUp && (phase == SalePhase.Waiting || phase == SalePhase.Partial)
+
+    /**
+     * The point a growing panel scales about, as fractions of its [card]
+     * (both on screen): [from] itself on a phone, the docked bubble above
+     * the card; on a tablet, whose window ends at the card, the card's
+     * corner nearest the bubble at [from] (`docs/motion.md` §5).
+     */
+    fun origin(from: Offset, card: Rect, corner: Boolean): TransformOrigin {
+        if (card.width <= 0f || card.height <= 0f) return TransformOrigin.Center
+        val x = if (!corner) from.x else if (from.x < card.center.x) card.left else card.right
+        val y = if (!corner) from.y else if (from.y < card.center.y) card.top else card.bottom
+        return TransformOrigin((x - card.left) / card.width, (y - card.top) / card.height)
+    }
 
     /** The header's second line before "Open the shift": the till's location for its own sale, else who took it. */
     fun where(sale: TillSale, location: String?): String = when {
@@ -302,14 +323,14 @@ private fun Confirm(look: BubbleLook) {
  * shift.
  */
 @Composable
-fun SalePanel(sale: TillSale, where: String, wide: Boolean, actions: PanelActions, sideBySide: Boolean = false) {
+fun SalePanel(sale: TillSale, where: String, wide: Boolean, actions: PanelActions, raise: Presence, sideBySide: Boolean = false) {
     if (sale.phase == SalePhase.Paid) LaunchedEffect(sale.orderId) { delay(Motion.Dwell.PAID_MS); actions.onLower() }
     // No Surface gives the overlay's window a text colour: the panel sets its own.
-    CompositionLocalProvider(LocalContentColor provides mk.ink) { PanelCard(sale, where, wide, sideBySide, actions) }
+    CompositionLocalProvider(LocalContentColor provides mk.ink) { PanelCard(sale, where, wide, sideBySide, actions, raise) }
 }
 
 @Composable
-private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: Boolean, actions: PanelActions) {
+private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: Boolean, actions: PanelActions, raise: Presence) {
     val scope = rememberCoroutineScope()
     val drag = remember { Animatable(0f) }
     var height by remember { mutableFloatStateOf(0f) }
@@ -556,28 +577,47 @@ private fun Ended(sale: TillSale) {
  * order, when it's up, fills the window.
  */
 @Composable
-fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage, actions: PanelActions) {
+fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage, actions: PanelActions, motion: PanelMotion) {
     if (page == PanelPage.Order) {
+        SideEffect { motion.undocked = true }
         CompositionLocalProvider(LocalContentColor provides mk.ink) {
             OrderContent(
                 sale, "Back to the code", actions.onBackToCode, actions.onBackToCode,
-                Modifier.fillMaxSize().background(mk.ground).safeDrawingPadding().semantics { paneTitle = "The order" },
+                Modifier.fillMaxSize().grows(motion, wide = false).background(mk.ground).safeDrawingPadding().semantics { paneTitle = "The order" },
             )
         }
         return
     }
+    SideEffect { motion.undocked = false }
     val lower by rememberUpdatedState(actions.onLower)
     val bubble = @Composable {
         Box(
-            Modifier.clip(CircleShape)
+            Modifier
+                .onGloballyPositioned { motion.dock = it.positionOnScreen() + Offset(it.size.width / 2f, it.size.height / 2f) }
+                // The docked bubble starts where the free one was and rides the raise to its slot, and back.
+                .offset {
+                    val dock = motion.dock
+                    val from = motion.bubbleAt
+                    if (dock == null || from == null) {
+                        IntOffset.Zero
+                    } else {
+                        val away = 1f - motion.raise.value
+                        IntOffset(((from.x - dock.x) * away).roundToInt(), ((from.y - dock.y) * away).roundToInt())
+                    }
+                }
+                // Over the card, which grows out of it and collapses into it.
+                .zIndex(1f)
+                // Not drawn until it knows where the free bubble is, so its first frame isn't a second bubble elsewhere.
+                .graphicsLayer { alpha = if (motion.dock == null) 0f else 1f }
+                .clip(CircleShape)
                 .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = actions.onLower)
                 .semantics { contentDescription = "Lower to the bubble" },
         ) { BubbleFace(look, pulse = false, phase = sale.phase) }
     }
     // Taps on the panel itself stay there.
     val panel = @Composable { sideBySide: Boolean ->
-        Box(Modifier.pointerInput(Unit) { detectTapGestures { } }) {
-            SalePanel(sale, where, wide = false, actions, sideBySide)
+        Box(Modifier.grows(motion, wide = false).pointerInput(Unit) { detectTapGestures { } }) {
+            SalePanel(sale, where, wide = false, actions, motion.raise, sideBySide)
         }
     }
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { lower() } }) {
@@ -601,7 +641,9 @@ fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage,
 
 /** The floating panel's window on a tablet: the panel, or the whole order in its place. */
 @Composable
-fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: PanelActions) = Box(Modifier.padding(24.dp)) {
+fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: PanelActions, motion: PanelMotion) = Box(
+    Modifier.padding(24.dp).grows(motion, wide = true),
+) {
     if (page == PanelPage.Order) {
         CompositionLocalProvider(LocalContentColor provides mk.ink) {
             OrderContent(
@@ -612,6 +654,25 @@ fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: Panel
             )
         }
     } else {
-        SalePanel(sale, where, wide = true, actions)
+        SalePanel(sale, where, wide = true, actions, motion.raise)
     }
 }
+
+/**
+ * The panel growing out of the bubble and collapsing back into it
+ * (`docs/motion.md` M1): scaled from 0.3 and faded in over the first third
+ * of [PanelMotion.raise], about the docked bubble on a phone and the
+ * card's corner nearest the bubble on a tablet. Everything is read in the
+ * layer, so a frame of the grow recomposes and relays out nothing.
+ */
+private fun Modifier.grows(motion: PanelMotion, wide: Boolean): Modifier = this
+    .onGloballyPositioned { motion.card = Rect(it.positionOnScreen(), it.size.toSize()) }
+    .graphicsLayer {
+        val raise = motion.raise.value
+        val card = motion.card
+        val from = if (wide) motion.bubbleAt else motion.dock ?: motion.bubbleAt
+        if (card != null && from != null) transformOrigin = Panel.origin(from, card, corner = wide)
+        scaleX = 0.3f + 0.7f * raise
+        scaleY = scaleX
+        alpha = (raise * 3f).coerceIn(0f, 1f)
+    }
