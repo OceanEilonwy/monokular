@@ -39,17 +39,14 @@ import app.monokular.SaleText
 import app.monokular.up
 import app.monokular.overSurfaces
 import app.monokular.sharedGround
-import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
 
 /** The line under a code's amount: what's left of it, or how far the payment has got. */
 object CodeText {
     /** "14:52 left" while the code counts down (waiting, or part paid); null once a payment is on its way. */
-    fun left(sale: TillSale, secondsLeft: Long): String? = when (sale.phase) {
-        SalePhase.Waiting, SalePhase.Partial -> "${SaleText.clock(secondsLeft)} left"
-        else -> null
-    }
+    fun left(sale: TillSale, secondsLeft: Long): String? =
+        if (sale.phase.countsDown) "${SaleText.clock(secondsLeft)} left" else null
 
     /** "0.05552 XMR · 14:52 left", or "0.05552 XMR · Seen on the network" once seen. */
     fun under(sale: TillSale, secondsLeft: Long): String = "${SaleText.xmr(sale)} · ${left(sale, secondsLeft) ?: SaleText.status(sale)}"

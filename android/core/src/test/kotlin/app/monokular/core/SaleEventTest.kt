@@ -38,6 +38,11 @@ class SaleEventTest {
     }
 
     @Test
+    fun `a code counts down until some of its money is seen, and part paid still counts down`() {
+        assertEquals(setOf(SalePhase.Waiting, SalePhase.Partial), SalePhase.entries.filter { it.countsDown }.toSet())
+    }
+
+    @Test
     fun `a status puts a sale in its phase`() {
         mapOf(
             "pending" to SalePhase.Waiting,
