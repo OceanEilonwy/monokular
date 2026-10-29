@@ -227,7 +227,7 @@ class Overlay(
                 WindowAct.AddPanel -> addPanel(windows.wide, open = false)
                 WindowAct.AddPanelOpen -> addPanel(windows.wide, open = true)
                 WindowAct.OpenPanel -> panelMotion?.raise?.enter()
-                WindowAct.ClosePanel -> panelMotion?.raise?.exit(step.closeVelocity) {
+                WindowAct.ClosePanel -> panelMotion?.raise?.exit(step.closeVelocity, landsAt = Panel.IN_BUBBLE) {
                     on(WindowEvent.PanelLanded)
                     // The paid moment ends where the collapse lands: the green bubble fades from here.
                     moment(PaidEvent.ExitLanded)

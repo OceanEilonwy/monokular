@@ -49,6 +49,22 @@ class PanelTest {
     )
 
     @Test
+    fun `the card is gone and at its smallest when the panel is back in the bubble, and whole by a third of the way out`() {
+        assertEquals(0f, Panel.shown(Panel.IN_BUBBLE))
+        assertEquals(Panel.SMALLEST, Panel.scale(Panel.IN_BUBBLE))
+        assertEquals(0f, Panel.opened(Panel.IN_BUBBLE / 2f))
+        assertEquals(0f, Panel.shown(0f))
+        val alone = Panel.IN_BUBBLE + (1f - Panel.IN_BUBBLE) * Panel.BUBBLE_ALONE
+        assertEquals(0f, Panel.shown(alone), "the bubble's last stretch home has no card with it")
+        assertTrue(Panel.shown(alone + 0.01f) > 0f)
+        val third = Panel.IN_BUBBLE + (1f - Panel.IN_BUBBLE) * (Panel.BUBBLE_ALONE + 1f / 3f)
+        assertEquals(1f, Panel.shown(third + 0.0001f))
+        assertTrue(Panel.shown(third - 0.05f) < 1f)
+        assertEquals(1f, Panel.scale(1f))
+        assertEquals(1f, Panel.opened(1f))
+    }
+
+    @Test
     fun `the grabber lowers the panel past a quarter of its height, or on a fling`() {
         val fling = 2000f
         assertFalse(Panel.lowers(drag = 100f, height = 1000f, velocity = 0f, fling), "a short drag springs back")

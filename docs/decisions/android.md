@@ -2188,3 +2188,24 @@ design unchanged.
     the next code, which is right and reads well. The header, amount and
     order line crossfade in step with the hero's grow, from the same
     progress, so no frame mixes two sales.
+170. **A lowered panel is gone before the bubble lands, and its window
+    goes then** (dev1, round 5; the ghost in
+    `review-r4/phone-panel-lower-into-bubble.webp`). The card's alpha was
+    three times the raise, so in the spring's long tail (raise 0.1 to 0,
+    about a quarter of its length) the card sat at its smallest at 30 %
+    to 3 % alpha on top of a bubble that had, to the eye, already landed;
+    the base build on emulator-5554 shows it for 70 to 100 ms
+    (`dev1-r5/base-lower.png`, f84 to f87). Now `Panel.opened(raise)` is
+    the raise with its last tenth (`Panel.IN_BUBBLE`) taken off: the
+    card's scale and the docked bubble's slide follow it, so both are
+    done at raise 0.1, and the card's alpha is gone while the docked
+    bubble still has the last `Panel.BUBBLE_ALONE` (5 %) of its way to
+    go, so the bubble lands alone. `Presence.exit` takes a `landsAt`: the
+    panel's collapse reports its landing the frame it crosses 0.1, and
+    the handoff (free bubble added at rest, panel window removed once it
+    has drawn) runs then instead of after the spring's invisible tail.
+    A raise passes 0.1 within its first frame, so nothing is lost on the
+    way up. `theLowerLeavesNoCardOnceTheBubbleIsHome` fails on the old
+    code (2,000 card pixels at 4 % alpha on the frame the bubble is
+    within 4 dp of home) and passes now; `after-lower.png` on 5554 has no
+    card from the frame the bubble lands.

@@ -79,6 +79,29 @@ class PresenceOnDeviceTest {
         assertTrue(flungAt in 1 until letGoAt, "flung down it's gone at frame $flungAt, let go at $letGoAt")
     }
 
+    /** A panel's collapse lands where it is back in the bubble (decision 170), frames before the spring's tail ends. */
+    @Test
+    fun anExitLandsOnTheFrameItReachesItsLandingNotAfterTheTail() {
+        val early = attached(Motion.Full, initial = 1f)
+        var landedAt = -1f
+        var frames = 0
+        var landedFrame = -1
+        early.exit(landsAt = 0.1f) {
+            landedAt = early.value
+            landedFrame = frames
+        }
+        while (early.value > 0f && frames < 200) {
+            frames++
+            compose.mainClock.advanceTimeByFrame()
+        }
+        assertTrue(landedAt in 0f..0.1f, "it lands at or below its landing: $landedAt")
+        assertTrue(landedFrame in 1 until frames - 3, "it lands on frame $landedFrame, the spring ends on $frames")
+        var again = 0
+        early.exit(landsAt = 0.1f) { again++ }
+        compose.mainClock.advanceTimeByFrame()
+        assertEquals(1, again, "already out, an exit lands at once")
+    }
+
     @Test
     fun underStillMotionItJumpsButStillLands() {
         val presence = attached(Motion.Still, initial = 1f)
