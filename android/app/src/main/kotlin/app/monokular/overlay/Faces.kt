@@ -240,13 +240,14 @@ class PanelActions(
  * sale, the ring closed in green round the tick on its pale ground once
  * it's paid. Its colours are the design's whatever the theme: it sits over
  * another app. [pulse] is false for the bubble docked above the panel,
- * which has nothing left to call for.
+ * which has nothing left to call for; [panelUp] is the free bubble's word
+ * that a panel is up beside it (a tablet's), which stops its pulse too.
  */
 @Composable
-fun BubbleFace(look: BubbleLook, pulse: Boolean = true, phase: SalePhase = SalePhase.Waiting) = Box(
+fun BubbleFace(look: BubbleLook, pulse: Boolean = true, phase: SalePhase = SalePhase.Waiting, panelUp: Boolean = false) = Box(
     Modifier.padding(if (pulse) BubblePadding else DockedPadding).clearAndSetSemantics {},
     contentAlignment = Alignment.Center,
-) { Circle(look, pulse, phase) }
+) { Circle(look, pulse, phase, panelUp) }
 
 /** Room round the bubble's circle in its window: the pulse's halo reaches 16 dp out and isn't clipped. */
 val BubblePadding = 16.dp
@@ -264,7 +265,7 @@ private val BubbleSize = 56.dp
  * and only the middle crossfades: the grey logo, the pupil, the tick.
  */
 @Composable
-private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
+private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: Boolean) {
     val m = motion
     val alpha by animateFloatAsState(if (look == BubbleLook.Idle) 0.55f else 1f, m.fade.fraction, label = "bubble")
     val ground by animateColorAsState(
@@ -278,7 +279,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
     )
     val ringShown by animateFloatAsState(if (look == BubbleLook.Idle) 0f else 1f, m.fade.fraction, label = "ring")
     val turn = m.pulse
-    val halo = if (turn != null && Panel.pulses(look, phase, panelUp = !pulse)) {
+    val halo = if (turn != null && Panel.pulses(look, phase, panelUp = !pulse || panelUp)) {
         rememberInfiniteTransition(label = "pulse").animateFloat(0f, 1f, turn, label = "halo")
     } else {
         null

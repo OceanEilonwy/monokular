@@ -283,6 +283,8 @@ class Overlay(
             compose {
                 presence.Attach()
                 val s by state.collectAsStateWithLifecycle()
+                // On a tablet the bubble stays beside the open panel: nothing to call for while it's up.
+                val open by panelOpen.collectAsStateWithLifecycle()
                 val m = LocalMotion.current
                 SideEffect {
                     frame.describe(Bubble.label(s.look))
@@ -297,7 +299,7 @@ class Overlay(
                         scaleX = 0.6f + 0.4f * p
                         scaleY = scaleX
                     },
-                ) { BubbleFace(s.look, phase = s.sale?.phase ?: SalePhase.Waiting) }
+                ) { BubbleFace(s.look, phase = s.sale?.phase ?: SalePhase.Waiting, panelUp = open) }
             }.apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS },
         )
         runCatching { wm.addView(frame, params) }.onSuccess {
@@ -527,6 +529,15 @@ private class BubbleFrame(
         super.performClick()
         onTap()
         return true
+    }
+
+    override fun onDetachedFromWindow() {
+        // The window went mid-snap (the panel took the bubble's place): nothing left to move.
+        snapping?.cancel()
+        snapping = null
+        velocity?.recycle()
+        velocity = null
+        super.onDetachedFromWindow()
     }
 
     /**
