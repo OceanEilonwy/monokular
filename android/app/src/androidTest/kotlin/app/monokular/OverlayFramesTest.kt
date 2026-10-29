@@ -15,7 +15,9 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.geometry.Rect
 import app.monokular.overlay.CODE_SLOT_TAG
 import app.monokular.overlay.HERO_TAG
 import androidx.test.platform.app.InstrumentationRegistry
@@ -321,5 +323,69 @@ class OverlayFramesTest {
         assertTrue(between.size >= 3, "the surface passes through ${between.size} sizes between the card and the hero: $widths")
         assertTrue(abs(widths.last() - hero) < 4 * density, "it lands at the hero's size: ${widths.last()} px")
         compose.onNodeWithTag(HERO_TAG, useUnmergedTree = true).assertExists()
+    }
+
+    /** How strongly [bounds] is inked over the card's ground, 0 to 3: the darkest (or, in dark, lightest) pixel's distance from it. */
+    private fun ink(image: Bitmap, bounds: Rect, ground: Int): Float {
+        var most = 0f
+        for (y in bounds.top.toInt().coerceAtLeast(0) until bounds.bottom.toInt().coerceAtMost(image.height)) {
+            for (x in bounds.left.toInt().coerceAtLeast(0) until bounds.right.toInt().coerceAtMost(image.width)) {
+                most = maxOf(most, apart(image.getPixel(x, y), ground))
+            }
+        }
+        return most
+    }
+
+    private fun boundsOf(text: String): Rect? =
+        compose.onAllNodesWithText(text, useUnmergedTree = true).fetchSemanticsNodes().firstOrNull()?.boundsInRoot
+
+    /**
+     * The panel moving on from a paid sale to the next one waiting: the old
+     * sale's "… received" and the new sale's header are never both above
+     * half their strength on one frame (decision 169).
+     */
+    @Test
+    fun theNextSalesHeaderNeverMeetsTheLastSalesAmount() {
+        val paid = testSale("f1", SalePhase.Paid, expiresAt = expires)
+        // A long reference, so the next header reaches past where the last one's words end and its ink is its own there.
+        val next = testSale("f2", expiresAt = expires).copy(amount = "9.80", xmr = "0.0392", reference = "f2 Back counter tab")
+        sale = paid
+        panel(raised = 1f)
+        compose.mainClock.advanceTimeBy(1_500)
+        val old = "${SaleText.xmr(paid)} received"
+        val header = SaleText.title(next)
+        val card = compose.onNodeWithTag(CARD_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val groundAt = { image: Bitmap -> image.getPixel(card.left.toInt() + 6, card.top.toInt() + (card.height / 2).toInt()) }
+        val before = window()
+        val oldFull = ink(before, boundsOf(old)!!, groundAt(before))
+        // Only the part of the header's line past the last header's words: what is drawn there is the next sale's.
+        val lastTitle = boundsOf(SaleText.title(paid))!!
+        var lastEnds = lastTitle.left.toInt()
+        for (x in lastTitle.left.toInt() until lastTitle.right.toInt()) {
+            for (y in lastTitle.top.toInt() until lastTitle.bottom.toInt()) {
+                if (apart(before.getPixel(x, y), groundAt(before)) > 0.1f) lastEnds = x
+            }
+        }
+        val headerPast = { r: Rect -> Rect(maxOf(r.left, lastEnds + 8f), r.top, r.right, r.bottom) }
+        sale = next
+        val frames = mutableListOf<Pair<Float, Float>>()
+        repeat(40) {
+            compose.mainClock.advanceTimeByFrame()
+            val image = window()
+            val ground = groundAt(image)
+            val o = boundsOf(old)?.let { ink(image, it, ground) } ?: 0f
+            val h = boundsOf(header)?.let { ink(image, headerPast(it), ground) } ?: 0f
+            frames += o to h
+        }
+        compose.mainClock.advanceTimeBy(1_500)
+        val after = window()
+        val headerFull = ink(after, headerPast(boundsOf(header)!!), groundAt(after))
+        assertTrue(headerFull > 0.3f, "the next header's words reach past the last one's: $headerFull")
+        frames.forEachIndexed { frame, (o, h) ->
+            assertTrue(
+                o < oldFull / 2 || h < headerFull / 2,
+                "frame $frame: the last sale's amount (${o / oldFull}) and the next sale's header (${h / headerFull}) are both drawn",
+            )
+        }
     }
 }
