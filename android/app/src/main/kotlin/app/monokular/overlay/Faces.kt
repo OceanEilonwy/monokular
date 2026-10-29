@@ -33,6 +33,7 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -155,15 +156,21 @@ object Panel {
     }
 }
 
-/** What the panel can do: each lowers it or opens something, the overlay decides. */
+/**
+ * What the panel can do: each lowers it or opens something, the overlay
+ * decides. Made once per panel window and handed the sale it's about, so
+ * a tick or a poll of the runner gives the panel the same actions and
+ * Compose skips everything they reach.
+ */
+@Immutable
 class PanelActions(
     val onLower: () -> Unit,
     val onOpenShift: () -> Unit,
     val onOrder: () -> Unit,
     val onBackToCode: () -> Unit,
-    val onCopy: () -> Unit,
-    val onCopyXmr: () -> Unit,
-    val onFullScreen: () -> Unit,
+    val onCopy: (TillSale) -> Unit,
+    val onCopyXmr: (TillSale) -> Unit,
+    val onFullScreen: (TillSale) -> Unit,
 )
 
 /**
@@ -305,7 +312,7 @@ private fun Details(sale: TillSale, where: String, actions: PanelActions, oneLin
         Text(
             SaleText.xmr(sale), fontSize = 15.sp, color = mk.muted,
             modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                .clickable(onClickLabel = "Copy the XMR amount", onClick = actions.onCopyXmr)
+                .clickable(onClickLabel = "Copy the XMR amount") { actions.onCopyXmr(sale) }
                 .padding(horizontal = 6.dp, vertical = 2.dp),
         )
     }
@@ -344,8 +351,8 @@ private fun Buttons(sale: TillSale, actions: PanelActions) =
         when {
             sale.phase == SalePhase.Paid -> PrimaryButton("Done", actions.onLower, Modifier.weight(1f), height = 48.dp, size = 15)
             sale.live -> {
-                OutlineButton("Copy address", actions.onCopy, Modifier.weight(1f), size = 15)
-                PrimaryButton("Full screen", actions.onFullScreen, Modifier.weight(1f), height = 48.dp, size = 15)
+                OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), size = 15)
+                PrimaryButton("Full screen", { actions.onFullScreen(sale) }, Modifier.weight(1f), height = 48.dp, size = 15)
             }
             else -> PrimaryButton("Open the shift", actions.onOpenShift, Modifier.weight(1f), height = 48.dp, size = 15)
         }
