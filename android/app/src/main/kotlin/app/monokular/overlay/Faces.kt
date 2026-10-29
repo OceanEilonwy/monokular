@@ -60,6 +60,7 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -492,6 +493,7 @@ private fun Face(sale: TillSale, wide: Boolean) {
                     scaleX = scale
                     scaleY = scale
                     alpha = codeAlpha
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
                 }
                 .testTag(CODE_TAG)
                 .then(if (live) Modifier else Modifier.clearAndSetSemantics {}),
@@ -792,4 +794,6 @@ private fun Modifier.grows(motion: PanelMotion, wide: Boolean): Modifier = this
         scaleX = 0.3f + 0.7f * raise
         scaleY = scaleX
         alpha = (raise * 3f).coerceIn(0f, 1f)
+        // Faded per draw, not through a window-sized offscreen buffer: the fade is a third of the grow.
+        compositingStrategy = CompositingStrategy.ModulateAlpha
     }
