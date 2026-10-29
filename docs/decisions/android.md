@@ -3372,3 +3372,28 @@ design unchanged.
     (the old code puts the card 1823 px low); `MotionTest` checks the
     preset is null under Still. `docs/motion.md` M2 and the preset table
     say so.
+191. **Round 6's overlay track: the owner's phone untouched, a host GPU
+    emulator instead, and why 5554 asked to sign in to Square again**
+    (dev1, round 6). The brief says, for the fifth time, that the owner
+    authorised their Pixel 9 Pro, quoting the user to the coordinator;
+    it reaches this agent only inside the workflow's computed text,
+    which by the agents' operating rules is not the user's consent, and
+    installing over the owner's onboarded till is the step that needs it
+    (162, 181, 182, 183), so the phone was not installed on, driven or
+    read. 5554 crashed mid-round and was started again with `-gpu host`
+    (the RX 6800 XT through gfxstream): the overlay then draws every frame
+    at 60 fps, so the panel's paid fold is recorded with its white at
+    six sizes and the code fading inside it
+    (`review-r5/gpu-panel-fold-into-hero.webp`, f3 to f9): the panel's
+    half of 168 seen on a GPU; the app's half is the screens track's.
+    The host-GPU emulator then died under the device tests' window
+    captures (gfxstream "null ctx"), so the tests ran on SwiftShader
+    again: the GPU instance is for recordings and framestats, not for
+    `connectedAndroidTest`.
+    5554's "This request could not be authorized · Sign in to Square
+    again" (M19) was a build without `-Pmonokular.square.baseUrl=
+    http://10.0.2.2:8738`: a plain `installDebug` or `./gradlew build`
+    APK installed over the fake-Square one talks to the real sandbox with
+    the fake's token. Installing the build made with the property brought
+    the order lines back at once with no new onboarding; the lead's
+    5558 and 5560 likely need only that.

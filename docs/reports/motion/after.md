@@ -877,3 +877,33 @@ The owner's phone was not used (183; the authorisation again reached
 the designer only as computed text). Not signed off: 184, 185 and 186
 are a cut, a cut and a wrong origin in the moments a cashier watches
 most; 187 and 188 are small.
+
+## Round 6, overlay track (motion-dev1 on a63b39a), by dev1
+
+emulator-5554 (Pixel 9 Pro AVD) restarted with `-gpu host` (decision 191),
+fake-Square build onboarded, one live sale; `before` is `motion` at
+`a63b39a`, `after` this branch; alternated twice (`dev1-r6/ab.sh`), host load
+8 to 16. Process-wide `gfxinfo`, reset before each flow.
+
+| Flow | before 1 / 2 | after 1 / 2 | verdict |
+| --- | --- | --- | --- |
+| Raise and lower ×5 from a bubble at the left edge, half way down: frames, janky, p50 / p90 / p95 / p99 | 833, 6.2 %, 16 / 22 / 31 / 150; 853, 4.9 %, 16 / 17 / 19 / 113 | 849, 4.8 %, 8 / 17 / 22 / 109; 853, 4.3 %, 16 / 16 / 16 / 105 | level or better: the pivot is one more lerp in the layer |
+| Raise and grabber fling ×5 from the top of the end edge | 1041, 4.4 %, 5 / 16 / 16 / 105; 1034, 4.9 %, 5 / 16 / 18 / 113 | 1035, 4.0 %, 5 / 16 / 16 / 89; 1037, 3.9 %, 5 / 16 / 16 / 81 | level or better |
+| Memory at rest after each flow, PSS (Java / native heap), KB | 100 247 (15 696 / 15 160), 99 684; 100 579 (15 684 / 15 032), 100 473 | 101 067 (15 848 / 15 280), 100 526; 99 583 (15 372 / 14 800), 99 338 | level (±0.8 MB between runs either way) |
+| Size (debug, dex) | | +5.3 KB | the decay preset, the pivot and the throw's reset |
+
+Against the baseline's overlay row (phone, 48 % janky, p50 42 / p90 81 ms on
+SwiftShader), the host-GPU numbers are not comparable in absolute terms;
+the A/B above is the like for like.
+
+On the GPU the frames the reviews could not see are drawn: the card grows
+out of a far bubble on every frame (`review-r5/gpu-panel-raise-from-far-bubble.webp`,
+f63 to f71 raise, f81 to f88 lower), a fling carries on down for two frames
+then folds (`gpu-grabber-fling-carries.webp`, release at f77), and the
+panel's paid fold is one white surface at six sizes with the code fading
+inside it (`gpu-panel-fold-into-hero.webp`). Device tests on 5554 (back on
+SwiftShader, decision 191): `OverlayFramesTest`, `PresenceOnDeviceTest`,
+`PhoneOrderOnDeviceTest`, `OverlayRecompositionsTest`,
+`PanelGlyphsOnDeviceTest`, `BubbleOnDeviceTest`, `PanelFaceOnDeviceTest` and
+`PhaseRingOnDeviceTest` pass, 45 tests; the three new ones fail on
+`a63b39a`. The owner's phone was not used (191).
