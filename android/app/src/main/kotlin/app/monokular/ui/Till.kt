@@ -82,6 +82,7 @@ import app.monokular.sharedGround
 import app.monokular.words
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
@@ -247,6 +248,8 @@ private const val Circle = 0.5f
 private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions: TillActions) {
     var asking by rememberSaveable(sale.orderId) { mutableStateOf(false) }
     val header = SaleHeader.of(sale, LocalPointOfSale.current, location)
+    // A receipt reaches the till about a second after its sale: its card fades in then, rather than popping (N3).
+    val late = remember(sale.orderId) { sale.receipt == null }
     KeepScreenOn()
     // Its ground is the screen's (SaleScreen), so the page it turns into fades over one ground, not a second.
     Surface(Modifier.fillMaxSize(), color = Color.Transparent, contentColor = mk.ink) {
@@ -265,13 +268,15 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                     ) {
                         Code(sale, min(this@BoxWithConstraints.maxHeight - 120.dp, 440.dp)) { actions.onEnlarge(sale.orderId) }
                         Column(
-                            Modifier.widthIn(max = 420.dp).verticalScroll(rememberScrollState()),
+                            // Centred beside the code (which is not in it), it settles to the late card's height rather than jumping.
+                            Modifier.widthIn(max = 420.dp).animateContentSize(motion.settle.spec(IntSize.VisibilityThreshold))
+                                .verticalScroll(rememberScrollState()),
                             verticalArrangement = Arrangement.spacedBy(20.dp),
                             horizontalAlignment = Alignment.Start,
                         ) {
                             Amount(sale, actions.onCopyXmr, start = true)
                             StatusPill(sale, now)
-                            sale.receipt?.let { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") }
+                            sale.receipt?.let { Late(late) { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } }
                             Buttons(sale, header, actions)
                         }
                     }
@@ -288,7 +293,7 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                         Amount(sale, actions.onCopyXmr)
                         Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide)) { actions.onEnlarge(sale.orderId) }
                         StatusPill(sale, now)
-                        sale.receipt?.let { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") }
+                        sale.receipt?.let { Late(late) { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } }
                     }
                     Box(
                         Modifier.align(Alignment.CenterHorizontally).widthIn(max = PhoneMaxWidth)
@@ -301,6 +306,25 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
     if (asking) {
         CloseSheet(sale, actions.source, now, onChoice = { actions.onClose(sale.orderId, it) }, onDismiss = { asking = false })
     }
+}
+
+/**
+ * [content], faded in with [Motion.fade] as it first shows when it is
+ * [late] (it wasn't there when the screen came up), at once when it was:
+ * the alpha read per draw, so the fade recomposes nothing and makes no
+ * layer.
+ */
+@Composable
+private fun Late(late: Boolean, content: @Composable () -> Unit) {
+    val m = motion
+    val seen = remember { Animatable(if (late) 0f else 1f) }
+    LaunchedEffect(seen) { seen.animateTo(1f, m.fade.fraction) }
+    Box(
+        Modifier.graphicsLayer {
+            alpha = seen.value
+            compositingStrategy = CompositingStrategy.ModulateAlpha
+        },
+    ) { content() }
 }
 
 /** A card's corners: the order card, the order page's list. */
@@ -329,7 +353,12 @@ fun SaleBar(sale: TillSale, subtitle: String, actions: TillActions, onClose: (()
     RoundIconButton(MkIcons.Back, "Back to the shift", { actions.onBack(sale.orderId) }, iconSize = 22.dp)
     Column(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }) {
         Text(SaleText.title(sale), fontSize = 20.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(subtitle, fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        // The till's own words for where the sale is from replace Square's once its receipt is in: they fade through.
+        val through = motion.fadeThrough.fraction
+        val quick = motion.fadeQuick.fraction
+        AnimatedContent(subtitle, transitionSpec = { (fadeIn(through) togetherWith fadeOut(quick)).using(null) }, label = "sale from") { words ->
+            Text(words, fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
     }
     CircleButton(MkIcons.Settings, "Settings", actions.onSettings, ground = mk.chip, tint = mk.ink, iconSize = 20.dp)
     if (onClose != null) {
