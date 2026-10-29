@@ -95,8 +95,6 @@ class Overlay(
     private var panelMotion: PanelMotion? = null
     /** The windows as the handoff between them sees them (M1). */
     private var windows = Windows()
-    /** The grabber's speed for the next collapse, progress a second; null for none. */
-    private var flung: Float? = null
     /** The free bubble's centre on screen, where the docked bubble comes from and goes back to. */
     private val bubbleAt = mutableStateOf<Offset?>(null)
     /** The last usable and open shown, shown again when the configuration changes. */
@@ -218,7 +216,7 @@ class Overlay(
                 WindowAct.AddPanel -> addPanel(windows.wide, open = false)
                 WindowAct.AddPanelOpen -> addPanel(windows.wide, open = true)
                 WindowAct.OpenPanel -> panelMotion?.raise?.enter()
-                WindowAct.ClosePanel -> panelMotion?.raise?.exit(flung) {
+                WindowAct.ClosePanel -> panelMotion?.raise?.exit(step.closeVelocity) {
                     on(WindowEvent.PanelLanded)
                     // The paid moment ends where the collapse lands: the green bubble fades from here.
                     moment(PaidEvent.ExitLanded)
@@ -229,12 +227,11 @@ class Overlay(
                 }
             }
         }
-        flung = null
     }
 
     /** Lowers the panel at the grabber's [velocity] (progress a second). */
     private fun fling(velocity: Float) {
-        flung = velocity
+        on(WindowEvent.Flung(velocity))
         lower()
     }
 
