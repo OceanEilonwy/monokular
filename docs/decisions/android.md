@@ -1469,3 +1469,73 @@ design unchanged.
     the code screen's heading does (`overSurfaces`). Measured again with
     `mem-r2.sh` and `heap-r2.sh` (the lead's scratch folder), the 2 MB
     rule is judged on PSS after a trim.
+
+129. **A Back that lands mid-move tells the model the screen it was
+    really on** (designer, round 2 review; blocker, screens track). On
+    the integrated build, tapping the code and pressing Back before the
+    grow has settled leaves the till unable to go Back or enlarge the code
+    until an on-screen button is used (reproduced three times on
+    emulator-5558: `input tap <code>; input keyevent 4` in one shell, then
+    Back twice and a tap on the code, all ignored; the header's arrow
+    recovers it). `StageBack` reads `from = state.currentState`, which
+    during a running move is still the *previous* screen (the sale), so
+    after the gesture lands on the sale it calls `back(from = Sale)`,
+    `screenState` is `Code`, nothing matches and the model stays on
+    `Code` while the stage shows the sale. The rule: what Back is "from" is
+    the model's screen at the gesture's start (`state.targetState`, the
+    screen the model is on), never `currentState`; a gesture that starts
+    while a move is running retargets that move from its current fraction
+    (the seekable state already allows it) rather than seeking a new pair;
+    and the stage and the model are never allowed to disagree at rest: a
+    device test taps the code, presses Back within 100 ms, and asserts the
+    model is on the sale and a second Back reaches the shift.
+130. **Every screen's frame at rest after a move is the frame it has
+    under Still** (designer, round 2 review; blocker, screens track). With
+    motion on, the order page's list card is not on screen once
+    `OrderGrow` has landed: the page shows its heading and the "Show the
+    code" bar over an empty ground, and the list's nodes are missing from
+    the semantics tree; under `Motion.Still` the same page draws its lines
+    (`review-r2/phone-order-page-motion-vs-still.webp`, sale #1257 with six
+    lines, emulator-5558, light). The seeked frames in `frames/order-grow-
+    *.webp` show the card drawn mid-move, so the card's face or the surface
+    it rides is left at zero once the stage is at rest. The rule, and the
+    test that keeps it: `MotionFramesTest` adds a rest frame after each
+    move and compares the semantics tree after a move has landed with the
+    tree composed under Still for the same screen; they must be equal.
+131. **Two different texts are never drawn over each other above half
+    opacity, on any surface** (designer, round 2 review; major, screens
+    track; generalises 115 from the panel to the screens). Decision 125's
+    crossfade brings the arriving face in over the first 44 % of the track
+    and the leaving one out over the last 44 %, so from 44 % to 56 % both
+    are opaque and either side of that one is above 0.8. Where the two
+    faces hold different words in the same place the result is a smudge:
+    the code screen's foot over the sale's "Copy address / Back to Square"
+    (`frames/code-grow-50.webp`, `-75.webp`, and a recorded frame in
+    `review-r2/phone-code-grow-recorded-frame.webp`, where the heading sits
+    over "Sale #1249" too), the order page's heading over the sale's
+    (`frames/order-grow-25.webp`) and its three-line card's words over the
+    full list's (`order-grow-50`, `-75`), and the paid fold, where the
+    whole page dissolves over the live sale and an eight-line order shows
+    two receipts at once (`review-r2/phone-paid-fold-dissolve.webp`,
+    `frames/paid-fold-120.webp`). The rule: words that differ between two
+    faces fade through, the leaving under `fadeQuick` on the first part of
+    the track and the arriving over the last (`Motion.fadeThrough`), as the
+    panel's do; a card whose content differs between its faces (the order
+    card's three lines against the whole list) shows one content during
+    the move, the arriving one laid out at the target and scaled as one
+    layer; and in the paid fold only the hero, the heading line and the
+    buttons change: the order card is the same card on both sides and
+    rides `order/<id>` to its place instead of dissolving.
+132. **The code's ground keeps the code's rest margin on every frame of
+    the enlarge** (designer, round 2 review; major, screens track;
+    sharpens 113 and 121). `frames/code-grow-75.webp` and `code-shrink-25`
+    show the white only two or three pixels wider than the code on either
+    side; the code's bounds and the ground's are not interpolating between
+    corresponding rectangles (the code reaches the ground's width before
+    the ground reaches the screen's), so the quiet zone collapses for the
+    last quarter of the grow and the first of the shrink. The rule: on
+    every frame the white around the code is at least the smaller of the
+    two rest margins (the card's and the enlarged screen's), which linear
+    tracks between corresponding rectangles give by construction, and the
+    device test measures that margin rather than "some white on each
+    side".
