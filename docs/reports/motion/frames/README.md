@@ -16,6 +16,7 @@ seeked frame. Regenerate with:
 | --- | --- |
 | The panel growing out of the bubble | `phone-raise-q*.png` |
 | The panel collapsing into it | `phone-lower-q*.png` |
+| The same over Square's white, where its shadow must go with it (decision 134) | `phone-lower-light-q1..3.png` |
 | The code folding into the paid tick | `phone-paid-fold-q*.png` |
 | The next sale's code growing out of the tick | `phone-next-sale-q*.png` |
 | The order growing out of the card to the window | `phone-order-grow-q*.png` |
