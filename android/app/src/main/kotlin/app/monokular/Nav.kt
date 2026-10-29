@@ -191,6 +191,8 @@ class Stage internal constructor(
     private val still: Boolean,
     private val scrub: BackScrub,
     private val shownState: State<Float>,
+    private val screen: Screen,
+    private val progress: () -> Float,
 ) {
     /** The move under way between the two screens of the transition, read when a surface asks, not in composition. */
     fun moving(): Move = Nav.move(transition.currentState, transition.targetState, cameUpByItself(), still)
@@ -207,6 +209,22 @@ class Stage internal constructor(
 
     /** [shown] while the screens change by [move]; 1 otherwise, as at rest. */
     fun shownDuring(move: Move): Float = if (moving() == move) shownState.value else 1f
+
+    /**
+     * This screen's face of a surface while the screens change by [move]:
+     * the arriving face fades in over the first [Motion.crossfadeOnTrack]
+     * of the move, the leaving one out over the last, so the surface always
+     * shows one or the other. A function of the stage's progress toward
+     * this screen, so a cancelled gesture fades back the way it came; 1 at
+     * rest.
+     */
+    fun faceDuring(move: Move, share: Float): Float {
+        if (moving() != move) return 1f
+        // The stage's own progress, toward its target: the same number for both screens, whichever way it runs.
+        val toward = progress()
+        val mine = if (transition.targetState == screen) toward else 1f - toward
+        return (mine / share).coerceIn(0f, 1f)
+    }
 }
 
 /** A back gesture over the stage, from its start until it has committed or sprung back. */
@@ -303,7 +321,7 @@ fun TillStage(
         ) { screen ->
             val visibility = (this as AnimatedVisibilityScope).transition
             val shown = visibility.animateFloat({ m.track.fraction }, label = "shown") { if (it == EnterExitState.Visible) 1f else 0f }
-            val stage = remember(m) { Stage(shared, this, transition, cameUpByItself, m.still, scrub, shown) }
+            val stage = remember(m) { Stage(shared, this, transition, cameUpByItself, m.still, scrub, shown, screen) { state.fraction } }
             CompositionLocalProvider(LocalStage provides stage) { content(screen) }
         }
     }
@@ -338,13 +356,21 @@ fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleSha
     val state = shared.rememberSharedContentState(key, config)
     val bounds = remember(m) { BoundsTransform { _, _ -> m.track.spec(Rect.VisibilityThreshold) } }
     val overlayClip = remember(shared, clip) { shared.OverlayClip(clip) }
-    return with(shared) {
+    val surface = with(shared) {
         sharedBounds(
-            state, stage.content,
-            enter = if (fade) fadeIn(m.fade.fraction) else EnterTransition.None,
-            exit = if (fade) fadeOut(m.fadeQuick.fraction) else ExitTransition.None,
+            // The face going stays drawn, opaque, for the whole move (an exit that holds alpha at 1, so no layer of its
+            // own), and the crossfade below shows it fading.
+            state, stage.content, enter = EnterTransition.None, exit = if (fade) fadeOut(m.track.fraction, targetAlpha = 1f) else ExitTransition.None,
             boundsTransform = bounds, resizeMode = ScaledToWidth, zIndexInOverlay = layer, clipInOverlayDuringTransition = overlayClip,
         )
+    }
+    if (!fade) return surface
+    // The crossfade inside the bounds, per draw (ModulateAlpha): an enter or exit fade would composite each face through
+    // an offscreen buffer of its own, a full-screen texture a frame for a sale, which the GPU's cache then keeps.
+    val share = m.crossfadeOnTrack
+    return surface.graphicsLayer {
+        alpha = stage.faceDuring(during, share)
+        compositingStrategy = CompositingStrategy.ModulateAlpha
     }
 }
 
