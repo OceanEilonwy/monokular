@@ -2003,3 +2003,20 @@ design unchanged.
      one clock (`rememberNowSeconds` at its card), so the last caller of
      the per-text `secondsLeft(expiresAt)` timer went, and the timer with
      it.
+116. **A phone's order grows out of the panel's card, a clip in its draw**
+     (dev1, round 2; completes M5, replaces the crossfade of 102). The
+     order is laid out once at the window's size and drawn inside a
+     container that is a rounded rectangle from the code card's bounds
+     (corners 32 dp) at 0 to the whole window (square) at 1, on one
+     `motion.surface` progress of the page's `Transition`; the ground is
+     drawn in the same clip, the code and its docked bubble fade out under
+     `fadeQuick` and the order fades in with `fade`, and Back to the code
+     is the same, reversed. The container is a clip, not a bounds
+     animation, so no frame of it measures or lays anything out, and the
+     path is made once per size and rewound each frame (built through
+     `android.graphics.Path.addRoundRect` with four floats, which
+     allocates nothing, where Compose's `RoundRect` would allocate one a
+     frame). The container has no shadow: it starts exactly over the card,
+     whose own shadow fades with the code under it. Under Still the
+     progress snaps and the two crossfade (`fadeQuick`). The tablet keeps
+     102's card whose height settles to the order's.

@@ -97,8 +97,11 @@ class PanelMotion(initial: Float, private val bubble: State<Offset?>) {
     /** The docked bubble's centre on screen, once placed. */
     var dock by mutableStateOf<Offset?>(null)
 
-    /** The panel's card (or the order in its place) on screen, once placed. */
+    /** The panel's card (or, on a tablet, the order in its place) on screen, once placed: where a phone's order grows from. */
     var card by mutableStateOf<Rect?>(null)
+
+    /** A phone's order on screen, filling the window, once placed. */
+    var window by mutableStateOf<Rect?>(null)
 
     /** Whether the panel shows no docked bubble (the order fills a phone's window), so the free one can go at once. */
     var undocked = false
