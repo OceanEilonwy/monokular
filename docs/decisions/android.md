@@ -2185,3 +2185,52 @@ design unchanged.
     it needs a device: the owner's Pixel was attached, but installing on
     it needs their say-so. Until then the 2 MB PSS rule is not met on the
     emulator and the after report says so.
+
+127. **The integrated build is measured against live codes, on one
+    emulator at a time** (lead, round 2 integration). The shared dev
+    stack held nine "pending" orders 9 to 66 minutes past their
+    `expires_at`: Monokulo would have expired them, the fake stack never
+    does. The baseline build shows such a code live for as long as the
+    shift runs ("Waiting · 0:00 left", 117's bug) and raises its sale by
+    itself, the integrated build ends it by the clock, so the two would
+    have measured different shifts and neither would have found a live
+    row to open. The dead orders were marked expired on the stack
+    (`__dev/orders/<id>/expired`, what Monokulo itself says of them), each
+    pass of the A/B rings up two fresh sales first (the stack's codes
+    live 15 minutes, a pass takes about five), and the phone and the
+    tablet run one after the other, since a sale rung up for one till
+    comes up by itself on the other and would land mid-flow. `to_shift`
+    now leaves up to forty sales before giving up, not twelve: with other
+    tills ringing up on the same store, twelve was not enough.
+
+128. **The integrated build is not signed off on memory: the native heap's
+    step is named, and it is text rasterised at every scale a surface
+    passes through** (lead, round 2 integration; sharpens 126). On both
+    emulators, before and after alternately, the integrated build holds
+    12 to 24 MB more PSS at rest than the baseline after ten shift ↔ sale
+    round trips (native heap +11 to +15 MB), and a `RUNNING_CRITICAL`
+    trim returns 1 to 3 MB of it. `heapprofd` on the phone emulator,
+    attached before the process started, puts the step in two places:
+    1.6 MB at start (more JIT code, the first glyphs), then 7.5 MB over
+    the ten trips, of which 5.1 MB is Skia's glyph strike cache and text
+    atlas (`SkStrike::prepareImages` and `GrDrawOpAtlas::addToAtlas`
+    under `AtlasTextOp`; `dumpsys gfxinfo` shows the glyph cache at
+    3.0–4.3 MB against the baseline's 0.2). That is the shared surfaces
+    scaling as layers (`ResizeMode.scaleToBounds`): the text inside a
+    moving row or sale is drawn through a different matrix on each
+    frame, every scale is a new strike, and each glyph is rasterised and
+    uploaded again at that size. The cache is capped, so it is a step
+    and not a leak, but a trim does not return it. One run also held a
+    14.3 MB purgeable GPU scratch texture (16.45 MB of GPU caches against
+    2.3), the size of one screen in RGBA: a whole-screen offscreen layer,
+    which the order page's `fadeIn` on `OrderGrow` (122) would make the
+    way the faces' fades did before 125; it did not recur in the second
+    run and is not yet pinned to that. The screens track owns the fix:
+    either the text inside a moving surface fades at its resting size
+    while the ground and the glyph scale (so no glyph is ever drawn
+    scaled), or the moving surface is one offscreen layer only for the
+    move's frames with its texture released on landing, measured for
+    both heaps; and the order page's parts take their alpha per draw as
+    the code screen's heading does (`overSurfaces`). Measured again with
+    `mem-r2.sh` and `heap-r2.sh` (the lead's scratch folder), the 2 MB
+    rule is judged on PSS after a trim.
