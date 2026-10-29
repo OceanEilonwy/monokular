@@ -70,6 +70,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val screenState = MutableStateFlow(home())
     val screen: StateFlow<Screen> = screenState.asStateFlow()
 
+    /**
+     * The screen on show was put there by the till (a new sale coming up,
+     * a code going down), not by the cashier: it arrives without growing
+     * out of anything (M7). Set with every change of screen, before it.
+     */
+    @Volatile
+    var cameUpByItself = false
+        private set
+
     /** Busy with a network call: buttons wait. */
     val busy = MutableStateFlow(false)
 
@@ -108,7 +117,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** The sales changed: bring up a new one, move off a code that's down, and step back from one paid on screen. */
     private fun follow(sales: List<TillSale>) {
         val next = TillNav.follow(screenState.value, sales, left.value)
-        if (next != screenState.value) screenState.value = next
+        if (next != screenState.value) {
+            cameUpByItself = true
+            screenState.value = next
+        }
         TillNav.paidOnScreen(next, sales, liveBefore)?.let { paid ->
             stepBack?.cancel()
             stepBack = viewModelScope.launch {
@@ -162,6 +174,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun go(screen: Screen) {
         problem.value = null
+        cameUpByItself = false
         screenState.value = screen
     }
 
@@ -180,6 +193,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         Screen.Float -> go(Screen.Alerts)
         Screen.Ready -> go(Screen.Float)
         else -> goHome()
+    }
+
+    /**
+     * Where [back] would go from a sale's screens or Settings, without going
+     * there: what a back gesture previews before it commits. Null where
+     * Back shows no preview.
+     */
+    fun backTarget(): Screen? = when (val screen = screenState.value) {
+        is Screen.Sale -> Screen.Till
+        is Screen.Code -> Screen.Sale(screen.orderId)
+        is Screen.Order -> Screen.Sale(screen.orderId)
+        Screen.Settings -> beforeSettings?.takeIf { stores.setupDone }
+            ?.let { TillNav.follow(it, graph.runner.state.value.till.sales, left.value) } ?: home()
+        else -> null
     }
 
     /**
