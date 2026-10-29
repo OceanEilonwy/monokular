@@ -60,6 +60,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.runtime.State
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
@@ -709,28 +714,86 @@ private fun EndedHero(sale: TillSale) {
  * The panel's window on a phone: Square left as it is behind it (a tap
  * there lowers the panel), the lit bubble docked above it, or beside it
  * with the phone on its side (a tap there lowers it too). The whole
- * order, when it's up, fills the window.
+ * order, when it's up, fills the window: the card is its container
+ * (`docs/motion.md` M5), growing from the card's bounds to the window's
+ * with its corners going from 32 dp to square, the code and its docked
+ * bubble fading out under it and the order fading in inside it; Back to
+ * the code is the same, reversed. The order is laid out once at the
+ * window's size, and the container is only a clip read in its draw.
  */
 @Composable
 fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage, actions: PanelActions, motion: PanelMotion) {
-    // The order and the code crossfade (M5): the docked bubble goes with the code, as the order fills the window.
     val m = app.monokular.ui.motion
-    AnimatedContent(
-        page,
-        transitionSpec = { (fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
-        label = "page",
-    ) { shown ->
-        if (shown == PanelPage.Order) {
-            SideEffect { motion.undocked = true }
+    val pages = updateTransition(page, label = "page")
+    val opened = pages.animateFloat({ m.surface.fraction }, label = "container") { if (it == PanelPage.Order) 1f else 0f }
+    val codeAlpha = pages.animateFloat(
+        { (if (targetState == PanelPage.Code) m.fade else m.fadeQuick).fraction }, label = "code",
+    ) { if (it == PanelPage.Code) 1f else 0f }
+    val orderAlpha = pages.animateFloat(
+        { (if (targetState == PanelPage.Order) m.fade else m.fadeQuick).fraction }, label = "order",
+    ) { if (it == PanelPage.Order) 1f else 0f }
+    val codeUp = pages.currentState == PanelPage.Code || pages.targetState == PanelPage.Code
+    val orderUp = pages.currentState == PanelPage.Order || pages.targetState == PanelPage.Order
+    // With the order filling the window there is no docked bubble for the free one to hand over to.
+    SideEffect { motion.undocked = !codeUp }
+    Box(Modifier.fillMaxSize()) {
+        if (codeUp) {
+            Box(Modifier.graphicsLayer { alpha = codeAlpha.value; compositingStrategy = CompositingStrategy.ModulateAlpha }) {
+                PhoneCode(sale, where, look, actions, motion)
+            }
+        }
+        if (orderUp) {
             CompositionLocalProvider(LocalContentColor provides mk.ink) {
                 OrderContent(
                     sale, "Back to the code", actions.onBackToCode, actions.onBackToCode,
-                    Modifier.fillMaxSize().grows(motion, wide = false).background(mk.ground).safeDrawingPadding()
+                    Modifier.fillMaxSize().testTag(ORDER_TAG).grows(motion, wide = false, order = true)
+                        .container(motion, opened, mk.ground)
+                        .graphicsLayer { alpha = orderAlpha.value; compositingStrategy = CompositingStrategy.ModulateAlpha }
+                        .safeDrawingPadding()
                         .semantics { paneTitle = "The order" },
                 )
             }
-        } else {
-            PhoneCode(sale, where, look, actions, motion)
+        }
+    }
+}
+
+/** The order filling a phone's panel window. */
+const val ORDER_TAG = "panel-order"
+
+/** The phone panel card's corners, which the order's container squares off as it fills the window. */
+private val CardCorner = 32.dp
+
+/**
+ * The phone's order inside its container: the ground and the content
+ * clipped to a rounded rectangle from the code's card ([PanelMotion.card])
+ * at [opened] 0 to the whole window at 1, its corners from [CardCorner] to
+ * square. Read in the draw only; the one path is made once per size and
+ * rewound each frame, so a frame allocates nothing.
+ */
+private fun Modifier.container(motion: PanelMotion, opened: State<Float>, ground: Color): Modifier = drawWithCache {
+    val path = Path()
+    val corner = CardCorner.toPx()
+    onDrawWithContent {
+        val p = opened.value
+        val from = motion.card
+        val window = motion.window
+        if (from == null || window == null || p >= 1f) {
+            drawRect(ground)
+            drawContent()
+            return@onDrawWithContent
+        }
+        val radius = lerp(corner, 0f, p)
+        path.rewind()
+        path.asAndroidPath().addRoundRect(
+            lerp(from.left - window.left, 0f, p),
+            lerp(from.top - window.top, 0f, p),
+            lerp(from.right - window.left, size.width, p),
+            lerp(from.bottom - window.top, size.height, p),
+            radius, radius, android.graphics.Path.Direction.CW,
+        )
+        clipPath(path) {
+            drawRect(ground)
+            this@onDrawWithContent.drawContent()
         }
     }
 }
@@ -825,11 +888,14 @@ fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: Panel
  * card's corner nearest the bubble on a tablet. Everything is read in the
  * layer, so a frame of the grow recomposes and relays out nothing.
  */
-private fun Modifier.grows(motion: PanelMotion, wide: Boolean): Modifier = this
-    .onGloballyPositioned { motion.card = Rect(it.positionOnScreen(), it.size.toSize()) }
+private fun Modifier.grows(motion: PanelMotion, wide: Boolean, order: Boolean = false): Modifier = this
+    .onGloballyPositioned {
+        val placed = Rect(it.positionOnScreen(), it.size.toSize())
+        if (order) motion.window = placed else motion.card = placed
+    }
     .graphicsLayer {
         val raise = motion.raise.value
-        val card = motion.card
+        val card = if (order) motion.window else motion.card
         val from = if (wide) motion.bubbleAt else motion.dock ?: motion.bubbleAt
         if (card != null && from != null) transformOrigin = Panel.origin(from, card, corner = wide)
         scaleX = 0.3f + 0.7f * raise
