@@ -88,6 +88,7 @@ import androidx.compose.ui.util.lerp
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntOffset
+import android.util.Log
 import app.monokular.ui.Motion
 import app.monokular.ui.Fixed
 import app.monokular.ui.motion
@@ -480,6 +481,9 @@ fun TillStage(
     LaunchedEffect(transition, held) {
         snapshotFlow { transition.currentState == transition.targetState }.collect { if (it) held.during(transition.currentState, transition.currentState) }
     }
+    // The debug build's stage trace: compiled out of a release build (BuildConfig.DEBUG is a constant), and off
+    // until switched on (decision 180).
+    if (BuildConfig.DEBUG) StageTrace(state, transition, held, geometry, scrub)
     SharedTransitionLayout(Modifier.onPlaced { root.coordinates = it }) {
         val shared = this
         Box {
@@ -635,6 +639,9 @@ internal class Course(val key: String) {
     private var kt = 0f
     private var kr = 0f
     private var kb = 0f
+
+    /** The change this course was last drawn in, -1 if it was not drawn on the last frame of one. */
+    val drawnIn: Long get() = if (valid) generation else -1L
 
     fun endOn(screen: Screen): End? {
         for (i in ends.indices) {
@@ -1061,6 +1068,52 @@ fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleSha
         compositingStrategy = CompositingStrategy.ModulateAlpha
     }
 }
+
+/**
+ * One logcat line per frame of a running change (tag [StageTraceTag]),
+ * switched on with `adb shell setprop log.tag.MonokularStage DEBUG` and
+ * read as each change starts: the move, its two screens, the stage's
+ * progress and whether a back gesture is seeking it, the words' shares
+ * out and in at that progress, and every moving surface's drawn bounds
+ * with the progress it was drawn at (the last frame drawn, as the stage
+ * left it). So a desynchronised part, or a dropped frame in framestats,
+ * can be matched to what the stage drew (N-R4-2). Debug builds only; with
+ * the tag off a change costs one property read and nothing per frame.
+ */
+@Composable
+private fun StageTrace(state: SeekableTransitionState<Screen>, transition: Transition<Screen>, held: HeldMove, geometry: StageGeometry, scrub: BackScrub) {
+    val m = motion
+    LaunchedEffect(transition) {
+        snapshotFlow { transition.currentState != transition.targetState }.collect { changing ->
+            if (!changing || !Log.isLoggable(StageTraceTag, Log.DEBUG)) return@collect
+            var frame = 0
+            while (transition.currentState != transition.targetState) {
+                withFrameNanos { nanos ->
+                    val from = transition.currentState
+                    val to = transition.targetState
+                    val p = state.fraction
+                    val line = StringBuilder()
+                    line.append("f").append(frame++).append(" t=").append(nanos / 1_000_000).append(" ").append(held.during(from, to))
+                        .append(" ").append(from).append(" -> ").append(to).append(" p=").append("%.3f".format(p))
+                        .append(" seek=").append(scrub.active)
+                        .append(" out=").append("%.2f".format(Nav.through(p, false, m.fadeOutOnTrack, m.crossfadeOnTrack)))
+                        .append(" in=").append("%.2f".format(Nav.through(p, true, m.fadeOutOnTrack, m.crossfadeOnTrack)))
+                    for (i in 0 until geometry.size()) {
+                        val c = geometry.at(i)
+                        if (c.drawnIn != held.generation) continue
+                        line.append(" | ").append(c.key).append(" @").append("%.3f".format(c.p)).append(" [")
+                            .append(c.left.roundToInt()).append(',').append(c.top.roundToInt()).append(',')
+                            .append(c.right.roundToInt()).append(',').append(c.bottom.roundToInt()).append(']')
+                    }
+                    Log.d(StageTraceTag, line.toString())
+                }
+            }
+        }
+    }
+}
+
+/** The stage trace's logcat tag. */
+const val StageTraceTag = "MonokularStage"
 
 /** Laid out once at its own size and scaled as one layer while the bounds move: nothing inside is measured per frame. */
 private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Alignment.TopCenter)
