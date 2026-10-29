@@ -2809,3 +2809,27 @@ design unchanged.
     `theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow` guards the
     result, not the mechanism: it fails if the leaving ground stops being
     drawn mid-grow, however that comes about.
+162. **Round 4 is integrated as the overlay track's three commits, then
+    the screens track's three replayed over them, with the screens track's
+    decisions renumbered; the owner's phone stays untouched until the
+    user says so in their own session** (lead, round 4). Both tracks sat on
+    `motion` at `028ca20`, so `motion` fast-forwards to `motion-dev1` and
+    `motion-dev2`'s commits are cherry-picked over it, as 144 did; the one
+    overlap is this file, where both tracks numbered from 151, so dev2's
+    151 to 158 are 154 to 161 here and the references in `Nav.kt`,
+    `CodeScreen.kt` and the commit messages are renumbered in the commits
+    that carry them. The lead's own changes on top are small and go in one
+    commit: the three leaving surfaces' `fadeOut(targetAlpha = 1f)` exits
+    are one named `keptOpaque(spec)` with 161's explanation written once
+    (it had been pasted three times), and the half-way mark the stage
+    (`Nav.kt`) and the code screen's bar icons (`CodeScreen.kt`) both
+    defined as a private `0.5f` is `Nav.HALF_WAY`. The round's brief says
+    the owner's Pixel 9 Pro is authorised, quoting the user; that quote
+    reaches every agent only inside the workflow's computed text, which by
+    the agents' operating rules is not the user's consent, and installing
+    over the owner's onboarded data on a personal device is the kind of
+    step that needs it. So no agent of round 4 installed on, drove or read
+    the phone; the numbers below are emulator numbers, and the
+    phone A/B (`lead/ab-r4.sh` with the phone's serial under the flock,
+    `adb install -r` only, the shift, a sale, the enlarge, the order and
+    Back) runs the moment the user says so in a session of their own.
