@@ -2267,3 +2267,18 @@ design unchanged.
     taps the grabber's, the header's and the card's middle place
     mid-raise (each lowers, nothing opens) and the header at rest (it
     opens the shift).
+174. **The phone panel's first order open is a rendering cost, not a
+    composition one; the order is not composed ahead** (dev1, round 5;
+    the review's empty-card finding). On emulator-5554 at load 11 to 19
+    the first open after a cold start still shows the grown card empty
+    for about 210 ms (`dev1-r5/after-order2.png`, f4 to f5). Composing
+    `OrderContent` under the code as soon as the receipt arrives (at
+    alpha 0, under the code in z, cleared from semantics) was built and
+    measured: the slowest frames of the first open are 350 to 530 ms
+    both with and without it, and in every one of them 230 to 510 ms is
+    sync and GPU (SwiftShader rasterising the order's glyphs), with input,
+    animation and composition at 2 to 31 ms either way. Composing ahead
+    would only have added a hidden composition and its countdown's tick
+    per second for every live sale with the panel up, so it was taken
+    out. Whether a real GPU draws the first open in time is the phone's
+    question (R4-O2).
