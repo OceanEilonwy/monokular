@@ -224,9 +224,10 @@ MONOKULAR_BELL_SQUARE_WEBHOOK_KEY=dev MONOKULAR_BELL_CLOVER_AUTH_CODE=11111111-2
 curl -X POST localhost:8740/fake/verify    # Clover's handshake: the Bell logs the code
 # register a subscription: Square for L-DEV with the token EAAA-dev-…, Clover for
 # MCLOVERDEV001 with the test token fake-clover prints (fake-clover-test-token-0001);
-# the Clover till (or a POST …/tenders with that token) adds the Monero tender. Then:
+# the Clover till adds the Monero tender when it signs in; with no till,
+# "add_tender": true adds it as the merchant would in Clover's dashboard. Then:
 curl -X POST localhost:8738/fake/sale -d '{"items":[["Flat white",2,450]]}'   # dings {"wake":"square"}
-curl -X POST localhost:8740/fake/sale -d '{"items":[["Flat white",2,450]]}'   # dings {"wake":"clover"}
+curl -X POST localhost:8740/fake/sale -d '{"items":[["Flat white",2,450]],"add_tender":true}'   # dings {"wake":"clover"}
 curl -X POST localhost:8740/fake/refund -d '{"payment_id":"…"}'              # a P: UPDATE: no ding
 ```
 
