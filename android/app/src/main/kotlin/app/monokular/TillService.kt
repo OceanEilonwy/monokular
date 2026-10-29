@@ -72,7 +72,7 @@ class TillService : LifecycleService() {
                                 justPaid.value = null
                             }
                         }
-                        SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend -> notes.unpaid(sale, quiet = graph.appVisible.value)
+                        SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend -> notes.unpaid(sale, graph.stores.pointOfSale(sale), quiet = graph.appVisible.value)
                         else -> Unit
                     }
                 }
@@ -88,7 +88,7 @@ class TillService : LifecycleService() {
                     is Ongoing.Sale -> {
                         // A heads-up once per sale, when it first appears; not again when an older one comes back to the top.
                         val alert = ongoing.sale.phase == SalePhase.Waiting && alerted.add(ongoing.sale.orderId)
-                        notes.ongoing(notes.sale(ongoing.sale, graph.stores.location?.name, alert))
+                        notes.ongoing(notes.sale(ongoing.sale, graph.stores.placeName(ongoing.sale), alert))
                     }
                 }
             }
@@ -123,7 +123,7 @@ class TillService : LifecycleService() {
         )
     }
 
-    private fun watching() = notes.watching(graph.store.now.value.store?.name.orEmpty(), graph.stores.location?.name)
+    private fun watching() = notes.watching(graph.store.now.value.store?.name.orEmpty(), graph.stores.placeName)
 
     /** Opens Monokular full screen on [sale] (from the bubble's panel: an app showing an overlay may start activities). */
     private fun openSale(sale: TillSale) {

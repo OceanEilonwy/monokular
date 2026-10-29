@@ -605,10 +605,10 @@ detail pages), recorded by the developers and folded in by the lead.
     ("Refunded in Square", "Nothing more to do."), the line "Open the shift
     to refund it in Square." or "Refund it in Square on Back till." (or "on
     the till that took it" with no device name), and one button, "Open the
-    shift". The lit bubble draws the sale's phase ring (track, the orange
-    arc a quarter a step, the ink pupil) in place of the loading mark, in
-    its own window and docked above the panel; setup's previews keep the
-    Waiting look. The panel's XMR line copies the amount when tapped, like
+    shift". The lit bubble keeps the loading mark, its glints running while
+    a sale is live (the owner asked for it back over the phase ring this
+    decision first drew there), in its own window and docked above the
+    panel; the phase shows in the panel's ring row. The panel's XMR line copies the amount when tapped, like
     the sale screen's; the enlarged code's doesn't, since a tap anywhere
     there shrinks it.
 75. **The grabber's rule and its size** (adds to 65). `Panel.lowers(drag,
@@ -819,3 +819,769 @@ detail pages), recorded by the developers and folded in by the lead.
     one `change` now, and a re-found sale keeps `refundedAt` as it kept
     `closedAt`. Not reproduced, so the race is closed on reasoning, not
     on a failing test.
+
+## App: Wake-ups, the Monokular Bell (2026-10-28)
+
+Made by the team's tech lead and product owner while wiring the app to the
+Bell (`docs/design.md` §3, §5, §7; `docs/bell.md`), with the owner away.
+The product owner's acceptance criteria (D1–D16 there) are taken as
+written except where an entry below says otherwise.
+
+90. **UnifiedPush's connector, `org.unifiedpush.android:connector` 3.3.5**
+    (Apache-2.0, released 2026-08-22 on Maven Central), in a `push` module
+    that depends on `core` alone (decision 56's module, back as the design's
+    `push/`). `UnifiedPush.register(context, "bell", null, vapid)` hands the
+    Bell's `vapid_public_key` (base64url, as `/v1/info` gives it) to the
+    distributor, which then takes pushes signed by that key only; the
+    connector throws `VapidNotValidException` for a key that isn't a P-256
+    point. One instance for the Bell in use; another Bell, or the same
+    Bell with a rotated key (D16: the key is kept in `BellRegistration`),
+    unregisters the instance and registers again for the new key. FCM is
+    not a path this release (D14): the embedded FCM distributor needs
+    Firebase keys and a deployed relay, and neither exists; the app ships
+    no Firebase dependency. The connector is wrapped behind
+    `PushSubscriptions`, so the registration logic and its tests never see
+    Android.
+91. **Without a distributor, Wake-ups says so and stays on the timer.** The
+    connector's dialogs and its `unifiedpush://link` deep link are not
+    used: `UnifiedPush.resolveDefaultDistributor(context)` decides without
+    an Activity. None installed: status `NoDistributor`, the card names
+    ntfy, the choice is kept, and the app looks again at every app start
+    and Settings open, so installing one and coming back connects without
+    choosing again. One, or a default: saved (`saveDistributor`) and used.
+    Several and no default: status `ChooseDistributor(packages)`, and the
+    status card lists them as radio rows in the app's own style (D8); the
+    pick is `saveDistributor`, and registration goes on. A saved one that
+    is gone, or that unregisters the app (`onUnregistered`), takes the Bell
+    registration back (`DELETE`) and is `NoDistributor`.
+92. **The subscription's keys are the connector's, on this device.** The
+    connector's `DefaultKeyManager` makes the P-256 pair and auth secret per
+    instance, keeps the private key in the app's SharedPreferences encrypted
+    AES-GCM under a key in the Android Keystore, and decrypts each push
+    (RFC 8291) before `PushService.onMessage`: the app sees
+    `PushMessage(content, decrypted)`. The private key never leaves the
+    device and is never ours to hold; `allowBackup=false` and the backup
+    rules keep it out of backups, and a restored till re-registers at its
+    first start anyway (A12.3). A ding is taken only when `decrypted` is
+    true and the content is the JSON object `{"wake":"square"}` and
+    nothing else; anything else is dropped, never logged. Holding the
+    private key in the Keystore itself (EC key agreement there needs
+    API 31) is a follow-up, not this.
+93. **A ding reaches the shift through the app's graph, and is dropped
+    outside one.** `WakePushService` (the connector's `PushService`, in the
+    app's process) gives each ding to `Graph.push.dings`, a `SharedFlow<Unit>`
+    without replay; `TillRunner` collects it while a shift runs and calls
+    `Shift.wake(WakeCause.Ding)`, and `BellWakeUps` collects it for "Last
+    wake-up" and to end `MissingWakeups`. No shift (watching off, or the
+    process was started by the ding alone): nothing checks Square, by the
+    design's "outside a shift nothing runs" (D9), and no foreground service
+    is started from a push (Android 14's rules make that a fight not worth
+    having for a sale the cashier isn't watching for). The registration
+    lives with the choice, not the shift (D4): registering costs a Square
+    request and one of the Bell's 32 places per location, a ding outside a
+    shift costs nothing, and the Bell never learns when shifts start.
+94. **The pace follows the status, and a missed wake-up is detected by the
+    timer.** `WakeUpStatus.interval` is 30 s for `Connected` and 2 s for
+    every other status: one function, one test over all of them. `Shift.run`
+    reads it afresh on every pass, so a change needs no restart, and tells
+    the runner why it checked (`WakeCause`: `Timer`, `Ding`, `Opened`) and
+    how many sales it found (`Till.check` answers the count). A *timer*
+    check that finds a sale while `Connected`, with no ding in the 60 s
+    before it, is a wake-up the Bell missed (D12): status
+    `MissingWakeups`, pace 2 s, and one `POST /v1/register` again (the Bell
+    may have deleted the registration after failed dings; it keeps the id
+    for the same subscription). The next ding returns it to `Connected`.
+    Replaces the lead's first cut, a ten-minute "doubt" that went back to
+    30 s on its own: an unproven Bell should not slow the till. The app
+    opening wakes the shift as before, in every status.
+95. **Registering, in order, and registering again.** Choosing a Bell: the
+    choice is saved, the old registration (another Bell's) is taken back,
+    then `GET /v1/info` (10 s timeout; failure → `Unreachable(reason)`,
+    with "no connection", "it didn't answer", "it answered 503" or "it
+    isn't a Bell" for an answer that isn't `/v1/info`'s). Its `environment`
+    must match the build's (`sandbox` or `production`), or it is
+    `Refused("it's for Square's sandbox" | "it's for Square's production
+    accounts")`, final. Its `square_application_id` must be the one the
+    till signed in through, or `SignInNeeded(id)` (decision 96). No Square
+    sign-in at all (or the till runs without Square): `NoSquare`. Then the
+    distributor (decision 91), `PushSubscriptions.subscribe(vapid)`, and on
+    `Subscribed`, `POST /v1/register` with `SquareAuth.accessToken()`, the
+    location and the subscription: `201` → `Connected`, kept as
+    `BellRegistration` in the encrypted store. Problems, read as RFC 9457
+    `type`s with the Bell's `detail` as the fallback: `square-refused` →
+    `Refused("Square didn't confirm this location. Sign in to Square
+    again.")`; `too-many-registrations`, `endpoint-registered`,
+    `invalid-request` → `Refused` with the acceptance criteria's words, no
+    retry on their own; `rate-limited` → `Refused(…, retryAt)`, retried
+    after `Retry-After`; `square-unavailable`, `internal`, other 5xx and no
+    answer → `Unreachable`, retried with a growing wait, 1 min doubling to
+    15 min (D5). Every app start and shift start with a Bell chosen
+    registers again (`recheck()`: the Bell answers the same id); so do a
+    new Square sign-in, a changed location, and a new endpoint from the
+    distributor (`DELETE` of the old id first, since the Bell keys
+    registrations by endpoint). The retries live in the graph's coroutine
+    scope: no WorkManager and no alarm (D13); a process that dies retries
+    at its next start. The connector's `NETWORK` failure is `Unreachable`;
+    `ACTION_REQUIRED` and `VAPID_REQUIRED` are `Unreachable("the
+    UnifiedPush app refused")`, an endpoint without keys `Unreachable("the
+    UnifiedPush app gave no keys")`.
+96. **A Bell with another Square application means signing in through it.**
+    The till's Square application is `Stores.squareApplicationId ?:
+    BuildConfig.SQUARE_APPLICATION_ID`, read by `Graph.squareConfig()`
+    (D7: the application in use is saved with the sign-in). For
+    `SignInNeeded`, the status card says "This Bell uses a different Square
+    application. Sign in to Square through it to use the Bell" with a
+    "Sign in to Square" row; the sign-in is started with that application's
+    id (kept with the pending PKCE state), and only once it finishes is the
+    id saved as the till's and the old sign-in replaced, so an abandoned
+    sign-in leaves the working one alone (D6). The location is chosen again
+    if the new account has several; the sales cursor is the location's and
+    carries over. Back to the project's Bell is the same flow the other way;
+    Timer only keeps whatever sign-in there is.
+97. **Unregistering is awaited.** `DELETE /v1/register/{id}` (a `404` is as
+    good as a `204`; 10 s at most), then `PushSubscriptions.unsubscribe()`,
+    then the registration is forgotten, on: Timer only chosen (the choice
+    is saved first; the "My own Bell" address is kept for next time, D11);
+    another Bell chosen (before the new one's `POST`); signing out of Square
+    (the `DELETE` before the sign-out, since it is awaited and needs only
+    the id and the address; the choice stays, status `NoSquare`, and the
+    next sign-in registers again); disconnecting the device (before
+    `forgetAll`, which puts the choice back to Timer only); the distributor
+    gone (decision 91). A Bell that can't be reached for the `DELETE` is
+    tried once and the registration dropped locally; the Bell deletes a
+    dead endpoint by itself after its push service answers 404/410, or
+    after its failure limit.
+98. **A Bell's address is `BellAddress`**: `https`, a path kept (a Bell
+    under one), a trailing slash dropped, a missing scheme meaning https,
+    shown as its host and path without the scheme; a user name, a query or
+    a fragment is refused, and plain `http` is taken in a debug build only
+    (a Bell on the developer's machine) (D2). An onion address is refused,
+    and a Bell is reached directly, never through Orbot (D10): Square's
+    webhooks force every Bell onto a public https address anyway, the ding
+    goes through a public push service the till talks to regardless, and
+    the Bell is told what it learns in the card's footnote; the lead's
+    first cut, onion Bells through Orbot with an "Orbot isn't running"
+    state, bought nothing for its two more states. The project's Bell is
+    `BuildConfig.BELL_URL` from `-Pmonokular.bell.url` (default
+    `https://bell.monokulo.com`, a placeholder until one is deployed), which
+    takes whatever the field takes (a host, or `http://10.0.2.2:8445` for a
+    debug build): a whole address rather than D1's host, so a Bell under a
+    path works too. The subscription's endpoint is the distributor's and
+    must be public https for the Bell to take it.
+99. **Settings › Wake-ups, in the app's own parts, as the acceptance
+    criteria's A1 lays it out.** Not a setup step; a fresh install and every
+    updated one is Timer only (D3). Under the section label, one `Group` of
+    three `ChoiceRow`s (new in `Parts.kt`: label, muted detail, a tick in
+    the ink colour at the end of the chosen one, `selectableGroup` on the
+    group and `Role.RadioButton` with `selected` on each row, the whole row
+    tappable): "Timer only" / "Checks Square every 2 seconds", "Monokular
+    Bell" / its host, "My own Bell" / its saved address or "Enter its
+    address". With "My own Bell" chosen, a fourth row holds an
+    `OutlinedTextField` "Bell address" (`KeyboardType.Uri`) and an
+    `OutlineButton` "Use this Bell", enabled only when the field differs
+    from the saved address and parses, with `BellAddress.problem` as a
+    `Muted` line under the field. With a Bell chosen, a second `Group`:
+    `FactRow("Checking Square", "Every 30 s" | "Every 2 s")`, `FactRow("Bell",
+    …)` with the status word ("Connected" in `mk.paid`, "Connecting…", "Not
+    connected", "Needs a UnifiedPush app", "Sign in needed", "Wake-ups not
+    arriving"), "Last wake-up" while `Connected` or `MissingWakeups`, the
+    distributor rows for `ChooseDistributor`, and an `ActionRow("Sign in to
+    Square")` for `SignInNeeded`. The footnotes are A1.7's words, status by
+    status, plus the privacy footnote on every Bell choice, and the Shift
+    footnote changes with the pace (A1.8). All of it from one exhaustive
+    `when` over `WakeUpStatus` in a pure `WakeUpsText`, tested string by
+    string (D15). `Theme.kt` tokens only; both themes; 200% font scale wraps.
+100. **The connector's service reaches the graph through the
+     application, and a ding alone never makes Wake-ups.** `push` can't see
+     `MonokularApp`, so `WakePushService` asks the application for a
+     `WakePushService.Host` (`MonokularApp` is one) and hands each callback
+     to its `UnifiedPushSubscriptions` (`Graph.push`), which turns them into
+     `state` and `dings` and returns: no work, no service started, nothing
+     logged. `Graph.wakeUps` is made on first use (the view model, Settings
+     or a shift starting), and that first use is decision 95's "app start"
+     (it registers again when a Bell is chosen); a process the distributor
+     started for a ding outside a shift touches only `Graph.push`, so it
+     costs the Bell no registration and Square no request. The connector's
+     own manifest brings its distributor `<queries>`, `WAKE_LOCK`, its
+     message receiver, its link activity (unused: decision 91) and an
+     exported `RaiseToForegroundService` that a distributor binds to raise
+     the app's priority while it delivers; the app declares only
+     `WakePushService` (`exported="false"`, `PUSH_EVENT`), A12.1. The one
+     thing in the app's logcat from Wake-ups is the connector's own debug
+     line, "Found distributor with package name …", once per look at the
+     installed distributors (each pass and each change of apps: QA counted
+     125 in a 35-minute run); it names a package and nothing of the till's,
+     so it stands (A9.5).
+101. **The shift says why it checked, counts what is new, and re-reads its
+    pace every 2 s** (dev-2; refines 94). `WakeCause` gains `Started`, the
+    shift's first check: sales rung while nothing watched (a ding outside a
+    shift is dropped, decision 93) are found by it, and a `Timer` find there
+    would read as a wake-up the Bell missed. `Till.check()` answers how many
+    of the POS's sales it found that the previous check hadn't, another
+    device's included (the Bell rings for every sale at the location, not
+    for one till's): a sale whose order failed and is found again isn't
+    counted twice, and a POS that can't be read found 0. The timer waits in
+    ticks of 2 s at most and reads `interval()` at each, so the pace going
+    from 30 s to 2 s mid-wait checks within a tick rather than at the end of
+    the 30 s (A5.24); the ticks cost a coroutine resuming, no request. The
+    wait is a `select` over the conflated wake channel and the tick's
+    timeout, not `withTimeoutOrNull { receive() }`, which can take a wake-up
+    as it times out and drop it. The pace Settings shows is read off the
+    status, the same `WakeUpStatus.interval` the shift reads, so the plan's
+    `RunnerState.interval` would only have copied it and isn't added.
+102. **The app sees a distributor come or go by itself.** The connector has
+     no callback for a distributor uninstalled, and decision 91's "looks
+     again at every Settings open" would have put a `recheck()` (a
+     `POST /v1/register`, and a request to Square) on every visit to
+     Settings. `UnifiedPushSubscriptions` registers, for the life of the
+     process, a receiver for packages added and removed (a system
+     broadcast, delivered for the distributors the connector's `<queries>`
+     make visible), and `BellWakeUps` looks again only when it is waiting
+     for a distributor (`NoDistributor`, `ChooseDistributor`) or when the
+     one it subscribed through is no longer what `resolve()` gives:
+     installing ntfy connects while Settings is open (A7.30), and
+     uninstalling it takes the Bell registration back at once (A7.32); the
+     emulator script's step 17 is where that is seen. The
+     distributor is `Distributors.resolve()`: the saved one while it is
+     installed, else the connector's `resolveDefaultDistributor` (the
+     default or the only one, saved), else the list for the cashier.
+103. **Settings › Wake-ups' choices, where A1 is silent** (dev-2; refines 99).
+    "My own Bell" tapped with no address saved yet ticks the row and opens
+    the address field, but nothing is chosen until "Use this Bell": the
+    saved choice, its registration and its status card stand meanwhile
+    (hidden while the row waits, with the footnote "Enter the address of
+    the Bell you run, then press Use this Bell. Until then Wake-ups stay as
+    they were."); with an address saved, the tap chooses it at once. The
+    field starts with the saved address as the row shows it, with its
+    scheme only when that isn't https (a debug build's http Bell), so it
+    reads back as the same address and "Use this Bell" stays off. The Bell
+    row says "Sign in needed" for `NoSquare` as well as `SignInNeeded`
+    (the emulator script's step 16 expects it; the footnotes tell them
+    apart), and "Choose a UnifiedPush app" for `ChooseDistributor`, whose
+    footnote is "Deliver wake-ups through one of the UnifiedPush apps
+    above. Until you choose, Monokular checks every 2 seconds."; its rows
+    are `ChoiceRow`s in the status card named by Android's label for each
+    package, none ticked. `NoDistributor` adds a "Get ntfy" row in the link
+    colour that opens `https://ntfy.sh/` in a Custom Tab, as Square's
+    sign-in opens. Settings opening calls nothing: `UnifiedPushSubscriptions`
+    hears a package installed or removed and `BellWakeUps` looks again by
+    itself (decision 91), and the card follows its status live.
+104. **The Bell client is three suspending calls behind `BellClient`, and
+     its errors are two exceptions.** `BellApi` takes the graph's client,
+     with `Proxy.NO_PROXY` (decision 98: never Orbot, whatever the store
+     does) and a 10 s `callTimeout` per call. A problem is `BellException
+     (status, type, detail, retryAfter)`, `type` being the slug after the
+     `#` of the Bell's problem address (`…/docs/bell.md#rate-limited`) and
+     `retryAfter` from `Retry-After` or the body's `retry_after`; an answer
+     that isn't the Bell's (a `/v1/info` that isn't its shape, an unknown
+     `environment`, a `4xx` page without a problem) is
+     `NotABellException`; no answer is the `IOException` OkHttp gives, a
+     timeout an `InterruptedIOException`. `register` answers
+     `BellRegistered(registrationId, squareApplicationId)`, and
+     `BellWakeUps` makes the `BellRegistration` from it with what it sent.
+     `BellApiTest` records the requests at a `MockWebServer`: the three
+     routes only, no `Authorization` header on any, the token in
+     `register`'s body and nowhere else, that body exactly the three fields
+     and the subscription's public half (A9.1, A9.2).
+105. **The view model's side of signing in through a Bell, and of taking
+    the registration back** (dev-2; refines 96, 97). `Stores.pendingSignIn`
+    is a `PendingSignIn(pkce, applicationId)`: the application rides with
+    the PKCE state (kept across the app being ended), null for the till's
+    own. The attempt's `SquareAuth` is built with that application, so
+    `authorizeUrl` and `finish` use its `client_id`; only after `finish`
+    succeeds is `Stores.squareApplicationId` set (and the old token
+    replaced by `finish` itself), the running till restarted as the new
+    application, the location chosen again when the account has several,
+    and the cashier taken back to Settings, where `chooseLocation`'s
+    `recheck()` carries the registration on to `Connected`. A sign-in that
+    fails goes back to Settings with Square's words, shown above the
+    Wake-ups cards, and leaves the old sign-in working. "Sign out of
+    Square" now runs as the view model's other network work does:
+    `unregister()` awaited, then the sign-out.
+    "Disconnect this device" awaits `unregister(forget = true)` before
+    Monokulo's disconnect (the Bell's `DELETE` comes first in its log, as
+    the emulator script's step 22 expects), and "Connect again" after the
+    store disconnected the till does too; redeeming a new connect code
+    takes back any registration left before `forgetAll`. A location change
+    calls `recheck()`, since the Bell rings the till for the location it
+    registered.
+106. **One pass at a time brings the Bell into line with the choice.**
+     `BellWakeUps` doesn't keep a state machine beside the store: a pass
+     reads the choice and the registration and does what decision 95
+     orders, under one lock, and `status` is where it stopped. Choosing
+     cancels a pass under way and starts one; `recheck()` joins one under
+     way; a retry is a pass after a wait (`delay` on the graph's scope, so
+     tests run it on virtual time). Once `POST /v1/register` is sent, it
+     and saving its answer can't be cancelled, so a choice changed meanwhile
+     always finds the registration to take back. `unregister` cancels the
+     pass, then takes the lock: the `DELETE` (once, 10 s at most), the
+     distributor's subscription ended, the registration forgotten. A pass
+     that starts `Connected` (a shift starting, an app start) stays
+     `Connected` while it registers again, so the pace doesn't drop to 2 s
+     for a second; one that fails leaves it. The connector is asked for the
+     subscription once per process (its docs: register at every start) and
+     again only for another key or another distributor; an endpoint other
+     than the registered one, at a start or from the distributor later, is
+     a `DELETE` of the old registration and a `POST` of the new.
+108. **A till that can't use its registration doesn't keep it.** A pass
+     that ends at `NoSquare` (no sign-in, or Square ended it), at
+     `SignInNeeded`, at the other environment's `Refused` or at
+     `NoDistributor` takes back a registration it finds (`DELETE`): the
+     Bell would otherwise ring a till that can't check Square for it, or
+     keep a location for a till that left. Refusals from the `POST` itself
+     leave it (the Bell says it left the registration as it was), and so do
+     `Unreachable` and `MissingWakeups`, which retry. A missed wake-up
+     (decision 94) also needs 60 s since the till connected, not only since
+     the last ding: the first timer check after connecting can find a sale
+     rung up just before, which no ding was ever going to announce.
+110. **The distributor's failures have words too.** Decision 95's
+     `Unreachable` reasons for the Bell are joined by the distributor's: "the
+     UnifiedPush app refused" (`ACTION_REQUIRED`, `VAPID_REQUIRED`, an
+     internal error, or a key the connector takes for no P-256 point), "the
+     UnifiedPush app gave no keys" (an endpoint without them), "the
+     UnifiedPush app has no connection" (`NETWORK`) and "the UnifiedPush app
+     didn't answer" (no endpoint within 30 s: the distributor may have to
+     reach its server first). All are retried as an unreachable Bell is.
+     They fill A1.7's `reason` and nothing else changes on the screen.
+112. **What the connector brings, checked.** `org.unifiedpush.android:connector`
+     3.3.5's POM gives the Apache License 2.0; it depends on
+     `com.google.crypto.tink:tink` 1.23.0 (the JVM Tink, with `protobuf-java`
+     and `gson`, not `tink-android`, so there is nothing to force) and on
+     nothing from Google's services: `./gradlew :app:dependencies` has no
+     `com.google.firebase` or `com.google.android.gms` (A7.34). It keeps
+     its registrations in a SQLite database and its keys in
+     SharedPreferences, both under domains the backup rules already exclude
+     with everything else (`allowBackup="false"` too), so the rules are
+     unchanged (A12.3) and a restored or new phone subscribes and registers
+     afresh at its first start. Its AAR carries no ProGuard rules; the
+     release build's R8 pass keeps what the manifest names, but the emulator
+     script runs a debug build, so a ding through a minified build is still
+     to be seen before a release.
+114. **The connector forgets the distributor with its last registration, so
+     the app keeps it.** In 3.3.5, `UnifiedPush.unregister(context, instance)`
+     removes the instance and then, with no registration left, the saved
+     distributor too (`DistributorStore.remove()`; the distributor is still
+     told to unregister, from the token it kept). The app has one instance,
+     `bell`, so every Timer only, sign-out, Bell switch and rotated VAPID key
+     would forget the distributor: the rotated-key path (unsubscribe, then
+     subscribe for the new key) ended in "Needs a UnifiedPush app" with ntfy
+     installed, and the cashier's pick among several (A7.31) was lost.
+     `UnifiedPushSubscriptions.unsubscribe()` reads the saved distributor
+     first and saves it again after unregistering; `subscribe()` with none
+     saved resolves one (the default, or the only one installed) before it
+     fails with `NoDistributor`. The build has no Robolectric, so this rests
+     on the connector's bytecode, recorded here, and on two emulator checks
+     in the script: pick a distributor among two, Timer only, the Bell again,
+     and no second pick; unsubscribe inside ntfy, `NoDistributor`, and the
+     next shift start connects again by itself. A distributor uninstalled
+     with two others left is taken back as decision 108 says: the pass
+     `DELETE`s the registration before showing the choice, so the Bell isn't
+     ringing a dead endpoint while the cashier picks.
+116. **A missed wake-up is judged at the timer's find, not later.** A
+     timer-started check that finds a sale with no ding in the 60 s before
+     is `MissingWakeups` at once (decision 94). The other way, waiting
+     `MISSED_AFTER` past the find for a ding, would spare one case: a 30 s
+     check landing on a sale whose webhook is still in flight. That case
+     costs one idempotent `POST` and a few seconds at 2 s, since the ding on
+     its way puts the till back to `Connected` when it lands. Waiting costs
+     every real missed wake-up another minute at 30 s, which is what the
+     cashier would notice, and a timer job of its own. So the verdict stays
+     at the find. QA measured the cost on the emulator against fake-square,
+     whose webhook follows the sale within milliseconds: twice in 35 minutes
+     a 30 s check landed within 200 ms of a sale, before its ding, and the
+     till showed "Wake-ups not arriving" and `POST`ed again, back to
+     `Connected` within the second. Against Square, whose webhook takes
+     seconds, the coincidence is likelier (a few per cent of sales) and
+     costs the same: accepted as this decision says, and the first thing to
+     revisit if the flicker is seen on a till.
+118. **A distributor uninstalled ends the subscription twice over, so its
+     end is judged by what is installed.** In 3.3.5,
+     `UnifiedPush.getSavedDistributor()` finding the saved distributor gone
+     broadcasts a local `UNREGISTERED` for each of the instance's tokens
+     without removing them first, and the connector's receiver answers a
+     plain `UNREGISTERED` with `UnifiedPush.unregister(context, instance)`,
+     by instance. So `resolve()` in decision 102's look at a change of apps
+     itself brings a `Lost`, after or before the pass that look started
+     through the distributor left (the worse ordering also ends the `bell`
+     registration that pass just made). `BellWakeUps` remembers the
+     distributor a change of apps took away; at a `Lost` it takes the Bell
+     registration back as decision 91 says and then asks `resolve()`: the
+     same distributor still there, or none, is `NoDistributor` (the
+     distributor itself ended it, decision 91); another, or several to
+     choose from, is a pass that ends `Connected` or `ChooseDistributor`,
+     subscribing afresh. An app updated (`PACKAGE_REMOVED` then
+     `PACKAGE_ADDED`, both with `EXTRA_REPLACING`) is no change at all and
+     no longer drives a look. Tested on virtual time in both orders of the
+     change and the `Lost`; the emulator script's step 27 (two distributors,
+     the used one uninstalled) is where it is seen on a device. The remembered
+     departure lasts until a `Lost` uses it or the app ends the subscription
+     itself, which is owed no `Lost`: the last distributor uninstalled has
+     the pass unsubscribe before the connector's `Lost` lands, and
+     `UnifiedPushSubscriptions` drops a `Lost` with nothing subscribed, so
+     without that the departure outlived it and a later distributor's own
+     end (the cashier ending the subscription in it) read as the old
+     departure and subscribed again instead of showing `NoDistributor`.
+     Tested: connected through ntfy, ntfy uninstalled (`NoDistributor`),
+     NextPush installed (`Connected`), then NextPush's `Lost` is
+     `NoDistributor` with no `POST` after it.
+120. **A pass never takes the till down.** The graph's scope has a
+     `SupervisorJob` and no exception handler, so anything a pass throws
+     that isn't the Bell's or the network's (a store that can't be read or
+     written, the Keystore under the encrypted preferences, the connector's
+     SQLite or the package manager, Square's client failing some other way)
+     would reach the thread's uncaught handler mid-shift, as `TillRunner`
+     already guards against for Square. A pass catches every `Exception`
+     but cancellation and settles `Unreachable` with decision 110's list
+     joined by "something on this device failed", retried as an unreachable
+     Bell is; the `Lost` handling does the same, a `DELETE` that fails any
+     way is dropped locally as an unreachable Bell's is, and a failing look
+     at installed apps becomes the next pass. Nothing about the failure is
+     logged: its message can carry what the store held. Tested with a Bell
+     client throwing `IllegalStateException`: the status settles, the scope
+     lives, the retry and a later `choose()` connect.
+122. **The registration remembers the distributor it was made through, and
+     drops what nothing reads.** `BellRegistration` kept the location, the
+     Square application the Bell answered with and the time it was made,
+     and `BellInfo`/`BellRegistered` decoded the Bell's version and
+     application id for them; nothing read any of it, so they are gone (the
+     Bell's answers still decode: the client ignores unknown keys). In their
+     place it keeps `distributor`, the package the subscription was made
+     through, read as `subscribedThrough ?: registration.distributor` by
+     decision 102's look and by the pass before it subscribes, which records
+     a departure when `resolve()` gives another distributor. That covers a
+     distributor uninstalled while the app was away: at the next start the
+     connector's `getDistributor()` broadcasts the `UNREGISTERED` for the old
+     token during the start's `resolve()` (3.3.5 broadcasts per token and
+     removes nothing), the pass connects through the distributor left, and
+     the `Lost` arrives after it with this process never having subscribed
+     through the old one; without the stored package that `Lost` read as the
+     new distributor's own end, `NoDistributor` with one installed until the
+     next shift start. Now it is a pass that ends `Connected` through the new
+     distributor with the registration posted again. Tested: a registration
+     made through ntfy, a start with only NextPush, then the `Lost`.
+     Registrations stored by earlier builds of this branch lack the field
+     and read as none (the branch was never released).
+123. **A distributor that answers late, or after being opened, connects
+     the till at once** (lead, after QA round 1). QA's one major finding: a
+     ntfy just installed sits in Android's stopped state until it is opened,
+     so the connector's `REGISTER` to it goes unanswered, the pass settles
+     "the UnifiedPush app didn't answer" after decision 110's 30 s, and the
+     till waited out decision 95's first minute (83 s from the install to
+     `Connected`) although the cashier had opened ntfy at once. Three
+     things, none of them a change to the retry schedule: (1) an endpoint
+     the connector delivers while no pass runs and no registration holds it
+     starts a pass, so a distributor that answers after the 30 s connects
+     the till the moment it does (`pushChanged` no longer needs a
+     registration to act on `Subscribed`; a `Lost` still does; a
+     subscription the last pass already took is nothing new, so a `POST`
+     the Bell refused isn't tried again on the strength of the endpoint it
+     was made with, which keeps decision 95's rule for refusals); (2) the
+     activity coming to the foreground and Settings opening call
+     `recheck()` when the status is `Unreachable`, and only then, so coming
+     back from the distributor (or from the network settings) tries the Bell
+     now rather than at the end of the wait, while `Connected` isn't
+     `POST`ed again on every return and a `Refused` keeps decision 95's
+     rules; (3) the reason reads "the UnifiedPush app didn't answer: open it
+     once", which says what to do and stops the words from reading as a
+     fault in the app just installed. Tested on virtual time: a late
+     endpoint after `PUSH_SILENT` ends `Connected` with the subscription
+     held registered and no second subscribe, and the wait that was set is
+     cancelled with it; a `recheck()` 5 s into the wait connects. The
+     foreground call is in the activity and view model, the one place the
+     app knows it came forward; the push module stays without a lifecycle.
+     Reading the status there makes the activity's first start decision
+     100's first use of `Graph.wakeUps`, so the app-start registration now
+     happens when the app is opened rather than at Settings or a shift; a
+     process the distributor starts for a ding still touches `Graph.push`
+     only.
+124. **Settings › Wake-ups after QA round 1** (lead; refines 99, 103). Four
+     findings on the screen, each taken: "Every 30 s" wrapped as "Every 30"
+     and "s" at font scale 2.0, so the pace's space is a non-breaking one
+     (` `); a debug build's http Bell showed the same detail as an
+     https one of the same host ("10.0.2.2:8445" for both), so a Bell's row
+     detail keeps its scheme when it isn't https, for the Monokular Bell row
+     and My own Bell alike (`WakeUpsText.bell`), and the address field
+     starts with the same text; the rate-limited refusal said "trying again
+     in 58 seconds" for the whole minute, since the footnote doesn't count
+     down, so it says "trying again in about a minute" (or "about N
+     minutes" from `Retry-After`), which stays true while it shows; and
+     tapping My own Bell with no address saved moved the tick and hid the
+     status card while the saved Bell was still registered and `Connected`,
+     so now the tap opens the address field and its footnote ("… Until then
+     Wake-ups stay as they were.") above the saved choice's status card,
+     and the tick stays with the saved choice until "Use this Bell", as
+     A3.13 ties it to a saved mode. Decision 103's "ticked here" is
+     superseded by this.
+125. **What QA round 1 left, and why.** Recorded rather than fixed in this
+     PR: a `DELETE` that the Bell was down for (decision 97's one try,
+     then dropped locally) is not remembered, so the Bell keeps the old
+     row until its failure limit trips, and ntfy.sh never fails a topic, so
+     for a till that left while its Bell was down the row stays until the
+     Bell's operator clears it; remembering the undelivered id and address
+     in the store and sending it before the next `POST` to that Bell is the
+     fix, and needs a store field, so it is a follow-up and not this
+     round's change. Two findings are the till's, not Wake-ups': ten sales
+     in one second stack ten code screens on the back stack (a new sale
+     should replace an open code screen), and "Sign in to Square" from
+     Settings › Square after a sign-out goes through onboarding's Connect
+     Square step and lands on an already-seen sale's code (the Wake-ups
+     card's own sign-in row returns to Settings correctly); both predate
+     this branch, Wake-ups only makes the burst arrive faster, and both are
+     follow-ups. Decision 116's coincidence and decision 100's log line are
+     recorded there.
+
+## App: Clover, the second point of sale (2026-10-28)
+
+Made by the team's Kotlin lead and developers while adding Clover beside
+Square (`docs/design.md` §1, §3; the Bell's side is `docs/decisions/bell.md`
+B43 to B57), with the owner away. The research behind them, with its
+sources, assumptions A1 to A6 and risks R1 to R10, is the team's
+`clover-research.md`, summarised in the PR; the product owner's acceptance
+criteria (D1 to D9 there) are taken as written except where an entry below
+says otherwise.
+
+126. **The point of sale is chosen in onboarding step 4 and in Settings, and
+     kept as `pos.kind`; `PointOfSale` lives in `core`**, because `push` and
+     `sales` both need it and `push` doesn't depend on `sales`. A till from
+     before this build (Square tokens, no `pos.kind`) reads as Square, and
+     its `square.skipped` reads as `pos.skipped`, so nobody is asked again.
+127. **Clover signs in with its PKCE flow for low-trust apps, on the
+     device, with no secret anywhere; the redirect is the App Link
+     `https://monokular.monokulo.com/clover`** (a debug build:
+     `/clover/debug/`, which [site/clover/debug/](../../site/clover/debug/index.html)
+     forwards to `monokular-debug://clover`; with a stand-in, the scheme
+     directly). Clover takes only https under the app's Site URL, so a
+     custom scheme was never an option. Clover documents no `state`: the
+     app sends one and checks it only when Clover echoes it; the binding is
+     the one pending attempt (`PendingSignIn.pointOfSale`) plus the
+     verifier, so a redirect with nothing pending answers "That Clover
+     sign-in wasn't started here. Try again." The redirect's `merchant_id`
+     is the merchant: there is no location to pick, one merchant per token.
+128. **Clover's tokens keep Square's shape, now `PosTokens`, with the expiry
+     converted from Clover's Unix seconds to RFC 3339; a 30-minute access
+     token is refreshed under five minutes left, and the single-use refresh
+     token is saved before anything else.** A `4xx` refresh signs the till
+     out once with "Clover's sign-in has ended. Sign in again." and never
+     loops (R1: Clover caps live refresh tokens per merchant per app, so two
+     tills at one merchant may sign each other out); a `5xx` is transient;
+     a `429` (refresh or API) holds the next look for its `retry-after` and
+     keeps the sign-in.
+129. **The Monero payment type is found by label (trimmed, case-insensitive,
+     an enabled and visible one first), else created over REST with
+     `labelKey` `com.clover.tender.external_payment`, and payments are known
+     by its id**, remembered per merchant (`clover.tender.<merchant>`). A
+     REST tender must use a system `labelKey`, so the id, not the key, tells
+     Monero apart. Creating needs Merchant write; finding first means a
+     merchant who added "Monero" in Clover needs no write (R9). A refused
+     `POST` doesn't stop the sign-in: step 4's card and Settings ask the
+     cashier to add a payment type called Monero in Clover and offer **Look
+     again**, and nothing retries the `POST` on a timer. A remembered id
+     deleted in Clover is forgotten and found again or made, only from that
+     look.
+130. **A Clover sale never paid is refunded by the cashier in Clover's Orders
+     app, guided and then confirmed by the till.** Clover's REST API can't
+     refund, void or delete an external-tender payment (R4), so the source
+     offers `Refunds.InPos` (a type that can only look, rather than a
+     `refund()` that does nothing: a departure from acceptance T4.1's
+     method name), the sale gets `refundPendingAt` and stands as
+     `RefundInPos` under Needs action, and the **Refund in Clover** sheet
+     says which order, when and how much, with **I've refunded it** (asks
+     Clover now; "Clover doesn't show a refund yet" if not) and **Not yet**.
+     A refund is seen when the payment's non-voided refunds reach its
+     amount, the order's `paymentState` is `REFUNDED`, or the payment is
+     voided. The timer looks at pending refunds at most every 30 s, not on
+     every pass as acceptance D9 says: without a Bell a pass is every 2 s,
+     one request per pending sale, and the sheet's button asks at once. The
+     alternative, recording the payment on an open order only once the
+     Monero confirms (design B), is kept in the research for if a
+     REST-made tender never shows in Clover Register (A1).
+131. **`PosException` is a point of sale's common error; `SquareException`
+     and `CloverException` extend it**, so `Till` and the view model catch
+     one type.
+132. **A Bell registration names its point of sale and its `location_id`
+     (a Square location, or a Clover merchant: its only location), and
+     `PosSide` replaces `SquareSide`.** The till reads the Bell's
+     `points_of_sale` entry for its own point of sale, in this order:
+     absent, refused ("it doesn't ring Clover tills"); another environment,
+     refused in words naming it ("it's for Clover in Europe"); another
+     application, `SignInNeeded(pos, applicationId)` and a sign-in through
+     it, as decision 96 has for Square. `square-refused` and
+     `clover-refused` match the till's own point of sale only, so a
+     problem slug for the other is read by its status alone.
+133. **A ding is exactly `{"wake":"<the till's current point of sale>"}`;
+     anything else is dropped unlogged** (decision 92 widened): a Bell rings
+     a till only for the point of sale it registered, so `{"wake":"square"}`
+     on a Clover till is stale or forged.
+134. **The Clover receipt groups the line items Clover repeats one per unit,
+     reads `unitQty/1000` for measured ones, and shows one tax line, the
+     order's total less its lines** (what the paper receipt shows; per-line
+     `taxRates` would need another expand, acceptance D8). A total below the
+     lines is shown as a discount, as Square's is, with no tax line. The
+     merchant's name comes from `/v3/merchants`, its currency, time zone
+     and country from `/properties` and its address; with no country the
+     sale gets the plain code. `FoundSale.reference` is null (Clover prints
+     no receipt number on the payment, acceptance D7), so the receipt reads
+     "Clover order …". An order with 100 or more line items gets the plain
+     code: Clover's `expand` returns at most 100, so the list may be cut,
+     and total less lines would print the missing items as tax. Payments
+     are looked at no further back than 89 days (Clover's 90-day filter
+     cap), at most 20 pages of 100 a look.
+135. **No "Back to Clover" button**: the Clover point of sale is its own
+     device, not an app on the cashier's phone; the button stays Square's
+     (`TillRunner`'s `onBackToPos` is Square's only), and the bubble beside
+     a Clover device floats "over other apps".
+136. **Every word on screen that names the point of sale comes from one
+     `PosText` object, with an exhaustive `when` where the two differ**
+     (acceptance D5; Wake-ups' reasons from `push`'s `PosWords`): "Refund it
+     in Clover", "Checking Clover", "Merchant" where Square says "Location".
+     Onboarding step 4 is "Connect your point of sale", the two as radio
+     rows with the chosen one's card beneath, on the one screen that
+     `Screen.PointOfSale` replaces `Screen.Square` with (acceptance T1.1
+     describes one screen; there is no separate chooser).
+137. **Build properties `monokular.clover.applicationId` (a placeholder
+     otherwise), `monokular.clover.environment` (`north_america` by default;
+     `europe`, `latin_america`, `sandbox`) and, for a debug build,
+     `monokular.clover.baseUrl`** (a stand-in playing Clover's web and API
+     hosts on one); `CLOVER_REDIRECT_URI` and `CLOVER_RETURN_URI` mirror
+     Square's. A debug build's Settings field for the stand-in's address is
+     kept as `debug.clover.base`.
+138. **Changing the point of sale** (Settings › Point of sale › Change the
+     point of sale, acceptance D6) first takes the Bell registration back,
+     awaited, while the old sign-in is still there, then signs out of the
+     old point of sale (tokens, location or merchant, cursor, remembered
+     payment type), keeps the Wake-ups choice and the shift's saved sales,
+     and goes to the new one's sign-in; choosing the one chosen changes
+     nothing. The sign-out happens even when the old sign-in had already
+     ended (a refused refresh, Square's sign in again), so no location,
+     merchant, cursor or payment type id of a point of sale the till isn't
+     signed in to is left behind; only the Bell step waits on a sign-in.
+     It is `PosSwitch`, a pure helper tested on a recording fake,
+     as `TillNav` is. Only a change forgets the old point of sale's cursor
+     (where its search for sales had got to); Settings' "Sign out of …"
+     (`PosSwitch.signOut`) keeps it, as Square's sign-out on Wake-ups did,
+     so signing in to the same point of sale again reads on from there
+     instead of reading the merchant's earlier payments again (Monokulo's
+     idempotency key would make that re-read harmless, but it costs
+     requests and Clover's rate limit for nothing).
+     `Till` keeps the old sales safe from the new source: a sale another
+     point of sale took is only ever marked to refund there
+     (`refundPendingAt`), never sent to the till's point of sale, whose
+     payment ids it doesn't know, and the timer never asks the new one
+     about it; its "I've refunded it" takes the cashier's word, since
+     nothing can ask the point of sale that took it, and the sheet says
+     so ("Tap I've refunded it once it's done") instead of "Monokular will
+     notice".
+139. **A `401` from Clover before the token's expiry (Clover ended it early)
+     is met by one refresh and the request asked once more**; a refresh
+     another request already made is used instead, and a fresh token
+     refused too signs the till out at once, so no later pass spends a
+     refresh token (R1). `CloverAuth.refreshAfterRefusal`.
+140. **A Clover order's title ("Table 4") is carried on the sale
+     (`FoundSale.title`, defaulted so saved shifts still read)** from the
+     payments already read with `expand=order`, no extra request; blank
+     titles are none, Square leaves it null. The sale page shows it as its
+     first fact, Order, wherever the page has facts: once the sale is
+     closed, paid, expired, reversed or refunded (a sale waiting for
+     payment shows its code and order card, with no facts, as before); and
+     the Refund in Clover sheet names "order Table 4"
+     rather than the order's id, which is what the cashier finds in Clover's
+     Orders app.
+141. **A sale found before the till's point of sale changed keeps the name
+     of the one that took it, and is refunded there** (acceptance D6's
+     "their source name shown as it was"). `FoundSale.pointOfSale` says
+     which point of sale found it (a sale saved before Clover joined reads
+     as Square's), so `PosText.of(sale, till)` is that, or the till's own
+     for another till's sale (Monokulo doesn't say), and names every sale's
+     words, receipt label and notification; the app keeps no list of its
+     own. The till can't refund such a sale or see its refund (it is signed
+     in elsewhere), so its page drops Refund and says to refund it there,
+     and its close sheet offers what another till's does; one already told
+     to refund it there keeps Refund, which opens the refund sheet named by
+     the sale's point of sale, for the cashier's word (decision 138). The
+     close sheet's "No" says the cashier refunds it when the sale's point
+     of sale isn't the one the till's source watches or that one can't
+     refund (`Closing.refundsThere`), `Till.refund`'s own rule, and any sale
+     that then stands as `RefundInPos` opens the sheet.
+     A sale screen's top is `SaleHeader`, from the sale and the till's
+     point of sale: the receipt's name ("Clover order …"), the bar's second
+     line, which names the old point of sale ("Clover · this till") rather
+     than the location the till watches now, since that sale wasn't rung up
+     there, and "Back to Square" only for a sale of the Square till it is
+     (`PosText.elsewhere`, `PosText.placeOf`; the notification and the
+     bubble's header say the same place). QA round 1 saw a Clover sale's
+     order card turn "Square receipt" on a Square till: the bar and the
+     button were this build's (fixed here); the receipt's name never reads
+     anything but `FoundSale.pointOfSale`, which a saved shift keeps
+     (`ShiftListTest` reads one back). The likeliest cause is the one QA's
+     notes record: other streams' builds of `app.monokular.debug`, which
+     name every receipt Square's and know no Clover, were being installed
+     over this one on the same emulator during the run. On an emulator of
+     its own against both stand-ins, a Clover sale left up through a change
+     to Square reads "Clover · this till", "Clover order …" and no Back to
+     Square, and still does after the app is stopped and opened again.
+     A step 4 opened from Settings has Back and Done in place of the step
+     number and the test sale, and the shift's top row says a Clover
+     merchant's name once when it is the store's.
+142. **Till's idempotency key keeps its `sq:` prefix for every point of
+     sale**: changing it would change Square's keys for sales in flight,
+     and two points of sale's payment ids never meet at one Monokulo
+     connection.
+143. **A till not signed in to a point of sale refuses a Square sale's
+     refund rather than marking it refunded with nothing sent**:
+     `TillRunner`'s `NoSource` (Square's, so a Clover sale is marked to
+     refund in Clover as decision 141 has) throws `PosException` "Sign in to
+     Square first", which the sale page shows as its refund problem. Before,
+     its `Refunds.ByTill` did nothing and `Till` marked the sale refunded,
+     on Wake-ups too.
+144. **QA round 1 on the Clover till.** A registration taken back (a
+     change of point of sale, a sign-out, another Bell) takes its Last
+     wake-up with it, so Settings › Wake-ups starts again at "None yet"
+     rather than showing the old point of sale's ding under "Checking
+     Square". The screenshots are acceptance T6.2's set, from QA's run
+     against tools/fake-clover (the dark Clover card from a run of the same
+     build):
+     [pos-choice](../screenshots/android/pos-choice.png)
+     ([dark](../screenshots/android/pos-choice-dark.png)),
+     [clover-signin](../screenshots/android/clover-signin.png)
+     ([dark](../screenshots/android/clover-signin-dark.png)),
+     [clover-connected](../screenshots/android/clover-connected.png)
+     ([dark](../screenshots/android/clover-connected-dark.png)),
+     [settings-pos-clover](../screenshots/android/settings-pos-clover.png)
+     ([dark](../screenshots/android/settings-pos-clover-dark.png)),
+     [refund-in-clover](../screenshots/android/refund-in-clover.png)
+     ([dark](../screenshots/android/refund-in-clover-dark.png)) and
+     [wakeups-clover](../screenshots/android/wakeups-clover.png)
+     ([dark](../screenshots/android/wakeups-clover-dark.png)); beside them
+     the sale with its Clover receipt
+     ([clover-sale](../screenshots/android/clover-sale.png)), the refund
+     not seen yet and then seen
+     ([clover-refund-not-seen](../screenshots/android/clover-refund-not-seen.png),
+     [clover-refunded](../screenshots/android/clover-refunded.png)) and
+     Settings after changing to Square
+     ([settings-pos-square](../screenshots/android/settings-pos-square.png)).
+145. **An item sold by measure counts as one item.** The heads-up
+     notification, the sale's order card and the order page count what was
+     bought from the receipt (decision 63: "15 items"). The count added
+     every line's quantity and rounded, which Square's whole quantities
+     never showed; Clover's measured lines did, and "2 × Flat white,
+     2.5 × Granola" read "5 items". A whole quantity now counts as that many
+     items and a quantity that isn't whole as one, whatever it measures, so
+     the same order reads "3 items": what the customer takes away. A
+     measured quantity that happens to be whole (2.000 kg) counts as two,
+     since a receipt line carries no unit; recorded rather than worth a
+     field. `OrderText.lines` ("8 lines") is unchanged. (QA round 2.)
+146. **A sign-out forgets the application the sign-in went through.**
+     `Stores.squareApplicationId` and `cloverApplicationId` (decisions 96,
+     132) exist for the tokens: a refresh goes to the application that
+     issued them, so the id must live exactly as long as they do. Only
+     `forgetAll` cleared them, so after signing in through another Bell's
+     application, changing Wake-ups back to the project's Bell and signing
+     out of the point of sale, the plain "Sign in to Clover" went through
+     the other Bell's application again and the project's Bell asked for a
+     sign-in a second time. `signOutHere` now forgets the id with the tokens
+     (a change of point of sale and Settings' "Sign out of …" both go
+     through it), so the next plain sign-in is through the build's own
+     application, or the one the chosen Bell's row asks for. Changing the
+     Bell choice alone leaves the id, as the tokens it refreshes are still
+     in use; that Bell's status says "Sign in needed" until the sign-in
+     through its row. (QA round 2.)

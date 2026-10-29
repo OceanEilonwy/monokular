@@ -17,14 +17,22 @@ what someone bought never reaches Monokulo.
 
 The Android app works end to end against Monokulo's connected-apps API
 (OceanEilonwy/monokulo#140) and a stand-in Square, and follows the design
-mockups: setup in six steps (connect from a store's code, sign in to Square,
-alerts and the bubble), a floating bubble over Square that lights up with a
-sale and opens its code over it, a Live Update notification with the
+mockups: setup in six steps (connect from a store's code, choose Square or
+Clover and sign in to it, alerts and the bubble), a floating bubble over
+Square (or over whatever the phone shows beside a Clover device) that lights
+up with a sale and opens its code over it, a Live Update notification with the
 payment's progress, and the sale full screen in the app, with the receipt
-in the code, until it's paid or refunded. It hasn't met real Square yet
-(the Square spike, design doc §10), the app doesn't use push or the
-Monokular Bell yet (the Bell itself is built: [below](#running-a-bell)), and
-iOS hasn't started. Choices made along the way are in
+in the code, until it's paid or refunded. A Clover sale never paid is
+refunded by the cashier in Clover's Orders app, which the till guides and
+then sees (Clover's API can't refund it). With a Monokular Bell
+([below](#running-a-bell)) chosen in Settings › Wake-ups, the point of sale
+wakes the till through the Bell within a second or two of a sale and the till
+checks it every 30 seconds instead of every 2; the dings come over UnifiedPush,
+so the phone needs a distributor such as [ntfy](https://ntfy.sh/) (FCM
+through the push relay isn't built). It hasn't met real Square or real
+Clover yet (the Square spike, design doc §10; Clover's sandbox needs a dev
+kit to ring up a sale), and iOS hasn't started. Choices made along
+the way are in
 [docs/decisions/android.md](docs/decisions/android.md); screenshots are in
 [docs/screenshots/android](docs/screenshots/android).
 
@@ -54,7 +62,11 @@ cargo install cargo-ndk --version 4.1.2 --locked       # once
 The Square application id is a build property:
 `-Pmonokular.square.applicationId=sq0idp-…` (a placeholder otherwise). It's
 public, so `~/.gradle/gradle.properties` is a good home for it; the
-application's secret is never used (the till signs in with PKCE).
+application's secret is never used (the till signs in with PKCE). Clover's
+are `-Pmonokular.clover.applicationId=…` (the app's App ID) and
+`-Pmonokular.clover.environment=` `north_america` (the default), `europe`,
+`latin_america` or `sandbox`; Clover's app secret is never used either (its
+PKCE flow for low-trust apps needs none).
 
 ### Signing a debug build in to Square's sandbox
 
@@ -86,16 +98,38 @@ signed in as. It lists the location's latest payments and refunds them too.
 cargo run -p square-sandbox   # http://127.0.0.1:8739, then enter the token on the page
 ```
 
+### Signing a debug build in to Clover's sandbox
+
+```properties
+# ~/.gradle/gradle.properties
+monokular.clover.applicationId=…        # the sandbox app's App ID
+monokular.clover.environment=sandbox
+```
+
+In the sandbox developer dashboard (sandbox.dev.clover.com), give the app
+platform **Web** with the **Site URL** `https://monokular.monokulo.com/clover`
+and the default OAuth response **Code**. Clover sends a sign-in only to https
+under the Site URL, so a debug build asks for `/clover/debug/`; that page
+([site/clover/debug/](site/clover/debug/index.html)) hands it to the debug
+build's `monokular-debug://clover`, as Square's does. Request the
+permissions Payments and Orders read and Merchant read and write (write only
+to add the Monero payment type; without it the till asks the cashier to add one called
+Monero in Clover and **Look again**). The sandbox signs in and answers the
+API, but ringing up a Monero sale needs Clover Register on a dev kit or
+Clover's emulator image.
+
 | Module | What it is |
 | --- | --- |
 | `android/core` | Pure Kotlin, no Android: connect codes, the Monokulo client, sale events. |
 | `android/receipt` | ORF receipts in the payment code, through `crates/orf-codec-ffi` (UniFFI). |
-| `android/sales` | Square on the till (PKCE sign-in, Monero tenders, orders, refunds) and the till's sales. |
+| `android/sales` | Square and Clover on the till (PKCE sign-in, Monero tenders, orders, refunds) and the till's sales. |
+| `android/push` | Wake-ups: the Bell's API, the till's registration with it, and its dings over UnifiedPush. |
 | `android/app` | The Compose app, the shift's foreground service, its notifications and the bubble over other apps. |
 
 ### Running it end to end on an emulator
 
-A debug build talks to a Monokulo on your machine and a stand-in Square:
+A debug build talks to a Monokulo on your machine and a stand-in Square or
+Clover:
 
 ```sh
 # In the monokulo repository: a Monokulo with an in-process engine, on :8737
@@ -109,6 +143,59 @@ curl -X POST localhost:8737/__dev/code    # a connect code: paste it in, or shar
 curl -X POST localhost:8738/fake/sale -d '{"items":[["Flat white",2,450]]}'   # ring up a sale
 curl -X POST localhost:8737/__dev/orders/<order id>/paid                       # and pay it
 ```
+
+For Clover, choose Clover at step 4 and run the stand-in Clover instead (it
+plays Clover's sign-in and API on one host, and approves the sign-in at once
+for The Bean Room, merchant `MCLOVERDEV001`):
+
+```sh
+python3 -I tools/fake-clover/fake_clover.py    # :8740
+cd android && ./gradlew :app:installDebug -Pmonokular.clover.baseUrl=http://10.0.2.2:8740
+
+curl -X POST localhost:8740/fake/sale -d '{"items":[["Flat white, oat milk",2,450]],"title":"Table 4"}'
+curl -X POST localhost:8740/fake/refund -d '{"payment_id":"<id>"}'   # the cashier's refund in Clover
+curl -X POST localhost:8740/fake/expire-tokens                           # Clover ends the access token early
+```
+
+`FAKE_CLOVER_DENY_TENDER_WRITE=1` refuses the Monero payment type's `POST`,
+so step 4 shows "Add a payment type called Monero in Clover" and **Look
+again**; `FAKE_CLOVER_REFRESH_CAP` and `/fake/revoke` play Clover signing
+the till out.
+
+#### Wake-ups
+
+To try a Bell too, run one as the last example in
+[Running a Bell](#running-a-bell) does (keep its `MONOKULAR_BELL_VAPID_KEY`
+between runs, as that section says), ring the sales up through it, give the
+emulator a UnifiedPush distributor, and point the build at the Bell:
+
+```sh
+# The stand-in Square, sending each sale to the Bell as a signed webhook
+FAKE_SQUARE_WEBHOOK_URL=http://127.0.0.1:8445/v1/square/webhook FAKE_SQUARE_WEBHOOK_KEY=dev \
+  python3 -I tools/fake-square/fake_square.py
+# ntfy's F-Droid build (no Google services) as the distributor, on the public ntfy.sh, from
+# github.com/binwiederhier/ntfy-android/releases; its certificate's SHA-256 must be the one ntfy publishes
+apksigner verify --print-certs ntfy-<version>-fdroid.apk | grep SHA-256
+adb -s emulator-5554 install ntfy-<version>-fdroid.apk      # then open it once
+# The app, for the Bell's application and the Bell
+cd android && ./gradlew :app:installDebug -Pmonokular.square.applicationId=sandbox-sq0idb-dev \
+  -Pmonokular.square.sandbox=true -Pmonokular.square.baseUrl=http://10.0.2.2:8738 \
+  -Pmonokular.bell.url=http://10.0.2.2:8445
+```
+
+For Clover, give the Bell a `[bell.clover]` with `application_id =
+"FAKECLOVERAPP"` and `api_url = "http://127.0.0.1:8740"` and
+`MONOKULAR_BELL_CLOVER_AUTH_CODE=dev`, run fake-clover with
+`FAKE_CLOVER_WEBHOOK_URL=http://127.0.0.1:8445/v1/clover/webhook
+FAKE_CLOVER_AUTH_CODE=dev`, and build with
+`-Pmonokular.clover.applicationId=FAKECLOVERAPP
+-Pmonokular.clover.baseUrl=http://10.0.2.2:8740 -Pmonokular.bell.url=http://10.0.2.2:8445`.
+
+Then Settings › Wake-ups › Monokular Bell. The ding goes Bell → ntfy.sh →
+ntfy on the emulator, so the emulator needs the internet; fake-square's log
+shows the till's pace (`GET /v2/payments` every 30 s once connected, and one
+within a second of each sale). `-Pmonokular.bell.url` takes what the
+Settings field takes: a release build only an https address.
 
 Versions live in `android/gradle/libs.versions.toml`; each was released at
 least two weeks before it was added.

@@ -73,7 +73,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.monokular.BubbleLook
+import app.monokular.PosText
 import app.monokular.SaleText
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
 import app.monokular.sales.Standing
 import app.monokular.sales.TillSale
@@ -82,6 +84,8 @@ import app.monokular.sales.standing
 import app.monokular.ui.CodeText
 import app.monokular.ui.Fixed
 import app.monokular.ui.LightTokens
+import app.monokular.ui.LoadingMark
+import app.monokular.ui.posOf
 import app.monokular.ui.Logo
 import app.monokular.ui.MkIcons
 import app.monokular.ui.OrderContent
@@ -108,7 +112,7 @@ object Panel {
     /** How fast a downward fling on the grabber has to be to lower the panel, in dp a second. */
     const val FLING_DP_PER_S = 800f
 
-    /** The smallest screen width, in dp, from which the panel floats beside Square instead of filling the screen. */
+    /** The smallest screen width, in dp, from which the panel floats beside the point of sale instead of filling the screen. */
     const val WIDE_DP = 600
 
     /**
@@ -142,17 +146,17 @@ object Panel {
         else -> SaleText.place(sale, location)
     }
 
-    /** The heading of a sale whose code came down while the panel was up (acceptance P15). */
-    fun endedHeading(sale: TillSale): String = when {
+    /** The heading of a sale whose code came down while the panel was up (acceptance P15), at a till on [till]. */
+    fun endedHeading(sale: TillSale, till: PointOfSale?): String = when {
         !sale.refunded && sale.phase == SalePhase.DoubleSpend -> "Payment reversed · don't hand it over"
-        else -> SaleText.status(sale)
+        else -> SaleText.status(sale, till)
     }
 
     /** What the cashier does about it: refund it from the shift, or on the till that took it. */
-    fun endedLine(sale: TillSale): String = when {
+    fun endedLine(sale: TillSale, till: PointOfSale?): String = when {
         sale.refunded -> "Nothing more to do."
-        sale.found == null -> "Refund it in Square on ${sale.deviceName ?: "the till that took it"}."
-        else -> "Open the shift to refund it in Square."
+        sale.found == null -> PosText.refundOnOtherTill(till, sale.deviceName ?: "the till that took it")
+        else -> "Open the shift to ${PosText.refundItIn(till)}."
     }
 }
 
@@ -169,18 +173,18 @@ class PanelActions(
 
 /**
  * The bubble (the design's Bubble part), in each [look]: faded and grey
- * with nothing to do, white with the [phase]'s ring (and a pulse) for a
+ * with nothing to do, white with the loading mark (and a pulse) for a
  * sale, the paid tick on its pale ground once it's paid. Its colours are
  * the design's whatever the theme: it sits over another app.
  */
 @Composable
-fun BubbleFace(look: BubbleLook, pulse: Boolean = true, phase: SalePhase = SalePhase.Waiting) = Box(
+fun BubbleFace(look: BubbleLook, pulse: Boolean = true) = Box(
     Modifier.padding(12.dp).clearAndSetSemantics {},
     contentAlignment = Alignment.Center,
-) { Circle(look, pulse, phase) }
+) { Circle(look, pulse) }
 
 @Composable
-private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
+private fun Circle(look: BubbleLook, pulse: Boolean) {
     when (look) {
         BubbleLook.Idle -> Box(
             Modifier.alpha(0.55f).shadow(4.dp, CircleShape).size(56.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.9f)),
@@ -200,10 +204,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
                     drawCircle(Fixed.Accent.copy(alpha = 0.55f * (1f - p)), radius = size.minDimension / 2 + 16.dp.toPx() * p)
                 }.shadow(6.dp, CircleShape).clip(CircleShape).background(Color.White),
                 contentAlignment = Alignment.Center,
-            ) {
-                PhaseRing(phase, 40.dp, track = Fixed.Track, fill = Fixed.Accent)
-                Box(Modifier.size(12.dp).clip(CircleShape).background(Fixed.Ink))
-            }
+            ) { LoadingMark(40.dp, label = "New sale", ring = Fixed.Ink) }
         }
         BubbleLook.Paid -> Box(Modifier.shadow(6.dp, CircleShape)) {
             PaidHero(56.dp, ground = LightTokens.paidGround, tint = LightTokens.paid)
@@ -335,7 +336,7 @@ private fun Face(sale: TillSale, wide: Boolean) = when (sale.standing) {
     is Standing.Paid -> {
         PaidHero(88.dp)
         Text(
-            SaleText.status(sale), style = display(28), textAlign = TextAlign.Center,
+            SaleText.status(sale, posOf(sale)), style = display(28), textAlign = TextAlign.Center,
             modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
         )
         Text("${SaleText.xmr(sale)} received", fontSize = 15.sp, color = mk.muted)
@@ -433,7 +434,7 @@ private fun StatusRow(sale: TillSale) = Row(
 ) {
     PhaseRing(sale.phase, 26.dp)
     Text(
-        SaleText.status(sale), fontSize = 15.sp, fontWeight = FontWeight.Bold,
+        SaleText.status(sale, posOf(sale)), fontSize = 15.sp, fontWeight = FontWeight.Bold,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
     CodeText.left(sale, secondsLeft(sale.expiresAt))?.let { Text("· $it", fontSize = 14.sp, color = mk.muted) }
@@ -461,10 +462,10 @@ private fun Ended(sale: TillSale) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(44.dp))
     }
     Text(
-        Panel.endedHeading(sale), style = display(26), textAlign = TextAlign.Center,
+        Panel.endedHeading(sale, posOf(sale)), style = display(26), textAlign = TextAlign.Center,
         modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
     )
-    Text(Panel.endedLine(sale), fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center)
+    Text(Panel.endedLine(sale, posOf(sale)), fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center)
 }
 
 /**
@@ -490,7 +491,7 @@ fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage,
             Modifier.clip(CircleShape)
                 .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = actions.onLower)
                 .semantics { contentDescription = "Lower to the bubble" },
-        ) { BubbleFace(look, phase = sale.phase) }
+        ) { BubbleFace(look) }
     }
     // Taps on the panel itself stay there.
     val panel = @Composable { sideBySide: Boolean ->

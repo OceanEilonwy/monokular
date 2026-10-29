@@ -49,6 +49,7 @@ import androidx.compose.ui.unit.sp
 import app.monokular.Ground
 import app.monokular.RowOpens
 import app.monokular.ShiftFilter
+import app.monokular.PosText
 import app.monokular.ShiftList
 import app.monokular.StateIcon
 import app.monokular.sales.TillSale
@@ -81,7 +82,7 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions)
                 item {
                     Notice(status.problem, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
                     if (status.signInAgain) {
-                        PrimaryButton("Sign in to Square again", actions.onSignIn, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth())
+                        PrimaryButton(PosText.signInAgain(LocalPointOfSale.current), actions.onSignIn, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth())
                     }
                 }
                 item {
@@ -134,7 +135,8 @@ private fun TopRow(status: TillStatus, actions: TillActions) = Row(
         status.live -> mk.paid to "Watching"
         else -> mk.outline to "Reconnecting…"
     }
-    val place = listOfNotNull(status.store, status.location)
+    // A Clover merchant is often named as the store is: said once.
+    val place = listOfNotNull(status.store, status.location).distinct()
     Row(
         Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = (place + state).joinToString(", ") },
         verticalAlignment = Alignment.CenterVertically,
@@ -166,11 +168,7 @@ private fun Idle(running: Boolean, actions: TillActions) = Column(
         style = display(22, 0.0), color = mk.muted, textAlign = TextAlign.Center,
     )
     Text(
-        if (running) {
-            "The code appears here, and the bubble over Square lights up, when you tap Monero in Square."
-        } else {
-            "Start watching and Monokular checks Square for Monero sales until you stop it."
-        },
+        if (running) PosText.waitingHint(LocalPointOfSale.current) else PosText.startHint(LocalPointOfSale.current),
         fontSize = 15.sp, lineHeight = 21.sp, color = mk.muted, textAlign = TextAlign.Center,
         modifier = Modifier.widthIn(max = 280.dp),
     )
@@ -214,7 +212,7 @@ private fun Chips(filter: ShiftFilter, needsAction: Int, onFilter: (ShiftFilter)
 /** One sale: its state's icon, "Sale #m2Qe · $8.40", how it stands, and where a tap goes. */
 @Composable
 private fun SaleRow(sale: TillSale, onOpen: () -> Unit) {
-    val row = ShiftList.row(sale, if (sale.live) secondsLeft(sale.expiresAt) else 0)
+    val row = ShiftList.row(sale, posOf(sale), if (sale.live) secondsLeft(sale.expiresAt) else 0)
     val ground = when (row.icon) {
         StateIcon.Clock -> Ground.Warn
         StateIcon.Warning -> Ground.Danger

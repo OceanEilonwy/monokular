@@ -1,5 +1,6 @@
 package app.monokular
 
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
 import app.monokular.receipt.PaymentCode
 import app.monokular.receipt.Receipt
@@ -81,30 +82,31 @@ class SaleTextTest {
 
     @Test
     fun `a sale's status follows where it stands on this till`() {
-        assertEquals("Waiting for payment", SaleText.status(sale()))
-        assertEquals("Seen on the network", SaleText.status(sale(phase = SalePhase.Seen)))
-        assertEquals("Part paid", SaleText.status(sale(phase = SalePhase.Partial)))
-        assertEquals("Paid", SaleText.status(sale(phase = SalePhase.Paid)))
-        assertEquals("Paid after you closed it", SaleText.status(sale(phase = SalePhase.Paid, closedAt = 1)))
-        assertEquals("Paid after the code expired", SaleText.status(sale(phase = SalePhase.Paid).copy(endedAt = 1)))
-        assertEquals("Paid after you closed it", SaleText.status(sale(phase = SalePhase.Paid, closedAt = 1).copy(endedAt = 2)), "closed, then the code ran out, then paid")
-        assertEquals("Paid after the refund", SaleText.status(sale(phase = SalePhase.Paid, closedAt = 1, refundedAt = 2)), "a late payment after the Square refund")
-        assertEquals("Closed · not paid", SaleText.status(sale(closedAt = 1)))
-        assertEquals("Code expired · not paid", SaleText.status(sale(phase = SalePhase.Expired)))
-        assertEquals("Code expired · not paid", SaleText.status(sale(phase = SalePhase.Expired, closedAt = 1)), "the code running out outranks the cashier's close")
-        assertEquals("Cancelled · not paid", SaleText.status(sale(phase = SalePhase.Cancelled)))
-        assertEquals("Payment reversed", SaleText.status(sale(phase = SalePhase.DoubleSpend)))
-        assertEquals("Refunded in Square", SaleText.status(sale(phase = SalePhase.Expired, refundedAt = 2)))
-        assertEquals("Refunded in Square", SaleText.status(sale(phase = SalePhase.Cancelled, closedAt = 1, refundedAt = 2)))
-        assertEquals("Code expired · not paid", SaleText.status(sale(phase = SalePhase.Expired, found = false, device = "Back till")), "what this till knows; the row adds the till")
-        assertEquals("Payment reversed", SaleText.status(sale(phase = SalePhase.DoubleSpend, found = false)))
-        assertEquals("Closed · not paid", SaleText.status(sale(found = false, closedAt = 1)))
-        assertEquals("Paid", SaleText.status(sale(phase = SalePhase.Paid, found = false, device = "Back till")), "another till's paid sale is just paid")
+        assertEquals("Waiting for payment", SaleText.status(sale(), PointOfSale.Square))
+        assertEquals("Seen on the network", SaleText.status(sale(phase = SalePhase.Seen), PointOfSale.Square))
+        assertEquals("Part paid", SaleText.status(sale(phase = SalePhase.Partial), PointOfSale.Square))
+        assertEquals("Paid", SaleText.status(sale(phase = SalePhase.Paid), PointOfSale.Square))
+        assertEquals("Paid after you closed it", SaleText.status(sale(phase = SalePhase.Paid, closedAt = 1), PointOfSale.Square))
+        assertEquals("Paid after the code expired", SaleText.status(sale(phase = SalePhase.Paid).copy(endedAt = 1), PointOfSale.Square))
+        assertEquals("Paid after you closed it", SaleText.status(sale(phase = SalePhase.Paid, closedAt = 1).copy(endedAt = 2), PointOfSale.Square), "closed, then the code ran out, then paid")
+        assertEquals("Paid after the refund", SaleText.status(sale(phase = SalePhase.Paid, closedAt = 1, refundedAt = 2), PointOfSale.Square), "a late payment after the Square refund")
+        assertEquals("Closed · not paid", SaleText.status(sale(closedAt = 1), PointOfSale.Square))
+        assertEquals("Code expired · not paid", SaleText.status(sale(phase = SalePhase.Expired), PointOfSale.Square))
+        assertEquals("Code expired · not paid", SaleText.status(sale(phase = SalePhase.Expired, closedAt = 1), PointOfSale.Square), "the code running out outranks the cashier's close")
+        assertEquals("Cancelled · not paid", SaleText.status(sale(phase = SalePhase.Cancelled), PointOfSale.Square))
+        assertEquals("Payment reversed", SaleText.status(sale(phase = SalePhase.DoubleSpend), PointOfSale.Square))
+        assertEquals("Refunded in Square", SaleText.status(sale(phase = SalePhase.Expired, refundedAt = 2), PointOfSale.Square))
+        assertEquals("Refunded in Square", SaleText.status(sale(phase = SalePhase.Cancelled, closedAt = 1, refundedAt = 2), PointOfSale.Square))
+        assertEquals("Code expired · not paid", SaleText.status(sale(phase = SalePhase.Expired, found = false, device = "Back till"), PointOfSale.Square), "what this till knows; the row adds the till")
+        assertEquals("Payment reversed", SaleText.status(sale(phase = SalePhase.DoubleSpend, found = false), PointOfSale.Square))
+        assertEquals("Closed · not paid", SaleText.status(sale(found = false, closedAt = 1), PointOfSale.Square))
+        assertEquals("Paid", SaleText.status(sale(phase = SalePhase.Paid, found = false, device = "Back till"), PointOfSale.Square), "another till's paid sale is just paid")
     }
 
     @Test
     fun `what was bought is counted and listed from the on-device receipt`() {
-        assertEquals("9 items", SaleText.items(receipt), "quantities add up, by weight rounded")
+        assertEquals("8 items", SaleText.items(receipt), "whole quantities add up; the 1.5 of beans by weight is one item")
+        assertEquals("3 items", SaleText.items(receipt.copy(lineItems = listOf(receipt.lineItems[0], Receipt.LineItem("Granola", 2.5, 2.0, 5.0)))), "2 × Flat white and 2.5 × Granola: never '5 items'")
         assertEquals("1 item", SaleText.items(receipt.copy(lineItems = receipt.lineItems.take(1).map { it.copy(quantity = 1.0) })))
         assertEquals("2 × Flat white, Oat latte, 3 × Almond croissant, +2 more", SaleText.firstItems(receipt))
         assertEquals("2 × Flat white, Oat latte", SaleText.firstItems(receipt.copy(lineItems = receipt.lineItems.take(2))), "no '+0 more'")

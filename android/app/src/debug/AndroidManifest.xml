@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Debug builds only: Square's sign-in comes back on a custom scheme, so a
-     stand-in Square on the developer's machine can return to the app. A
+<!-- Debug builds only: Square's and Clover's sign-ins come back on a custom
+     scheme, so a stand-in Square or Clover on the developer's machine can
+     return to the app. A
      Monokulo there is reached over plain http by the debug
      network_security_config. -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -11,6 +12,7 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="monokular-debug" android:host="square" />
+                <data android:scheme="monokular-debug" android:host="clover" />
             </intent-filter>
         </activity>
     </application>

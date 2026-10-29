@@ -1,5 +1,6 @@
 package app.monokular.sales
 
+import app.monokular.core.PointOfSale
 import app.monokular.receipt.Receipt
 import java.time.Instant
 
@@ -53,7 +54,10 @@ class SquareSource(
         return SquareReceipts.of(api.order(orderId), location, sale)
     }
 
-    override suspend fun refund(sale: FoundSale) {
+    override val pointOfSale = PointOfSale.Square
+
+    /** A full refund through Square's API, once whatever the retries ([SquareApi.refund]'s key). */
+    override val refunds: Refunds.ByTill = Refunds.ByTill { sale ->
         api.refund(
             paymentId = sale.id,
             amount = Money(sale.amountMinor, sale.currency),
@@ -76,6 +80,7 @@ class SquareSource(
             orderId = orderId,
             createdAt = createdAt,
             deviceId = deviceDetails?.deviceId,
+            pointOfSale = PointOfSale.Square,
         )
     }
 }
