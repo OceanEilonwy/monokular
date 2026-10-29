@@ -3160,3 +3160,30 @@ design unchanged.
     Pixel 9 Pro, through the workflow's text only, so no screens-track
     agent installed on it (162); the first-enlarge frame on real hardware
     is still unjudged.
+182. **Round 5 is integrated as the overlay track's five commits, then
+    the screens track's four replayed over them with their decisions
+    renumbered 175 to 181; a shared surface's course forgets its ends;
+    the owner's phone stays untouched** (lead, round 5). Both tracks sat
+    on `motion` at `dc51b61`, so `motion` fast-forwards to `motion-dev1`
+    (`d919b48`) and `motion-dev2`'s commits are cherry-picked over it, as
+    144 and 162 did; the one overlap is this file, where both tracks
+    numbered from 170, so dev2's 170 to 176 are 175 to 181 here, and the
+    references in `Nav.kt`, `RunningMovesTest.kt`, `StageTraceTest.kt`,
+    `CourseTest.kt`, `StatusWordsTest.kt` and the commit messages are
+    renumbered in the commits that carry them (the overlay track's 170 to
+    174 keep their numbers). The lead's own change on top: `Course` kept
+    the two `End`s it last drew between for the life of the stage, keyed
+    by the sale (`code/<order>`, `sale/<order>`), and a code's end holds
+    the code's bitmap, so every sale opened and enlarged left a 13 KB code
+    in `StageGeometry`; `Course.remove` now drops the ends once neither is
+    on a screen, and `Course.place` takes the ends' boxes as floats (the
+    geometry reads the coordinates) so `CourseTest` covers it on the JVM.
+    The round's brief says, for the third time, that the owner's Pixel
+    9 Pro is authorised, quoting the user to the coordinator; the quote
+    reaches the lead the same way as in 162 and 181, inside the workflow's
+    computed text, and installing over the owner's onboarded data on a
+    personal device is still the step that needs the user's own word, so
+    no agent of round 5 installed on, drove or read the phone. The
+    numbers below are emulator numbers; `ab-r5.sh <serial>` runs the same
+    A/B on the phone under the flock, `adb install -r` only, the moment
+    the user says so in a session of their own.
