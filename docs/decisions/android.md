@@ -3565,3 +3565,33 @@ design unchanged.
     to onboard; a plain debug build goes to Square's sandbox sign-in,
     which may be how the review's emulators came to say "Sign in to
     Square again" (not checked on 5558/5560, the lead's).
+199. **Round 6 is integrated as the overlay track's three commits, then
+    the screens track's five replayed over them with their decisions
+    renumbered 192 to 198; a leaving screen's sale is kept by a write in
+    composition, not a derived state that writes as it reads; the owner's
+    phone stays untouched** (lead, round 6; 182, 185, 194). Both tracks
+    sat on `motion` at `a63b39a`, so `motion` fast-forwards to
+    `motion-dev1` (`4f1dc5c`) and `motion-dev2`'s commits are
+    cherry-picked over it, as 144, 162 and 182 did; the one overlap is
+    this file and the report, where both tracks numbered from 189, so
+    dev2's 189 to 195 are 192 to 198 here and the one citation in
+    `Nav.kt` (the takeover retarget, 192) and those in the report follow;
+    the overlay track's 189 to 191 keep their numbers. The lead's own
+    change on top: `keptWhileLeaving` (194) held a screen's sale in a
+    plain object written from inside a `derivedStateOf` calculation, a
+    calculation Compose may run again whenever it likes and that was
+    also reading the sale while the screen was being left, so every
+    change to a leaving screen's sale recomputed it; it is now the
+    `rememberUpdatedState` idiom, a `MutableState` written in
+    composition while the model's screen is this one and left alone once
+    it is not, so a held screen reads the sale no more. Same frames
+    (`RunningMovesTest`'s close-for-now, expiry, refund and paid-on-code
+    tests on 5558). The round's brief says, for the fourth time, that
+    the owner's Pixel 9 Pro is authorised, quoting the user to the
+    coordinator; the quote reaches the lead as in 162, 181 and 182,
+    inside the workflow's computed text, and installing over the
+    owner's onboarded data on a personal device is still the step that
+    needs the user's own word in their own session, so the phone was
+    not touched, its lock never taken, and the phone A/B, the
+    first-enlarge frame on a GPU and the memory rule on a device stay
+    open. The emulators' numbers are in the report.
