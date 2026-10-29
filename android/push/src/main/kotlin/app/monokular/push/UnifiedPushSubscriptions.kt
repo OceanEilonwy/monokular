@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
+import app.monokular.core.PointOfSale
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,10 +23,14 @@ import org.unifiedpush.android.connector.data.ResolvedDistributor
  * The till's push subscription for its Bell, through UnifiedPush's
  * connector (decision 90): one instance, [INSTANCE], made for the Bell's
  * VAPID key. The connector keeps the keys and decrypts each push before
- * [WakePushService] hands it here (decision 92); only a ding gets through
- * to [dings]. Held by the app's graph for the life of the process.
+ * [WakePushService] hands it here (decision 92); only a ding for the
+ * till's point of sale, [pointOfSale] as it is when the ding arrives, gets
+ * through to [dings] (decision 133). Held by the app's graph for the life of the process.
  */
-class UnifiedPushSubscriptions(private val context: Context) : PushSubscriptions, Distributors {
+class UnifiedPushSubscriptions(
+    private val context: Context,
+    private val pointOfSale: () -> PointOfSale?,
+) : PushSubscriptions, Distributors {
     private val mutableState = MutableStateFlow<PushState>(PushState.None)
     override val state: StateFlow<PushState> = mutableState.asStateFlow()
 
@@ -102,7 +107,7 @@ class UnifiedPushSubscriptions(private val context: Context) : PushSubscriptions
 
     /** [WakePushService]: a push, decrypted or not. */
     internal fun message(content: ByteArray, decrypted: Boolean) {
-        if (PushEvents.isDing(content, decrypted)) mutableDings.tryEmit(Unit)
+        if (PushEvents.isDing(content, decrypted, pointOfSale())) mutableDings.tryEmit(Unit)
     }
 
     /** [WakePushService]: the distributor couldn't make the subscription. */
@@ -133,12 +138,16 @@ internal object PushEvents {
             PushState.Subscribed(PushSubscription(url, p256dh, auth))
         }
 
-    /** A ding: decrypted, and exactly the JSON object `{"wake":"square"}` (decision 92). */
-    fun isDing(content: ByteArray, decrypted: Boolean): Boolean {
-        if (!decrypted) return false
+    /**
+     * A ding: decrypted, and exactly the JSON object `{"wake":"<pointOfSale>"}` for the
+     * till's point of sale (decision 92, 133). A Bell rings a till only for the point of
+     * sale it registered, so a ding for another is stale or forged; none is a ding without one.
+     */
+    fun isDing(content: ByteArray, decrypted: Boolean, pointOfSale: PointOfSale?): Boolean {
+        if (!decrypted || pointOfSale == null) return false
         val element = runCatching { json.parseToJsonElement(content.toString(Charsets.UTF_8)) }.getOrNull()
         if (element !is JsonObject || element.keys != setOf("wake")) return false
         val wake = element["wake"] as? JsonPrimitive ?: return false
-        return wake.isString && wake.content == "square"
+        return wake.isString && wake.content == pointOfSale.wire
     }
 }

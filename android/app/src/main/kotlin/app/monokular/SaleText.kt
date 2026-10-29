@@ -1,6 +1,7 @@
 package app.monokular
 
 import app.monokular.core.Amounts
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
 import app.monokular.receipt.Receipt
 import app.monokular.sales.Standing
@@ -16,7 +17,6 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Currency
 import java.util.Locale
-import kotlin.math.roundToInt
 
 /** How a sale is named and described everywhere it's shown: the app, the bubble and the notification. */
 object SaleText {
@@ -44,9 +44,10 @@ object SaleText {
      * The sale's state in a few words: the shift row's second line and the
      * detail page's heading. Another till's sale says what this till knows
      * (its code ran out, its payment was reversed, it was closed here), never
-     * that the other till closed it, which Monokulo doesn't tell us.
+     * that the other till closed it, which Monokulo doesn't tell us. [till] is
+     * the till's point of sale ([PosText.of]).
      */
-    fun status(sale: TillSale): String = when (val standing = sale.standing) {
+    fun status(sale: TillSale, till: PointOfSale?): String = when (val standing = sale.standing) {
         is Standing.Live -> when (standing.phase) {
             SalePhase.Partial -> "Part paid"
             SalePhase.Seen -> "Seen on the network"
@@ -61,7 +62,8 @@ object SaleText {
         }
         Standing.Closed -> "Closed · not paid"
         Standing.Expired, Standing.Reversed, Standing.OtherTill -> ended(sale.phase)
-        Standing.Refunded -> "Refunded in Square"
+        Standing.Refunded -> PosText.refundedIn(till)
+        Standing.RefundInPos -> "Not paid · " + PosText.refundItIn(till)
     }
 
     /** How a sale that isn't live ended, or that it was closed here while still waiting. */
@@ -91,13 +93,17 @@ object SaleText {
     /** "1:05" from seconds. */
     fun clock(seconds: Long): String = "${seconds / 60}:${"%02d".format(seconds % 60)}"
 
-    /** "15 items" or "1 item": the receipt's quantities added up. */
+    /**
+     * "15 items" or "1 item": the receipt's whole quantities added up, and a line sold by measure
+     * (2.5 × Granola) one item however much of it, so "2 × Flat white, 2.5 × Granola" is "3 items",
+     * what the customer takes away (decision 145).
+     */
     fun items(receipt: Receipt): String {
         val n = itemCount(receipt)
         return if (n == 1) "1 item" else "$n items"
     }
 
-    fun itemCount(receipt: Receipt): Int = receipt.lineItems.sumOf { it.quantity }.roundToInt()
+    fun itemCount(receipt: Receipt): Int = receipt.lineItems.sumOf { if (it.quantity % 1.0 == 0.0) it.quantity.toInt() else 1 }
 
     /** "2 × Flat white, Oat latte, 3 × Almond croissant, +5 more": the first [show] lines, and how many more there are. */
     fun firstItems(receipt: Receipt, show: Int = 3): String {
@@ -140,10 +146,19 @@ object SaleText {
     /** "13.88 USD": the receipt's total with the currency's code. */
     fun total(receipt: Receipt): String = "${plain(receipt.total, receipt.currency)} ${receipt.currency}"
 
-    /** "Square receipt bP9m · 4:07 PM", the time left out on a detail page (the design's order cards). */
-    fun receiptLabel(receipt: Receipt, withTime: Boolean, locale: Locale = Locale.getDefault(), zone: ZoneId = ZoneId.systemDefault()): String {
+    /**
+     * "Square receipt bP9m · 4:07 PM" or "Clover order 7F3KQ2MA · 4:07 PM" for a receipt built at
+     * [pos], the time left out on a detail page (the design's order cards).
+     */
+    fun receiptLabel(
+        receipt: Receipt,
+        pos: PointOfSale?,
+        withTime: Boolean,
+        locale: Locale = Locale.getDefault(),
+        zone: ZoneId = ZoneId.systemDefault(),
+    ): String {
         val issued = if (withTime) runCatching { OffsetDateTime.parse(receipt.receipt.issueTimestamp).toEpochSecond() }.getOrNull() else null
-        return "Square receipt ${receipt.receipt.receiptId}" + issued?.let { " · " + time(it, locale, zone) }.orEmpty()
+        return PosText.receiptLabel(pos, receipt.receipt.receiptId) + issued?.let { " · " + time(it, locale, zone) }.orEmpty()
     }
 
     /** "4:07 PM" (or "16:07"): a time of day as the till's locale writes it, with a plain space before am or pm. */

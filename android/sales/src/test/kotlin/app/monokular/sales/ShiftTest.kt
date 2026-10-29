@@ -3,6 +3,7 @@ package app.monokular.sales
 import app.monokular.core.AppIdentity
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloApi
+import app.monokular.core.PointOfSale
 import app.monokular.receipt.Receipt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -20,12 +21,13 @@ import kotlin.time.Duration.Companion.seconds
 
 /** A POS with nothing new that takes [takes] to say so. */
 private class SlowSource(private val takes: Duration = Duration.ZERO) : SaleSource {
+    override val pointOfSale = PointOfSale.Square
     override suspend fun newSales(): List<FoundSale> {
         delay(takes)
         return emptyList()
     }
     override suspend fun receipt(sale: FoundSale): Receipt? = null
-    override suspend fun refund(sale: FoundSale) = Unit
+    override val refunds = Refunds.ByTill {}
     override fun handled(sale: FoundSale) = Unit
 }
 

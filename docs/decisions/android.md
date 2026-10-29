@@ -1329,3 +1329,259 @@ written except where an entry below says otherwise.
      this branch, Wake-ups only makes the burst arrive faster, and both are
      follow-ups. Decision 116's coincidence and decision 100's log line are
      recorded there.
+
+## App: Clover, the second point of sale (2026-10-28)
+
+Made by the team's Kotlin lead and developers while adding Clover beside
+Square (`docs/design.md` §1, §3; the Bell's side is `docs/decisions/bell.md`
+B43 to B57), with the owner away. The research behind them, with its
+sources, assumptions A1 to A6 and risks R1 to R10, is the team's
+`clover-research.md`, summarised in the PR; the product owner's acceptance
+criteria (D1 to D9 there) are taken as written except where an entry below
+says otherwise.
+
+126. **The point of sale is chosen in onboarding step 4 and in Settings, and
+     kept as `pos.kind`; `PointOfSale` lives in `core`**, because `push` and
+     `sales` both need it and `push` doesn't depend on `sales`. A till from
+     before this build (Square tokens, no `pos.kind`) reads as Square, and
+     its `square.skipped` reads as `pos.skipped`, so nobody is asked again.
+127. **Clover signs in with its PKCE flow for low-trust apps, on the
+     device, with no secret anywhere; the redirect is the App Link
+     `https://monokular.monokulo.com/clover`** (a debug build:
+     `/clover/debug/`, which [site/clover/debug/](../../site/clover/debug/index.html)
+     forwards to `monokular-debug://clover`; with a stand-in, the scheme
+     directly). Clover takes only https under the app's Site URL, so a
+     custom scheme was never an option. Clover documents no `state`: the
+     app sends one and checks it only when Clover echoes it; the binding is
+     the one pending attempt (`PendingSignIn.pointOfSale`) plus the
+     verifier, so a redirect with nothing pending answers "That Clover
+     sign-in wasn't started here. Try again." The redirect's `merchant_id`
+     is the merchant: there is no location to pick, one merchant per token.
+128. **Clover's tokens keep Square's shape, now `PosTokens`, with the expiry
+     converted from Clover's Unix seconds to RFC 3339; a 30-minute access
+     token is refreshed under five minutes left, and the single-use refresh
+     token is saved before anything else.** A `4xx` refresh signs the till
+     out once with "Clover's sign-in has ended. Sign in again." and never
+     loops (R1: Clover caps live refresh tokens per merchant per app, so two
+     tills at one merchant may sign each other out); a `5xx` is transient;
+     a `429` (refresh or API) holds the next look for its `retry-after` and
+     keeps the sign-in.
+129. **The Monero payment type is found by label (trimmed, case-insensitive,
+     an enabled and visible one first), else created over REST with
+     `labelKey` `com.clover.tender.external_payment`, and payments are known
+     by its id**, remembered per merchant (`clover.tender.<merchant>`). A
+     REST tender must use a system `labelKey`, so the id, not the key, tells
+     Monero apart. Creating needs Merchant write; finding first means a
+     merchant who added "Monero" in Clover needs no write (R9). A refused
+     `POST` doesn't stop the sign-in: step 4's card and Settings ask the
+     cashier to add a payment type called Monero in Clover and offer **Look
+     again**, and nothing retries the `POST` on a timer. A remembered id
+     deleted in Clover is forgotten and found again or made, only from that
+     look.
+130. **A Clover sale never paid is refunded by the cashier in Clover's Orders
+     app, guided and then confirmed by the till.** Clover's REST API can't
+     refund, void or delete an external-tender payment (R4), so the source
+     offers `Refunds.InPos` (a type that can only look, rather than a
+     `refund()` that does nothing: a departure from acceptance T4.1's
+     method name), the sale gets `refundPendingAt` and stands as
+     `RefundInPos` under Needs action, and the **Refund in Clover** sheet
+     says which order, when and how much, with **I've refunded it** (asks
+     Clover now; "Clover doesn't show a refund yet" if not) and **Not yet**.
+     A refund is seen when the payment's non-voided refunds reach its
+     amount, the order's `paymentState` is `REFUNDED`, or the payment is
+     voided. The timer looks at pending refunds at most every 30 s, not on
+     every pass as acceptance D9 says: without a Bell a pass is every 2 s,
+     one request per pending sale, and the sheet's button asks at once. The
+     alternative, recording the payment on an open order only once the
+     Monero confirms (design B), is kept in the research for if a
+     REST-made tender never shows in Clover Register (A1).
+131. **`PosException` is a point of sale's common error; `SquareException`
+     and `CloverException` extend it**, so `Till` and the view model catch
+     one type.
+132. **A Bell registration names its point of sale and its `location_id`
+     (a Square location, or a Clover merchant: its only location), and
+     `PosSide` replaces `SquareSide`.** The till reads the Bell's
+     `points_of_sale` entry for its own point of sale, in this order:
+     absent, refused ("it doesn't ring Clover tills"); another environment,
+     refused in words naming it ("it's for Clover in Europe"); another
+     application, `SignInNeeded(pos, applicationId)` and a sign-in through
+     it, as decision 96 has for Square. `square-refused` and
+     `clover-refused` match the till's own point of sale only, so a
+     problem slug for the other is read by its status alone.
+133. **A ding is exactly `{"wake":"<the till's current point of sale>"}`;
+     anything else is dropped unlogged** (decision 92 widened): a Bell rings
+     a till only for the point of sale it registered, so `{"wake":"square"}`
+     on a Clover till is stale or forged.
+134. **The Clover receipt groups the line items Clover repeats one per unit,
+     reads `unitQty/1000` for measured ones, and shows one tax line, the
+     order's total less its lines** (what the paper receipt shows; per-line
+     `taxRates` would need another expand, acceptance D8). A total below the
+     lines is shown as a discount, as Square's is, with no tax line. The
+     merchant's name comes from `/v3/merchants`, its currency, time zone
+     and country from `/properties` and its address; with no country the
+     sale gets the plain code. `FoundSale.reference` is null (Clover prints
+     no receipt number on the payment, acceptance D7), so the receipt reads
+     "Clover order …". An order with 100 or more line items gets the plain
+     code: Clover's `expand` returns at most 100, so the list may be cut,
+     and total less lines would print the missing items as tax. Payments
+     are looked at no further back than 89 days (Clover's 90-day filter
+     cap), at most 20 pages of 100 a look.
+135. **No "Back to Clover" button**: the Clover point of sale is its own
+     device, not an app on the cashier's phone; the button stays Square's
+     (`TillRunner`'s `onBackToPos` is Square's only), and the bubble beside
+     a Clover device floats "over other apps".
+136. **Every word on screen that names the point of sale comes from one
+     `PosText` object, with an exhaustive `when` where the two differ**
+     (acceptance D5; Wake-ups' reasons from `push`'s `PosWords`): "Refund it
+     in Clover", "Checking Clover", "Merchant" where Square says "Location".
+     Onboarding step 4 is "Connect your point of sale", the two as radio
+     rows with the chosen one's card beneath, on the one screen that
+     `Screen.PointOfSale` replaces `Screen.Square` with (acceptance T1.1
+     describes one screen; there is no separate chooser).
+137. **Build properties `monokular.clover.applicationId` (a placeholder
+     otherwise), `monokular.clover.environment` (`north_america` by default;
+     `europe`, `latin_america`, `sandbox`) and, for a debug build,
+     `monokular.clover.baseUrl`** (a stand-in playing Clover's web and API
+     hosts on one); `CLOVER_REDIRECT_URI` and `CLOVER_RETURN_URI` mirror
+     Square's. A debug build's Settings field for the stand-in's address is
+     kept as `debug.clover.base`.
+138. **Changing the point of sale** (Settings › Point of sale › Change the
+     point of sale, acceptance D6) first takes the Bell registration back,
+     awaited, while the old sign-in is still there, then signs out of the
+     old point of sale (tokens, location or merchant, cursor, remembered
+     payment type), keeps the Wake-ups choice and the shift's saved sales,
+     and goes to the new one's sign-in; choosing the one chosen changes
+     nothing. The sign-out happens even when the old sign-in had already
+     ended (a refused refresh, Square's sign in again), so no location,
+     merchant, cursor or payment type id of a point of sale the till isn't
+     signed in to is left behind; only the Bell step waits on a sign-in.
+     It is `PosSwitch`, a pure helper tested on a recording fake,
+     as `TillNav` is. Only a change forgets the old point of sale's cursor
+     (where its search for sales had got to); Settings' "Sign out of …"
+     (`PosSwitch.signOut`) keeps it, as Square's sign-out on Wake-ups did,
+     so signing in to the same point of sale again reads on from there
+     instead of reading the merchant's earlier payments again (Monokulo's
+     idempotency key would make that re-read harmless, but it costs
+     requests and Clover's rate limit for nothing).
+     `Till` keeps the old sales safe from the new source: a sale another
+     point of sale took is only ever marked to refund there
+     (`refundPendingAt`), never sent to the till's point of sale, whose
+     payment ids it doesn't know, and the timer never asks the new one
+     about it; its "I've refunded it" takes the cashier's word, since
+     nothing can ask the point of sale that took it, and the sheet says
+     so ("Tap I've refunded it once it's done") instead of "Monokular will
+     notice".
+139. **A `401` from Clover before the token's expiry (Clover ended it early)
+     is met by one refresh and the request asked once more**; a refresh
+     another request already made is used instead, and a fresh token
+     refused too signs the till out at once, so no later pass spends a
+     refresh token (R1). `CloverAuth.refreshAfterRefusal`.
+140. **A Clover order's title ("Table 4") is carried on the sale
+     (`FoundSale.title`, defaulted so saved shifts still read)** from the
+     payments already read with `expand=order`, no extra request; blank
+     titles are none, Square leaves it null. The sale page shows it as its
+     first fact, Order, wherever the page has facts: once the sale is
+     closed, paid, expired, reversed or refunded (a sale waiting for
+     payment shows its code and order card, with no facts, as before); and
+     the Refund in Clover sheet names "order Table 4"
+     rather than the order's id, which is what the cashier finds in Clover's
+     Orders app.
+141. **A sale found before the till's point of sale changed keeps the name
+     of the one that took it, and is refunded there** (acceptance D6's
+     "their source name shown as it was"). `FoundSale.pointOfSale` says
+     which point of sale found it (a sale saved before Clover joined reads
+     as Square's), so `PosText.of(sale, till)` is that, or the till's own
+     for another till's sale (Monokulo doesn't say), and names every sale's
+     words, receipt label and notification; the app keeps no list of its
+     own. The till can't refund such a sale or see its refund (it is signed
+     in elsewhere), so its page drops Refund and says to refund it there,
+     and its close sheet offers what another till's does; one already told
+     to refund it there keeps Refund, which opens the refund sheet named by
+     the sale's point of sale, for the cashier's word (decision 138). The
+     close sheet's "No" says the cashier refunds it when the sale's point
+     of sale isn't the one the till's source watches or that one can't
+     refund (`Closing.refundsThere`), `Till.refund`'s own rule, and any sale
+     that then stands as `RefundInPos` opens the sheet.
+     A sale screen's top is `SaleHeader`, from the sale and the till's
+     point of sale: the receipt's name ("Clover order …"), the bar's second
+     line, which names the old point of sale ("Clover · this till") rather
+     than the location the till watches now, since that sale wasn't rung up
+     there, and "Back to Square" only for a sale of the Square till it is
+     (`PosText.elsewhere`, `PosText.placeOf`; the notification and the
+     bubble's header say the same place). QA round 1 saw a Clover sale's
+     order card turn "Square receipt" on a Square till: the bar and the
+     button were this build's (fixed here); the receipt's name never reads
+     anything but `FoundSale.pointOfSale`, which a saved shift keeps
+     (`ShiftListTest` reads one back). The likeliest cause is the one QA's
+     notes record: other streams' builds of `app.monokular.debug`, which
+     name every receipt Square's and know no Clover, were being installed
+     over this one on the same emulator during the run. On an emulator of
+     its own against both stand-ins, a Clover sale left up through a change
+     to Square reads "Clover · this till", "Clover order …" and no Back to
+     Square, and still does after the app is stopped and opened again.
+     A step 4 opened from Settings has Back and Done in place of the step
+     number and the test sale, and the shift's top row says a Clover
+     merchant's name once when it is the store's.
+142. **Till's idempotency key keeps its `sq:` prefix for every point of
+     sale**: changing it would change Square's keys for sales in flight,
+     and two points of sale's payment ids never meet at one Monokulo
+     connection.
+143. **A till not signed in to a point of sale refuses a Square sale's
+     refund rather than marking it refunded with nothing sent**:
+     `TillRunner`'s `NoSource` (Square's, so a Clover sale is marked to
+     refund in Clover as decision 141 has) throws `PosException` "Sign in to
+     Square first", which the sale page shows as its refund problem. Before,
+     its `Refunds.ByTill` did nothing and `Till` marked the sale refunded,
+     on Wake-ups too.
+144. **QA round 1 on the Clover till.** A registration taken back (a
+     change of point of sale, a sign-out, another Bell) takes its Last
+     wake-up with it, so Settings › Wake-ups starts again at "None yet"
+     rather than showing the old point of sale's ding under "Checking
+     Square". The screenshots are acceptance T6.2's set, from QA's run
+     against tools/fake-clover (the dark Clover card from a run of the same
+     build):
+     [pos-choice](../screenshots/android/pos-choice.png)
+     ([dark](../screenshots/android/pos-choice-dark.png)),
+     [clover-signin](../screenshots/android/clover-signin.png)
+     ([dark](../screenshots/android/clover-signin-dark.png)),
+     [clover-connected](../screenshots/android/clover-connected.png)
+     ([dark](../screenshots/android/clover-connected-dark.png)),
+     [settings-pos-clover](../screenshots/android/settings-pos-clover.png)
+     ([dark](../screenshots/android/settings-pos-clover-dark.png)),
+     [refund-in-clover](../screenshots/android/refund-in-clover.png)
+     ([dark](../screenshots/android/refund-in-clover-dark.png)) and
+     [wakeups-clover](../screenshots/android/wakeups-clover.png)
+     ([dark](../screenshots/android/wakeups-clover-dark.png)); beside them
+     the sale with its Clover receipt
+     ([clover-sale](../screenshots/android/clover-sale.png)), the refund
+     not seen yet and then seen
+     ([clover-refund-not-seen](../screenshots/android/clover-refund-not-seen.png),
+     [clover-refunded](../screenshots/android/clover-refunded.png)) and
+     Settings after changing to Square
+     ([settings-pos-square](../screenshots/android/settings-pos-square.png)).
+145. **An item sold by measure counts as one item.** The heads-up
+     notification, the sale's order card and the order page count what was
+     bought from the receipt (decision 63: "15 items"). The count added
+     every line's quantity and rounded, which Square's whole quantities
+     never showed; Clover's measured lines did, and "2 × Flat white,
+     2.5 × Granola" read "5 items". A whole quantity now counts as that many
+     items and a quantity that isn't whole as one, whatever it measures, so
+     the same order reads "3 items": what the customer takes away. A
+     measured quantity that happens to be whole (2.000 kg) counts as two,
+     since a receipt line carries no unit; recorded rather than worth a
+     field. `OrderText.lines` ("8 lines") is unchanged. (QA round 2.)
+146. **A sign-out forgets the application the sign-in went through.**
+     `Stores.squareApplicationId` and `cloverApplicationId` (decisions 96,
+     132) exist for the tokens: a refresh goes to the application that
+     issued them, so the id must live exactly as long as they do. Only
+     `forgetAll` cleared them, so after signing in through another Bell's
+     application, changing Wake-ups back to the project's Bell and signing
+     out of the point of sale, the plain "Sign in to Clover" went through
+     the other Bell's application again and the project's Bell asked for a
+     sign-in a second time. `signOutHere` now forgets the id with the tokens
+     (a change of point of sale and Settings' "Sign out of …" both go
+     through it), so the next plain sign-in is through the build's own
+     application, or the one the chosen Bell's row asks for. Changing the
+     Bell choice alone leaves the id, as the tokens it refreshes are still
+     in use; that Bell's status says "Sign in needed" until the sign-in
+     through its row. (QA round 2.)

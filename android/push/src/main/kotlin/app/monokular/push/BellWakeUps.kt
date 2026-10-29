@@ -1,5 +1,6 @@
 package app.monokular.push
 
+import app.monokular.core.PointOfSale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -45,17 +46,27 @@ interface Distributors {
     val changes: SharedFlow<Unit>
 }
 
-/** The till's Square sign-in, as registering with a Bell needs it. */
-interface SquareSide {
-    /** The Square application the till is signed in through; null when it isn't signed in (or runs without Square). */
-    val signedInApplicationId: String?
+/** The till's point-of-sale sign-in, as registering with a Bell needs it (decision 132). */
+interface PosSide {
+    /** Where the till is signed in; null while it isn't signed in to a point of sale (or runs without one). */
+    val signedIn: PosSignIn?
 
-    /** The Square location the till watches. */
-    val locationId: String?
-
-    /** An access token for [BellClient.register], or null when Square wants the cashier to sign in again. */
+    /** An access token for [BellClient.register], or null when the point of sale wants the cashier to sign in again. */
     suspend fun accessToken(): String?
 }
+
+/**
+ * The till's sign-in at its point of sale: the application and environment it
+ * signed in through, and [locationId], the Square location it watches or the
+ * Clover merchant it is at (a Clover merchant is its own location, acceptance D1).
+ * [environment] is spelt as a Bell's `/v1/info` spells it.
+ */
+data class PosSignIn(
+    val pointOfSale: PointOfSale,
+    val applicationId: String,
+    val environment: String,
+    val locationId: String,
+)
 
 /**
  * Wake-ups over a Bell (decisions 91, 94, 95, 97): keeps the till
@@ -72,9 +83,7 @@ class BellWakeUps(
     private val store: WakeUpStore,
     /** The project's Bell: what [WakeUpChoice.MonokularBell] means. */
     private val monokular: BellAddress,
-    /** The build signs in to Square's sandbox: a Bell for production accounts is no use to it, nor the other way round. */
-    private val squareSandbox: Boolean,
-    private val square: SquareSide,
+    private val pos: PosSide,
     private val scope: CoroutineScope,
     /** Unix seconds. */
     private val now: () -> Long,
@@ -158,7 +167,7 @@ class BellWakeUps(
             unsubscribe()
             if (forget) store.choice = WakeUpChoice.TimerOnly
             mutableChoice.value = store.choice
-            mutableStatus.value = if (store.choice == WakeUpChoice.TimerOnly) WakeUpStatus.Off else WakeUpStatus.NoSquare
+            mutableStatus.value = if (store.choice == WakeUpChoice.TimerOnly) WakeUpStatus.Off else WakeUpStatus.NoPos
         }
     }
 
@@ -186,39 +195,56 @@ class BellWakeUps(
         }
         val before = mutableStatus.value
         if (before !is WakeUpStatus.Connected && before !is WakeUpStatus.MissingWakeups) mutableStatus.value = WakeUpStatus.Connecting
+        // Read once: a pass registers for the one sign-in it started with.
+        val signedIn = try {
+            pos.signedIn
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            settle(WakeUpStatus.Unreachable(TILL_FAILED))
+            return
+        }
         val outcome = try {
-            register(bell)
+            register(bell, signedIn)
         } catch (e: CancellationException) {
             throw e
         } catch (e: BellException) {
-            problemStatus(e, now())
+            problemStatus(e, signedIn?.pointOfSale, now())
         } catch (e: IOException) {
             WakeUpStatus.Unreachable(unreachableReason(e))
         } catch (_: Exception) {
-            // The store, the Keystore, the connector or Square failed on this device: a pass
+            // The store, the Keystore, the connector or the point of sale failed on this device: a pass
             // never takes the till down mid-shift, and tries again as an unreachable Bell does (decision 120).
             WakeUpStatus.Unreachable(TILL_FAILED)
         }
         settle(outcome)
     }
 
-    /** Register with [bell], stopping at the first thing in the way; the status that leaves. */
-    private suspend fun register(bell: BellAddress): WakeUpStatus {
+    /**
+     * Register with [bell] for [signedIn], stopping at the first thing in the way; the status
+     * that leaves. The Bell's entry for the till's point of sale is checked in acceptance
+     * T5.2's order: there at all, then its environment, then its application (decision 132).
+     */
+    private suspend fun register(bell: BellAddress, signedIn: PosSignIn?): WakeUpStatus {
         val info = bells.info(bell)
-        val sandbox = info.environment == SANDBOX
-        if (sandbox != squareSandbox) {
+        if (signedIn == null) {
             release()
-            return WakeUpStatus.Refused(if (sandbox) FOR_SANDBOX else FOR_PRODUCTION)
+            return WakeUpStatus.NoPos
         }
-        val applicationId = square.signedInApplicationId
-        val locationId = square.locationId
-        if (applicationId != null && applicationId != info.squareApplicationId) {
+        val pointOfSale = signedIn.pointOfSale
+        val entry = info[pointOfSale] ?: run {
             release()
-            return WakeUpStatus.SignInNeeded(info.squareApplicationId)
+            return WakeUpStatus.Refused(PosWords.notRung(pointOfSale))
         }
-        if (applicationId == null || locationId == null) {
+        // An environment the point of sale doesn't have: what answered isn't a Bell this build can read.
+        val environment = PosWords.environment(pointOfSale, entry.environment) ?: throw NotABellException()
+        if (entry.environment != signedIn.environment) {
             release()
-            return WakeUpStatus.NoSquare
+            return WakeUpStatus.Refused(environment)
+        }
+        if (entry.applicationId != signedIn.applicationId) {
+            release()
+            return WakeUpStatus.SignInNeeded(pointOfSale, entry.applicationId)
         }
         val through = when (val distributor = distributors.resolve()) {
             Distributor.None -> {
@@ -244,13 +270,13 @@ class BellWakeUps(
         }
         // The Bell keys a registration by its endpoint: a new one is a new registration (decision 95).
         store.registration?.takeIf { it.subscription.endpoint != subscription.endpoint }?.let { takeBack(it) }
-        val token = square.accessToken() ?: run {
+        val token = pos.accessToken() ?: run {
             release()
-            return WakeUpStatus.NoSquare
+            return WakeUpStatus.NoPos
         }
         // Once the Bell has the request, its answer is kept whatever happens to the pass.
         withContext(NonCancellable) {
-            bells.register(bell, token, locationId, subscription).let { answer ->
+            bells.register(bell, pointOfSale, token, signedIn.locationId, subscription).let { answer ->
                 store.registration = BellRegistration(
                     bell = bell,
                     registrationId = answer.registrationId,
@@ -295,6 +321,8 @@ class BellWakeUps(
                 }
             }
             store.registration = null
+            // Its dings went with it: the next registration's Last wake-up starts at None yet.
+            lastDingAt = null
         }
     }
 
@@ -418,8 +446,6 @@ class BellWakeUps(
         /** How long the distributor gets to answer with an endpoint (it may have to reach its server). */
         val SUBSCRIBE_WAIT = 30.seconds
 
-        const val FOR_SANDBOX = "it's for Square's sandbox"
-        const val FOR_PRODUCTION = "it's for Square's production accounts"
         const val PUSH_REFUSED = "the UnifiedPush app refused"
         const val PUSH_NO_KEYS = "the UnifiedPush app gave no keys"
         /** A distributor just installed answers nothing until it has been opened once (decision 123). */
@@ -435,20 +461,30 @@ class BellWakeUps(
             else -> "no connection"
         }
 
-        /** What a Bell's problem means for the till (decision 95, A1.7); [now] is Unix seconds. */
-        fun problemStatus(e: BellException, now: Long): WakeUpStatus = when (e.type) {
-            "square-refused" -> WakeUpStatus.Refused("Square didn't confirm this location. Sign in to Square again.")
-            "too-many-registrations" -> WakeUpStatus.Refused("this location already has 32 tills registered")
-            "endpoint-registered" -> WakeUpStatus.Refused("this device is registered under another Square account")
-            "rate-limited" -> {
-                val wait = (e.retryAfter ?: FIRST_RETRY.inWholeSeconds).coerceAtLeast(1)
-                WakeUpStatus.Refused("too many registrations from this network: trying again in ${about(wait)}", retryAt = now + wait)
+        /**
+         * What a Bell's problem means for the till (decision 95, A1.7), signed in to
+         * [pointOfSale] (null before a sign-in): the Bell names its slugs by point of sale,
+         * `square-refused`, `clover-unavailable` (B46). [now] is Unix seconds.
+         */
+        fun problemStatus(e: BellException, pointOfSale: PointOfSale?, now: Long): WakeUpStatus {
+            val refused = pointOfSale?.let { "${it.wire}-refused" }
+            val unavailable = pointOfSale?.let { "${it.wire}-unavailable" }
+            return when (e.type) {
+                null -> statusOnly(e)
+                refused -> WakeUpStatus.Refused(PosWords.refused(requireNotNull(pointOfSale)))
+                "too-many-registrations" -> WakeUpStatus.Refused("this ${PosWords.place(pointOfSale)} already has 32 tills registered")
+                "endpoint-registered" -> WakeUpStatus.Refused("this device is registered under another ${PosWords.account(pointOfSale)}")
+                "rate-limited" -> {
+                    val wait = (e.retryAfter ?: FIRST_RETRY.inWholeSeconds).coerceAtLeast(1)
+                    WakeUpStatus.Refused("too many registrations from this network: trying again in ${about(wait)}", retryAt = now + wait)
+                }
+                unavailable, "internal" -> WakeUpStatus.Unreachable(unreachableReason(e))
+                else -> statusOnly(e)
             }
-            "square-unavailable", "internal" -> WakeUpStatus.Unreachable(unreachableReason(e))
-            else ->
-                if (e.status >= 500) WakeUpStatus.Unreachable(unreachableReason(e))
-                else WakeUpStatus.Refused(e.detail ?: "it answered ${e.status}")
         }
+
+        private fun statusOnly(e: BellException): WakeUpStatus =
+            if (e.status >= 500) WakeUpStatus.Unreachable(unreachableReason(e)) else WakeUpStatus.Refused(e.detail ?: "it answered ${e.status}")
 
         /**
          * A wait of [seconds] in words loose enough to stay true while the footnote

@@ -1,5 +1,6 @@
 package app.monokular.push
 
+import app.monokular.core.PointOfSale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
@@ -12,6 +13,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import java.io.IOException
 import java.net.Proxy
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -27,8 +29,18 @@ interface BellClient {
     /** `GET /v1/info`. */
     suspend fun info(bell: BellAddress): BellInfo
 
-    /** `POST /v1/register`: the one request that carries the Square token (A9.1). */
-    suspend fun register(bell: BellAddress, accessToken: String, locationId: String, subscription: PushSubscription): BellRegistered
+    /**
+     * `POST /v1/register` for [pointOfSale]: the one request that carries the point of sale's
+     * token (A9.1). [locationId] is the Square location, or the Clover merchant (a Clover
+     * merchant is its own location: acceptance D1).
+     */
+    suspend fun register(
+        bell: BellAddress,
+        pointOfSale: PointOfSale,
+        accessToken: String,
+        locationId: String,
+        subscription: PushSubscription,
+    ): BellRegistered
 
     /** `DELETE /v1/register/{id}`: a `404` (taken back already) is as good as a `204`. */
     suspend fun unregister(bell: BellAddress, registrationId: String)
@@ -49,7 +61,7 @@ class NotABellException : IOException("not a Bell")
  * The Bell's HTTP API (`docs/bell.md`), over the app's client. The Bell is
  * reached directly, never through Orbot (decision 98), and every call ends
  * within [timeout]. No request carries an `Authorization` header; the
- * Square token goes in [register]'s body and nowhere else (A9.1, A9.2).
+ * point of sale's token goes in [register]'s body and nowhere else (A9.1, A9.2).
  */
 class BellApi(http: OkHttpClient, timeout: Duration = 10.seconds) : BellClient {
     private val http = http.newBuilder()
@@ -61,18 +73,22 @@ class BellApi(http: OkHttpClient, timeout: Duration = 10.seconds) : BellClient {
     override suspend fun info(bell: BellAddress): BellInfo = call(Request.Builder().url(bell.route("/v1/info")).get()) { response, text ->
         if (!response.isSuccessful) throw failure(response, text, notABell = response.code < 500)
         val info = runCatching { json.decodeFromString(BellInfo.serializer(), text) }.getOrNull() ?: throw NotABellException()
-        if (info.environment !in ENVIRONMENTS || info.vapidPublicKey.isEmpty()) throw NotABellException()
+        // Each entry's environment is checked by the till for its own point of sale only (BellWakeUps):
+        // a Bell may run one this build doesn't know.
+        if (info.pointsOfSale.isEmpty() || !isP256Point(info.vapidPublicKey)) throw NotABellException()
         info
     }
 
     override suspend fun register(
         bell: BellAddress,
+        pointOfSale: PointOfSale,
         accessToken: String,
         locationId: String,
         subscription: PushSubscription,
     ): BellRegistered {
         val body = RegisterBody(
-            squareAccessToken = accessToken,
+            pointOfSale = pointOfSale.wire,
+            accessToken = accessToken,
             locationId = locationId,
             subscription = RegisterBody.Subscription(subscription.endpoint, RegisterBody.Keys(subscription.p256dh, subscription.auth)),
         )
@@ -109,9 +125,11 @@ class BellApi(http: OkHttpClient, timeout: Duration = 10.seconds) : BellClient {
         )
     }
 
+    /** One shape for every point of sale (`docs/bell.md`, acceptance D1). */
     @Serializable
     private data class RegisterBody(
-        @SerialName("square_access_token") val squareAccessToken: String,
+        @SerialName("point_of_sale") val pointOfSale: String,
+        @SerialName("access_token") val accessToken: String,
         @SerialName("location_id") val locationId: String,
         val subscription: Subscription,
     ) {
@@ -131,10 +149,11 @@ class BellApi(http: OkHttpClient, timeout: Duration = 10.seconds) : BellClient {
 
     private companion object {
         val JSON = "application/json".toMediaType()
-        val ENVIRONMENTS = setOf(SANDBOX, PRODUCTION)
+
+        /** An uncompressed P-256 public point, base64url: 65 bytes, the first 4 (what a VAPID key is). */
+        fun isP256Point(key: String): Boolean {
+            val bytes = runCatching { Base64.getUrlDecoder().decode(key.trimEnd('=')) }.getOrNull() ?: return false
+            return bytes.size == 65 && bytes[0] == 4.toByte()
+        }
     }
 }
-
-/** `/v1/info`'s `environment` for Square's sandbox, and for its production accounts. */
-const val SANDBOX = "sandbox"
-const val PRODUCTION = "production"

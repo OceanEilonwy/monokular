@@ -47,7 +47,7 @@ object MkIcons {
     val Bell = icon("bell", 24f, "M6 16V11a6 6 0 0 1 12 0v5l1.5 2h-15L6 16Z M10 20.5a2 2 0 0 0 4 0" to 1.8f)
     /** An X: the tinted button that opens the close sheet, and a sale closed on another till. */
     val Close = icon("close", 14f, "M2 2l10 10M12 2L2 12" to 2.2f)
-    /** An arrow turning back: a refund in Square. */
+    /** An arrow turning back: a refund at the point of sale. */
     val Refund = icon("refund", 24f, "M9 14l-4-4 4-4M5 10h9a5 5 0 0 1 0 10h-3" to 2.2f)
     /** A triangle with a mark: a reversed payment. */
     val Warning = icon("warning", 24f, "M12 4l9 16H3z M12 10v4.5 M12 17.2v.1" to 2f)
