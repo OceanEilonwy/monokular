@@ -8,6 +8,10 @@ import app.monokular.overlay.Edge
 import app.monokular.overlay.EdgeSnap
 import app.monokular.overlay.Handoff
 import app.monokular.overlay.Life
+import app.monokular.overlay.PaidEvent
+import app.monokular.overlay.PaidMoment
+import app.monokular.overlay.PaidMoments
+import app.monokular.overlay.PaidStep
 import app.monokular.overlay.Panel
 import app.monokular.overlay.WindowAct
 import app.monokular.overlay.WindowEvent
@@ -193,5 +197,33 @@ class PanelTest {
         assertEquals(EdgeSnap(left = false, x = 1016), Edge.snap(x = 600, width, screen), "its centre past the middle")
         assertEquals(EdgeSnap(left = true, x = 0), Edge.snap(x = 507, width, screen), "centre at 639: still the left")
         assertEquals(EdgeSnap(left = false, x = 1016), Edge.snap(x = 508, width, screen), "centre at 640: the right")
+    }
+
+    @Test
+    fun `a paid moment is held for the dwell, then the panel collapses into the green bubble, which fades once it lands`() {
+        val held = PaidMoments.next(PaidMoment.None, PaidEvent.Paid, panelUp = true, nextWaiting = false)
+        assertEquals(PaidStep(PaidMoment.Held), held)
+        assertTrue(held.moment.paid, "the bubble is green")
+        val dwelt = PaidMoments.next(PaidMoment.Held, PaidEvent.DwellEnded, panelUp = true, nextWaiting = false)
+        assertEquals(PaidStep(PaidMoment.Lowering, lower = true), dwelt, "the panel collapses")
+        assertTrue(dwelt.moment.paid, "into a bubble still green")
+        assertEquals(PaidStep(PaidMoment.None), PaidMoments.next(PaidMoment.Lowering, PaidEvent.ExitLanded, panelUp = false, nextWaiting = false))
+    }
+
+    @Test
+    fun `Done during the dwell ends it with the same collapse`() {
+        val done = PaidMoments.next(PaidMoment.Held, PaidEvent.Lowered, panelUp = true, nextWaiting = false)
+        assertEquals(PaidStep(PaidMoment.Lowering), done, "the cashier's lower is the collapse: no second one")
+        assertEquals(PaidStep(PaidMoment.Lowering), PaidMoments.next(done.moment, PaidEvent.DwellEnded, panelUp = false, nextWaiting = false), "the dwell was cancelled; a late one changes nothing")
+        assertEquals(PaidMoment.None, PaidMoments.next(done.moment, PaidEvent.ExitLanded, panelUp = false, nextWaiting = false).moment)
+    }
+
+    @Test
+    fun `with another sale waiting, or no panel up, the moment ends at the dwell without a collapse`() {
+        assertEquals(PaidStep(PaidMoment.None), PaidMoments.next(PaidMoment.Held, PaidEvent.DwellEnded, panelUp = true, nextWaiting = true), "the next code comes up in the panel")
+        assertEquals(PaidStep(PaidMoment.None), PaidMoments.next(PaidMoment.Held, PaidEvent.DwellEnded, panelUp = false, nextWaiting = false), "the bubble alone: green for the dwell, then it fades")
+        assertEquals(PaidStep(PaidMoment.Held), PaidMoments.next(PaidMoment.Lowering, PaidEvent.Paid, panelUp = false, nextWaiting = false), "another payment mid-collapse: green again")
+        assertEquals(PaidStep(PaidMoment.None), PaidMoments.next(PaidMoment.None, PaidEvent.ExitLanded, panelUp = false, nextWaiting = false), "a collapse with nothing paid")
+        assertEquals(PaidStep(PaidMoment.None), PaidMoments.next(PaidMoment.None, PaidEvent.Lowered, panelUp = true, nextWaiting = false))
     }
 }

@@ -66,6 +66,8 @@ class TillService : LifecycleService() {
                         SalePhase.Paid -> {
                             notes.paid(sale, quiet = graph.appVisible.value)
                             overlay.paid()
+                            // The chip's tick starts at the same instant as the overlay's dwell, for the same time: a
+                            // notification can't follow the panel's collapse, so it keeps its own timer.
                             justPaid.value = sale.orderId
                             paidTimer?.cancel()
                             paidTimer = lifecycleScope.launch {

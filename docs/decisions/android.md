@@ -1045,3 +1045,22 @@ design unchanged.
     `Handoff.next`) tested on the JVM; "drawn" is a pre-draw listener that
     asks for one more frame once the slot is placed, so reduced motion,
     which asks for no frames, still hands over.
+101. **The overlay owns the paid moment, and the collapse ends it** (M9's
+    overlay half; refines 94; dev1). One `Job` in `Overlay` holds the
+    dwell (`Motion.Dwell.PAID_MS`); the panel's own `delay` in `SalePanel`
+    is gone, so there is one timer in `overlay/`. A pure `PaidMoment`
+    (`None`, `Held`, `Lowering`; `overlay/Windows.kt`, tested on the JVM)
+    says what happens: at the dwell's end the panel collapses into the
+    still-green bubble when nothing else waits, and `justPaid` turns false
+    only when that collapse lands, so the bubble fades to lit or idle after
+    it, never under a paid panel; with another sale waiting the moment
+    ends at the dwell and the next code comes up in the panel, the bubble
+    fading to lit as it does; with no panel up the bubble is green for the
+    dwell. Done, the grabber or a tap beside the panel during the dwell
+    end it with the same collapse. The chip's tick keeps its own timer in
+    `TillService`, started at the same instant (a notification can't
+    follow a collapse). One behaviour goes with the panel's timer: a panel
+    the cashier raises on a sale that was paid earlier (nothing else
+    live) no longer lowers itself after five seconds; it stays until Done,
+    as any panel the cashier raised does. The dwell is for a payment that
+    lands, not for looking back at one.

@@ -105,7 +105,6 @@ import app.monokular.ui.display
 import app.monokular.ui.mk
 import app.monokular.ui.motion
 import app.monokular.ui.secondsLeft
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -325,10 +324,10 @@ private fun Confirm(look: BubbleLook) {
  * that never changes, its status, Copy address and Full screen. Paid, it
  * says so and lowers itself; ended unpaid, it sends the cashier to the
  * shift.
+ * How long it shows paid is the overlay's ([Overlay.paid]).
  */
 @Composable
 fun SalePanel(sale: TillSale, where: String, wide: Boolean, actions: PanelActions, raise: Presence, sideBySide: Boolean = false) {
-    if (sale.phase == SalePhase.Paid) LaunchedEffect(sale.orderId) { delay(Motion.Dwell.PAID_MS); actions.onLower() }
     // No Surface gives the overlay's window a text colour: the panel sets its own.
     CompositionLocalProvider(LocalContentColor provides mk.ink) { PanelCard(sale, where, wide, sideBySide, actions, raise) }
 }
