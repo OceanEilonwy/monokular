@@ -304,7 +304,7 @@ class Overlay(
                     },
                 ) { BubbleFace(
                         s.look, phase = s.sale?.phase ?: SalePhase.Waiting, panelUp = open,
-                        confirms = PaidBuzz.bubble(s.appVisible),
+                        confirms = PaidBuzz.bubble(s.appVisible), presence = presence,
                     ) }
             }.apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS },
         )

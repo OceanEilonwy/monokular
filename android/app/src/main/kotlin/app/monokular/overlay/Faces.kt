@@ -63,11 +63,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.runtime.State
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.DefaultShadowColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
@@ -186,6 +186,14 @@ object Panel {
     fun collapseVelocity(velocity: Float, height: Float): Float = if (height > 0f) 0f - velocity / height else 0f
 
     /**
+     * How opaque a growing panel is at [raise]: all there by a third of the
+     * way (`docs/motion.md` M1), so it reads as the bubble opening rather
+     * than a card fading. Its shadow takes the same share, so the shadow
+     * never outlives the card (decision 134).
+     */
+    fun shown(raise: Float): Float = (raise * 3f).coerceIn(0f, 1f)
+
+    /**
      * The point a growing panel scales about, as fractions of its [card]
      * (both on screen): [from] itself on a phone, the docked bubble above
      * the card; on a tablet, whose window ends at the card, the card's
@@ -277,6 +285,8 @@ class PanelActions(
  * only while Monokular is away ([PaidBuzz], decision 119). [pulse] is false for the bubble docked above the panel,
  * which has nothing left to call for; [panelUp] is the free bubble's word
  * that a panel is up beside it (a tablet's), which stops its pulse too.
+ * [presence] is the free bubble's window appearing and going, which the
+ * circle's shadow follows (decision 134).
  */
 @Composable
 fun BubbleFace(
@@ -285,10 +295,11 @@ fun BubbleFace(
     phase: SalePhase = SalePhase.Waiting,
     panelUp: Boolean = false,
     confirms: Boolean = true,
+    presence: Presence? = null,
 ) = Box(
     Modifier.padding(if (pulse) BubblePadding else DockedPadding).clearAndSetSemantics {},
     contentAlignment = Alignment.Center,
-) { Circle(look, pulse, phase, panelUp, confirms) }
+) { Circle(look, pulse, phase, panelUp, confirms, presence) }
 
 /** Room round the bubble's circle in its window: the pulse's halo reaches 16 dp out and isn't clipped. */
 val BubblePadding = 16.dp
@@ -299,6 +310,8 @@ private val DockedPadding = 12.dp
 /** The bubble's circle: its window, with [BubblePadding] each side, is [Panel.BUBBLE_WINDOW_DP]. */
 private val BubbleSize = 56.dp
 
+private val BubbleElevation = 6.dp
+
 /**
  * One circle whatever the look (`docs/motion.md` M4): its shadow and place
  * stay; its alpha and ground fade (read in the layer and in its draw, so
@@ -306,7 +319,7 @@ private val BubbleSize = 56.dp
  * and only the middle crossfades: the grey logo, the pupil, the tick.
  */
 @Composable
-private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: Boolean, confirms: Boolean) {
+private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: Boolean, confirms: Boolean, presence: Presence?) {
     val m = motion
     val alpha by animateFloatAsState(if (look == BubbleLook.Idle) 0.55f else 1f, m.fade.fraction, label = "bubble")
     val ground by animateColorAsState(
@@ -334,7 +347,11 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
             }
             .graphicsLayer {
                 this.alpha = alpha
-                shadowElevation = 6.dp.toPx()
+                // The window's appear and go fade the circle per draw, which its own shadow doesn't see: it follows here.
+                val shown = presence?.value ?: 1f
+                shadowElevation = BubbleElevation.toPx() * shown
+                ambientShadowColor = DefaultShadowColor.copy(alpha = shown)
+                spotShadowColor = ambientShadowColor
                 shape = CircleShape
                 clip = true
             }
@@ -415,9 +432,9 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                     Modifier.offset { IntOffset(0, (drag.value * raise.value).roundToInt()) }
                 },
             )
-            .shadow(16.dp, RoundedCornerShape(32.dp))
-            .clip(RoundedCornerShape(32.dp))
+            .card(raise)
             .background(mk.ground)
+            .testTag(CARD_TAG)
             .semantics { paneTitle = "Monokular payment code" }
             .verticalScroll(rememberScrollState())
             .padding(start = 20.dp, end = 20.dp, bottom = 18.dp),
@@ -588,6 +605,9 @@ const val CODE_TAG = "panel-code"
 
 /** The slot the code folds in, whose height follows the fold. */
 const val CODE_SLOT_TAG = "panel-code-slot"
+
+/** The panel's card, for the tests that look at its shadow. */
+const val CARD_TAG = "panel-card"
 
 /** The status row under the live code. */
 const val STATUS_TAG = "panel-status"
@@ -907,7 +927,7 @@ fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: Panel
                 OrderContent(
                     sale, "Back to the code", actions.onBackToCode, actions.onBackToCode,
                     Modifier.width(360.dp).heightIn(max = 640.dp)
-                        .shadow(16.dp, RoundedCornerShape(32.dp)).clip(RoundedCornerShape(32.dp)).background(mk.ground)
+                        .card(motion.raise).background(mk.ground)
                         .semantics { paneTitle = "The order" },
                 )
             }
@@ -936,7 +956,29 @@ private fun Modifier.grows(motion: PanelMotion, wide: Boolean, order: Boolean = 
         if (card != null && from != null) transformOrigin = Panel.origin(from, card, corner = wide)
         scaleX = 0.3f + 0.7f * raise
         scaleY = scaleX
-        alpha = (raise * 3f).coerceIn(0f, 1f)
+        alpha = Panel.shown(raise)
         // Faded per draw, not through a window-sized offscreen buffer: the fade is a third of the grow.
         compositingStrategy = CompositingStrategy.ModulateAlpha
     }
+
+/** The panel card's shape and the height its shadow is cast from at rest. */
+private val CardShape = RoundedCornerShape(32.dp)
+private val CardElevation = 16.dp
+
+/**
+ * The panel's card: clipped to its corners, its shadow cast from a height
+ * and in a darkness that follow [raise] as the card's fade does
+ * ([Panel.shown]). A parent's alpha drawn per draw (the grow's
+ * `ModulateAlpha`) never reaches a child's shadow, so without this the
+ * shadow stayed whole while the card faded out of it: a grey box left over
+ * Square after the panel was gone (decision 134). Read in the layer, so a
+ * frame recomposes nothing; the colour is a value, so it allocates nothing.
+ */
+private fun Modifier.card(raise: Presence): Modifier = graphicsLayer {
+    val shown = Panel.shown(raise.value)
+    shadowElevation = CardElevation.toPx() * shown
+    ambientShadowColor = DefaultShadowColor.copy(alpha = shown)
+    spotShadowColor = ambientShadowColor
+    shape = CardShape
+    clip = true
+}
