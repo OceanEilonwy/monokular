@@ -111,6 +111,19 @@ class MotionFramesTest {
     @Test
     fun theOrderCardGrowsIntoTheOrderPage() = seek(stage(Screen.Sale("a1")), Screen.Order("a1"), "order-grow")
 
+    @Test
+    fun theOrderPageStartsAsTheSaleItself() {
+        val state = stage(Screen.Sale("a1"))
+        val sale = compose.onRoot().captureToImage().asAndroidBitmap()
+        scope.launch { state.seekTo(0f, Screen.Order("a1")) }
+        repeat(3) { compose.mainClock.advanceTimeByFrame() }
+        val start = compose.onRoot().captureToImage().asAndroidBitmap()
+        var differ = 0
+        for (y in 0 until sale.height step 4) for (x in 0 until sale.width step 4) if (sale.getPixel(x, y) != start.getPixel(x, y)) differ++
+        val total = (sale.height / 4) * (sale.width / 4)
+        assertTrue(differ * 200 < total, "at 0 the page's bar, heading and foot are unseen and the card is the sale's own: $differ of $total differ")
+    }
+
     /** The code drawn whole: a ring of pure white just outside its edges on every side, so nothing overlaps or crops it. */
     private fun assertQuietZone(frame: ImageBitmap, code: Rect, at: String) {
         val bitmap = frame.asAndroidBitmap().copy(Bitmap.Config.ARGB_8888, false)
