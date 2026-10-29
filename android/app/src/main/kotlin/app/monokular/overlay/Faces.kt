@@ -55,6 +55,7 @@ import androidx.compose.runtime.LongState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
@@ -545,14 +546,14 @@ private fun LateOrderLine(sale: TillSale, actions: PanelActions, words: Modifier
     val m = motion
     val receipt = sale.receipt?.takeIf { it.lineItems.isNotEmpty() }
     // The last receipt shown, kept while its line closes.
-    val last = remember { arrayOfNulls<Receipt>(1) }
-    if (receipt != null) last[0] = receipt
+    var last by remember { mutableStateOf(receipt) }
+    if (receipt != null) last = receipt
     AnimatedVisibility(
         receipt != null,
         enter = fadeIn(m.fade.fraction) + expandVertically(m.settle.spec(IntSize.VisibilityThreshold), Alignment.Top),
         exit = fadeOut(m.fadeQuick.fraction) + shrinkVertically(m.settle.spec(IntSize.VisibilityThreshold), Alignment.Top),
     ) {
-        val shown = last[0] ?: return@AnimatedVisibility
+        val shown = last ?: return@AnimatedVisibility
         OrderLine(SaleText.items(shown), SaleText.firstItems(shown), oneLine, actions.onOrder, words.padding(top = spacing))
     }
 }
@@ -586,8 +587,8 @@ private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, wo
         { (if (targetState.face == PanelFace.Code) m.fadeQuick else m.fade).fraction }, label = "hero",
     ) { if (it.face == PanelFace.Code) 0f else 1f }
     // The last face the code folded into, kept while the next code grows out of it and let go once it has.
-    val folded = remember { arrayOfNulls<TillSale>(1) }
-    if (!live) folded[0] = sale else if (!faces.isRunning) folded[0] = null
+    var folded by remember { mutableStateOf<TillSale?>(null) }
+    if (!live) folded = sale else if (!faces.isRunning) folded = null
     Box(
         Modifier.testTag(CODE_SLOT_TAG).layout { measurable, constraints ->
             val full = codeSize.roundToPx()
@@ -597,7 +598,7 @@ private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, wo
         },
         contentAlignment = Alignment.Center,
     ) {
-        folded[0]?.let { last ->
+        folded?.let { last ->
             Box(Modifier.graphicsLayer { alpha = heroAlpha.value }, contentAlignment = Alignment.Center) {
                 if (Panel.face(last) == PanelFace.Paid) PaidHero(HeroSize) else EndedHero(last)
             }

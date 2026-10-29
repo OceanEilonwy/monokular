@@ -5,6 +5,7 @@ import android.content.Context
 import android.graphics.PixelFormat
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.VelocityTracker
@@ -36,6 +37,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import app.monokular.Bubble
 import app.monokular.BubbleLook
+import app.monokular.BuildConfig
 import app.monokular.Graph
 import app.monokular.PaidBuzz
 import app.monokular.core.SalePhase
@@ -107,6 +109,8 @@ class Overlay(
     private var focus: String? = null
     /** Whether [focus] was live at the last look, to see it turn paid. */
     private var focusLive = false
+    /** Whether the overlay was usable at the last look, to log each change. */
+    private var wasUsable: Boolean? = null
 
     /** Whether the person allowed Monokular to draw over other apps. */
     fun allowed(): Boolean = Settings.canDrawOverlays(context)
@@ -129,7 +133,13 @@ class Overlay(
                 if (focus != previous || sale?.live != true || sale.receipt == null) page.value = PanelPage.Code
                 val where = sale?.let { Panel.where(it, graph.stores.location?.name) }.orEmpty()
                 state.value = OverlayState(Bubble.look(sales, paid || landed), sale, where, if (sale?.live == true) shown else PanelPage.Code, visible)
-                val usable = wanted && runner.running && !runner.disconnected && !visible && allowed()
+                val allowed = allowed()
+                val usable = Handoff.usable(runner, visible, wanted, allowed)
+                if (BuildConfig.DEBUG && usable != wasUsable) {
+                    // Each change of whether the overlay is up, with what changed it, for a lower nobody asked for.
+                    Log.d(TAG, "usable=$usable wanted=$wanted running=${runner.running} disconnected=${runner.disconnected} appVisible=$visible allowed=$allowed")
+                }
+                wasUsable = usable
                 usable to (open && sale != null)
             }.collect { (usable, open) -> show(usable, open) }
         }
@@ -576,3 +586,6 @@ private class BubbleFrame(
         }
     }
 }
+
+/** The overlay's log tag, for the debug build's line on each change of whether it's up. */
+private const val TAG = "MonokularOverlay"
