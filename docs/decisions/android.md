@@ -2304,3 +2304,21 @@ design unchanged.
     tracks between corresponding rectangles give by construction, and the
     device test measures that margin rather than "some white on each
     side".
+133. **A ring's two colours are two strokes, faded through, never a blend**
+    (dev1, round 3; review: the olive ring on the next sale). The bubble's
+    ring went from paid green back to the lit orange through
+    `animateColorAsState`, so for the whole fade the arc was a colour that
+    means nothing (`frames/phone-next-sale-q1.png`), and the same blend ran
+    the other way on every payment. `PhaseRing` now draws the arc twice, in
+    the fill and in the paid colour, each with its own alpha read in the
+    draw: the colour going fades out under `fadeQuick` and the colour coming
+    fades in under `fadeThrough`, which starts when the other is gone. A
+    plain alpha crossfade of two strokes in one place would still be the
+    same olive (one over the other is the blend), so the arc passes over
+    the bare track for a few frames instead; the track is the ring's
+    neutral, and the sweep keeps moving under it. It is the one ring, so
+    the bubble, the panel's status row, the sale's pill, the enlarged
+    code's foot, a row's badge and the close sheet's glyph all get it.
+    `PhaseRingOnDeviceTest` reads the arc on every frame of Confirming to
+    Paid to Waiting and fails on any colour that isn't the fill or the
+    paid colour over the track.
