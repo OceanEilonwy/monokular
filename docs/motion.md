@@ -1,0 +1,620 @@
+# Motion: the Android till
+
+How the till moves, and why. Written by the lead designer for the motion
+round (branch `motion`, base `f274ad7`), after reading every screen in
+`android/app/src/main/kotlin/app/monokular/` and running the build on a
+Pixel 9 Pro and a Pixel Tablet emulator: onboarding, the shift, a live
+sale, the enlarged code, the close sheet, the order page, paid, ended, the
+bubble and panel over another app, the tablet's floating panel, a phone on
+its side and split screen. `docs/reports/motion/before/` holds clips of the
+flows as they are today; the showcase puts the "after" beside them.
+
+The design itself does not change (`docs/decisions/android.md` 60 to 89,
+the till tweaks canvas): the panel with its grabber, the full-screen sale
+with the tinted X, the close sheet, the enlarged white code, the icon-only
+chip with its phase ring, the theme's colour roles. Motion refines how
+those states reach each other.
+
+Contents: [principles](#1-principles) · [presets](#2-the-motion-presets) ·
+[spatial model](#3-the-spatial-model) · [opportunities](#4-opportunities)
+· [rejected](#5-rejected) · [haptics](#6-haptics) · [reduced
+motion](#7-reduced-motion) · [measuring](#8-measuring) · [order of
+work](#9-order-of-work-and-tracks).
+
+---
+
+## 1. Principles
+
+Each is tied to one of the owner's goals (no motion for its own sake;
+blazing fast and memory efficient; the code always scans; the design stays).
+
+1. **Motion explains where things come from and go to, and nothing else.**
+   A panel grows out of the bubble because it *is* the bubble opened; the
+   enlarged code grows out of the code because it is the same code, bigger.
+   If a movement doesn't answer "where did that come from?" or "where did
+   it go?", it isn't made. Decoration (staggered lists, count-ups, shimmer,
+   bouncing buttons) is out.
+2. **The cashier never waits for it.** Every transition is interruptible
+   at any frame and never blocks input: a second tap reverses a panel
+   mid-grow, a fling carries its velocity into the collapse, Back during
+   the enlarge shrinks from wherever it got to. Nothing is sequenced with
+   delays; a motion that would need "wait, then" is two motions, or one
+   with the second part driven by the first's progress.
+3. **The code is sacred.** The QR bitmap is laid out once per sale and
+   never re-laid out, re-encoded or redrawn module by module during a
+   transition. It only ever moves or scales as one layer, so any frame a
+   camera catches is a valid code at a valid size. At rest it is never
+   smaller than designed (264 dp on the sale, 264/280 dp on the panel).
+4. **Cheap by construction.** Animated values are read in the draw or
+   layout phase (`graphicsLayer {}`, `drawBehind {}`, `offset {}`,
+   `Modifier.Node`), never in composition per frame; nothing is allocated
+   per frame; there is exactly one frame clock (Compose's) and two loops
+   in the whole app (the bubble's pulse and the loading mark's glints),
+   both only while something is being waited for. No `Handler.postDelayed`
+   choreography, no `ValueAnimator`, no reflection, no hand-rolled loops.
+5. **One system.** Every spring and duration is a named preset in
+   `ui/Motion.kt`, picked by purpose, so two things of the same kind move
+   the same way and a timing is changed in one place. No numbers at call
+   sites.
+6. **Reduced motion is one switch.** The animator duration scale is read
+   in one place; loops stop, spatial moves become short fades or snaps.
+7. **Haptics confirm, never decorate.** One `CONFIRM` when a payment
+   lands, on whichever surface the cashier is looking at. Nothing on taps,
+   drags, snaps, phase steps or errors.
+8. **Hierarchy of timing.** Big surfaces take longest (a window, a
+   screen); small things settle fast (a ring arc, a row); a fade is
+   quicker than a move; exits are quicker than entries. A cashier reads
+   the hierarchy without seeing it: what moved slowly was big.
+
+## 2. The motion presets
+
+`ui/Motion.kt`, beside `ui/Theme.kt`. Springs for anything that moves
+through space or can be interrupted (they retarget from the current value
+and velocity, which tweens can't); durations only for opacity, where there
+is no position to carry. `Spring.StiffnessMedium` is 1500 and
+`StiffnessMediumLow` 400 in Compose; these sit around them.
+
+| Preset | Spec | Settles in about | Used for |
+| --- | --- | --- | --- |
+| `Motion.surface` | `spring(stiffness = 380f, dampingRatio = 0.86f)` | 450 ms | A window-sized thing arriving or leaving: the panel growing out of the bubble and collapsing back; the enlarged code growing from the sale's code; a screen's container transform (shift row to sale, order card to order page); the sale's code card turning into its paid or ended hero |
+| `Motion.settle` | `spring(stiffness = 800f, dampingRatio = 1f)` | 250 ms | Small things finding their place with no bounce: a shift row moving when another arrives or leaves; the status pill resizing when its words change; the panel's buttons changing width; the docked bubble sliding to its slot |
+| `Motion.flick` | `spring(stiffness = 600f, dampingRatio = 0.8f)` seeded with the release velocity | 300 ms | What the finger let go of: the bubble snapping to its edge; the grabber springing back; the close sheet settling (Material's own spring is kept) |
+| `Motion.sweep` | `spring(stiffness = 170f, dampingRatio = 1f)` | 600 ms | The phase ring's arc growing a quarter: slow enough to be a sweep, overdamped so it never overshoots a quarter mark, and a second step arriving mid-sweep just retargets |
+| `Motion.fade` | `tween(200, LinearEasing)` | 200 ms | Crossfades between two faces of the same thing: the bubble's content, the status words, a row's badge, the paid hero's icon |
+| `Motion.fadeQuick` | `tween(120, LinearEasing)` | 120 ms | Exits under something that is arriving, and every crossfade under reduced motion |
+| `Motion.pulse` | `tween(1600, LinearOutSlowInEasing)`, repeating | loop | The lit bubble's pulse, only while a code waits and the panel is down |
+| `Motion.glints` | `tween(GLINT_MS, LinearEasing)`, repeating | loop | The loading mark (unchanged) |
+| `Motion.Dwell.paid` | `5_000 ms` | — | How long a paid moment is held before the till moves on: the sale screen stepping back to the shift (`TillNav.PAID_STEP_BACK_MS`), the panel lowering, the bubble staying green and the chip its tick (`Bubble.PAID_MS`, today 4 s; see M9) |
+
+Rules: `visibilityThreshold` is set for every spring on an `IntOffset`,
+`Dp` or `Float` in pixels (`IntOffset.VisibilityThreshold`, 0.5 px), so a
+spring doesn't run invisible tails. Any new preset is added to this table
+and to `Motion.kt` together, with a purpose, not a value, as its name.
+Nothing in a call site reads like `tween(300)`.
+
+Reduced motion (section 7): `Motion.reduced` (a `CompositionLocal` set
+once, under the theme) turns `surface`, `settle`, `flick` and `sweep` into
+`snap()`, `fade` into `fadeQuick`, and the loops off.
+
+## 3. The spatial model
+
+What the cashier's mind holds, from the back of the screen to the front.
+A transition is right when it keeps this model true.
+
+```text
+Square (another app)
+  └─ the bubble: lives on an edge; the cashier put it there
+       └─ the panel: the bubble, opened. Phone: hangs from the top edge with the
+          bubble docked at its top corner; tablet: a card beside the bubble
+            └─ the order: the panel's order line, opened to fill the panel
+Monokular (the app), in front of everything
+  └─ the shift: the list; every sale is a row
+       └─ a sale: its row, opened. Live: the code; otherwise its page
+            ├─ the code, enlarged: the code card, grown to the screen
+            ├─ the order: the order card, grown to the page
+            └─ the close sheet: rises from the bottom over the sale
+  └─ Settings: a different place, so it fades through, not out of anything
+```
+
+Continuity map, each thing's origin and destination:
+
+| Thing | Comes from | Goes back to |
+| --- | --- | --- |
+| Phone panel | the docked bubble's circle (grows out of it, the free bubble having slid into the dock) | the docked bubble, which slides back to the edge |
+| Tablet panel | its corner nearest the bubble | the same corner |
+| The order, in the panel | the panel's order line (the card grows to the window) | the order line |
+| A sale screen (cashier opened it) | its row in the shift | its row |
+| A sale screen (a new sale came up by itself) | the shift, rising a little (no row exists yet) | its row, which now exists |
+| Enlarged code | the sale's code card | the code card |
+| Order page (app) | the sale's order card | the order card |
+| Paid / ended page | the sale screen in place: the code card becomes the hero circle | its row, after the dwell |
+| Close sheet | the bottom edge | the bottom edge |
+| Settings | fades through | fades through to where it was opened |
+| Onboarding steps | the next step slides in from the end, the last out to the start | reversed |
+
+## 4. Opportunities
+
+Numbered M1 onward; each says where (file and composable), the motion
+from and to, what happens when it's interrupted, what it does under
+reduced motion, and why a cashier is better off. "Track" names the
+developer: dev1 is the overlay, dev2 the app's screens; the tech lead owns
+`Motion.kt` and the measurements.
+
+### Overlay (dev1)
+
+**M1. The panel grows out of the bubble, and collapses back into it.**
+`overlay/Overlay.kt` (`addPanel`, `removePanel`, `addBubble`,
+`removeBubble`), `overlay/Faces.kt` (`PhonePanel`, `FloatingPanel`,
+`PanelCard`).
+- Today: `wm.addView` / `removeViewImmediate`; the panel pops in at full
+  size and vanishes; on a phone the free bubble window vanishes and a
+  docked bubble appears in another place in the same frame.
+- Phone, raise: the panel window is added with its content at progress 0
+  (invisible) on its first frame. The docked bubble starts where the free
+  bubble was (the window hands the last `params` position across) and
+  springs to its dock slot (`Motion.settle`); the panel card scales and
+  fades up from the dock slot (`graphicsLayer { scaleX; scaleY; alpha;
+  transformOrigin }`, pivot at the docked bubble's centre, scale from 0.3,
+  alpha reaching 1 by a third of the way, `Motion.surface`). The free
+  bubble window is removed on the frame the panel window has drawn, never
+  before, so there is no frame with no bubble.
+- Phone, lower: the reverse. The free bubble window is added back at the
+  edge slot *before* the panel window is removed, and the panel window
+  goes on the frame after the free bubble has drawn: the handoff is
+  pixel-identical. The shadow, grabber and header collapse with the card;
+  nothing inside the card animates separately.
+- Tablet: the floating panel scales and fades up from the corner of the
+  card nearest the bubble (pivot clamped to the card's bounds; see the
+  rejected list for why not the bubble itself). The free bubble stays.
+  When the bubble sits at the end edge at the panel's height, the panel
+  covers it (`before-tablet-panel.webp`); the grow from that corner is
+  then literally from the bubble, and a tap on the panel's grabber or
+  beside it still lowers it, so nothing is lost; QA has the overlap as a
+  finding (decision 90).
+- Interruption: one `Animatable` `raise` in 0..1 per panel window; a tap on
+  the bubble, the grabber or beside the panel mid-animation retargets it
+  (`animateTo` from the current value and velocity). A sale ending or the
+  app coming to the front while raising collapses from wherever it is. A
+  configuration change (fold, split screen, rotation) that swaps the
+  panel's kind (decision 89) snaps: that is the system moving things, not
+  the cashier.
+- Reduced motion: snap to open or closed; the bubble handoff is as above.
+- Why: the panel is the bubble opened; today it is an unrelated thing that
+  appears. A cashier glancing from the customer to the screen finds the
+  panel where their eye already was, at the bubble.
+
+**M2. The grabber's fling carries into the collapse.** `Faces.kt`
+(`PanelCard`, `Grabber`), `Panel.lowers`.
+- Today: the panel follows the finger (`offset {}` on an `Animatable`),
+  springs back short of the rule, and vanishes past it.
+- Past the rule: `raise.animateTo(0f, Motion.surface, initialVelocity =
+  -velocity / height)` from the current drag offset: the panel keeps
+  moving in the finger's direction for the first frames while it shrinks
+  toward the dock, so a fling reads as the panel being thrown away. The
+  drag offset is kept (it is part of the layer's translation) and decays
+  with the progress. Short of the rule: `drag.animateTo(0f, Motion.flick,
+  initialVelocity = velocity)`.
+- Tablet: the drag fades the card (decision 65); past the rule the fade
+  completes with the same collapse spring, seeded the same way.
+- Interruption: a new touch on the grabber during the spring-back stops
+  it (`draggable` already does, since `snapTo` runs on the same
+  `Animatable`).
+- Reduced motion: no spring-back, the panel snaps to 0 or closes.
+- Why: a fling today ends in a cut; the energy the cashier put in should
+  go somewhere.
+
+**M3. The bubble's edge snap is a spring with the finger's velocity.**
+`Overlay.kt` (`BubbleFrame.snap`).
+- Today: `ValueAnimator.ofInt` with `duration = 120 + distance / 6`, no
+  velocity, and `updateViewLayout` per frame.
+- A `VelocityTracker` (`android.view`, no dependency) on the drag; on
+  release, a Compose `Animatable` on the window's x (in a coroutine on
+  `AndroidUiDispatcher.Main`, which has the frame clock) with
+  `Motion.flick` seeded with the x velocity; `updateViewLayout` stays the
+  way the window moves (it is how every floating bubble on Android moves,
+  and it already runs per `MOVE` event), but it is now driven by the
+  frame clock, so it never runs a frame the display can't show. The y is
+  clamped as today.
+- Interruption: a touch down during the snap cancels the job and the
+  finger has the bubble.
+- Reduced motion: the window jumps to the edge.
+- Why: the snap should feel like letting go of something, not a timer.
+
+**M4. The bubble changes face without changing bubble.** `Faces.kt`
+(`BubbleFace`, `Circle`).
+- Today: three different `Box`es by `look`; idle to lit to paid are hard
+  swaps, and the paid look is a different composable with a different
+  shadow.
+- One circle that stays; its alpha (0.55 to 1), elevation (4 to 6 dp) and
+  ground colour (white to `paidGround`) animate (`Motion.fade`, read in
+  `graphicsLayer`/`drawBehind`); its content crossfades (`Crossfade`-style
+  with `Motion.fade`): the grey logo, the ring with its pupil, the tick.
+  The appear and disappear of the whole bubble (shift start and stop, the
+  app going to the front and back) scale and fade the circle inside its
+  window (0.6 to 1, `Motion.surface`) rather than the window popping; the
+  window is added at progress 0 and removed after the exit finishes.
+- The paid moment (with M6): the ring's arc closes to the full circle in
+  `paid` green and the pupil crossfades to the tick, ground to
+  `paidGround`; after `Motion.Dwell.paid` it crossfades back to lit or
+  idle. One `CONFIRM` haptic at the moment it lands (section 6).
+- The pulse: runs only while the shown sale is Waiting or Partial and the
+  panel is down (it is a call to raise the panel); it stops when the panel
+  is up (the docked bubble doesn't pulse) and once the payment is seen.
+  Its ring is drawn in `drawBehind` as today. The window's padding is
+  raised from 12 to 16 dp so the pulse's outer edge (28 + 16 dp) isn't
+  clipped by the window, which it is today by 4 dp.
+- Interruption: `Crossfade` retargets; a paid that arrives mid-pulse just
+  stops the pulse at its current alpha and fades it.
+- Reduced motion: no pulse; faces swap with `fadeQuick`.
+- PR #18 note: #18 puts the loading mark's glints back in the lit bubble
+  in place of the ring. If it lands first, the lit face is the mark and
+  the paid face is mark-to-tick; the pulse and the glints must then share
+  one `rememberInfiniteTransition` so the window has one invalidation
+  stream, not two. M4's structure (one circle, crossfaded content) is the
+  same either way; dev1 keeps `BubbleFace`'s signature and puts the new
+  motion in private composables, so the merge is a content swap.
+- Why: the bubble is one object the cashier placed; it mustn't look
+  replaced.
+
+**M5. The panel's faces, and its order page, come from where they were.**
+`Faces.kt` (`Face`, `Buttons`, `PhonePanel`, `FloatingPanel`),
+`Overlay.kt` (`PanelPage`).
+- Code to order: today `PhonePanel` returns a different tree. Now one
+  outer container (shadow, clip, ground) whose bounds animate from the
+  card to the window (phone) or from the card's height to the order's
+  (tablet) with `Motion.surface` (`AnimatedContent` with a
+  `SizeTransform`, or `animateContentSize` on the container), the corner
+  radius 32 to 0 dp on a phone read in `graphicsLayer { shape }`, the
+  content crossfading (`Motion.fade`, the code out under `fadeQuick`); the
+  docked bubble fades out as the order fills the window and back in on
+  return. The order line is where the eye lands first after the swap
+  (it is at the top of the order page's list in the same place).
+- Live to paid, in place: the code card scales down into the 88 dp paid
+  hero at the same centre (one layer: the white card with its corner
+  radius growing to a circle in `graphicsLayer`, the QR image fading out
+  under `fadeQuick` while the tick fades in; `Motion.surface`), the
+  status row crossfades to "Paid" and "… XMR received"; the buttons row
+  crossfades two to one with its width settling (`Motion.settle`). The
+  sale is paid, so nothing scans during this; principle 3 still holds
+  because the bitmap never re-lays out.
+- Live to ended: the same collapse into the 88 dp ended circle on
+  `warnGround` or `dangerGround`.
+- Paid to the next waiting sale (seen in `before-overlay2.mp4`: with
+  more sales waiting, the panel doesn't lower after the dwell, the focus
+  moves on and the next code comes up in it, decision 85): the paid hero
+  grows back out into the next sale's white code card at the same centre,
+  the header, amount and order line crossfading; the container stays.
+  Only with nothing waiting does the panel collapse into the bubble (M1).
+- Interruption: all `Transition`-based, so a second change (paid during
+  the order page, say) retargets from the current frame.
+- Reduced motion: `fadeQuick` swaps, the container snaps to size.
+- Why: the panel's content is three different layouts today; the cashier
+  sees a page replace a page. With the container persisting and only the
+  content changing, it's one panel showing the next thing.
+
+**M6. The phase ring sweeps.** `ui/PhaseRing.kt`; every place it draws:
+the bubble, the panel's status row, the sale's status pill, the enlarged
+code's foot, a shift row's badge, the close sheet's "Yes" glyph.
+- Today: `ringFill(phase)` jumps a quarter.
+- `animateFloatAsState(ringFill(phase), Motion.sweep)` read inside the
+  `Canvas` draw lambda only (the composable's parameters don't change per
+  frame, so nothing recomposes). The first composition starts at the
+  phase's own fill, never from 0, so a ring that appears already at Seen
+  doesn't sweep in. At Paid the arc completes the circle in `paid` green
+  (the fill colour crossfades over the last quarter, in `drawBehind`).
+- Interruption: Seen then Confirming within the sweep retargets; the
+  spring is overdamped so it never passes a quarter mark.
+- Reduced motion: snaps, as today.
+- Not the status bar chip: Android draws the promoted notification's icon
+  itself from the four vector drawables (decision 68); it steps, and
+  that's the system's.
+- Why: the sweep is the one thing that says "something is happening on
+  the network" without words, in a cashier's peripheral vision.
+
+### The app's screens (dev2)
+
+**M7. Navigation has direction, and things open from where they are.**
+`MainActivity.kt` (the bare `when (screen)`), `ui/Shift.kt` (`SaleRow`),
+`ui/Till.kt` (`LiveSale`, `Code`, `OrderCard`), `ui/CodeScreen.kt`,
+`ui/OrderPage.kt`, `ui/SaleDetail.kt`.
+- Today: every screen change is a cut.
+- One `SharedTransitionLayout` around one `AnimatedContent(targetState =
+  screen)` in `MainActivity`, keyed so a `Sale(id)` turning into
+  `Code(id)` is a transition and `Sale(a)` to `Sale(b)` is one too. The
+  transition by pair:
+  - Shift to sale, cashier's tap: the row's card is the sale's surface
+    (`sharedBounds("sale/$id")` on the row's rounded background and on the
+    sale screen's root, `Motion.surface`), content crossfading; Back
+    returns it into the row if the row is on screen, else the plain back
+    below.
+  - Shift to sale, a new sale coming up by itself (`TillNav.follow`): the
+    sale fades in and settles from 0.94 scale (`Motion.surface`, enter
+    only, the shift fading under it with `fadeQuick`); there is no row to
+    grow from, and it mustn't look like something the cashier did.
+  - Sale to code (M8), sale to order page: the order card is the page's
+    list card (`sharedBounds("order/$id")`), the rest crossfades.
+  - Code or order back to sale, sale back to shift: the reverse of how
+    they came.
+  - Anything to Settings and back: fade-through (exit `fadeQuick`, enter
+    `fade` from 0.96 scale). Settings is a different place.
+  - Onboarding steps: the next step slides in from the end over 30% of
+    the width with `fade`, the last slides out to the start by 10%; Back
+    reverses. Done once per device, so no more than that.
+- Predictive back: `PredictiveBackHandler` drives a
+  `SeekableTransitionState` for the back transition of each pair, so the
+  code shrinks toward its card, the sale toward its row, as the gesture
+  progresses; commit finishes with `Motion.surface`, cancel springs back.
+  The existing `BackHandler` rules (which screens handle Back, `back(from)`
+  only if still on screen, decision 77) are unchanged; the gesture never
+  changes state until commit.
+- Interruption: `AnimatedContent` and `SeekableTransitionState` retarget;
+  `TillNav` moving the screen mid-transition (a sale paid while opening)
+  is just the next target.
+- Reduced motion: every pair is a `fadeQuick` crossfade; predictive back
+  shows no preview (the handler still commits).
+- Why: the shift is a list of sales and a sale is a row opened; today
+  nothing says so. Direction tells the cashier whether they went deeper or
+  came back without reading the header.
+
+**M8. The code enlarges from the code.** `ui/Till.kt` (`Code`),
+`ui/CodeScreen.kt` (`CodeScreen`, `FullBrightness`), `ui/Qr.kt` (`QrCode`).
+- Today: a cut to a white screen; brightness and bar icons change in the
+  same frame. In the dark theme it is the harshest cut in the app, a
+  near-black ground to full white (`before-code-paid.mp4` at 0:08), and
+  the shrink is the same in reverse.
+- The white card is the shared element: `sharedBounds("code-card/$id")`
+  on the sale's `QrCode` card and on `CodeScreen`'s white root, so the
+  white ground spreads from the card's bounds to the screen
+  (`Motion.surface`); the QR image inside is `sharedElement("code/$id")`
+  with `ScaleToBounds`, so it is laid out once at the target size and
+  scaled as a layer between the two sizes: no re-layout, no re-encode, a
+  valid code every frame (principle 3). The sale's amount, pill and
+  buttons fade out under it (`fadeQuick`); the enlarged screen's header
+  row and foot fade in (`fade`) once the ground is past them. The 32 dp
+  expand badge fades out at once. Back and the shrink button reverse it;
+  the tap-anywhere does too; predictive back seeks it (M7).
+- Brightness: `screenBrightness` is set once, on the first frame, as
+  today. Android's `DisplayPowerController` ramps a window brightness
+  override itself; the tech lead measures on the device whether the ramp
+  is visible, and only if it is a jump does `FullBrightness` animate the
+  attribute, and then with at most six steps over the transition (each
+  `window.attributes = …` is a relayout request; it must never be per
+  frame). The status and navigation bar icons flip at the midpoint.
+- The code never gets smaller than its rest size on either screen; the
+  shrink ends exactly at 264 dp.
+- Interruption: a paid or expiry during the enlarge is `TillNav` moving
+  the screen: the shared element retargets into the sale's page (the
+  card becomes the hero, M10).
+- Reduced motion: `fadeQuick` crossfade, white to white.
+- Why: the customer is already reaching for the code when the cashier
+  taps it; growing it in place keeps their camera where it was.
+
+**M9. The paid moment is one moment, everywhere, for the same time.**
+`ui/Till.kt` (`SaleScreen`), `ui/SaleDetail.kt`, `Faces.kt`
+(`SalePanel`'s `delay(5_000)`), `SaleText.kt` (`Bubble.PAID_MS`,
+`TillNav.PAID_STEP_BACK_MS`), `TillService.kt`, `notify/SaleNotifications.kt`.
+- Today: the bubble is green and the chip a tick for 4 s
+  (`Bubble.PAID_MS`); the panel shows paid for 5 s then lowers, or moves
+  on to the next waiting sale when the focus moves at 4 s; the sale
+  screen steps back after 5 s. So the docked bubble goes back to lit a
+  second before the panel it is docked to moves on (`before-overlay2.mp4`
+  at 0:24), and a second before it would collapse into it.
+- One `Motion.Dwell.paid` (5 s: the acceptance criteria's number) for all
+  four. The panel's exit (M1's collapse, or M5's grow into the next
+  sale) *is* the end of the moment: at the dwell the panel folds into
+  the green bubble, and the bubble fades to lit or idle (`Motion.fade`)
+  only once the collapse has landed, driven by the collapse's
+  completion, not a second timer; when the next sale comes up instead,
+  the bubble fades to lit as the next code grows in. The chip's tick
+  goes at the same dwell. The sale screen (M10) steps back into its row
+  at the dwell.
+- Interruption: Done on the panel, or Back on the sale, ends the dwell
+  early and runs the same exit.
+- Reduced motion: the dwell is the same; the exits snap.
+- Why: a cashier sees the paid bubble, the paid panel, the paid chip and
+  the paid page as one event; they must start and end together.
+
+**M10. A sale turns into its page in place, then settles into its row.**
+`ui/Till.kt` (`SaleScreen`, `LiveSale`), `ui/SaleDetail.kt`
+(`StateBadge`), `ui/Shift.kt` (`SaleRow`).
+- Today: `SaleScreen` swaps `LiveSale` for `SaleDetail` in one frame.
+- The live sale and its page are two states of one screen (an
+  `AnimatedContent` inside `SaleScreen`, or shared elements between the
+  two): the white code card collapses into the page's 72 dp hero circle
+  at the top centre (`sharedBounds("code-card/$id")` again, its corner
+  radius ending at a circle, the QR fading out under `fadeQuick`, the
+  tick or clock fading in); the amount moves from under the top bar to
+  under the heading (`sharedElement`); the status pill crossfades into
+  the heading line; the order card stays where it is if the page keeps
+  it. The top bar's X fades out (it isn't offered once the sale isn't
+  live, decision 83).
+- After `Motion.Dwell.paid` on a paid sale, the page settles into its
+  row in the shift (M7's container transform in reverse: the page's
+  surface shrinks to the row, which exists now, with the paid tick
+  already in it, so the hero visibly becomes the row's badge).
+- A close from the sheet: the sheet hides first (as today, decision 83),
+  then this.
+- Interruption: a reopen ("Show the code again") is the reverse; a paid
+  arriving during the ended morph retargets to the paid hero.
+- Reduced motion: `fadeQuick` crossfade; the step back is a crossfade.
+- Why: "the sale got paid" is the one event a cashier must not miss, and
+  today it's a cut to a different-looking page. A code folding into a
+  tick is unmistakable from across the counter.
+
+**M11. The shift list moves rows, not the cashier's eye.** `ui/Shift.kt`
+(`ShiftScreen`, `SaleRow`, `Chips`).
+- `Modifier.animateItem(fadeInSpec = Motion.fade, placementSpec =
+  Motion.settle, fadeOutSpec = Motion.fadeQuick)` on every row: a new
+  sale slides the others down; a filter change moves the rows that stay
+  and fades the rest; a row leaving (a sale carried off at a new shift)
+  fades. Keys are already `orderId`.
+- A row's badge (ring to tick, ring to clock) crossfades (`Motion.fade`);
+  its ring sweeps (M6); the words change without motion (text is read,
+  not watched); the row's corner shape, which depends on its index,
+  snaps (animating it would need a layout per frame of every row for
+  nothing).
+- Interruption: `animateItem` handles retargeting.
+- Reduced motion: `animateItem` specs are `snap()`.
+- Why: with several sales up, a new row arriving at the top today
+  displaces everything by a row in one frame, and the cashier loses the
+  one they were reading.
+
+**M12. Words that change under a steady eye crossfade, and numbers don't
+jitter.** `ui/Till.kt` (`StatusPill`), `Faces.kt` (`StatusRow`),
+`ui/CodeScreen.kt` (`CodeText.under`), `ui/OrderPage.kt` (`ShowCodeBar`),
+`ui/CloseSheet.kt` (`Answer`), `ui/Theme.kt`.
+- The status words ("Waiting for payment" to "Seen on the network" to
+  "Confirming") crossfade (`AnimatedContent` with `Motion.fade`) and the
+  pill they sit in settles to the new width (`animateContentSize(Motion.
+  settle)`); the pill is a two-text subtree, so a layout per frame of it
+  is nothing.
+- Every countdown ("14:52 left") is set in tabular figures: one
+  `TextStyle` in `Theme.kt` (`tabular`, `FontFeatureSettings "tnum"`),
+  used wherever `SaleText.clock` is shown, so the digits tick without the
+  text shifting. The tick itself is a state change once a second and
+  recomposes that text alone (as today); it is never animated.
+- Reduced motion: words snap.
+- Why: a cashier watching the pill for "Seen" sees the moment it changes
+  instead of a flicker, and the countdown stops wobbling beside it.
+
+### Shared (tech lead)
+
+**M13. `ui/Motion.kt` and one reduced-motion switch.** Section 2's
+presets; `Motion.reduced` as a `CompositionLocal` provided in
+`MonokularTheme` from a `ContentObserver` on
+`Settings.Global.ANIMATOR_DURATION_SCALE` (so a change takes effect
+without restarting the app, and the three composables that each call
+`Settings.Global.getFloat` on first composition today (`LoadingMark`,
+`Circle`, `PanelCard`) stop doing a Binder call each). The existing
+`reducedMotion()` becomes a read of that local. Compose already scales
+its frame clock by the animator duration scale on API 33+ (so "Remove
+animations" snaps every spring and tween by itself); the local is what
+turns loops off and swaps spatial transforms for fades on every API.
+
+**M14. Measurements, before and after.** Section 8.
+
+## 5. Rejected
+
+Each was considered and cut, with the reason, so it isn't raised again
+without a new argument.
+
+- **Window animations (`windowAnimations` styles) for the panel and
+  bubble.** Free of per-frame cost, but not interruptible, not seeded by
+  velocity, and they can't start from the bubble's position. M1 does it in
+  the window's own Compose tree instead.
+- **A true origin at the tablet's bubble.** The floating panel's window
+  is only as big as the card plus its shadow; scaling about a pivot
+  outside it would be clipped, and making the window full-screen would
+  take every touch meant for Square (an overlay window with
+  `FLAG_NOT_TOUCH_MODAL` still owns touches inside its bounds). The pivot
+  is the card's nearest corner, which reads as "toward the bubble".
+- **Animating brightness by hand.** A `window.attributes` write is a
+  relayout request; doing it per frame is exactly the kind of code the
+  owner ruled out. The system ramps overrides itself; measure first (M8).
+- **Any motion on the QR modules, a fade-in of the code, a redraw as it
+  scales, or a "scan me" shimmer.** Principle 3. The code is a bitmap
+  scaled as one layer, nothing else, ever.
+- **A status bar chip that sweeps.** Android draws it from the four
+  vector drawables (decision 68); animating it would mean posting
+  notifications per frame.
+- **Chip selection colour fades, the "Needs action" count appearing with a
+  pop, the Watching dot changing colour slowly.** Discrete states the
+  cashier reads, not watches; a fade would only make them look slower.
+- **Staggered entrance of the order's lines, the shift's rows or
+  onboarding's features.** Decoration that delays reading.
+- **A count-up on amounts.** A cashier reads a number once; it must be
+  the number the first time.
+- **Button press scales, ripple replacements, a shaking refund button on
+  error.** Material's ripples are enough and are the platform's.
+- **A loading spinner replacing the loading mark; a progress bar for the
+  countdown.** The mark exists; the countdown is a number by design.
+- **A pulsing "Paid" or a confetti/particle moment.** The paid moment is
+  the ring closing and the tick arriving (M4, M10) and one haptic; a
+  louder celebration would be noticed, which is the opposite of the goal.
+- **Animating the bubble's y while it is dragged, or an inertial drag.**
+  The finger has it; it must be exactly under the finger.
+- **A `Modifier.animateContentSize` on the panel card for every content
+  change.** It would re-measure the whole card (and the QR's `Image`)
+  per frame on every tick of the countdown that changes the status
+  width. Only the status pill (M12) and the container swaps (M5) animate
+  size, and the QR is never inside a size-animating node.
+- **Launching the app from the panel with a scale-up `ActivityOptions`
+  from the code's bounds** (`makeScaleUpAnimation`): tried in thought;
+  Android 12+ draws its own launch (the splash and task animation) and
+  ignores a scale-up from a non-activity source, and the app opens on the
+  shift, not on the code, so there is nothing for it to grow into. Left
+  to the system.
+- **The idle shift's faded logo breathing.** It is a placeholder, not a
+  state the cashier waits on.
+- **`androidx.dynamicanimation` or Material motion libraries.** No new
+  dependencies; Compose's springs are the same physics.
+
+## 6. Haptics
+
+One `HapticFeedbackConstants.CONFIRM` (API 30+, else `CONTEXT_CLICK`) when
+a payment lands, performed by the surface the cashier is looking at and
+by it alone: the bubble's window when the overlay is up (the app isn't on
+screen), the sale screen when the app is (the panel and bubble aren't
+shown while the app is visible, so there is no double). The notification
+channels are silent (`setSilent`), so there is no second buzz from the
+shade. `performHapticFeedback` on the view respects the system's haptic
+settings, so nothing is added for that. Nothing else buzzes: not the
+grabber, not the snap, not the sheet, not a phase step, not an error (the
+words and the red do that).
+
+## 7. Reduced motion
+
+One switch, `Motion.reduced` (M13), true when the animator duration scale
+is 0 ("Remove animations" in Accessibility, or the developer option).
+Then:
+
+- Loops (pulse, glints) don't run; the bubble and mark are still.
+- Spatial presets (`surface`, `settle`, `flick`, `sweep`) are `snap()`.
+- Crossfades are `fadeQuick` (120 ms): a crossfade is not motion, and a
+  hard cut between a white screen and a dark one is harsher than a short
+  fade for the people who ask for this.
+- Predictive back shows no preview; Back still works.
+- `animateItem` specs are `snap()`.
+- Dwells (`Dwell.paid`) are unchanged: they are reading time, not motion.
+
+A scale of 0.5× or 2× is left to Compose's frame clock scaling, which
+every preset goes through on API 33+.
+
+## 8. Measuring
+
+Before numbers are taken on the base commit and after numbers on the
+integration branch, by the tech lead, on the same device, and kept in
+`docs/reports/motion/numbers.md`. The emulators here run software GL
+(`swangle`) on a host whose load average passed 60 during this round
+(the app ANR'd on its first frame once, and a frame took 9 s), so their
+frame times say whether something is *wrong*, not how it *feels*; the
+final numbers come from a physical device, and from emulators only with
+the host idle and compared before to after on the same instance.
+
+| What | How | Flows |
+| --- | --- | --- |
+| Frame timing | `adb shell dumpsys gfxinfo app.monokular.debug reset`, run the flow ten times, `dumpsys gfxinfo app.monokular.debug framestats`: janky frames %, 90th/95th/99th percentile | panel raise and lower ×10; code enlarge and shrink ×10; shift to sale and back ×10; a paid moment ×3; a new sale arriving on the shift with five rows ×5 |
+| Memory | `dumpsys meminfo app.monokular.debug` after each flow, at rest 10 s later: PSS total, Graphics, Java heap | the same flows; the overlay windows up and down |
+| APK size | `app-release.apk` (minified) and the debug APK, bytes | before and after |
+| Recomposition | Layout Inspector's recomposition counts on `PanelCard`, `QrCode`, `PhaseRing`, `SaleRow`, `StatusPill` during each flow; the target is zero per frame of animation | the same flows |
+| Allocation | Android Studio's allocation tracker over one panel raise and one enlarge: no allocations inside draw lambdas | two flows |
+
+Pass: no new janky frames over the before run at the 95th percentile on
+the device; PSS at rest within 2 MB of before; APK within 50 KB; zero
+recompositions per animated frame of the named composables.
+
+## 9. Order of work and tracks
+
+dev1 (overlay): M13's presets first (the tech lead lands `Motion.kt`
+within the hour; until then dev1 writes against the names in section 2),
+then M6 (the ring is used by both tracks; dev1 owns `PhaseRing.kt`), M4,
+M1, M2, M3, M5, M9's overlay half.
+
+dev2 (screens): M12 (small, everywhere), M11, M7, M8, M10, M9's app half.
+
+Tech lead: M13, M14, the integration branch, and decisions 90 onward in
+`docs/decisions/android.md` for anything above that is a call rather than
+a refinement (M9's dwell is one).
+
+Conflicts to watch: PR #18 touches `BubbleFace` and `Mark.kt` (M4 note);
+PR #16 and #17 don't touch these files.

@@ -819,3 +819,31 @@ detail pages), recorded by the developers and folded in by the lead.
     one `change` now, and a re-found sale keeps `refundedAt` as it kept
     `closedAt`. Not reproduced, so the race is closed on reasoning, not
     on a failing test.
+
+## App: motion (2026-10-29)
+
+Made by the motion team (the lead designer, the tech lead and two
+developers) while making the till's transitions fluid, with the owner
+away. The owner's brief: no animation for its own sake, blazing fast and
+memory efficient, no hacky animation code, the code always scannable, the
+design unchanged.
+
+90. **Motion is specified once, in `docs/motion.md`, and what it rejects
+    stays rejected.** The spec names the principles, the presets (one
+    `ui/Motion.kt`, springs and durations by purpose, no numbers at call
+    sites), the spatial model (where each surface comes from and goes
+    back to), each opportunity with its interruption and reduced-motion
+    behaviour, and a list of motions considered and cut with the reason
+    (window animation styles, a hand-animated brightness ramp, anything
+    on the QR's modules, staggered lists, count-ups, chip colour fades, a
+    paid celebration, new animation libraries). A cut motion is not
+    brought back without a new argument written beside its old one; a
+    new motion is added to the spec before it is built. The spec's
+    "before" clips (`docs/reports/motion/before/`) were recorded on the
+    base commit so the showcase can put the after beside them. Two
+    things the designer saw while recording are findings, not motion
+    work, and go to QA: the lit bubble's pulse ring is clipped by its
+    own window by about 4 dp (the window's padding is 12 dp, the pulse
+    reaches 16 dp past the circle), and on a tablet the floating panel
+    can cover the free bubble when the bubble sits at the end edge at
+    the panel's height.
