@@ -77,12 +77,14 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
                 ModelStage(model) { s ->
                     val stage = LocalStage.current
                     if (stage != null) SideEffect { stages[s] = stage }
+                    // As the app's screens do (MainActivity.TillScreens): a screen being left keeps the sale it showed.
+                    val sale = keptWhileLeaving(s, model.screen) { shown }.value
                     Box(Modifier.fillMaxSize().testTag(tag(s))) {
                     when (s) {
-                        is Screen.Code -> CodeScreen(shown, onBack = {})
-                        is Screen.Order -> OrderPage(shown, "Back to the sale", onBack = {}, onShowCode = {})
-                        is Screen.Sale -> SaleScreen(shown, "Front", refunding = false, refundProblem = null, actions = noActions, now = now)
-                        else -> ShiftScreen(status, listOf(sales[0], shown, sales[2]), noActions, now)
+                        is Screen.Code -> CodeScreen(sale, onBack = {})
+                        is Screen.Order -> OrderPage(sale, "Back to the sale", onBack = {}, onShowCode = {})
+                        is Screen.Sale -> SaleScreen(sale, "Front", refunding = false, refundProblem = null, actions = noActions, now = now)
+                        else -> ShiftScreen(status, listOf(sales[0], sale, sales[2]), noActions, now)
                     }
                     }
                 }
@@ -116,11 +118,17 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         val code: Rect?,
         /** Every screen's words on this frame where they are laid out, by screen. */
         val words: Map<Screen, List<Pair<String, Rect>>>,
+        /** The codes of the screens other than the arriving one, where they are laid out. */
+        val leavingCodes: List<Rect>,
+        /** The stage's progress toward its target. */
+        val p: Float,
     )
 
     /** The model sent to [to] (as the till does, or the cashier), and every frame until the stage has landed and settled. */
-    fun run(to: Screen, byItself: Boolean = false, groundKey: String? = null): List<Frame> {
+    fun run(to: Screen, byItself: Boolean = false, groundKey: String? = null, change: () -> Unit = {}): List<Frame> {
         val frames = mutableListOf(capture(0, to, groundKey))
+        // What the model does to the sale in the same update as it moves the screen (closed from the sheet, paid on the code).
+        change()
         model.go(to, byItself)
         var landed = 0
         var i = 1
@@ -171,11 +179,13 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
             compose.onAllNodes(hasAnyAncestor(hasTestTag(tag(s))) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text), useUnmergedTree = true).fetchSemanticsNodes()
                 .map { (it.config.getOrNull(SemanticsProperties.Text)?.joinToString().orEmpty()) to it.drawn().half() }
         }
+        val payment = SemanticsMatcher("a payment code") { n -> n.config.getOrNull(SemanticsProperties.ContentDescription)?.any { it.startsWith("Payment code") } == true }
+        val leavingCodes = stages.keys.filter { it != arriving }.flatMap { s -> drawnOf(hasAnyAncestor(hasTestTag(tag(s))) and payment) }
         val hero = drawnOf(SemanticsMatcher.expectValue(SemanticsProperties.TestTag, HeroTag)).firstOrNull()
         val heading = drawnOf(mine and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading) and SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).firstOrNull()
         // A moving code is drawn where its track says, not where either screen laid it out.
         val drawn = if (code != null) listOf(code) else codes
-        return Frame(index, bitmap, moves, drawn, texts, ground, hero, heading, stages.mapValues { it.value.shown() }, lightBars, code, words)
+        return Frame(index, bitmap, moves, drawn, texts, ground, hero, heading, stages.mapValues { it.value.shown() }, lightBars, code, words, leavingCodes, model.stage.fraction)
     }
 
     private fun tag(s: Screen) = "screen:$s"
