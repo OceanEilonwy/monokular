@@ -4,6 +4,7 @@ import app.monokular.core.AppIdentity
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloApi
 import app.monokular.core.Order
+import app.monokular.core.PointOfSale
 import app.monokular.core.SaleEvent
 import app.monokular.core.SalePhase
 import app.monokular.receipt.Receipt
@@ -32,11 +33,36 @@ class FakeSource(var sales: List<FoundSale>, private val receipt: Receipt? = nul
     val refunded = mutableListOf<String>()
     /** The POS is down: refunds fail with this. */
     var refusal: String? = null
+    override val pointOfSale = PointOfSale.Square
     override suspend fun newSales() = sales.filter { it.id !in handledIds }
     override suspend fun receipt(sale: FoundSale) = receipt
-    override suspend fun refund(sale: FoundSale) {
+    override val refunds = Refunds.ByTill { sale ->
         refusal?.let { throw SquareException(503, it) }
         refunded += sale.id
+    }
+    override fun handled(sale: FoundSale) {
+        handledIds += sale.id
+    }
+}
+
+/** A POS where the cashier refunds a sale themselves (Clover): the till can only look. */
+class InPosSource(var sales: List<FoundSale>) : SaleSource {
+    val handledIds = mutableListOf<String>()
+    /** The sales the POS shows refunded. */
+    val refundedThere = mutableSetOf<String>()
+    /** How often the till asked. */
+    var looks = 0
+    /** The POS can't be reached: looks fail. */
+    var down = false
+    override val pointOfSale = PointOfSale.Clover
+    override suspend fun newSales() = sales.filter { it.id !in handledIds }
+    override suspend fun receipt(sale: FoundSale) = null
+    override val refunds = object : Refunds.InPos {
+        override suspend fun refunded(sale: FoundSale): Boolean {
+            looks++
+            if (down) throw PosException(503, "Clover is down.")
+            return sale.id in refundedThere
+        }
     }
     override fun handled(sale: FoundSale) {
         handledIds += sale.id
@@ -59,6 +85,8 @@ class TillTest {
     private lateinit var monokulo: MonokuloApi
     private lateinit var connection: Connection
     private val sale = FoundSale("pay_monero", 1388, "USD", "bP9m", "ord_sq_1", "2026-10-22T16:07:00Z", "dev_front")
+    /** [sale] as Clover took it: what an [InPosSource] finds. */
+    private val cloverSale = sale.copy(pointOfSale = PointOfSale.Clover)
     private val receipt = Receipt(
         receipt = Receipt.Info("bP9m", "2026-10-22T09:07:00-07:00"),
         merchant = Receipt.Merchant("The Bean Room", "US"),
@@ -469,6 +497,203 @@ class TillTest {
     }
 
     @Test
+    fun `where the cashier refunds in the POS, refunding marks the sale to refund there and sends nothing`() = runBlocking {
+        var clock = 10L
+        val source = InPosSource(listOf(cloverSale))
+        val shift = MemoryShift()
+        val till = Till(source, monokulo, connection, now = { clock }, store = shift)
+        server.enqueue(order())
+        till.check()
+        till.close("ord_1")
+        clock = 20
+        till.refund("ord_1")
+        val pending = till.sales.value.sales.single()
+        assertEquals(Standing.RefundInPos, pending.standing)
+        assertEquals(20L, pending.refundPendingAt)
+        assertEquals(null, pending.refundedAt, "not refunded until the POS shows it")
+        assertTrue(pending.needsAction, "the cashier still has to refund it there")
+        assertEquals(0, source.looks, "refunding asks the POS nothing")
+        clock = 25
+        till.refund("ord_1")
+        assertEquals(20L, till.sales.value.sales.single().refundPendingAt, "told once, when first told")
+        assertEquals(Standing.RefundInPos, Till(source, monokulo, connection, store = shift).sales.value.sales.single().standing, "and saved")
+    }
+
+    @Test
+    fun `I've refunded it marks the sale refunded when the POS shows it, and leaves it pending otherwise`() = runBlocking {
+        var clock = 10L
+        val source = InPosSource(listOf(cloverSale))
+        val till = Till(source, monokulo, connection, now = { clock })
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Expired)
+        till.refund("ord_1")
+        assertFalse(till.confirmRefund("ord_1"), "the POS doesn't show it yet")
+        assertEquals(Standing.RefundInPos, till.sales.value.sales.single().standing)
+        source.down = true
+        assertFalse(till.confirmRefund("ord_1"), "the POS couldn't be asked")
+        assertEquals(Standing.RefundInPos, till.sales.value.sales.single().standing)
+        source.down = false
+        source.refundedThere += "pay_monero"
+        clock = 40
+        assertTrue(till.confirmRefund("ord_1"))
+        val refunded = till.sales.value.sales.single()
+        assertEquals(Standing.Refunded, refunded.standing)
+        assertEquals(40L, refunded.refundedAt)
+        assertFalse(refunded.needsAction)
+        val looks = source.looks
+        assertTrue(till.confirmRefund("ord_1"), "refunded already: nothing to ask")
+        assertEquals(looks, source.looks)
+        till.onEvent(SaleEvent("sale.paid", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 50))
+        assertEquals(Standing.Paid(late = true, afterRefund = true), till.sales.value.sales.single().standing, "paid after the refund, as at Square")
+    }
+
+    @Test
+    fun `a sale told to refund in a POS the till no longer uses is refunded on the cashier's word`() = runBlocking {
+        var clock = 10L
+        val clover = InPosSource(listOf(cloverSale))
+        val shift = MemoryShift()
+        val till = Till(clover, monokulo, connection, now = { clock }, store = shift)
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Expired)
+        till.refund("ord_1")
+        assertEquals(Standing.RefundInPos, till.sales.value.sales.single().standing)
+        // The cashier changed the point of sale to Square: the shift's sales stay, Clover can't be asked.
+        val square = FakeSource(emptyList())
+        clock = 100
+        val again = Till(square, monokulo, connection, now = { clock }, store = shift)
+        assertEquals(Standing.RefundInPos, again.sales.value.sales.single().standing)
+        again.check()
+        assertEquals(0, clover.looks, "the timer asks no POS")
+        assertEquals(Standing.RefundInPos, again.sales.value.sales.single().standing, "and marks nothing itself")
+        assertTrue(again.confirmRefund("ord_1"), "nothing to ask: the cashier's word")
+        val refunded = again.sales.value.sales.single()
+        assertEquals(Standing.Refunded, refunded.standing)
+        assertEquals(100L, refunded.refundedAt)
+        assertFalse(refunded.needsAction)
+        assertTrue(square.refunded.isEmpty(), "and nothing is refunded at Square")
+        assertEquals(0, clover.looks)
+        assertEquals(Standing.Refunded, MemoryShift(shift.saved).load().single().standing, "and saved")
+    }
+
+    @Test
+    fun `a Clover sale refunded after a change to Square is marked to refund in Clover, never sent to Square`() = runBlocking {
+        var clock = 10L
+        val shift = MemoryShift()
+        val clover = InPosSource(listOf(cloverSale))
+        val till = Till(clover, monokulo, connection, now = { clock }, store = shift)
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Expired)
+        // The cashier changed the point of sale to Square before refunding it.
+        val square = FakeSource(emptyList())
+        clock = 50
+        val again = Till(square, monokulo, connection, now = { clock }, store = shift)
+        again.refund("ord_1")
+        assertTrue(square.refunded.isEmpty(), "Clover's payment id is never sent to Square")
+        assertEquals(null, again.sales.value.refundProblems["ord_1"])
+        val pending = again.sales.value.sales.single()
+        assertEquals(Standing.RefundInPos, pending.standing)
+        assertEquals(50L, pending.refundPendingAt)
+        clock = 60
+        assertTrue(again.confirmRefund("ord_1"), "nothing can ask Clover: the cashier's word")
+        val refunded = again.sales.value.sales.single()
+        assertEquals(Standing.Refunded, refunded.standing)
+        assertEquals(60L, refunded.refundedAt)
+        assertTrue(square.refunded.isEmpty())
+        assertEquals(0, clover.looks)
+        assertEquals(Standing.Refunded, MemoryShift(shift.saved).load().single().standing, "and saved")
+    }
+
+    @Test
+    fun `a Square sale refunded after a change to Clover is never asked about at Clover`() = runBlocking {
+        var clock = 10L
+        val shift = MemoryShift()
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection, now = { clock }, store = shift)
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Expired)
+        // The cashier changed the point of sale to Clover before refunding it.
+        val clover = InPosSource(emptyList())
+        clock = 100
+        val again = Till(clover, monokulo, connection, now = { clock }, store = shift)
+        again.refund("ord_1")
+        assertEquals(Standing.RefundInPos, again.sales.value.sales.single().standing, "refund it in Square")
+        assertEquals(100L, again.sales.value.sales.single().refundPendingAt)
+        clock = 200
+        again.check()
+        assertEquals(0, clover.looks, "the timer asks Clover nothing about a Square payment")
+        assertEquals(Standing.RefundInPos, again.sales.value.sales.single().standing)
+        assertTrue(again.confirmRefund("ord_1"), "nothing can ask Square: the cashier's word")
+        assertEquals(0, clover.looks)
+        assertEquals(Standing.Refunded, again.sales.value.sales.single().standing)
+        assertEquals(200L, again.sales.value.sales.single().refundedAt)
+        assertEquals(Standing.Refunded, MemoryShift(shift.saved).load().single().standing, "and saved")
+    }
+
+    @Test
+    fun `I've refunded it changes nothing for a sale never told to refund in the POS`() = runBlocking {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Expired)
+        assertFalse(till.confirmRefund("ord_1"))
+        assertEquals(Standing.Expired, till.sales.value.sales.single().standing)
+    }
+
+    @Test
+    fun `the till looks for a refund in the POS at most every 30 seconds, and marks the one it sees`() = runBlocking {
+        var clock = 100L
+        val source = InPosSource(listOf(cloverSale))
+        val till = Till(source, monokulo, connection, now = { clock })
+        server.enqueue(order())
+        till.check()
+        assertEquals(0, source.looks, "nothing pending, nothing asked")
+        till.onStatus("ord_1", SalePhase.Expired)
+        till.refund("ord_1")
+        till.check()
+        assertEquals(1, source.looks)
+        clock = 129
+        till.check()
+        assertEquals(1, source.looks, "not again within ${Till.REFUND_LOOK_SECONDS} s")
+        clock = 130
+        source.down = true
+        assertEquals(0, till.check(), "a failed look is no problem for the check")
+        assertEquals(2, source.looks)
+        assertEquals(null, till.sales.value.problem)
+        assertEquals(Standing.RefundInPos, till.sales.value.sales.single().standing)
+        source.down = false
+        source.refundedThere += "pay_monero"
+        clock = 159
+        till.check()
+        assertEquals(2, source.looks)
+        clock = 160
+        till.check()
+        assertEquals(3, source.looks)
+        assertEquals(Standing.Refunded, till.sales.value.sales.single().standing)
+        assertEquals(160L, till.sales.value.sales.single().refundedAt)
+        clock = 300
+        till.check()
+        assertEquals(3, source.looks, "nothing pending any more")
+    }
+
+    @Test
+    fun `a paid sale is never marked to refund in the POS`() = runBlocking {
+        val source = InPosSource(listOf(cloverSale))
+        val till = Till(source, monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        till.onEvent(SaleEvent("sale.paid", "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 99, "", 2))
+        till.refund("ord_1")
+        val paid = till.sales.value.sales.single()
+        assertEquals(null, paid.refundPendingAt)
+        assertEquals(Standing.Paid(), paid.standing)
+        till.check()
+        assertEquals(0, source.looks)
+    }
+
+    @Test
     fun `an expired or reversed sale needs action until refunded, while another till's never does`() = runBlocking {
         var clock = 100L
         val till = Till(FakeSource(listOf(sale)), monokulo, connection, now = { clock })
@@ -526,6 +751,20 @@ class TillTest {
         assertEquals(saves, shift.saves)
         again.onStatus("ord_1", SalePhase.Expired, settled = true)
         assertEquals(Standing.Expired, MemoryShift(shift.saved).load().single().standing)
+    }
+
+    @Test
+    fun `a saved sale keeps the point of sale that took it, and one saved before Clover joined reads as Square's`() = runBlocking {
+        val shift = MemoryShift()
+        val clover = sale.copy(id = "PAY_MONERO_1", pointOfSale = PointOfSale.Clover)
+        val till = Till(FakeSource(listOf(clover), receipt), monokulo, connection, store = shift)
+        server.enqueue(order())
+        till.check()
+        assertEquals(PointOfSale.Clover, MemoryShift(shift.saved).load().single().found?.pointOfSale)
+        // A shift saved by a Square-only build has no pointOfSale in its found sale.
+        val before = shift.saved!!.replace(Regex(""","pointOfSale":"Clover""""), "")
+        assertFalse(before.contains("pointOfSale"))
+        assertEquals(PointOfSale.Square, MemoryShift(before).load().single().found?.pointOfSale)
     }
 
     @Test

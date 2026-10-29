@@ -2,10 +2,12 @@ package app.monokular
 
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloException
+import app.monokular.core.PointOfSale
 import app.monokular.core.Problems
 import app.monokular.core.StreamEvent
 import app.monokular.push.interval
 import app.monokular.sales.FoundSale
+import app.monokular.sales.Refunds
 import app.monokular.sales.SaleSource
 import app.monokular.sales.Shift
 import app.monokular.sales.SquareSource
@@ -38,9 +40,10 @@ data class RunnerState(
 
 /** A source for a till that runs without Square: it shows other tills' sales only. */
 private object NoSource : SaleSource {
+    override val pointOfSale = PointOfSale.Square
     override suspend fun newSales() = emptyList<FoundSale>()
     override suspend fun receipt(sale: FoundSale) = null
-    override suspend fun refund(sale: FoundSale) = Unit
+    override val refunds = Refunds.ByTill {}
     override fun handled(sale: FoundSale) = Unit
 }
 

@@ -9,7 +9,7 @@ import app.monokular.sales.CursorStore
 import app.monokular.sales.Pkce
 import app.monokular.sales.ShiftStore
 import app.monokular.sales.SquareLocation
-import app.monokular.sales.SquareTokens
+import app.monokular.sales.PosTokens
 import app.monokular.sales.TillSale
 import app.monokular.sales.TokenStore
 import kotlinx.serialization.KSerializer
@@ -118,8 +118,8 @@ class Stores(private val secure: SecureStore) {
     private data class PkceState(val verifier: String, val state: String, val applicationId: String? = null)
 
     val tokens = object : TokenStore {
-        override fun load() = read("square.tokens", SquareTokens.serializer())
-        override fun save(tokens: SquareTokens?) = write("square.tokens", SquareTokens.serializer(), tokens)
+        override fun load() = read("square.tokens", PosTokens.serializer())
+        override fun save(tokens: PosTokens?) = write("square.tokens", PosTokens.serializer(), tokens)
     }
 
     val cursor = object : CursorStore {
