@@ -55,6 +55,14 @@ sealed interface Screen {
     data object Settings : Screen
 }
 
+/** The sale a screen shows, if it shows one. */
+fun Screen.orderIdOrNull(): String? = when (this) {
+    is Screen.Sale -> orderId
+    is Screen.Code -> orderId
+    is Screen.Order -> orderId
+    else -> null
+}
+
 class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val graph = (app as MonokularApp).graph
     private val stores = graph.stores
@@ -368,13 +376,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             go(Screen.Till)
             follow(graph.runner.state.value.till.sales)
         }
-    }
-
-    private fun Screen.orderIdOrNull(): String? = when (this) {
-        is Screen.Sale -> orderId
-        is Screen.Code -> orderId
-        is Screen.Order -> orderId
-        else -> null
     }
 
     /** Shows a sale full screen (from the shift, a notification or the bubble's panel): its code, or its page. */

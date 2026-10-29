@@ -13,6 +13,10 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.browser.customtabs.CustomTabsIntent
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
@@ -20,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.monokular.notify.SaleNotifications
+import app.monokular.sales.TillSale
 import app.monokular.ui.AlertsScreen
 import app.monokular.ui.ConfirmScreen
 import app.monokular.ui.ConnectedScreen
@@ -62,119 +67,172 @@ class MainActivity : ComponentActivity() {
         setContent {
             MonokularTheme {
                 val screen by model.screen.collectAsStateWithLifecycle()
-                val busy by model.busy.collectAsStateWithLifecycle()
-                val problem by model.problem.collectAsStateWithLifecycle()
-                val runner by model.runner.collectAsStateWithLifecycle()
-                val refunding by model.refunding.collectAsStateWithLifecycle()
-                val bubbleWanted by model.bubbleWanted.collectAsStateWithLifecycle()
-                val store by model.store.collectAsStateWithLifecycle()
-                // Read so that coming back from Android's settings recomposes.
-                @Suppress("UNUSED_VARIABLE") val tick = resumed.intValue
+                // Held as states and read only by the screens that need them (behind derivedStateOf), so a runner
+                // update that changes nothing a screen shows recomposes nothing here (performance rule 10).
+                val flows = Flows(
+                    busy = model.busy.collectAsStateWithLifecycle(),
+                    problem = model.problem.collectAsStateWithLifecycle(),
+                    runner = model.runner.collectAsStateWithLifecycle(),
+                    refunding = model.refunding.collectAsStateWithLifecycle(),
+                    bubbleWanted = model.bubbleWanted.collectAsStateWithLifecycle(),
+                    store = model.store.collectAsStateWithLifecycle(),
+                )
+                // Read so that coming back from Android's settings recomposes the setup screens that ask it.
+                val tick = resumed.intValue
                 // Re-read on every bump of `resumed`, which onMultiWindowModeChanged makes, so the till's actions follow it.
                 val multiWindow = isInMultiWindowMode
+                val actions = remember(multiWindow) { tillActions(multiWindow) }
                 BackHandler(enabled = screen != Screen.Welcome && screen != Screen.Till && screen != Screen.Square) { model.back() }
                 when (val s = screen) {
-                    Screen.Welcome -> WelcomeScreen(onStart = { model.go(Screen.Scan) })
-                    Screen.Scan -> ScanScreen(onCode = model::onCode, onBack = model::back)
-                    is Screen.Confirm -> ConfirmScreen(s.code, model.deviceName, busy, problem, { model.connect(s.code) }, model::back)
-                    is Screen.Connected -> ConnectedScreen(
-                        s.connection, store,
-                        onNext = { model.go(Screen.Square) }, onRetry = model::readStore, onWrong = model::disconnect,
-                    )
-                    Screen.Square -> SquareScreen(
-                        location = model.location,
-                        signedIn = model.squareSignedIn,
-                        busy = busy,
-                        problem = problem ?: runner.till.problem,
-                        testSale = runner.till.sales.firstOrNull { it.found != null },
-                        onSignIn = ::signInToSquare,
-                        onChangeLocation = model::changeLocation,
-                        onSkip = model::withoutSquare,
-                        onContinue = {
-                            // The test sale has done its job: the till opens on its idle screen, the sale in its list.
-                            runner.till.sales.forEach { model.leave(it.orderId) }
-                            model.go(Screen.Alerts)
-                        },
-                    )
-                    is Screen.Locations -> LocationsScreen(s.locations, model::chooseLocation, model::back)
-                    Screen.Alerts -> AlertsScreen(
-                        place = model.location?.name,
-                        currency = model.location?.currency ?: store.store?.baseCurrency ?: "USD",
-                        allowed = model.notificationsAllowed(),
-                        onAllow = ::allowNotifications,
-                        onSkip = { model.go(Screen.Float) },
-                        onBack = model::back,
-                    )
-                    Screen.Float -> FloatScreen(
-                        allowed = model.overlayAllowed(),
-                        onOpenSettings = { model.setBubble(true); openOverlaySettings() },
-                        onNotificationsOnly = { model.setBubble(false); model.go(Screen.Ready) },
-                        onContinue = { model.setBubble(true); model.go(Screen.Ready) },
-                        onBack = model::back,
-                    )
-                    Screen.Ready -> ReadyScreen(
-                        store = store.store?.name.orEmpty(),
-                        location = model.location?.name,
-                        alerts = model.notificationsAllowed(),
-                        bubble = bubbleWanted && model.overlayAllowed(),
-                        onStart = model::startShift,
-                    )
-                    Screen.Till, is Screen.Sale, is Screen.Code, is Screen.Order -> {
-                        val sales = runner.till.sales
-                        val shown = when (s) {
-                            is Screen.Sale -> s.orderId
-                            is Screen.Code -> s.orderId
-                            is Screen.Order -> s.orderId
-                            else -> null
-                        }?.let { id -> sales.firstOrNull { it.orderId == id } }
-                        val actions = remember(multiWindow) { tillActions(multiWindow) }
-                        when {
-                            // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
-                            // a disconnected till shows why, whatever was on screen.
-                            shown == null || runner.disconnected -> ShiftScreen(tillStatus(runner, store), sales, actions)
-                            s is Screen.Code -> CodeScreen(shown, onBack = { model.back(s) })
-                            s is Screen.Order -> OrderPage(shown, "Back to the sale", onBack = { model.back(s) }, onShowCode = { model.back(s) })
-                            else -> SaleScreen(shown, model.location?.name, shown.orderId in refunding, runner.till.refundProblems[shown.orderId], actions)
-                        }
-                    }
-                    Screen.Settings -> {
-                        val torRunning by produceState<Boolean?>(null, store) { value = model.torRunning() }
-                        SettingsScreen(
-                            SettingsState(
-                                connection = model.connection,
-                                store = store,
-                                location = model.location,
-                                squareSignedIn = model.squareSignedIn,
-                                tenderName = model.tenderName,
-                                live = runner.live,
-                                shiftOn = model.shiftOn,
-                                alerts = model.notificationsAllowed(),
-                                bubbleWanted = bubbleWanted,
-                                bubbleAllowed = model.overlayAllowed(),
-                                debug = model.debug,
-                                squareBaseUrl = model.squareBaseUrl,
-                                torRunning = torRunning,
-                            ),
-                            SettingsActions(
-                                onShift = { model.setShift(it); model.go(Screen.Settings) },
-                                onAlerts = ::openNotificationSettings,
-                                onBubble = { on ->
-                                    model.setBubble(on)
-                                    if (on && !model.overlayAllowed()) openOverlaySettings()
-                                },
-                                onSquare = { model.go(Screen.Square) },
-                                onChangeLocation = model::changeLocation,
-                                onSignOutSquare = model::signOutOfSquare,
-                                onDisconnect = model::disconnect,
-                                onSquareBaseUrl = { model.squareBaseUrl = it },
-                                onCopyAddress = { SaleNotifications.copyAddress(this, it) },
-                                onTor = model::setTor,
-                                onBack = model::closeSettings,
-                            ),
-                        )
-                    }
+                    Screen.Till, is Screen.Sale, is Screen.Code, is Screen.Order -> TillScreens(s, flows, actions)
+                    else -> SetupScreens(s, flows, tick)
                 }
             }
+        }
+    }
+
+    /** The view model's flows as states, collected once at the root and read below it. */
+    @Stable
+    private class Flows(
+        val busy: State<Boolean>,
+        val problem: State<String?>,
+        val runner: State<RunnerState>,
+        val refunding: State<Set<String>>,
+        val bubbleWanted: State<Boolean>,
+        val store: State<StoreNow>,
+    )
+
+    /**
+     * The shift and a sale's screens. Each reads only its own part of the
+     * runner, so a poll that changes nothing it shows recomposes nothing.
+     */
+    @Composable
+    private fun TillScreens(s: Screen, flows: Flows, actions: TillActions) {
+        val id = s.orderIdOrNull()
+        val runner = flows.runner
+        val shown by remember(id) { derivedStateOf { id?.let { id -> runner.value.till.sales.firstOrNull { it.orderId == id } } } }
+        val disconnected by remember { derivedStateOf { runner.value.disconnected } }
+        val sale = shown
+        when {
+            // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
+            // a disconnected till shows why, whatever was on screen.
+            sale == null || disconnected -> Shift(flows, actions)
+            s is Screen.Code -> CodeScreen(sale, onBack = { model.back(s) })
+            s is Screen.Order -> OrderPage(sale, "Back to the sale", onBack = { model.back(s) }, onShowCode = { model.back(s) })
+            else -> Sale(sale, flows, actions)
+        }
+    }
+
+    @Composable
+    private fun Shift(flows: Flows, actions: TillActions) {
+        val runner = flows.runner
+        val store = flows.store
+        val status by remember { derivedStateOf { tillStatus(runner.value, store.value) } }
+        val sales by remember { derivedStateOf { runner.value.till.sales } }
+        ShiftScreen(status, sales, actions)
+    }
+
+    @Composable
+    private fun Sale(sale: TillSale, flows: Flows, actions: TillActions) {
+        val id = sale.orderId
+        val runner = flows.runner
+        val refundingSet = flows.refunding
+        val refunding by remember(id) { derivedStateOf { id in refundingSet.value } }
+        val refundProblem by remember(id) { derivedStateOf { runner.value.till.refundProblems[id] } }
+        SaleScreen(sale, model.location?.name, refunding, refundProblem, actions)
+    }
+
+    /** Onboarding and Settings: few, and never on screen while a sale is, so they read the flows whole. */
+    @Composable
+    private fun SetupScreens(s: Screen, flows: Flows, @Suppress("UNUSED_PARAMETER") resumed: Int) {
+        val busy by flows.busy
+        val problem by flows.problem
+        val runner by flows.runner
+        val bubbleWanted by flows.bubbleWanted
+        val store by flows.store
+        when (s) {
+            Screen.Welcome -> WelcomeScreen(onStart = { model.go(Screen.Scan) })
+            Screen.Scan -> ScanScreen(onCode = model::onCode, onBack = model::back)
+            is Screen.Confirm -> ConfirmScreen(s.code, model.deviceName, busy, problem, { model.connect(s.code) }, model::back)
+            is Screen.Connected -> ConnectedScreen(
+                s.connection, store,
+                onNext = { model.go(Screen.Square) }, onRetry = model::readStore, onWrong = model::disconnect,
+            )
+            Screen.Square -> SquareScreen(
+                location = model.location,
+                signedIn = model.squareSignedIn,
+                busy = busy,
+                problem = problem ?: runner.till.problem,
+                testSale = runner.till.sales.firstOrNull { it.found != null },
+                onSignIn = ::signInToSquare,
+                onChangeLocation = model::changeLocation,
+                onSkip = model::withoutSquare,
+                onContinue = {
+                    // The test sale has done its job: the till opens on its idle screen, the sale in its list.
+                    flows.runner.value.till.sales.forEach { model.leave(it.orderId) }
+                    model.go(Screen.Alerts)
+                },
+            )
+            is Screen.Locations -> LocationsScreen(s.locations, model::chooseLocation, model::back)
+            Screen.Alerts -> AlertsScreen(
+                place = model.location?.name,
+                currency = model.location?.currency ?: store.store?.baseCurrency ?: "USD",
+                allowed = model.notificationsAllowed(),
+                onAllow = ::allowNotifications,
+                onSkip = { model.go(Screen.Float) },
+                onBack = model::back,
+            )
+            Screen.Float -> FloatScreen(
+                allowed = model.overlayAllowed(),
+                onOpenSettings = { model.setBubble(true); openOverlaySettings() },
+                onNotificationsOnly = { model.setBubble(false); model.go(Screen.Ready) },
+                onContinue = { model.setBubble(true); model.go(Screen.Ready) },
+                onBack = model::back,
+            )
+            Screen.Ready -> ReadyScreen(
+                store = store.store?.name.orEmpty(),
+                location = model.location?.name,
+                alerts = model.notificationsAllowed(),
+                bubble = bubbleWanted && model.overlayAllowed(),
+                onStart = model::startShift,
+            )
+            Screen.Settings -> {
+                val torRunning by produceState<Boolean?>(null, store) { value = model.torRunning() }
+                SettingsScreen(
+                    SettingsState(
+                        connection = model.connection,
+                        store = store,
+                        location = model.location,
+                        squareSignedIn = model.squareSignedIn,
+                        tenderName = model.tenderName,
+                        live = runner.live,
+                        shiftOn = model.shiftOn,
+                        alerts = model.notificationsAllowed(),
+                        bubbleWanted = bubbleWanted,
+                        bubbleAllowed = model.overlayAllowed(),
+                        debug = model.debug,
+                        squareBaseUrl = model.squareBaseUrl,
+                        torRunning = torRunning,
+                    ),
+                    SettingsActions(
+                        onShift = { model.setShift(it); model.go(Screen.Settings) },
+                        onAlerts = ::openNotificationSettings,
+                        onBubble = { on ->
+                            model.setBubble(on)
+                            if (on && !model.overlayAllowed()) openOverlaySettings()
+                        },
+                        onSquare = { model.go(Screen.Square) },
+                        onChangeLocation = model::changeLocation,
+                        onSignOutSquare = model::signOutOfSquare,
+                        onDisconnect = model::disconnect,
+                        onSquareBaseUrl = { model.squareBaseUrl = it },
+                        onCopyAddress = { SaleNotifications.copyAddress(this, it) },
+                        onTor = model::setTor,
+                        onBack = model::closeSettings,
+                    ),
+                )
+            }
+            Screen.Till, is Screen.Sale, is Screen.Code, is Screen.Order -> Unit
         }
     }
 

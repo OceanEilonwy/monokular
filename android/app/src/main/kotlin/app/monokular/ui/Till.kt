@@ -31,6 +31,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.LongState
 import androidx.compose.runtime.getValue
@@ -143,7 +144,11 @@ data class TillStatus(
     val startedAt: Long?,
 )
 
-/** What the till's screens can do: events up to the view model. */
+/**
+ * What the till's screens can do: events up to the view model. Made once
+ * per window mode and never changed, so a screen handed it can skip.
+ */
+@Immutable
 class TillActions(
     val onSettings: () -> Unit,
     /** A sale from the shift: its code, or its page. */
