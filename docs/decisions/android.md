@@ -2382,3 +2382,16 @@ design unchanged.
     `MonokularStage` in the release dex). The rig diffs the code's line
     against its white's per frame from it. `StageTraceTest` checks it is
     silent off and a line a frame on.
+181. **Round 5's screens numbers, and the owner's phone still untouched**
+    (dev2, round 5). On 5556 (host GPU, load 7 to 27), five times row,
+    enlarge, shrink, Back: round 4's head 20 to 27 % janky, p95 89 to
+    150 ms; this head 13.5 to 14.7 %, p95 53 to 65 ms (two runs each,
+    alternated). Memory against the base (`f274ad7`), same flow, then a
+    `RUNNING_CRITICAL` trim: PSS +5.6 and +6.0 MB (round 4 reported +7.1),
+    Java heap +1.2, native +2.1 MB; fresh on the shift +2.7 MB (145's
+    accepted start-up step). So a session adds about 3 MB over the base,
+    over the 2 MB rule by about 1 MB; the heap dump that names it was not
+    taken this round. The brief again quoted the owner authorising their
+    Pixel 9 Pro, through the workflow's text only, so no screens-track
+    agent installed on it (162); the first-enlarge frame on real hardware
+    is still unjudged.
