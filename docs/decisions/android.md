@@ -1577,3 +1577,30 @@ design unchanged.
     panel over white and fails when the band under the card is darker than
     the card's opacity allows (`frames/phone-lower-light-q*.png`); on the
     old build it read 0.14 dark under a card 5 % opaque.
+135. **A payment code is never faded in on the panel; its words fade
+    through around it** (dev1, round 3; review: the next sale's code at
+    40 % then 85 %). Performance rule 6 and principle 3 say the code is
+    never faded in, and the panel broke it in three places: the next
+    waiting sale's code grew out of the paid hero fading in with
+    `motion.fade` (`frames/phone-next-sale-q1.png`, q2), a tablet's code
+    came back from the order inside `AnimatedContent`'s `fadeIn`, and a
+    phone's did the same under Still, where the order's ground snaps away
+    and nothing covered the fade. A customer's camera may already be on the
+    panel when the next code comes up. Now the code's layer is opaque
+    whenever its face or page is the target: the next code grows from the
+    hero's size at the same centre, opaque, over the hero, and only the
+    words (the grabber, header, amount, order line, status and buttons)
+    fade, through `SalePanel(words)`, one alpha read in each of their
+    layers, arriving under `fadeThrough` so the words leaving are gone
+    first (131). On a tablet the code's page comes in under the order
+    (`targetContentZIndex`), whole, while the order fades off it; the
+    order's own entrance now fades through too, where it used to fade in
+    over the panel's words. Under Still a phone's order fades its ground
+    with its words, a 120 ms crossfade off a whole code, instead of an
+    empty ground covering the code for the length of the transition. The
+    code still fades out into a paid or ended hero, which decision 115
+    allows: a paid code scans nothing. The raise's fade over its first
+    third (M1) is unchanged: the code there is a third of its size and
+    growing out of the bubble, and the spec chose it. `OverlayFramesTest`
+    reads the code's darkest module on each seeked frame of those three
+    moves and fails on a grey one; the old build read 0.62 at q1.

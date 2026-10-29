@@ -1,6 +1,8 @@
 package app.monokular.overlay
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Transition
@@ -403,13 +405,29 @@ private fun Confirm(look: BubbleLook) {
  * How long it shows paid is the overlay's ([Overlay.paid]).
  */
 @Composable
-fun SalePanel(sale: TillSale, where: String, wide: Boolean, actions: PanelActions, raise: Presence, sideBySide: Boolean = false) {
+fun SalePanel(
+    sale: TillSale,
+    where: String,
+    wide: Boolean,
+    actions: PanelActions,
+    raise: Presence,
+    sideBySide: Boolean = false,
+    /** How far the words are in, read in their layers: the card, its ground and the code are there whatever it says. */
+    words: State<Float> = Arrived,
+) {
     // No Surface gives the overlay's window a text colour: the panel sets its own.
-    CompositionLocalProvider(LocalContentColor provides mk.ink) { PanelCard(sale, where, wide, sideBySide, actions, raise) }
+    CompositionLocalProvider(LocalContentColor provides mk.ink) { PanelCard(sale, where, wide, sideBySide, actions, raise, words) }
+}
+
+/** Words that are simply there. */
+private val Arrived: State<Float> = object : State<Float> {
+    override val value = 1f
 }
 
 @Composable
-private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: Boolean, actions: PanelActions, raise: Presence) {
+private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: Boolean, actions: PanelActions, raise: Presence, words: State<Float>) {
+    // Everything but the code, which is never faded in (§10 rule 6).
+    val wordsLayer = Modifier.graphicsLayer { alpha = words.value; compositingStrategy = CompositingStrategy.ModulateAlpha }
     val scope = rememberCoroutineScope()
     val drag = remember { Animatable(0f) }
     var height by remember { mutableFloatStateOf(0f) }
@@ -442,6 +460,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
     ) {
         val grabber = @Composable {
             Grabber(
+                wordsLayer,
                 onDrag = { delta -> scope.launch { drag.snapTo((drag.value + delta).coerceAtLeast(0f)) } },
                 onRelease = { velocity ->
                     scope.launch {
@@ -462,8 +481,8 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     grabber()
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Details(sale, where, actions, oneLine = true)
-                        Buttons(faces, actions)
+                        Details(sale, where, actions, wordsLayer, oneLine = true)
+                        Buttons(faces, actions, wordsLayer)
                     }
                 }
                 Column(
@@ -471,7 +490,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    Face(faces, wide, now)
+                    Face(faces, wide, now, wordsLayer)
                 }
             }
         } else {
@@ -481,9 +500,9 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Details(sale, where, actions)
-                Face(faces, wide, now)
-                Buttons(faces, actions)
+                Details(sale, where, actions, wordsLayer)
+                Face(faces, wide, now, wordsLayer)
+                Buttons(faces, actions, wordsLayer)
             }
         }
     }
@@ -491,9 +510,9 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
 
 /** The header, the amount and what was bought. */
 @Composable
-private fun Details(sale: TillSale, where: String, actions: PanelActions, oneLine: Boolean = false) {
-    Header(sale, where, actions.onOpenShift)
-    Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+private fun Details(sale: TillSale, where: String, actions: PanelActions, words: Modifier, oneLine: Boolean = false) {
+    Header(sale, where, actions.onOpenShift, words)
+    Column(words.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
         Text(SaleText.amount(sale), style = display(44, -0.8))
         Text(
             SaleText.xmr(sale), fontSize = 15.sp, color = mk.muted,
@@ -503,7 +522,7 @@ private fun Details(sale: TillSale, where: String, actions: PanelActions, oneLin
         )
     }
     val receipt = sale.receipt
-    if (receipt != null && receipt.lineItems.isNotEmpty()) OrderLine(SaleText.items(receipt), SaleText.firstItems(receipt), oneLine, actions.onOrder)
+    if (receipt != null && receipt.lineItems.isNotEmpty()) OrderLine(SaleText.items(receipt), SaleText.firstItems(receipt), oneLine, actions.onOrder, words)
 }
 
 /** A face of the panel and the sale it was shown for: the side of a change that's leaving keeps its own. */
@@ -521,16 +540,16 @@ private data class FaceShown(val face: PanelFace, val sale: TillSale)
  * of it follows [faces], so the fold and the words start on one frame.
  */
 @Composable
-private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState) {
+private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, words: Modifier) {
     val m = motion
     val shown = faces.targetState
     val sale = shown.sale
     val live = shown.face == PanelFace.Code
     val codeSize = if (wide) 280.dp else 264.dp
     val fold = faces.animateFloat({ m.surface.fraction }, label = "fold") { if (it.face == PanelFace.Code) 0f else 1f }
-    val codeAlpha = faces.animateFloat(
-        { (if (targetState.face == PanelFace.Code) m.fade else m.fadeQuick).fraction }, label = "code",
-    ) { if (it.face == PanelFace.Code) 1f else 0f }
+    // The code only fades out, into a paid or ended hero, where nothing scans; the next sale's grows out of the hero
+    // opaque from its first frame (§10 rule 6), so a camera already on the panel never sees it faint.
+    val codeAlpha = faces.animateFloat({ m.fadeQuick.fraction }, label = "code") { if (it.face == PanelFace.Code) 1f else 0f }
     val heroAlpha = faces.animateFloat(
         { (if (targetState.face == PanelFace.Code) m.fadeQuick else m.fade).fraction }, label = "hero",
     ) { if (it.face == PanelFace.Code) 0f else 1f }
@@ -559,7 +578,7 @@ private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState) {
                     val scale = lerp(1f, HeroSize / codeSize, fold.value)
                     scaleX = scale
                     scaleY = scale
-                    alpha = codeAlpha.value
+                    alpha = if (faces.targetState.face == PanelFace.Code) 1f else codeAlpha.value
                     compositingStrategy = CompositingStrategy.ModulateAlpha
                 }
                 .testTag(CODE_TAG)
@@ -569,6 +588,7 @@ private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState) {
         )
     }
     faces.AnimatedContent(
+        words,
         transitionSpec = {
             // The new words wait for the old to go, and are never clipped to the old words' size while it settles.
             fadeIn(m.fadeThrough.fraction) togetherWith fadeOut(m.fadeQuick.fraction) using
@@ -621,10 +641,10 @@ private val HeroSize = 88.dp
  * height the same.
  */
 @Composable
-private fun Buttons(faces: Transition<FaceShown>, actions: PanelActions) {
+private fun Buttons(faces: Transition<FaceShown>, actions: PanelActions, words: Modifier) {
     val m = motion
     faces.AnimatedContent(
-        Modifier.fillMaxWidth().padding(top = 4.dp),
+        words.fillMaxWidth().padding(top = 4.dp),
         transitionSpec = { (fadeIn(m.fadeThrough.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
         contentKey = { it.face },
     ) { side ->
@@ -649,8 +669,8 @@ private fun Buttons(faces: Transition<FaceShown>, actions: PanelActions) {
  * header below, which opens the shift.
  */
 @Composable
-private fun Grabber(onDrag: (Float) -> Unit, onRelease: (Float) -> Unit, onTap: () -> Unit) = Box(
-    Modifier.size(80.dp, 48.dp)
+private fun Grabber(modifier: Modifier, onDrag: (Float) -> Unit, onRelease: (Float) -> Unit, onTap: () -> Unit) = Box(
+    modifier.size(80.dp, 48.dp)
         .draggable(rememberDraggableState(onDrag), Orientation.Vertical, onDragStopped = { velocity -> onRelease(velocity) })
         .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = onTap)
         .semantics { contentDescription = "Lower to the bubble" },
@@ -659,8 +679,8 @@ private fun Grabber(onDrag: (Float) -> Unit, onRelease: (Float) -> Unit, onTap: 
 
 /** "Sale #k4Rt" and when it was rung up, over "Front Counter · Open the shift ›": one target, which opens the shift. */
 @Composable
-private fun Header(sale: TillSale, where: String, onOpenShift: () -> Unit) = Column(
-    Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(16.dp))
+private fun Header(sale: TillSale, where: String, onOpenShift: () -> Unit, modifier: Modifier) = Column(
+    modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(16.dp))
         .clickable(onClickLabel = "Open the shift", onClick = onOpenShift)
         .padding(vertical = 4.dp),
     verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -685,8 +705,8 @@ private fun Header(sale: TillSale, where: String, onOpenShift: () -> Unit) = Col
 
 /** "15 items" over the first few (or beside them, [oneLine]), on a card: opens the whole order. */
 @Composable
-private fun OrderLine(count: String, first: String, oneLine: Boolean, onOrder: () -> Unit) = Row(
-    Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp)).background(mk.card)
+private fun OrderLine(count: String, first: String, oneLine: Boolean, onOrder: () -> Unit, modifier: Modifier) = Row(
+    modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp)).background(mk.card)
         .clickable(onClickLabel = "See the whole order", onClick = onOrder)
         .padding(horizontal = 12.dp, vertical = 10.dp),
     verticalAlignment = Alignment.CenterVertically,
@@ -783,20 +803,29 @@ fun PhonePanel(
     val m = app.monokular.ui.motion
     val pages = updateTransition(page, label = "page")
     val opened = pages.animateFloat({ m.surface.fraction }, label = "container") { if (it == PanelPage.Order) 1f else 0f }
-    val codeAlpha = pages.animateFloat(
-        { (if (targetState == PanelPage.Code) m.fade else m.fadeQuick).fraction }, label = "code",
+    // The code's page only fades out, under the order's ground; coming back, the code is whole from the first frame
+    // (§10 rule 6) and only its words fade through the order's, which matters under Still, where the ground snaps.
+    val codeAlpha = pages.animateFloat({ m.fadeQuick.fraction }, label = "code") { if (it == PanelPage.Code) 1f else 0f }
+    val codeWords = pages.animateFloat(
+        { (if (targetState == PanelPage.Code) m.fadeThrough else m.fadeQuick).fraction }, label = "code words",
     ) { if (it == PanelPage.Code) 1f else 0f }
     val orderAlpha = pages.animateFloat(
         { (if (targetState == PanelPage.Order) m.fade else m.fadeQuick).fraction }, label = "order",
     ) { if (it == PanelPage.Order) 1f else 0f }
     val codeUp = pages.currentState == PanelPage.Code || pages.targetState == PanelPage.Code
+    val stillLeaving = m.still && pages.targetState == PanelPage.Code
     val orderUp = pages.currentState == PanelPage.Order || pages.targetState == PanelPage.Order
     // With the order filling the window there is no docked bubble for the free one to hand over to.
     SideEffect { motion.undocked = !codeUp }
     Box(Modifier.fillMaxSize()) {
         if (codeUp) {
-            Box(Modifier.graphicsLayer { alpha = codeAlpha.value; compositingStrategy = CompositingStrategy.ModulateAlpha }) {
-                PhoneCode(sale, where, look, actions, motion, confirms)
+            Box(
+                Modifier.graphicsLayer {
+                    alpha = if (pages.targetState == PanelPage.Code) 1f else codeAlpha.value
+                    compositingStrategy = CompositingStrategy.ModulateAlpha
+                },
+            ) {
+                PhoneCode(sale, where, look, actions, motion, confirms, codeWords)
             }
         }
         if (orderUp) {
@@ -804,8 +833,11 @@ fun PhonePanel(
                 OrderContent(
                     sale, "Back to the code", actions.onBackToCode, actions.onBackToCode,
                     Modifier.fillMaxSize().testTag(ORDER_TAG).grows(motion, wide = false, order = true)
-                        .container(motion, opened, mk.ground)
+                        // Under Still nothing grows: the order's ground covers the code at once on the way in, and on the
+                        // way back goes with its words, a crossfade off the code rather than an empty ground over it.
+                        .container(motion, opened, if (stillLeaving) Color.Transparent else mk.ground)
                         .graphicsLayer { alpha = orderAlpha.value; compositingStrategy = CompositingStrategy.ModulateAlpha }
+                        .then(if (stillLeaving) Modifier.background(mk.ground) else Modifier)
                         .safeDrawingPadding()
                         .semantics { paneTitle = "The order" },
                 )
@@ -856,7 +888,15 @@ private fun Modifier.container(motion: PanelMotion, opened: State<Float>, ground
 }
 
 @Composable
-private fun PhoneCode(sale: TillSale, where: String, look: BubbleLook, actions: PanelActions, motion: PanelMotion, confirms: Boolean) {
+private fun PhoneCode(
+    sale: TillSale,
+    where: String,
+    look: BubbleLook,
+    actions: PanelActions,
+    motion: PanelMotion,
+    confirms: Boolean,
+    words: State<Float>,
+) {
     val lower by rememberUpdatedState(actions.onLower)
     val bubble = @Composable {
         Box(
@@ -885,7 +925,7 @@ private fun PhoneCode(sale: TillSale, where: String, look: BubbleLook, actions: 
     // Taps on the panel itself stay there.
     val panel = @Composable { sideBySide: Boolean ->
         Box(Modifier.grows(motion, wide = false).pointerInput(Unit) { detectTapGestures { } }) {
-            SalePanel(sale, where, wide = false, actions, motion.raise, sideBySide)
+            SalePanel(sale, where, wide = false, actions, motion.raise, sideBySide, words)
         }
     }
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures { lower() } }) {
@@ -912,13 +952,19 @@ private fun PhoneCode(sale: TillSale, where: String, look: BubbleLook, actions: 
 fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: PanelActions, motion: PanelMotion) = Box(
     Modifier.padding(Panel.FLOATING_SHADOW_DP.dp).grows(motion, wide = true),
 ) {
-    // The order takes the card's place (M5): the content crossfades and the card's height settles to the new one.
+    // The order takes the card's place (M5) and the card's height settles to the new one. The order's words fade
+    // through the panel's; back to the code, the code is under the order at once, opaque (§10 rule 6), while the
+    // order fades off it and the panel's words fade through after.
     val m = app.monokular.ui.motion
     AnimatedContent(
         page,
         transitionSpec = {
-            fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction) using
-                SizeTransform(clip = false) { _, _ -> m.surface.spec(IntSize.VisibilityThreshold) }
+            val size = SizeTransform(clip = false) { _, _ -> m.surface.spec(IntSize.VisibilityThreshold) }
+            if (targetState == PanelPage.Code) {
+                (EnterTransition.None togetherWith fadeOut(m.fadeQuick.fraction)).apply { targetContentZIndex = -1f } using size
+            } else {
+                fadeIn(m.fadeThrough.fraction) togetherWith fadeOut(m.fadeQuick.fraction) using size
+            }
         },
         label = "page",
     ) { shown ->
@@ -932,7 +978,10 @@ fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: Panel
                 )
             }
         } else {
-            SalePanel(sale, where, wide = true, actions, motion.raise)
+            val words = transition.animateFloat(
+                { (if (targetState == EnterExitState.Visible) m.fadeThrough else m.fadeQuick).fraction }, label = "words",
+            ) { if (it == EnterExitState.Visible) 1f else 0f }
+            SalePanel(sale, where, wide = true, actions, motion.raise, words = words)
         }
     }
 }
