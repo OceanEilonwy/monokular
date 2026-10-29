@@ -8,15 +8,24 @@ repositories, with every decision made without the owner, the design's
 deviations, the tests, the gates, the risks and what is left. This page is
 the Bell's part of it.
 
+**Moved 2026-10-29.** The Bell has since moved into the monokulo repository,
+history and all, as the crate and binary `monokulo-bell`
+(`crates/monokulo-bell`), with `tools/fake-square` and `tools/fake-clover`;
+its secrets are `MONOKULO_BELL_*` there. This report is as it was written,
+so the paths, names and commands below are monokular's at the time. The
+Bell's API and how to run one are at <https://docs.monokulo.com/bell/>, its
+design note and decisions in monokulo's `docs/bell.md` and
+`docs/decisions/bell.md`.
+
 ## What was built
 
 `crates/monokular-bell`, a library and the `monokular-bell` binary (branch
 `monokular-bell`, draft PR [#14](https://github.com/OceanEilonwy/monokular/pull/14)):
 a small service that turns a Square application's payment webhooks into Web
 Push dings for the tills registered at that location. Its API is
-[bell.md](../bell.md); how to run one is the README's "Running a Bell"; the
+[bell.md](https://docs.monokulo.com/bell/); how to run one is the README's "Running a Bell"; the
 32 decisions behind it and the 3 from the integration are
-[decisions/bell.md](../decisions/bell.md).
+[decisions/bell.md](https://github.com/OceanEilonwy/monokulo/blob/main/docs/decisions/bell.md).
 
 - `POST /v1/register`: a till's Web Push subscription for one location,
   with the merchant's Square token, used once for `GET /v2/locations/{id}`
@@ -116,7 +125,7 @@ monokular-bell` (76 passed, 1.2 s), all passed.
 
 Branch `bell-pos` (PR against `main`), 2026-10-28, for the owner's decision
 "keep the Bell's name and make it generic for multiple POS; Clover next".
-The Bell's API is version 0.2.0 ([bell.md](../bell.md)); the calls made
+The Bell's API is version 0.2.0 ([docs.monokulo.com/bell/](https://docs.monokulo.com/bell/)); the calls made
 without the owner are decisions 43 to 57.
 
 What was built:
