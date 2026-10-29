@@ -95,6 +95,7 @@ class MainActivity : ComponentActivity() {
                     store = model.store.collectAsStateWithLifecycle(),
                     tenderState = model.tenderState.collectAsStateWithLifecycle(),
                     refundSheet = model.refundSheet.collectAsStateWithLifecycle(),
+                    screen = screenState,
                 )
                 // Read so that coming back from Android's settings recomposes the setup screens that ask it.
                 val tick = resumed.intValue
@@ -149,6 +150,8 @@ class MainActivity : ComponentActivity() {
         val store: State<StoreNow>,
         val tenderState: State<TenderState?>,
         val refundSheet: State<RefundSheet?>,
+        /** The model's screen: the one up, or being gone to. */
+        val screen: State<Screen>,
     )
 
     /**
@@ -161,7 +164,9 @@ class MainActivity : ComponentActivity() {
         val runner = flows.runner
         val shown by remember(id) { derivedStateOf { id?.let { id -> runner.value.till.sales.firstOrNull { it.orderId == id } } } }
         val disconnected by remember { derivedStateOf { runner.value.disconnected } }
-        val sale = shown
+        // Being left, a screen keeps the sale as it was when the change began: closed, paid or gone under it, it
+        // still leaves with what it showed (decision 185).
+        val sale = keptWhileLeaving(s, flows.screen) { shown }.value
         when {
             // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
             // a disconnected till shows why, whatever was on screen.
