@@ -4,6 +4,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import app.monokular.core.SalePhase
 import app.monokular.receipt.PaymentCode
+import app.monokular.receipt.Receipt
 import app.monokular.sales.FoundSale
 import app.monokular.sales.TillSale
 import app.monokular.ui.LocalMotion
@@ -39,3 +40,22 @@ fun testSale(
 fun Till(motion: Motion = Motion.Full, content: @Composable () -> Unit) = MonokularTheme {
     CompositionLocalProvider(LocalMotion provides motion, content = content)
 }
+
+/** The design's order: 15 items on 8 lines, so the sale's card shows three and "+5 more". */
+fun sampleReceipt() = Receipt(
+    receipt = Receipt.Info("k4Rt", "2026-10-22T16:07:00-07:00"),
+    merchant = Receipt.Merchant("The Bean Room", "US"),
+    lineItems = listOf(
+        Receipt.LineItem("Flat white", 2.0, 4.5, 9.0),
+        Receipt.LineItem("Oat latte", 1.0, 5.25, 5.25),
+        Receipt.LineItem("Almond croissant", 3.0, 3.75, 11.25),
+        Receipt.LineItem("Banana bread", 1.0, 4.5, 4.5),
+        Receipt.LineItem("Cold brew", 2.0, 5.0, 10.0),
+        Receipt.LineItem("Chai", 1.0, 4.75, 4.75),
+        Receipt.LineItem("Choc chip cookie", 4.0, 2.5, 10.0),
+        Receipt.LineItem("House blend beans, 250 g", 1.0, 18.0, 18.0),
+    ),
+    tax = Receipt.Tax(listOf(Receipt.TaxLine(0.08875, 6.46))),
+    total = 79.21,
+    currency = "USD",
+)

@@ -22,6 +22,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.monokular.Move
+import app.monokular.Layers
+import app.monokular.sharedGround
 import app.monokular.sharedSurface
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -72,9 +74,11 @@ fun codeBitmap(text: String): ImageBitmap = codes.getOrPut(text) { qrBitmap(text
  * whatever the theme, the card's padding its quiet zone. With [shared]
  * (the sale's order id) in the app, the code is one shared element
  * between the sale and the enlarged code (M8): the image moves and scales
- * as one layer, never re-laid out, and drawn whole on every frame; with
- * [sharedCard] the white card is the surface that grows into the enlarged
- * code's white screen.
+ * as one layer over everything else that moves, never re-laid out, and
+ * drawn whole on every frame; with [sharedCard] the card's white is the
+ * ground that spreads into the enlarged code's white screen, the image
+ * never inside it (decision 113); without, the code is on a ground
+ * already and has no white of its own.
  */
 @Composable
 fun QrCode(
@@ -88,31 +92,45 @@ fun QrCode(
 ) {
     val bitmap = remember(text) { codeBitmap(text) }
     val shape = remember(radius) { RoundedCornerShape(radius) }
-    CodeCard(modifier.aspectRatio(1f), shape, shared?.takeIf { sharedCard }) {
-        Box(Modifier.padding(padding).semantics { contentDescription = description }) { CodeImage(bitmap, shared) }
+    CodeCard(modifier.aspectRatio(1f), shape, radius, shared, sharedCard) {
+        Box(Modifier.padding(padding)) { CodeImage(bitmap, description, shared) }
     }
 }
 
 /**
- * The white card, a shared surface when [shared]. Its own restartable
- * scope, so a transition starting or landing re-runs this and not
- * [QrCode].
+ * The white card: its white the code's ground with [sharedCard], none on
+ * the enlarged code, which sits on the screen's own ground (one white,
+ * never a second card drawn under the moving one), plain white with no
+ * [shared]. Its own restartable scope, so a transition starting or
+ * landing re-runs this and not [QrCode].
  */
 @Composable
-private fun CodeCard(modifier: Modifier, shape: Shape, shared: String?, content: @Composable () -> Unit) = Box(
-    modifier
-        .then(if (shared != null) Modifier.sharedSurface("code-card/$shared", Move.CodeGrow, shape) else Modifier)
-        .clip(shape)
-        .background(Fixed.White),
-) { content() }
+private fun CodeCard(modifier: Modifier, shape: Shape, radius: Dp, shared: String?, sharedCard: Boolean, content: @Composable () -> Unit) = Box(
+    modifier.clip(shape).then(if (shared == null) Modifier.background(Fixed.White) else Modifier),
+) {
+    if (shared != null && sharedCard) {
+        Box(Modifier.matchParentSize().sharedGround(codeGround(shared), Move.CodeGrow, Fixed.White, radius, CodeScreenCorner))
+    }
+    content()
+}
 
-/** The code's one bitmap, scaled to fit with no smoothing; one shared layer when [shared]. */
+/** The key of the white a sale's code sits on, the card's and the enlarged screen's. */
+fun codeGround(orderId: String) = "code-card/$orderId"
+
+/** The sale's code card's corners. */
+val CodeCorner = 32.dp
+
+/** The enlarged code's ground: the whole screen, square. */
+val CodeScreenCorner = 0.dp
+
+/** The code's one bitmap, scaled to fit with no smoothing; one shared layer over the rest when [shared]. */
 @Composable
-private fun CodeImage(bitmap: ImageBitmap, shared: String?) = Image(
+private fun CodeImage(bitmap: ImageBitmap, description: String, shared: String?) = Image(
     bitmap = bitmap,
     contentDescription = null,
     modifier = Modifier.fillMaxSize()
-        .then(if (shared != null) Modifier.sharedSurface("code/$shared", Move.CodeGrow, fade = false) else Modifier),
+        .then(if (shared != null) Modifier.sharedSurface("code/$shared", Move.CodeGrow, fade = false, layer = Layers.CODE) else Modifier)
+        .semantics { contentDescription = description },
     contentScale = ContentScale.Fit,
     filterQuality = FilterQuality.None,
 )
