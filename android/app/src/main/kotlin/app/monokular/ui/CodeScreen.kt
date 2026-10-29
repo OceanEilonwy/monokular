@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import app.monokular.Move
+import app.monokular.LocalStage
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.derivedStateOf
 import app.monokular.SaleText
 import app.monokular.core.PointOfSale
 import app.monokular.up
@@ -71,6 +74,11 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
     // Once the white has spread to the screen (a brightness jump mid-grow would flash the whole display, M8), and
     // through a back gesture until it commits: a cancelled one springs back to the code at the brightness it had.
     if (up()) FullBrightness()
+    // The bars' icons turn dark as the white passes half the screen change, and back as it does on the way out (M8):
+    // read from the stage's line, so this recomposes twice a move, not per frame.
+    val stage = LocalStage.current
+    val white by remember(stage) { derivedStateOf { stage == null || stage.shown() >= HALF_WAY } }
+    if (white) DarkBarIcons()
     val now = rememberNowSeconds()
     // The design's light roles, fixed: this screen is white in both themes.
     val ink = LightTokens.ink
@@ -135,29 +143,38 @@ fun KeepScreenOn() {
     }
 }
 
-/**
- * The window at full brightness, with dark status bar icons over the white,
- * while shown; both as they were after.
- */
+/** The window at full brightness while shown, as it was after. */
 @Composable
 private fun FullBrightness() {
     val view = LocalView.current
     DisposableEffect(view) {
         val window = view.context.activity()?.window ?: return@DisposableEffect onDispose { }
         val brightness = window.attributes.screenBrightness
+        window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL }
+        onDispose { window.attributes = window.attributes.apply { screenBrightness = brightness } }
+    }
+}
+
+/** Dark status and navigation bar icons, over the white, while composed; as they were after. */
+@Composable
+private fun DarkBarIcons() {
+    val view = LocalView.current
+    DisposableEffect(view) {
+        val window = view.context.activity()?.window ?: return@DisposableEffect onDispose { }
         val bars = WindowCompat.getInsetsController(window, view)
         val lightStatus = bars.isAppearanceLightStatusBars
         val lightNavigation = bars.isAppearanceLightNavigationBars
-        window.attributes = window.attributes.apply { screenBrightness = WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_FULL }
         bars.isAppearanceLightStatusBars = true
         bars.isAppearanceLightNavigationBars = true
         onDispose {
-            window.attributes = window.attributes.apply { screenBrightness = brightness }
             bars.isAppearanceLightStatusBars = lightStatus
             bars.isAppearanceLightNavigationBars = lightNavigation
         }
     }
 }
+
+/** Half way through the screen change: the white covers the screen's middle from here. */
+private const val HALF_WAY = 0.5f
 
 private tailrec fun Context.activity(): Activity? = when (this) {
     is Activity -> this
