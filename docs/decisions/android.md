@@ -1723,3 +1723,17 @@ design unchanged.
     fades through. `LateReceiptTest` checks the card is half in at 100 ms,
     and that the code, the pill and the ring are not recomposed by the
     fade. The panel's order line is the overlay track's, asked of dev1.
+143. **"Close it for now" goes to the shift; a sale that ends any other
+    way while on screen folds into its page in place** (dev2, round 3;
+    settles N4). The sheet's "Not sure: close it for now" is
+    `CloseOutcome.Then.Shift`: the model leaves the sale at once
+    (`closeSale`, then `leave`), so the stage shrinks the sale into its
+    row, which already reads "Closed · not paid". That is what round 2's
+    recording saw, and what the cashier asked for: back to the counter.
+    There is no dwell on that path, since the dwell is reading time for a
+    payment (M9). A sale that stays on screen as it ends ("No: refund it
+    in Square", which is `Then.Sale`, or a sale ended by its clock or by
+    its other till) folds its code into the ended hero on the warn ground
+    in place, the paid fold's move. `MotionFramesTest` saves those frames
+    at 60, 120, 240 and 300 ms and checks the hero is whole on each. M10's
+    "a close from the sheet" is read that way.
