@@ -186,6 +186,25 @@ class ShiftListTest {
     }
 
     @Test
+    fun `a sale found before the point of sale changed keeps the name of the one that took it`() {
+        val before = sale("old", closedAt = at, refundedAt = at)
+        val after = sale("new", closedAt = at, refundedAt = at)
+        val earlier = mapOf("old" to PointOfSale.Clover)
+        assertEquals(PointOfSale.Clover, PosText.of(before, PointOfSale.Square, earlier))
+        assertEquals(PointOfSale.Square, PosText.of(after, PointOfSale.Square, earlier), "found since: the till's own")
+        assertEquals(null, PosText.of(after, null, earlier))
+        assertEquals("Refunded in Clover", SaleText.status(before, PosText.of(before, PointOfSale.Square, earlier)))
+        val closed = SalePage.of(sale("c", closedAt = at), PointOfSale.Clover, now = at, Locale.US, zone, elsewhere = true)
+        assertEquals(listOf(PageAction.ShowCodeAgain), closed.actions, "this till can't refund it, or see its refund")
+        assertEquals(
+            "This sale was rung up in Clover before this till changed its point of sale. If the customer isn't paying, refund it in Clover.",
+            closed.note?.text,
+        )
+        assertEquals(listOf(CloseChoice.CloseForNow, CloseChoice.KeepUp), Closing.choices(sale("w"), elsewhere = true))
+        assertEquals(CloseChoice.entries, Closing.choices(sale("w")))
+    }
+
+    @Test
     fun `a till with no point of sale says so in plain words`() {
         assertEquals("Closed · not paid · refund it in your point of sale", ShiftList.row(sale("c", closedAt = at), null, 0, Locale.US, zone).sub)
         assertEquals("Refund it in your point of sale on Back till.", Panel.endedLine(sale("t", SalePhase.Expired, mine = false), null))

@@ -45,7 +45,7 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CloseSheet(sale: TillSale, refundsInPos: Boolean, onChoice: (CloseChoice) -> Unit, onDismiss: () -> Unit) {
-    val pos = LocalPointOfSale.current
+    val pos = posOf(sale)
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     val title = "Is the customer paying?"
@@ -70,7 +70,7 @@ fun CloseSheet(sale: TillSale, refundsInPos: Boolean, onChoice: (CloseChoice) ->
                 Text(Closing.subtitle(sale, pos), fontSize = 14.sp, color = mk.muted)
             }
             val left = secondsLeft(sale.expiresAt)
-            for (choice in Closing.choices(sale)) {
+            for (choice in Closing.choices(sale, elsewhere = pos != LocalPointOfSale.current)) {
                 Answer(choice, sale, pos, refundsInPos, left) {
                     // Only once the sheet is down: a sale paid meanwhile swaps
                     // the screen out, cancels the hide and drops the answer.

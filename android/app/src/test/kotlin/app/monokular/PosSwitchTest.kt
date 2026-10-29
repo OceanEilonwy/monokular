@@ -17,6 +17,9 @@ class PosSwitchTest {
         override suspend fun takeBellRegistrationBack() {
             log += "Bell: DELETE, awaited"
         }
+        override fun keepSalesNamed(pos: PointOfSale) {
+            log += "sales so far named ${pos.wire}"
+        }
         override fun signOut(pos: PointOfSale) {
             log += "sign out of ${pos.wire}"
         }
@@ -29,7 +32,7 @@ class PosSwitchTest {
     fun `switching while signed in takes the Bell's registration back, then signs out, then chooses`() = runBlocking {
         val side = Recording()
         assertTrue(PosSwitch.choose(side, from = PointOfSale.Square, signedIn = true, to = PointOfSale.Clover))
-        assertEquals(listOf("Bell: DELETE, awaited", "sign out of square", "choose clover"), side.log)
+        assertEquals(listOf("sales so far named square", "Bell: DELETE, awaited", "sign out of square", "choose clover"), side.log)
         assertEquals("Monokular Bell", side.wakeUpChoice, "the Wake-ups choice stays")
         assertEquals(listOf("bP9m", "k4Rt"), side.savedSales, "the shift's sales stay")
     }
@@ -38,7 +41,7 @@ class PosSwitchTest {
     fun `and back the other way`() = runBlocking {
         val side = Recording()
         assertTrue(PosSwitch.choose(side, from = PointOfSale.Clover, signedIn = true, to = PointOfSale.Square))
-        assertEquals(listOf("Bell: DELETE, awaited", "sign out of clover", "choose square"), side.log)
+        assertEquals(listOf("sales so far named clover", "Bell: DELETE, awaited", "sign out of clover", "choose square"), side.log)
     }
 
     @Test
@@ -58,6 +61,9 @@ class PosSwitchTest {
         assertEquals(listOf("choose clover"), first.log)
         val notSignedIn = Recording()
         assertTrue(PosSwitch.choose(notSignedIn, from = PointOfSale.Square, signedIn = false, to = PointOfSale.Clover))
-        assertEquals(listOf("choose clover"), notSignedIn.log, "no registration and no sign-in to undo")
+        assertEquals(
+            listOf("sales so far named square", "choose clover"), notSignedIn.log,
+            "no registration and no sign-in to undo, but sales found before signing out keep Square's name",
+        )
     }
 }

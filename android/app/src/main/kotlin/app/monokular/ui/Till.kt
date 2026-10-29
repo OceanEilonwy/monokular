@@ -68,6 +68,13 @@ import kotlinx.coroutines.delay
  */
 val LocalPointOfSale = compositionLocalOf<PointOfSale?> { null }
 
+/** The points of sale of the shift's sales found before the till's changed, by order id (decision 141). */
+val LocalEarlierPos = compositionLocalOf<Map<String, PointOfSale>> { emptyMap() }
+
+/** The point of sale that names [sale]'s words: the one that took it, as far as the till knows ([PosText.of]). */
+@Composable
+fun posOf(sale: TillSale): PointOfSale? = PosText.of(sale, LocalPointOfSale.current, LocalEarlierPos.current)
+
 /** Seconds left until [expiresAt], ticking. */
 @Composable
 fun secondsLeft(expiresAt: Long): Long {
@@ -170,7 +177,7 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
                         ) {
                             Amount(sale, actions.onCopyXmr, start = true)
                             StatusPill(sale)
-                            sale.receipt?.let { OrderCard(it, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
+                            sale.receipt?.let { OrderCard(it, posOf(sale), withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
                             Buttons(sale, actions)
                         }
                     }
@@ -187,7 +194,7 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
                         Amount(sale, actions.onCopyXmr)
                         Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide)) { actions.onEnlarge(sale.orderId) }
                         StatusPill(sale)
-                        sale.receipt?.let { OrderCard(it, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
+                        sale.receipt?.let { OrderCard(it, posOf(sale), withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
                     }
                     Box(
                         Modifier.align(Alignment.CenterHorizontally).widthIn(max = PhoneMaxWidth)
@@ -274,7 +281,7 @@ private fun StatusPill(sale: TillSale) = Row(
     PhaseRing(sale.phase, 30.dp)
     Column {
         Text(
-            SaleText.status(sale, LocalPointOfSale.current), fontSize = 16.sp, fontWeight = FontWeight.Bold,
+            SaleText.status(sale, posOf(sale)), fontSize = 16.sp, fontWeight = FontWeight.Bold,
             modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
         )
         Text(SaleText.hint(sale, secondsLeft(sale.expiresAt)), fontSize = 13.sp, color = mk.muted)
@@ -293,10 +300,11 @@ private fun Buttons(sale: TillSale, actions: TillActions) = Row(Modifier.fillMax
  * What was bought, from this till's own receipt (decision 63): each line
  * and its price, the tax and the total. On the sale ([onOpen] set) a long
  * order shows three lines and "+N more", and the card opens the whole order
- * (decision 66); a detail page lists every line.
+ * (decision 66); a detail page lists every line. [pos] names the receipt
+ * ("Clover order …").
  */
 @Composable
-fun OrderCard(receipt: Receipt, withTime: Boolean, onOpen: (() -> Unit)? = null) {
+fun OrderCard(receipt: Receipt, pos: PointOfSale?, withTime: Boolean, onOpen: (() -> Unit)? = null) {
     val (lines, more) = if (onOpen != null) SaleText.shownLines(receipt) else receipt.lineItems to 0
     val open = onOpen.takeIf { more > 0 }
     Column(
@@ -308,7 +316,7 @@ fun OrderCard(receipt: Receipt, withTime: Boolean, onOpen: (() -> Unit)? = null)
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Text("ORDER", fontSize = 12.sp, letterSpacing = 0.6.sp, color = mk.muted, modifier = Modifier.semantics { heading() })
             Text(
-                SaleText.receiptLabel(receipt, LocalPointOfSale.current, withTime).uppercase(), fontSize = 12.sp, letterSpacing = 0.6.sp, color = mk.muted,
+                SaleText.receiptLabel(receipt, pos, withTime).uppercase(), fontSize = 12.sp, letterSpacing = 0.6.sp, color = mk.muted,
                 textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
             )
         }

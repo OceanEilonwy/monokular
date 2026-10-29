@@ -44,7 +44,9 @@ data class SalePageModel(
  * each says, from where the sale stands. Times the app doesn't know aren't
  * written (decision 71). [till] is the till's point of sale, which names the
  * sale's. A sale whose order has a title at the point of sale (Clover's "Table
- * 4") shows it first among the facts.
+ * 4") shows it first among the facts. [elsewhere]: the sale was rung up at a
+ * point of sale this till has since changed from (decision 141), so the till
+ * can't refund it or see its refund, and says to refund it there.
  */
 object SalePage {
     fun of(
@@ -53,6 +55,7 @@ object SalePage {
         now: Long,
         locale: Locale = Locale.getDefault(),
         zone: ZoneId = ZoneId.systemDefault(),
+        elsewhere: Boolean = false,
     ): SalePageModel {
         val pos = till
         val name = PosText.name(pos)
@@ -153,8 +156,16 @@ object SalePage {
                 note = null, order = true, facts = listOfNotNull(rungUp, fact("Seen on the network", sale.seenAt)), actions = emptyList(),
             )
         }
-        val title = sale.found?.title ?: return model
-        return model.copy(facts = listOf(Fact("Order", title)) + model.facts)
+        val here = if (elsewhere && PageAction.Refund in model.actions) {
+            model.copy(
+                actions = model.actions - PageAction.Refund,
+                note = Note("This sale was rung up in $name before this till changed its point of sale. If the customer isn't paying, refund it in $name."),
+            )
+        } else {
+            model
+        }
+        val title = sale.found?.title ?: return here
+        return here.copy(facts = listOf(Fact("Order", title)) + here.facts)
     }
 
     /**
@@ -205,13 +216,14 @@ data class CloseOutcome(val close: Boolean, val refund: Boolean, val then: Then)
 object Closing {
     /**
      * The answers offered: all three for this till's sale; for another
-     * till's, "No: close it" and "Yes" (this till can't refund it, so "No"
-     * and "Not sure" would be the same); none once it's refunded or its code
+     * till's, or one rung up at a point of sale this till has changed from
+     * ([elsewhere]), "No: close it" and "Yes" (this till can't refund it, so
+     * "No" and "Not sure" would be the same); none once it's refunded or its code
      * is down, where the sale screen has no X.
      */
-    fun choices(sale: TillSale): List<CloseChoice> = when {
+    fun choices(sale: TillSale, elsewhere: Boolean = false): List<CloseChoice> = when {
         sale.standing !is Standing.Live -> emptyList()
-        sale.found == null -> listOf(CloseChoice.CloseForNow, CloseChoice.KeepUp)
+        sale.found == null || elsewhere -> listOf(CloseChoice.CloseForNow, CloseChoice.KeepUp)
         else -> CloseChoice.entries
     }
 

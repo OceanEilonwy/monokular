@@ -1,10 +1,11 @@
 package app.monokular
 
 import app.monokular.core.PointOfSale
+import app.monokular.sales.TillSale
 
 /**
  * Every word on screen that names the point of sale (acceptance D5, decision
- * A136): Square's and Clover's from one exhaustive `when` each, so a point of
+ * 136): Square's and Clover's from one exhaustive `when` each, so a point of
  * sale added later doesn't compile until it has its words, and no screen
  * spells "Square" itself. A null point of sale is a till that runs without
  * one (or hasn't chosen yet): "your point of sale". Pure: tested in
@@ -140,8 +141,15 @@ object PosText {
     /** The Wake-ups status card's pace row. */
     fun checking(pos: PointOfSale?): String = "Checking ${name(pos)}"
 
-    // A sale's words, by the till's point of sale: Monokulo doesn't say which point of sale took another till's
-    // sale, and a sale kept from before the point of sale changed is named by the new one (decision 138).
+    // A sale's words, by the point of sale it was rung up at.
+
+    /**
+     * The point of sale [sale] was rung up at, as far as this till knows: one
+     * found before the till's point of sale changed is [earlier]'s, any other
+     * the till's own, another till's included, since Monokulo doesn't say which
+     * point of sale took it (decision 141).
+     */
+    fun of(sale: TillSale, till: PointOfSale?, earlier: Map<String, PointOfSale>): PointOfSale? = earlier[sale.orderId] ?: till
 
     fun refundedIn(pos: PointOfSale?): String = "Refunded in ${name(pos)}"
 

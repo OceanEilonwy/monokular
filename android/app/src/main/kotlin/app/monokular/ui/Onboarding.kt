@@ -328,6 +328,8 @@ data class PosSetup(
     val busy: Boolean,
     val problem: String?,
     val testSale: TillSale?,
+    /** Onboarding's step 4; false when Settings' "Change the point of sale" opened it, with Back and no test sale. */
+    val setup: Boolean = true,
 ) {
     /** Signed in and watching a Square location or a Clover merchant: the test sale can come in. */
     val connected: Boolean
@@ -350,16 +352,17 @@ class PosSetupActions(
 
 /**
  * Step 4 (OnbSquare, for every point of sale: acceptance T1.1, decision
- * A136): Square or Clover as one radio group, nothing chosen until a tap,
+ * 136): Square or Clover as one radio group, nothing chosen until a tap,
  * then the chosen one's card: its sign-in, its location or merchant, and what
  * to do at the point of sale itself.
  */
 @Composable
 fun PointOfSaleScreen(s: PosSetup, a: PosSetupActions) = Page(
-    top = { BackBar(null) },
+    top = { BackBar(a.onContinue.takeUnless { s.setup }) },
     bottom = {
         val chosen = s.chosen
         when {
+            s.connected && !s.setup -> PrimaryButton("Done", a.onContinue, Modifier.fillMaxWidth())
             s.connected -> {
                 PrimaryButton("Continue", a.onContinue, Modifier.fillMaxWidth(), enabled = s.testSale != null)
                 if (s.testSale == null) LinkButton("Skip the test", a.onContinue, size = 15)
@@ -370,7 +373,7 @@ fun PointOfSaleScreen(s: PosSetup, a: PosSetupActions) = Page(
             }
             else -> LinkButton("Not now: only show other tills' sales", a.onSkip, enabled = !s.busy, size = 15)
         }
-        StepLabel(4)
+        if (s.setup) StepLabel(4)
     },
 ) {
     Column(Modifier.padding(start = 20.dp, end = 20.dp, top = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -429,7 +432,7 @@ private fun AtTheTill(pos: PointOfSale, s: PosSetup, steps: @Composable () -> Un
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         steps()
-        if (s.connected) {
+        if (s.connected && s.setup) {
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(mk.inset).padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,

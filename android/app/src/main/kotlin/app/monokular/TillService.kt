@@ -72,7 +72,7 @@ class TillService : LifecycleService() {
                                 justPaid.value = null
                             }
                         }
-                        SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend -> notes.unpaid(sale, graph.stores.pointOfSale, quiet = graph.appVisible.value)
+                        SalePhase.Expired, SalePhase.Cancelled, SalePhase.DoubleSpend -> notes.unpaid(sale, graph.stores.pointOfSale(sale), quiet = graph.appVisible.value)
                         else -> Unit
                     }
                 }

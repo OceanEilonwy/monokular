@@ -135,7 +135,8 @@ private fun TopRow(status: TillStatus, actions: TillActions) = Row(
         status.live -> mk.paid to "Watching"
         else -> mk.outline to "Reconnecting…"
     }
-    val place = listOfNotNull(status.store, status.location)
+    // A Clover merchant is often named as the store is: said once.
+    val place = listOfNotNull(status.store, status.location).distinct()
     Row(
         Modifier.weight(1f).semantics(mergeDescendants = true) { contentDescription = (place + state).joinToString(", ") },
         verticalAlignment = Alignment.CenterVertically,
@@ -211,7 +212,7 @@ private fun Chips(filter: ShiftFilter, needsAction: Int, onFilter: (ShiftFilter)
 /** One sale: its state's icon, "Sale #m2Qe · $8.40", how it stands, and where a tap goes. */
 @Composable
 private fun SaleRow(sale: TillSale, onOpen: () -> Unit) {
-    val row = ShiftList.row(sale, LocalPointOfSale.current, if (sale.live) secondsLeft(sale.expiresAt) else 0)
+    val row = ShiftList.row(sale, posOf(sale), if (sale.live) secondsLeft(sale.expiresAt) else 0)
     val ground = when (row.icon) {
         StateIcon.Clock -> Ground.Warn
         StateIcon.Warning -> Ground.Danger

@@ -34,6 +34,7 @@ import app.monokular.ui.ScanScreen
 import app.monokular.ui.SettingsActions
 import app.monokular.ui.SettingsScreen
 import app.monokular.ui.SettingsState
+import app.monokular.ui.LocalEarlierPos
 import app.monokular.ui.LocalPointOfSale
 import app.monokular.ui.PointOfSaleScreen
 import app.monokular.ui.PosSetup
@@ -85,7 +86,7 @@ class MainActivity : ComponentActivity() {
                 // Step 4 has no Back in setup (as Square's had none), but goes back to Settings when opened from there.
                 val stepFour = screen == Screen.PointOfSale && !model.setupDone
                 BackHandler(enabled = screen != Screen.Welcome && screen != Screen.Till && !stepFour) { model.back() }
-                CompositionLocalProvider(LocalPointOfSale provides model.pointOfSale) { when (val s = screen) {
+                CompositionLocalProvider(LocalPointOfSale provides model.pointOfSale, LocalEarlierPos provides model.earlierPos) { when (val s = screen) {
                     Screen.Welcome -> WelcomeScreen(onStart = { model.go(Screen.Scan) })
                     Screen.Scan -> ScanScreen(onCode = model::onCode, onBack = model::back)
                     is Screen.Confirm -> ConfirmScreen(s.code, model.deviceName, busy, problem, { model.connect(s.code) }, model::back)
@@ -103,6 +104,7 @@ class MainActivity : ComponentActivity() {
                             busy = busy,
                             problem = problem ?: runner.till.problem,
                             testSale = runner.till.sales.firstOrNull { it.found != null },
+                            setup = !model.setupDone,
                         ),
                         PosSetupActions(
                             onChoose = model::choosePointOfSale,

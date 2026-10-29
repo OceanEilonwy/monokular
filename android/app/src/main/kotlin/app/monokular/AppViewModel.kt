@@ -187,6 +187,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** The point of sale chosen, null until the cashier taps one (or with a till that runs without one). */
     val pointOfSale: PointOfSale? get() = stores.pointOfSale
 
+    /** The points of sale of this shift's sales found before the till's changed (decision 141). */
+    val earlierPos: Map<String, PointOfSale> get() = stores.earlierPos
+
     /** Signed in to the chosen point of sale. */
     val posSignedIn: Boolean
         get() = when (stores.pointOfSale) {
@@ -318,6 +321,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** What changing the point of sale touches: the Bell, the old sign-in, the choice. */
     private val switchSide = object : PosSwitchSide {
         override suspend fun takeBellRegistrationBack() = graph.wakeUps.unregister()
+        override fun keepSalesNamed(pos: PointOfSale) = stores.keepSalesNamed(pos)
         override fun signOut(pos: PointOfSale) = signOutHere(pos)
         override fun choose(pos: PointOfSale) {
             stores.pointOfSale = pos
@@ -619,6 +623,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun refund(orderId: String, close: Boolean = false) {
         if (orderId in refunding.value) return
+        // Rung up at a point of sale this till has changed from: refunded there, not by this till (decision 141).
+        if (stores.earlierPos[orderId]?.let { it != stores.pointOfSale } == true) return
         val job = graph.runner.refund(orderId, close) ?: return
         graph.runner.state.value.refundsInPos?.let { refunds -> refundSheet.value = RefundSheet(orderId, refunds.posName, refunds.where) }
         refunding.update { it + orderId }

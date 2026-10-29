@@ -45,8 +45,8 @@ import app.monokular.sales.TillSale
  */
 @Composable
 fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProblem: String?, refundSheet: RefundSheet?, actions: TillActions) {
-    val pos = LocalPointOfSale.current
-    val page = SalePage.of(sale, pos, now = System.currentTimeMillis() / 1000)
+    val pos = posOf(sale)
+    val page = SalePage.of(sale, pos, now = System.currentTimeMillis() / 1000, elsewhere = pos != LocalPointOfSale.current)
     val subtitle = SaleText.place(sale, location) + sale.createdAt.takeIf { it > 0 }?.let { " · " + SaleText.time(it) }.orEmpty()
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
@@ -75,7 +75,7 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
                                 .padding(horizontal = 14.dp, vertical = 12.dp),
                         )
                     }
-                    if (page.order) sale.receipt?.let { OrderCard(it, withTime = false) }
+                    if (page.order) sale.receipt?.let { OrderCard(it, pos, withTime = false) }
                     if (page.facts.isNotEmpty()) Facts(page.facts)
                 }
                 if (page.actions.isNotEmpty()) {

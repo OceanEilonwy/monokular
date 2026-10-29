@@ -1465,13 +1465,22 @@ says otherwise.
      first fact, Order, and the Refund in Clover sheet names "order Table 4"
      rather than the order's id, which is what the cashier finds in Clover's
      Orders app.
-141. **A saved sale is named by the till's current point of sale, not the
-     one that took it** (a departure from acceptance D6's "their source
-     name shown as it was"): `FoundSale` doesn't say which point of sale
-     found it, and Monokulo doesn't say for another till's sale. After a
-     switch mid-shift, the old sales' pages still open, with the new point
-     of sale's name on their refund words and receipt label. Carrying the point of sale on `FoundSale` (defaulted to
-     Square) is the fix, and is a follow-up in `sales`.
+141. **A sale found before the till's point of sale changed keeps the name
+     of the one that took it, and is refunded there** (acceptance D6's
+     "their source name shown as it was"). `FoundSale` doesn't say which
+     point of sale found it, so the app remembers it: changing the point of
+     sale (`PosSwitch`) first writes the shift's found sales' order ids
+     with the old point of sale (`shift.pos`), forgotten as each sale leaves
+     the shift, and `PosText.of(sale, till, earlier)` names every sale's
+     words, receipt label and notification by it; any other sale, another
+     till's included (Monokulo doesn't say), by the till's own. The till
+     can't refund such a sale or see its refund (it is signed in elsewhere),
+     so its page drops Refund and says to refund it there, and its close
+     sheet offers what another till's does. Carrying the point of sale on
+     `FoundSale` itself would let `sales` do this, and is a follow-up there.
+     A step 4 opened from Settings has Back and Done in place of the step
+     number and the test sale, and the shift's top row says a Clover
+     merchant's name once when it is the store's.
 142. **Till's idempotency key keeps its `sq:` prefix for every point of
      sale**: changing it would change Square's keys for sales in flight,
      and two points of sale's payment ids never meet at one Monokulo

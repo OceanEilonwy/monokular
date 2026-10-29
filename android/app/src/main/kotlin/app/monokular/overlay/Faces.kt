@@ -84,7 +84,7 @@ import app.monokular.sales.standing
 import app.monokular.ui.CodeText
 import app.monokular.ui.Fixed
 import app.monokular.ui.LightTokens
-import app.monokular.ui.LocalPointOfSale
+import app.monokular.ui.posOf
 import app.monokular.ui.Logo
 import app.monokular.ui.MkIcons
 import app.monokular.ui.OrderContent
@@ -338,7 +338,7 @@ private fun Face(sale: TillSale, wide: Boolean) = when (sale.standing) {
     is Standing.Paid -> {
         PaidHero(88.dp)
         Text(
-            SaleText.status(sale, LocalPointOfSale.current), style = display(28), textAlign = TextAlign.Center,
+            SaleText.status(sale, posOf(sale)), style = display(28), textAlign = TextAlign.Center,
             modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
         )
         Text("${SaleText.xmr(sale)} received", fontSize = 15.sp, color = mk.muted)
@@ -436,7 +436,7 @@ private fun StatusRow(sale: TillSale) = Row(
 ) {
     PhaseRing(sale.phase, 26.dp)
     Text(
-        SaleText.status(sale, LocalPointOfSale.current), fontSize = 15.sp, fontWeight = FontWeight.Bold,
+        SaleText.status(sale, posOf(sale)), fontSize = 15.sp, fontWeight = FontWeight.Bold,
         modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
     )
     CodeText.left(sale, secondsLeft(sale.expiresAt))?.let { Text("· $it", fontSize = 14.sp, color = mk.muted) }
@@ -464,10 +464,10 @@ private fun Ended(sale: TillSale) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(44.dp))
     }
     Text(
-        Panel.endedHeading(sale, LocalPointOfSale.current), style = display(26), textAlign = TextAlign.Center,
+        Panel.endedHeading(sale, posOf(sale)), style = display(26), textAlign = TextAlign.Center,
         modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
     )
-    Text(Panel.endedLine(sale, LocalPointOfSale.current), fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center)
+    Text(Panel.endedLine(sale, posOf(sale)), fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center)
 }
 
 /**

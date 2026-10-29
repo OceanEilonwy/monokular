@@ -81,7 +81,7 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(SaleText.amount(sale), style = display(30, -0.5), color = ink)
-                    Text(CodeText.under(sale, LocalPointOfSale.current, secondsLeft(sale.expiresAt)), fontSize = 15.sp, color = muted)
+                    Text(CodeText.under(sale, posOf(sale), secondsLeft(sale.expiresAt)), fontSize = 15.sp, color = muted)
                 }
                 Box(
                     Modifier.size(48.dp).clip(CircleShape).background(LightTokens.inset).clickable(role = Role.Button, onClick = onBack),

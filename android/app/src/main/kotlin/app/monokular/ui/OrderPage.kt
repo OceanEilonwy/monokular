@@ -139,7 +139,7 @@ fun OrderContent(sale: TillSale, backLabel: String, onBack: () -> Unit, onShowCo
         Column(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }) {
             Text("The order", fontSize = 20.sp, fontWeight = FontWeight.Medium)
             if (receipt != null) {
-                Text(OrderText.subtitle(sale, receipt, LocalPointOfSale.current), fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(OrderText.subtitle(sale, receipt, posOf(sale)), fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -215,7 +215,7 @@ private fun ShowCodeBar(sale: TillSale, onShowCode: () -> Unit) = Box(Modifier.f
         Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
             Text("Show the code", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = mk.onAccent)
             Text(
-                "${SaleText.amount(sale)} · ${CodeText.under(sale, LocalPointOfSale.current, secondsLeft(sale.expiresAt))}",
+                "${SaleText.amount(sale)} · ${CodeText.under(sale, posOf(sale), secondsLeft(sale.expiresAt))}",
                 fontSize = 13.sp, color = mk.onAccent, maxLines = 1, overflow = TextOverflow.Ellipsis,
             )
         }
