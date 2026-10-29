@@ -76,7 +76,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -102,7 +101,6 @@ import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import app.monokular.BubbleLook
 import app.monokular.PosText
-import app.monokular.MonokularApp
 import app.monokular.PaidBuzz
 import app.monokular.SaleText
 import app.monokular.core.PointOfSale
@@ -279,8 +277,8 @@ class PanelActions(
  * with nothing to do, white with the [phase]'s ring (and a pulse) for a
  * sale, the ring closed in green round the tick on its pale ground once
  * it's paid. Its colours are the design's whatever the theme: it sits over
- * another app. [confirms] is whether a payment landing on it buzzes
- * ([Haptics.bubbleConfirms]). [pulse] is false for the bubble docked above the panel,
+ * another app. [confirms] is whether a payment landing on it buzzes:
+ * only while Monokular is away ([PaidBuzz], decision 119). [pulse] is false for the bubble docked above the panel,
  * which has nothing left to call for; [panelUp] is the free bubble's word
  * that a panel is up beside it (a tablet's), which stops its pulse too.
  */
@@ -368,16 +366,6 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
     }
 }
 
-/** Where a payment's one confirming buzz comes from (`docs/motion.md` §6, decision 119). */
-object Haptics {
-    /**
-     * Whether the bubble buzzes for a payment: only while Monokular isn't
-     * on screen. With the app in front the cashier is looking at its sale
-     * screen, which buzzes; a bubble still leaving then stays quiet.
-     */
-    fun bubbleConfirms(appVisible: Boolean): Boolean = !appVisible
-}
-
 /**
  * One confirming buzz when a payment lands on the bubble the cashier can
  * see (`docs/motion.md` §6): not when a bubble comes up already paid (the
@@ -386,11 +374,9 @@ object Haptics {
 @Composable
 private fun Confirm(look: BubbleLook) {
     val view = LocalView.current
-    val appVisible = (LocalContext.current.applicationContext as MonokularApp).graph.appVisible
     val last = remember { arrayOf(look) }
     LaunchedEffect(look) {
-        // A bubble still leaving as the app comes up leaves the buzz to the app: one per payment (PaidBuzz).
-        if (look == BubbleLook.Paid && last[0] != BubbleLook.Paid && PaidBuzz.by(appVisible.value) == PaidBuzz.Surface.Bubble) view.confirm()
+        if (look == BubbleLook.Paid && last[0] != BubbleLook.Paid) view.confirm()
         last[0] = look
     }
 }

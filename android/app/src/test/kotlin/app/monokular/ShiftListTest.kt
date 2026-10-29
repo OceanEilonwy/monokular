@@ -392,6 +392,8 @@ class ShiftListTest {
         assertEquals(PaidBuzz.Surface.Bubble, PaidBuzz.by(appVisible = false), "over Square: the bubble")
         // One surface for any answer, so a payment shown by the sale screen and a bubble still leaving buzzes once.
         for (visible in listOf(true, false)) assertEquals(1, PaidBuzz.Surface.entries.count { it == PaidBuzz.by(visible) })
+        assertTrue(PaidBuzz.bubble(appVisible = false))
+        assertFalse(PaidBuzz.bubble(appVisible = true), "the sale screen in front buzzes instead")
     }
 
     @Test
