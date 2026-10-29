@@ -105,12 +105,10 @@ class StageTest {
     }
 
     @Test
-    fun aBackGestureScrubsTheSaleTowardItsRowAndCancelledItSpringsBack() {
+    fun aBackGestureScrubsTheSaleTowardItsRowItsCodeAtItsOwnSizeAndCancelledItSpringsBack() {
         val state = SeekableTransitionState<Screen>(Screen.Sale("a1"))
         stage(state)
         compose.waitForIdle()
-        fun back() = compose.onNodeWithContentDescription("Back to the shift", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        val full = back()
         val codeWidth = code().fetchSemanticsNode().drawn().width
         val codeSize = code().fetchSemanticsNode().size
         compose.mainClock.autoAdvance = false
@@ -120,19 +118,16 @@ class StageTest {
             repeat(3) { compose.mainClock.advanceTimeByFrame() }
         }
         seek(0.08f)
-        val early = back()
-        val drawn = code().fetchSemanticsNode().drawn().width
-        val laidOut = code().fetchSemanticsNode().size
+        // Only the sale's ground moves toward the row; what is on it fades where it is, at its own size (decision 128).
+        assertEquals(codeWidth, code().fetchSemanticsNode().drawn().width, "the code is never drawn through a scale")
+        assertEquals(codeSize, code().fetchSemanticsNode().size, "and keeps the size it was laid out at")
         seek(0.99f)
-        val late = back()
-        assertTrue(full.top < early.top && early.top < late.top, "the sale moves down toward its row as the gesture goes: ${full.top} < ${early.top} < ${late.top}")
-        assertTrue(late.top > row().top - full.top, "and ends at the row, its own top bar a scaled inset below the row's top")
-        assertTrue(drawn < codeWidth, "the code is drawn smaller, as a layer: $codeWidth -> $drawn")
-        assertEquals(codeSize, laidOut, "and keeps the size it was laid out at")
+        assertEquals(codeWidth, code().fetchSemanticsNode().drawn().width, "the code is never drawn through a scale")
 
         scope.launch { state.animateTo(Screen.Sale("a1")) }
         compose.mainClock.advanceTimeBy(1_500)
-        assertEquals(full, back(), "cancelled, it springs back")
+        assertEquals(Screen.Sale("a1"), state.currentState, "cancelled, it springs back")
+        assertEquals(codeWidth, code().fetchSemanticsNode().drawn().width)
     }
 
     @Test

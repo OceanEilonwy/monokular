@@ -5,11 +5,13 @@ import androidx.activity.OnBackPressedDispatcher
 import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import app.monokular.OneClockTest.Companion.noActions
 import app.monokular.OneClockTest.Companion.status
+import app.monokular.core.SalePhase
 import app.monokular.ui.CodeScreen
+import app.monokular.ui.HeroTag
 import app.monokular.ui.SaleScreen
 import app.monokular.ui.ShiftScreen
 import androidx.compose.runtime.mutableLongStateOf
@@ -30,7 +32,9 @@ class StageBackTest {
 
     private val sale = testSale("a1", expiresAt = 1_600)
     private val other = testSale("b2", expiresAt = 1_600)
-    private val sales = listOf(testSale("z0", expiresAt = 1_600), testSale("y0", expiresAt = 1_600), sale, other)
+    /** A paid sale: its page's hero is its row's badge, the glyph that moves under the finger. */
+    private val paid = testSale("p1", phase = SalePhase.Paid, paidAt = 990)
+    private val sales = listOf(testSale("z0", expiresAt = 1_600), testSale("y0", expiresAt = 1_600), sale, other, paid)
     private val now = mutableLongStateOf(1_000)
     private lateinit var dispatcher: OnBackPressedDispatcher
 
@@ -54,8 +58,8 @@ class StageBackTest {
         repeat(3) { compose.mainClock.advanceTimeByFrame() }
     }
 
-    private fun backButton(): Rect =
-        compose.onNodeWithContentDescription("Back to the shift", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+    /** The paid sale's hero, where it is drawn: on its way into its row's badge while the finger is across. */
+    private fun hero(): Rect = compose.onNodeWithTag(HeroTag, useUnmergedTree = true).fetchSemanticsNode().drawn()
 
     /** At rest, the stage shows the model's screen and is going nowhere else. */
     private fun assertAgree(model: TestModel, why: String) {
@@ -65,16 +69,16 @@ class StageBackTest {
 
     @Test
     fun theSaleIsAsFarTowardItsRowAsTheFingerIsAcross() {
-        val model = TestModel(Screen.Sale("a1"))
+        val model = TestModel(Screen.Sale("p1"))
         stage(model)
         compose.waitForIdle()
-        val rest = backButton()
+        val rest = hero()
         compose.mainClock.autoAdvance = false
 
         started()
         gesture(0.05f)
-        val at = listOf(0.25f, 0.5f, 0.75f).map { gesture(it); backButton() }
-        // The sale's surface is laid out once and scaled as a layer: a point on it moves as its bounds do.
+        val at = listOf(0.25f, 0.5f, 0.75f).map { gesture(it); hero() }
+        // The hero moves and shrinks on the same straight line as the ground: a point on it moves as its bounds do.
         fun step(a: Rect, b: Rect) = listOf(b.top - a.top, b.left - a.left, b.width - a.width)
         val first = step(rest, at[0])
         val second = step(at[0], at[1])
@@ -84,30 +88,30 @@ class StageBackTest {
             assertTrue(abs(second[i] - third[i]) <= 2f, "0.25 to 0.5 moves as far as 0.5 to 0.75: $second vs $third")
             assertTrue(abs(first[i] - second[i]) <= 2f, "and the first quarter as far as the second: $first vs $second")
         }
-        assertTrue(second[0] > 10f, "and it does move: $second")
-        assertEquals(Screen.Sale("a1"), model.screen.value, "nothing changes before the gesture commits")
+        assertTrue(abs(second[0]) > 10f, "and it does move: $second")
+        assertEquals(Screen.Sale("p1"), model.screen.value, "nothing changes before the gesture commits")
 
         compose.runOnUiThread { dispatcher.onBackPressed() }
         compose.mainClock.advanceTimeBy(1_500)
-        assertEquals(listOf<Screen>(Screen.Sale("a1")), model.commits, "released, the model is told the sale was left")
+        assertEquals(listOf<Screen>(Screen.Sale("p1")), model.commits, "released, the model is told the sale was left")
         assertEquals(Screen.Till, model.screen.value)
         assertAgree(model, "released")
     }
 
     @Test
     fun cancelledTheSaleSpringsBackToWhereItWas() {
-        val model = TestModel(Screen.Sale("a1"))
+        val model = TestModel(Screen.Sale("p1"))
         stage(model)
         compose.waitForIdle()
-        val rest = backButton()
+        val rest = hero()
         compose.mainClock.autoAdvance = false
 
         started()
         gesture(0.4f)
-        assertTrue(backButton().top > rest.top + 10f, "the preview moved it")
+        assertTrue(abs(hero().top - rest.top) > 10f, "the preview moved it: ${rest.top} -> ${hero().top}")
         compose.runOnUiThread { dispatcher.dispatchOnBackCancelled() }
         compose.mainClock.advanceTimeBy(1_500)
-        assertEquals(rest, backButton(), "cancelled, it springs back")
+        assertEquals(rest, hero(), "cancelled, it springs back")
         assertTrue(model.commits.isEmpty(), "and nothing went back")
         assertAgree(model, "cancelled")
     }

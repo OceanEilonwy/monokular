@@ -68,6 +68,11 @@ import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import app.monokular.Layers
 import app.monokular.sharedSurface
+import app.monokular.sharedGround
+import app.monokular.GroundLook
+import app.monokular.GroundTrack
+import app.monokular.words
+import androidx.compose.ui.graphics.Color
 
 /**
  * The shift (the design's ShiftList; decisions 60, 64, 72): what this
@@ -127,15 +132,19 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                         // A row arriving fades in, the rows it displaces slide to their place, a row leaving fades (M11);
                         // its corners, which follow its index, snap.
                         // Tapped, the row's card grows into its sale (M7) and the sale shrinks back into it.
-                        val shape = rowShape(ShiftList.ends(i, rows.lastIndex))
-                        Column(
+                        // Only the ground moves; the row's words fade out at their own size as the sale's fade in (decision 128).
+                        val ends = ShiftList.ends(i, rows.lastIndex)
+                        val shape = rowShape(ends)
+                        Box(
                             Modifier.animateItem(fadeInSpec = arrive, placementSpec = placement, fadeOutSpec = leave)
-                                .padding(horizontal = 16.dp).fillMaxWidth()
-                                .sharedSurface("sale/${sale.orderId}", Move.RowGrow, shape)
-                                .clip(shape).background(mk.card),
+                                .padding(horizontal = 16.dp).fillMaxWidth(),
                         ) {
-                            if (i > 0) Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(mk.divider))
-                            SaleRow(sale, now) { actions.onOpen(sale.orderId) }
+                            val ground = remember { GroundTrack() }
+                            Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, rowLook(ends, mk.card), GroundLook(mk.ground, 0.dp), ground))
+                            Column(Modifier.fillMaxWidth().words(over = Move.RowGrow, on = ground).clip(shape)) {
+                                if (i > 0) Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(mk.divider))
+                                SaleRow(sale, now) { actions.onOpen(sale.orderId) }
+                            }
                         }
                     }
                     item(key = "end") { Spacer(Modifier.height(24.dp)) }
@@ -150,6 +159,14 @@ private val RowCorner = 20.dp
 private val OnlyRow = RoundedCornerShape(RowCorner)
 private val FirstRow = RoundedCornerShape(topStart = RowCorner, topEnd = RowCorner)
 private val LastRow = RoundedCornerShape(bottomStart = RowCorner, bottomEnd = RowCorner)
+
+/** A row's ground: the rows' card's corners at its ends. */
+private fun rowLook(ends: RowEnds, card: Color) = when (ends) {
+    RowEnds.Only -> GroundLook(card, RowCorner)
+    RowEnds.First -> GroundLook(card, RowCorner, 0.dp)
+    RowEnds.Middle -> GroundLook(card, 0.dp)
+    RowEnds.Last -> GroundLook(card, 0.dp, RowCorner)
+}
 
 /** A row's part of the card, made once rather than per row per composition. */
 private fun rowShape(ends: RowEnds): Shape = when (ends) {

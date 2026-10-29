@@ -1646,3 +1646,71 @@ design unchanged.
     second Back reaches the shift), and a sale coming up under a
     cancelled and a committed gesture (the stage ends on the new sale,
     and Back still works from there).
+138. **A moving surface is an empty ground, and the words on it fade
+    through at their own size** (dev2, round 3; implements 128's first
+    option, 131 and R2-O5; a look the designer should confirm, made while
+    they were away). The row-to-sale and card-to-order moves no longer
+    scale what is on them. A `sharedGround` (an empty rounded rectangle,
+    its colour and corners going from the partner's to its own) moves
+    between the two nodes, and each side's words are drawn at the size they
+    were laid out at. They sit over the ground in the overlay, clipped to
+    where the ground is on that frame (`words`, `GroundTrack`), fading out
+    over the first 27 % of the track (`fadeQuick`'s share) and in over the
+    last 44 % (`fade`'s share). So the two screens' words are never drawn
+    together, and no glyph is drawn through a changing matrix. Only
+    glyphs (the badge into the hero) and the code's bitmap still scale as
+    layers. Under CodeGrow and OrderGrow the sale's own words fade out the
+    same way. The order page has no whole-page fade: its ground steps
+    aside during OrderGrow (the sale's is the same colour, under it), and
+    its bar, heading and foot fade per draw. The paid fold's two faces
+    fade through per draw (the live sale out under `fadeQuick`, the page
+    in under `fadeThrough`), so an order never shows two receipts. A row
+    knows its own corners (they follow its index) and the sale doesn't, so
+    the row draws the ground both ways. What the cashier sees: the row's
+    card grows into the screen's ground and the sale's words appear on it
+    as it arrives, where before the row's text magnified into the sale's.
+    `MotionFramesTest` asserts no text is drawn at a non-1 scale on any
+    seeked frame of every move both ways, the Rise and the paid fold;
+    `MotionTest` holds the two shares under the whole track.
+139. **What clips a moving surface moves with it** (dev2, round 3; the
+    paid fold's flat top, and 132's thin quiet zone). A shared element is
+    placed with the bounds of the update before (one frame in a running
+    move, a whole step after a single seek), while its overlay clip is
+    computed with this frame's. So a clip from outside (the hero's
+    `RoundClip`) cut the content wherever the two disagreed: the straight
+    edge across the top of the hero at 180 to 240 ms was that clip's top
+    edge, not the page's scroll (the fold was re-taken with the scroll
+    removed, and the edge stayed). Likewise a ground remeasured to its
+    bounds drew a step behind the code it holds: 132's 2 to 3 px of quiet
+    zone on the seeked frames. Now a face clips itself, in its own
+    coordinates, to a corner that is a share of its own side (the card's
+    32 of 264 going to a circle's half). A moving ground is its overlay
+    clip's shape, filled: the clip is current and the fill reaches past
+    the layout. Ground, code and words now agree on every frame. A face
+    surface also stays in the overlay for as long as its face is changing,
+    out of reach of its page's scroll. `MotionFramesTest` seeks a hair
+    short of each point first, as a running move's previous frame does. It
+    measures the white round the code against the smaller of its two rest
+    margins on every frame, and checks from 180 ms (once the card has
+    closed to about the hero's size) that the hero is round with the
+    page's ground just above it.
+140. **A still stage has no move** (dev2, round 3; the cause of 130).
+    `Stage.moving()` asked `Nav.move(current, target)` at rest too. For the
+    order page that is Order to Order, the same order on both sides, which
+    `Nav.move` calls OrderGrow. So the list's face kept OrderGrow's
+    crossfade at the resting stage's progress, 0, and the page landed with
+    no lines. The code screen had the same, harmlessly. `moving()` is now
+    null when the current and target screens are the same.
+    `MotionFramesTest` lands every move (RowGrow, CodeGrow and OrderGrow
+    each way, the Rise and the paid fold), composes the same screen under
+    Still, and requires the same semantics tree and the same frame (under
+    0.1 % of pixels apart).
+141. **A sale that comes up by itself slides up as it fades in, and a
+    fade-through keeps its wait under Still** (dev2, round 3). The Rise
+    scaled the whole screen from 0.94. The interrupt matrix caught the
+    rising sale's code at 643 px against its 684 px at rest (principle 3),
+    and it drew its words through a changing scale (138). It now rises
+    from 4 % of the height below, so every frame is at full size. Under
+    Still, `fadeThrough` keeps its 120 ms wait: it puts two different
+    labels in one place, and a quick crossfade would overlap them. It
+    takes 240 ms where a Still crossfade takes 120.

@@ -37,7 +37,10 @@ import androidx.core.view.WindowCompat
 import app.monokular.Move
 import app.monokular.SaleText
 import app.monokular.up
-import app.monokular.overSurfaces
+import app.monokular.GroundLook
+import app.monokular.GroundTrack
+import androidx.compose.runtime.remember
+import app.monokular.words
 import app.monokular.sharedGround
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
@@ -76,13 +79,17 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
                 .clickable(onClickLabel = "Shrink the code", indication = null, interactionSource = null, onClick = onBack),
         ) {
             // The sale's white code card, spread to the screen (M8): a ground with nothing in it, the code its own layer over it.
-            Box(Modifier.matchParentSize().sharedGround(codeGround(sale.orderId), Move.CodeGrow, Fixed.White, CodeScreenCorner, CodeCorner))
+            val ground = remember { GroundTrack() }
+            Box(
+                Modifier.fillMaxSize()
+                    .sharedGround(codeGround(sale.orderId), Move.CodeGrow, GroundLook(Fixed.White, CodeScreenCorner), GroundLook(Fixed.White, CodeCorner), ground),
+            )
             Column(
                 Modifier.fillMaxSize().safeDrawingPadding().padding(start = 6.dp, end = 6.dp, top = 20.dp, bottom = 28.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                // The heading and the foot come in over the white once it has spread past them.
-                Row(Modifier.fillMaxWidth().overSurfaces(Move.CodeGrow).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                // The heading and the foot come in over the white once the sale's words have gone, at their own size.
+                Row(Modifier.fillMaxWidth().words(over = Move.CodeGrow, on = ground).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         Text(SaleText.amount(sale), style = display(30, -0.5), color = ink)
                         Countdown(now, sale.expiresAt, fontSize = 15.sp, color = muted) { CodeText.under(sale, it) }
@@ -103,7 +110,7 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
                         sharedCard = false,
                     )
                 }
-                Column(Modifier.overSurfaces(Move.CodeGrow), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(Modifier.words(over = Move.CodeGrow, on = ground), horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                         PhaseRing(sale.phase, 26.dp, track = Fixed.Track, fill = Fixed.Accent)
                         Text("Scan with any Monero wallet", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ink)

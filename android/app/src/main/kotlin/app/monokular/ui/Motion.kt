@@ -55,8 +55,14 @@ class Motion private constructor(
      */
     val track: Preset = if (still) Snapped else Timed(TRACK_MS)
 
-    /** How much of [track] a surface's face takes to fade, in at the start of its arrival, out at the end of its leaving: read per draw, not as layers. */
+    /**
+     * How much of [track] a fade takes on it, read per draw, not as layers: a glyph-only surface's face fades in over the
+     * first of it (out over the last), and a screen's words arrive over the last of it ([fadeOutOnTrack] for leaving).
+     */
     val crossfadeOnTrack: Float = FADE_MS.toFloat() / TRACK_MS
+
+    /** How much of [track] a screen's words take to fade out as it is left: [fadeQuick]'s share, so they are gone before the arriving words start. */
+    val fadeOutOnTrack: Float = QUICK_MS.toFloat() / TRACK_MS
 
     /** How the stage's progress runs to a screen, the till's or the cashier's release: [surface] on [track]; under [Still], each part's own spec. */
     val stage: FiniteAnimationSpec<Float>? = if (still) null else surface.fraction
