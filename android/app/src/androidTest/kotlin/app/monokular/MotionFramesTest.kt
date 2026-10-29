@@ -41,6 +41,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.io.File
 import kotlin.math.abs
+import androidx.compose.ui.util.lerp
 import kotlin.math.roundToInt
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -73,7 +74,7 @@ class MotionFramesTest {
         compose.setContent {
             scope = rememberCoroutineScope()
             Till(if (still) Motion.Still else Motion.Full) {
-                CompositionLocalProvider(LocalGroundTracks provides { key -> GroundTrack().also { tracks.getOrPut(key) { mutableListOf() } += it } }) {
+                CompositionLocalProvider(LocalGroundTracks provides { key -> GroundTrack(key).also { tracks.getOrPut(key) { mutableListOf() } += it } }) {
                 TillStage(state, cameUpByItself = { byItself }) { s ->
                     when (s) {
                         is Screen.Code -> CodeScreen(shown, onBack = {})
@@ -142,30 +143,54 @@ class MotionFramesTest {
         val rest = bounds("Payment code for")
         val cardMargin = margin(compose.onRoot().captureToImage(), rest)
         val margins = mutableListOf<Pair<Float, Int>>()
+        val drawn = mutableListOf<Pair<Float, Rect>>()
         seek(state, Screen.Code("a1"), "code-grow") { p, frame ->
-            val code = bounds("Payment code, tap to shrink")
+            val code = codeDrawn()
             assertTrue(abs(code.width - code.height) <= 1f, "at $p the code is square: $code")
             assertTrue(code.width >= rest.width - 1f, "at $p it is no smaller than at rest: ${code.width} < ${rest.width}")
             margins += p to margin(frame, code)
+            drawn += p to code
         }
         seekOnto(state, 1f, Screen.Code("a1"))
-        val screenMargin = margin(compose.onRoot().captureToImage(), bounds("Payment code, tap to shrink"))
+        val big = bounds("Payment code, tap to shrink")
+        val screenMargin = margin(compose.onRoot().captureToImage(), big)
         assertMargins(margins, minOf(cardMargin, screenMargin))
+        assertOnTheLine(drawn, rest, big)
     }
 
     @Test
     fun theShrinkingCodeIsOneWholeSquareCodeOnItsWhiteOnEveryFrame() {
         val state = stage(Screen.Code("a1"))
-        val screenMargin = margin(compose.onRoot().captureToImage(), bounds("Payment code, tap to shrink"))
+        val big = bounds("Payment code, tap to shrink")
+        val screenMargin = margin(compose.onRoot().captureToImage(), big)
         val margins = mutableListOf<Pair<Float, Int>>()
+        val drawn = mutableListOf<Pair<Float, Rect>>()
         seek(state, Screen.Sale("a1"), "code-shrink") { p, frame ->
-            val code = bounds("Payment code, tap to shrink")
+            val code = codeDrawn()
             assertTrue(abs(code.width - code.height) <= 1f, "at $p the code is square: $code")
             margins += p to margin(frame, code)
+            drawn += p to code
         }
         seekOnto(state, 1f, Screen.Sale("a1"))
-        val cardMargin = margin(compose.onRoot().captureToImage(), bounds("Payment code for"))
+        val small = bounds("Payment code for")
+        val cardMargin = margin(compose.onRoot().captureToImage(), small)
         assertMargins(margins, minOf(cardMargin, screenMargin))
+        assertOnTheLine(drawn, big, small)
+    }
+
+    /** Where the moving code is drawn on this frame: its track, not where either screen laid it out. */
+    private fun codeDrawn(): Rect = tracks["code/a1"]?.firstNotNullOfOrNull { it.bounds } ?: bounds("Payment code")
+
+    /**
+     * A seek moves the code as it moves the words (decision 166): at p of the way, the code is p of the way along
+     * the straight line between its two rest places, to two pixels.
+     */
+    private fun assertOnTheLine(drawn: List<Pair<Float, Rect>>, from: Rect, to: Rect) {
+        val off = drawn.filter { (p, r) ->
+            val want = Rect(lerp(from.left, to.left, p), lerp(from.top, to.top, p), lerp(from.right, to.right, p), lerp(from.bottom, to.bottom, p))
+            abs(r.left - want.left) > 2f || abs(r.top - want.top) > 2f || abs(r.right - want.right) > 2f || abs(r.bottom - want.bottom) > 2f
+        }
+        assertTrue(off.isEmpty(), "the code is where the seek puts it, between $from and $to: $off")
     }
 
     /** The white round the code on every frame is at least the smaller of its two rest margins (decision 132). */

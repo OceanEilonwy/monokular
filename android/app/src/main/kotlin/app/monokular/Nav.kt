@@ -63,6 +63,13 @@ import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.DrawModifierNode
+import androidx.compose.ui.node.invalidateDraw
+import androidx.compose.ui.graphics.drawscope.ContentDrawScope
+import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.unit.IntSize
+import kotlin.math.roundToInt
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.geometry.CornerRadius
@@ -237,9 +244,10 @@ class Stage internal constructor(
     private val held: HeldMove,
     private val scrub: BackScrub,
     private val shownState: State<Float>,
-    private val screen: Screen,
+    internal val screen: Screen,
     private val progress: () -> Float,
     private val root: StageRoot,
+    internal val geometry: StageGeometry,
 ) {
     /**
      * The move under way between the two screens of the transition, read when a surface asks, not in composition;
@@ -300,6 +308,9 @@ class Stage internal constructor(
     /** Whether this screen is the one the stage is going to. */
     fun arriving(): Boolean = transition.targetState == screen
 
+    /** The stage's own progress toward the screen it is going to: the one number every part of a move reads. */
+    internal fun toward(): Float = progress()
+
     /** Whether [move] is the one under way: read in draw, where it's needed. */
     fun isMoving(move: Move): Boolean = moving() == move
 
@@ -319,6 +330,14 @@ internal class HeldMove(private val cameUpByItself: () -> Boolean, private val s
     private var to: Screen? = null
     private var move: Move = Move.Crossfade
 
+    /** Which change this is, counted up as each starts: a surface's course starts again on a new one. */
+    var generation = 0L
+        private set
+
+    /** Whether this change took over another mid-move (a Back during a grow), rather than starting from rest. */
+    var interrupted = false
+        private set
+
     /** The move from [from] to [to]; null at rest ([from] is [to]), which also forgets the last change. */
     fun during(from: Screen, to: Screen): Move? {
         if (from == to) {
@@ -327,6 +346,8 @@ internal class HeldMove(private val cameUpByItself: () -> Boolean, private val s
             return null
         }
         if (from != this.from || to != this.to) {
+            interrupted = this.from != null
+            generation++
             this.from = from
             this.to = to
             move = Nav.move(from, to, cameUpByItself(), still)
@@ -363,6 +384,15 @@ fun FollowScreen(state: SeekableTransitionState<Screen>, scrub: BackScrub, scree
         snapshotFlow { if (scrub.active) null else screen.value }.collectLatest { s ->
             if (s == null || (state.currentState == s && state.targetState == s)) return@collectLatest
             try {
+                // From rest, the screen arriving is composed and drawn once at 0 before the spring's clock starts, as
+                // a back gesture's is: its first frame is the change's heaviest (a whole screen composed), and counted
+                // on the clock it put the stage half way there on the first frame drawn (decision 178). Mid-move the
+                // new target is just retargeted, from where the move got to.
+                if (m.stage != null && state.currentState == state.targetState) {
+                    state.seekTo(0f, s)
+                    // The next frame composes it; the spring's first frame, after it, starts the clock.
+                    withFrameNanos {}
+                }
                 state.animateTo(s, m.stage)
             } catch (e: CancellationException) {
                 // A gesture's seek took the stage (its mutex cancels this run, not this driver): the gesture's
@@ -443,6 +473,7 @@ fun TillStage(
     val transition = rememberTransition(state, label = "screen")
     val root = remember { StageRoot() }
     val held = remember(m) { HeldMove(cameUpByItself, m.still) }
+    val geometry = remember(transition, held) { StageGeometry(transition, held, { state.fraction }, root) }
     // At rest the held move is forgotten, so the next change between the same two screens is read afresh: no surface
     // need draw at rest for it to be (nothing recomposes for this; the flow runs off the frame).
     LaunchedEffect(transition, held) {
@@ -450,6 +481,7 @@ fun TillStage(
     }
     SharedTransitionLayout(Modifier.onPlaced { root.coordinates = it }) {
         val shared = this
+        Box {
         transition.AnimatedContent(
             transitionSpec = {
                 transform(held.during(initialState, targetState) ?: Move.Crossfade, m, Nav.isBack(initialState, targetState))
@@ -457,165 +489,354 @@ fun TillStage(
         ) { screen ->
             val visibility = (this as AnimatedVisibilityScope).transition
             val shown = visibility.animateFloat({ m.track.fraction }, label = "shown") { if (it == EnterExitState.Visible) 1f else 0f }
-            val stage = remember(m) { Stage(shared, this, transition, held, scrub, shown, screen, { state.fraction }, root) }
+            val stage = remember(m) { Stage(shared, this, transition, held, scrub, shown, screen, { state.fraction }, root, geometry) }
             // A screen left draws nothing on the frame its change lands: the one arriving is the picture by then.
             Box(Modifier.drawWithContent { if (!stage.gone()) drawContent() }) {
                 CompositionLocalProvider(LocalStage provides stage) { content(screen) }
             }
         }
-    }
-}
-
-/** Laid out once at the screen's size and scaled as one layer while the bounds move: nothing inside is measured per frame. */
-private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Alignment.TopCenter)
-
-/**
- * This node is [key]'s surface on whichever screen shows it: while the
- * screens change by [during], its bounds move from one screen's node to
- * the other's on [Motion.track], in step with the stage's progress (which
- * springs, or follows a back gesture), and its content, scaled as a layer,
- * crossfades. Only for what has no words in it (a badge's glyph, the
- * code's bitmap): a glyph drawn through a changing scale is rasterised
- * again at every scale (decision 128), so words ride a [sharedGround]
- * instead and fade through at their own size. Any other move, or Still, leaves it alone, so a sale that
- * came up by itself doesn't grow out of a row the cashier didn't tap.
- * Without [fade] both sides draw fully throughout: for the code, the same
- * bitmap on both, so every frame shows one solid, scannable code. A
- * surface with a higher [layer] draws over one with a lower while both
- * move: the code over its ground.
- */
-@Composable
-fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleShape, fade: Boolean = true, layer: Float = 0f, track: GroundTrack? = null): Modifier {
-    val stage = LocalStage.current ?: return this
-    val m = motion
-    if (m.still) return this
-    val shared = stage.shared
-    val config = remember(stage, during) {
-        object : SharedContentConfig {
-            override val SharedContentState.isEnabled: Boolean get() = stage.moving() == during
+        // The moving grounds and codes, drawn by the stage itself over both screens while a change runs (decision 175):
+        // a window-sized layer each, so a surface larger than either of its ends' nodes is never cut to one of them.
+        // At rest they draw nothing and are drawn in place, empty.
+        val grounds = remember(geometry) { GroundsPainter(geometry) }
+        Box(Modifier.matchParentSize().renderInSharedTransitionScopeOverlay(Layers.GROUND) { geometry.moving() }.drawBehind { with(grounds) { paint() } })
+        Box(Modifier.matchParentSize().renderInSharedTransitionScopeOverlay(Layers.CODE) { geometry.moving() }.drawBehind { geometry.paintCodes(this) })
         }
     }
-    val state = shared.rememberSharedContentState(key, config)
-    val bounds = remember(m) { BoundsTransform { _, _ -> m.track.spec(Rect.VisibilityThreshold) } }
-    // With a [track] (a rectangle: its looks unset) the surface's bounds on each frame are where a device test reads them.
-    val overlayClip = track ?: remember(shared, clip) { shared.OverlayClip(clip) }
-    val surface = with(shared) {
-        sharedBounds(
-            // The face going stays drawn, opaque, for the whole move (an exit that holds alpha at 1, so no layer of its
-            // own), and the crossfade below shows it fading ([keptOpaque]).
-            state, stage.content, enter = EnterTransition.None, exit = if (fade) keptOpaque(m.track.fraction) else ExitTransition.None,
-            boundsTransform = bounds, resizeMode = ScaledToWidth, zIndexInOverlay = layer, clipInOverlayDuringTransition = overlayClip,
-        )
-    }
-    // A face with no partner on this frame of its move (the match comes a frame late, and goes a frame early) is drawn
-    // only by the screen that is the picture then: the enlarged code never shows full size over the sale for a frame,
-    // nor the sale's small code over the white as the code screen leaves (decision 146).
-    if (!fade) {
-        return surface.drawWithContent {
-            if (!stage.isMoving(during)) track?.bounds = null
-            if (!stage.isMoving(during) || state.isMatchFound || stage.shown() >= Nav.HALF_WAY) drawContent()
-        }
-    }
-    // The crossfade inside the bounds, per draw (ModulateAlpha): an enter or exit fade would composite each face through
-    // an offscreen buffer of its own, a full-screen texture a frame for a sale, which the GPU's cache then keeps.
-    val share = m.crossfadeOnTrack
-    return surface.graphicsLayer {
-        alpha = stage.faceDuring(during, share)
-        compositingStrategy = CompositingStrategy.ModulateAlpha
-    }
-}
-
-/** Where a surface's parts draw while they move: grounds under what's on them, the code over everything. */
-object Layers {
-    const val GROUND = 0f
-    const val OVER_GROUND = 1f
-    const val CODE = 2f
 }
 
 /**
- * A ground's shape on this frame of its move, and where it is, for the
- * words on it. The overlay asks it for the ground's clip as it draws, with
- * the bounds the ground has on that frame: the shape is drawn there and
- * then (a rounded rectangle whose corners go from the partner's to its
- * own), so the ground is where its bounds are on every frame, not where
- * its layout last put it, which lags the move by an update (decision
- * 132). Words fading in at their own size are clipped to the same bounds,
- * so none shows outside a ground still growing, over the screen it is
- * leaving.
+ * Every shared surface's two ends by key, and where each surface is on
+ * the frame being drawn: the one read of a move (decision 175). A surface's
+ * bounds on a frame are the straight line between its two ends' places,
+ * as laid out on that frame, at the stage's own progress (the number the
+ * words read, a back gesture seeks and [Motion.stage] springs), so a
+ * ground, the code on it, the words clipped to it and a seeked frame all
+ * agree; nothing is placed an update behind and reached past.
  */
-@Stable
-class GroundTrack : SharedTransitionScope.OverlayClip {
-    private val path = Path()
-    private val radii = FloatArray(8)
+internal class StageGeometry(
+    private val transition: Transition<Screen>,
+    private val held: HeldMove,
+    private val progress: () -> Float,
+    private val root: StageRoot,
+) {
+    private val courses = HashMap<String, Course>()
 
-    /** The ground's bounds in the stage's overlay on this frame of its move; null at rest, or with no shape this frame. */
-    var bounds: Rect? = null
-        internal set
+    /** The same courses in a list, walked by index as the stage draws, so a frame makes no iterator. */
+    private val list = ArrayList<Course>()
 
-    /** At rest: no shape, and no step to the next move's first. */
-    internal fun rest() {
-        bounds = null
-        step = 0f
-        lastLeft = Float.NaN
+    /** [key]'s course, made the first time an end or a track asks for it (in composition or on attach, never in draw). */
+    fun course(key: String): Course = courses.getOrPut(key) { Course(key).also { list += it } }
+
+    /** Whether a change is under way: the stage's overlay layers draw only then. */
+    fun moving(): Boolean = held.during(transition.currentState, transition.targetState) != null
+
+    /** Every moving code's bitmap, scaled as one image to its course on this frame (principle 3: never re-laid out). */
+    fun paintCodes(scope: DrawScope) {
+        for (i in list.indices) {
+            val c = list[i]
+            val image = c.to?.bitmap ?: continue
+            val during = c.to?.during ?: continue
+            if (!locate(c, during)) continue
+            val l = c.left.roundToInt()
+            val t = c.top.roundToInt()
+            scope.drawImage(
+                image, dstOffset = IntOffset(l, t), dstSize = IntSize(c.right.roundToInt() - l, c.bottom.roundToInt() - t),
+                filterQuality = FilterQuality.None,
+            )
+        }
     }
 
-    /** How far the ground's edges moved on the last frame, in the overlay's pixels; and its edges then. */
-    private var step = 0f
-    private var lastLeft = Float.NaN
-    private var lastTop = 0f
-    private var lastRight = 0f
-    private var lastBottom = 0f
+    internal fun size(): Int = list.size
+
+    internal fun at(i: Int): Course = list[i]
+
+    fun add(end: End) {
+        course(end.key).ends += end
+    }
+
+    fun remove(end: End) {
+        courses[end.key]?.ends?.remove(end)
+    }
 
     /**
-     * How far past its own [size] the ground's fill must reach, in its own pixels, to cover its shape on this frame
-     * while its layout is an update behind: twice its last step, at the scale it is drawn; none before it has moved.
+     * Puts [course]'s place on this frame of [during] in it: false at rest,
+     * under another move, or with either end missing (a row scrolled off the
+     * shift has no place to go to).
      */
-    internal fun reach(size: Size): Float {
-        val b = bounds ?: return 0f
-        if (size.width <= 0f || size.height <= 0f || b.width <= 0f || b.height <= 0f) return 0f
-        return 2f * step / min(b.width / size.width, b.height / size.height)
-    }
-
-    /** The ground's shared state: whether it has a partner to move to (a row off the shift has none). */
-    internal var state: SharedContentState? = null
-
-    /** What it is between, set as it composes. */
-    internal var stage: Stage? = null
-    internal var during: Move = Move.Crossfade
-    internal var own: GroundLook? = null
-    internal var other: GroundLook? = null
-
-    /** Whether the ground is moving: it has a partner on the other screen. */
-    internal val moving: Boolean get() = state?.isMatchFound == true
-
-    override fun getClipPath(sharedContentState: SharedContentState, bounds: Rect, layoutDirection: LayoutDirection, density: Density): Path {
-        this.bounds = bounds
-        step = if (lastLeft.isNaN()) 0f else maxOf(abs(bounds.left - lastLeft), abs(bounds.top - lastTop), abs(bounds.right - lastRight), abs(bounds.bottom - lastBottom))
-        lastLeft = bounds.left
-        lastTop = bounds.top
-        lastRight = bounds.right
-        lastBottom = bounds.bottom
-        val own = own
-        val other = other ?: own
-        val f = stage?.shownDuring(during) ?: 1f
-        val top = if (own == null || other == null) 0f else with(density) { lerp(other.top.toPx(), own.top.toPx(), f) }
-        val bottom = if (own == null || other == null) 0f else with(density) { lerp(other.bottom.toPx(), own.bottom.toPx(), f) }
-        radii.fill(top, 0, 4)
-        radii.fill(bottom, 4, 8)
-        path.rewind()
-        path.asAndroidPath().addRoundRect(bounds.left, bounds.top, bounds.right, bounds.bottom, radii, android.graphics.Path.Direction.CW)
-        return path
+    fun locate(course: Course, during: Move): Boolean {
+        val from = transition.currentState
+        val to = transition.targetState
+        if (held.during(from, to) != during) return course.lost()
+        val r = root.coordinates ?: return course.lost()
+        val a = course.endOn(from) ?: return course.lost()
+        val b = course.endOn(to) ?: return course.lost()
+        course.place(r, a, b, progress(), held.generation, held.interrupted)
+        return true
     }
 }
 
 /**
- * Where a screen's grounds get their tracks: one per ground, made once. A
- * device test provides its own maker, to read where each ground is drawn
- * on a frame of a running move.
+ * One end of a shared surface: where its screen lays it out, the move it
+ * is shared by, and how it looks there: a ground's [look], or a code's
+ * [bitmap].
  */
-val LocalGroundTracks = staticCompositionLocalOf<(key: String) -> GroundTrack> { { GroundTrack() } }
+internal class End(val key: String, val screen: Screen, val during: Move) {
+    var coordinates: LayoutCoordinates? = null
+    var look: GroundLook? = null
+    var bitmap: ImageBitmap? = null
+}
 
-/** [key]'s ground's track, for the ground and the words on it. */
+/**
+ * One shared surface's line over a move, and where it is on the frame
+ * drawn: from [sl]..[sb] (the leaving end, or where the surface was when a
+ * new change took it over mid-move) to [el]..[eb] (the arriving end), at
+ * [p], is [left]..[bottom]. Plain floats, so a frame allocates nothing.
+ */
+internal class Course(val key: String) {
+    val ends = ArrayList<End>(2)
+    var from: End? = null
+        private set
+    var to: End? = null
+        private set
+    var p = 0f
+        private set
+    var sl = 0f
+        private set
+    var st = 0f
+        private set
+    var sr = 0f
+        private set
+    var sb = 0f
+        private set
+    var el = 0f
+        private set
+    var et = 0f
+        private set
+    var er = 0f
+        private set
+    var eb = 0f
+        private set
+    var left = 0f
+        private set
+    var top = 0f
+        private set
+    var right = 0f
+        private set
+    var bottom = 0f
+        private set
+
+    /** Whether [left]..[bottom] is where the surface was drawn on the last frame of a move. */
+    private var valid = false
+    private var generation = -1L
+    private var snapped = false
+    private var kl = 0f
+    private var kt = 0f
+    private var kr = 0f
+    private var kb = 0f
+
+    fun endOn(screen: Screen): End? {
+        for (i in ends.indices) {
+            val e = ends[i]
+            if (e.screen == screen && e.coordinates?.isAttached == true) return e
+        }
+        return null
+    }
+
+    fun lost(): Boolean {
+        valid = false
+        return false
+    }
+
+    fun place(root: LayoutCoordinates, a: End, b: End, p: Float, generation: Long, interrupted: Boolean) {
+        val ca = a.coordinates!!
+        val cb = b.coordinates!!
+        if (generation != this.generation) {
+            // A change that took over another mid-move starts from where this surface was drawn last, not from the
+            // leaving end's rest place, so nothing jumps (the progress starts again from 0 toward the new screen).
+            snapped = interrupted && valid && this.generation == generation - 1
+            if (snapped) {
+                kl = left
+                kt = top
+                kr = right
+                kb = bottom
+            }
+            this.generation = generation
+        }
+        val e = root.localPositionOf(cb, Offset.Zero)
+        if (snapped) {
+            line(kl, kt, kr, kb, e.x, e.y, e.x + cb.size.width, e.y + cb.size.height, p)
+        } else {
+            val o = root.localPositionOf(ca, Offset.Zero)
+            line(o.x, o.y, o.x + ca.size.width, o.y + ca.size.height, e.x, e.y, e.x + cb.size.width, e.y + cb.size.height, p)
+        }
+        from = a
+        to = b
+        valid = true
+    }
+
+    /** The straight line from one box to the other, and the point [p] of the way along it: where the surface is now. */
+    fun line(sl: Float, st: Float, sr: Float, sb: Float, el: Float, et: Float, er: Float, eb: Float, p: Float) {
+        this.sl = sl
+        this.st = st
+        this.sr = sr
+        this.sb = sb
+        this.el = el
+        this.et = et
+        this.er = er
+        this.eb = eb
+        this.p = p
+        left = lerp(sl, el, p)
+        top = lerp(st, et, p)
+        right = lerp(sr, er, p)
+        bottom = lerp(sb, eb, p)
+    }
+
+    /** Whether the surface on this frame holds the box [l]..[b] (in the overlay), to half a pixel. */
+    fun holds(l: Float, t: Float, r: Float, b: Float): Boolean =
+        left <= l + EDGE && top <= t + EDGE && right >= r - EDGE && bottom >= b - EDGE
+
+    private var lo = 0f
+    private var hi = 1f
+
+    /**
+     * The part of the move over which the surface holds the box [l]..[b]:
+     * from [heldFrom] to [heldUntil] (the first above the second when it
+     * never does). Its edges move on straight lines, so this is exact.
+     */
+    fun holding(l: Float, t: Float, r: Float, b: Float) {
+        lo = 0f
+        hi = 1f
+        atMost(sl, el, l + EDGE)
+        atMost(st, et, t + EDGE)
+        atMost(-sr, -er, -(r - EDGE))
+        atMost(-sb, -eb, -(b - EDGE))
+    }
+
+    val heldFrom: Float get() = lo
+    val heldUntil: Float get() = hi
+
+    /** Narrows [lo]..[hi] to where s + (e - s) p ≤ c. */
+    private fun atMost(s: Float, e: Float, c: Float) {
+        val d = e - s
+        if (abs(d) < EDGE) {
+            if (s > c) {
+                lo = 2f
+                hi = -1f
+            }
+            return
+        }
+        val x = (c - s) / d
+        if (d > 0f) hi = min(hi, x) else lo = maxOf(lo, x)
+    }
+
+    /**
+     * The first point of the move from which the surface no longer meets
+     * the box [l]..[b] to its end (2 if it still meets it there): where
+     * words arriving under a shrinking ground may start to show.
+     */
+    fun clearOf(l: Float, t: Float, r: Float, b: Float): Float =
+        min(min(atLeastFrom(sl, el, r), atLeastFrom(st, et, b)), min(atLeastFrom(-sr, -er, -l), atLeastFrom(-sb, -eb, -t)))
+
+    /** The least p from which s + (e - s) p ≥ c holds to 1, or 2 if it doesn't hold at 1. */
+    private fun atLeastFrom(s: Float, e: Float, c: Float): Float {
+        if (e < c) return 2f
+        if (s >= c) return 0f
+        return ((c - s) / (e - s)).coerceIn(0f, 1f)
+    }
+
+    private companion object {
+        /** Half a pixel: a box laid out on a pixel edge is held by a surface on the same edge. */
+        const val EDGE = 0.5f
+    }
+}
+
+/**
+ * A shared surface's node: it is its key's end on this screen while
+ * attached, and where it is placed is where the end is laid out.
+ */
+private abstract class EndNode(var geometry: StageGeometry, var end: End) : Modifier.Node(), LayoutAwareModifierNode {
+    protected var placed: LayoutCoordinates? = null
+
+    override fun onAttach() = geometry.add(end)
+
+    override fun onDetach() {
+        geometry.remove(end)
+        end.coordinates = null
+        placed = null
+    }
+
+    override fun onPlaced(coordinates: LayoutCoordinates) {
+        placed = coordinates
+        end.coordinates = coordinates
+    }
+
+    /** A new stage, key or screen for this node: a new end, with the look the old one had. */
+    fun rebind(geometry: StageGeometry, key: String, screen: Screen, during: Move) {
+        if (geometry === this.geometry && key == end.key && screen == end.screen && during == end.during) return
+        val look = end.look
+        val bitmap = end.bitmap
+        if (isAttached) this.geometry.remove(end)
+        this.geometry = geometry
+        end = End(key, screen, during).also {
+            it.look = look
+            it.bitmap = bitmap
+        }
+        if (isAttached) {
+            geometry.add(end)
+            end.coordinates = placed
+        }
+    }
+}
+
+/**
+ * Where a shared surface is on this frame of its move, as one screen sees
+ * it: for the surface's own drawing, the words clipped to it, what waits
+ * for it to pass, and a device test or the stage trace reading it.
+ */
+@Stable
+class GroundTrack(val key: String) {
+    internal var stage: Stage? = null
+        private set
+    internal var during: Move = Move.Crossfade
+        private set
+    private var course: Course? = null
+
+    internal fun bind(stage: Stage, during: Move) {
+        if (this.stage === stage && this.during == during) return
+        this.stage = stage
+        this.during = during
+        course = stage.geometry.course(key)
+    }
+
+    /** Whether the surface is moving on this frame (both its ends are there), its place then in [left]..[bottom]. */
+    fun locate(): Boolean {
+        val s = stage ?: return false
+        val c = course ?: return false
+        return s.geometry.locate(c, during)
+    }
+
+    /** The course [locate] last put this frame's place in. */
+    internal val located: Course get() = course!!
+
+    internal val left: Float get() = located.left
+    internal val top: Float get() = located.top
+    internal val right: Float get() = located.right
+    internal val bottom: Float get() = located.bottom
+
+    /** The surface's bounds on this frame of its move, in the stage's overlay; null at rest or with an end missing. */
+    val bounds: Rect? get() = if (locate()) Rect(left, top, right, bottom) else null
+}
+
+/**
+ * Where a screen's grounds get their tracks: one per surface, made once. A
+ * test seam: a device test provides its own maker, to read where each
+ * surface is drawn on a frame of a running move; the app's is the plain
+ * constructor.
+ */
+val LocalGroundTracks = staticCompositionLocalOf<(key: String) -> GroundTrack> { { GroundTrack(it) } }
+
+/** [key]'s track, for the surface and the words on it. */
 @Composable
 fun rememberGroundTrack(key: String): GroundTrack {
     val make = LocalGroundTracks.current
@@ -629,23 +850,191 @@ class GroundLook(val color: Color, val top: Dp, val bottom: Dp = top)
 /**
  * [key]'s ground: an [own] coloured, rounded rectangle with nothing in it,
  * which moves between the two screens' nodes while they change by
- * [during] (on [Motion.track]), its colour and corners going from [other]
- * (its partner's) to its own on the same progress. While it moves, its
- * shape is its overlay clip ([GroundTrack]) filled with its colour, so it
- * is exactly at its bounds on every frame; what sits on it is not inside
- * it: its words fade through at their own size ([words]), the code is its
- * own surface over it (decision 113), so nothing on a ground is ever
- * drawn through a changing scale (decision 128). A side that can't know
- * its partner's look ([other] null: a sale doesn't know which of the
- * shift's rows it came from) draws nothing while the partner, which knows
- * both, draws the move.
+ * [during]. On every frame of the move the stage draws it once, in its
+ * overlay under everything on it, at the place [StageGeometry] puts it
+ * (the straight line between the two ends at the stage's progress), its
+ * colour and corners going from the leaving end's look to the arriving
+ * one's on the same progress; neither end draws itself. What sits on
+ * a ground is not inside it: its words fade through at their own size
+ * ([words]), the code is its own surface over it ([sharedCode]), so nothing
+ * on a ground is drawn through a changing scale (decision 128). With no
+ * partner (a sale whose row is off the shift), a ground fades with its
+ * screen. [track] is the screen's view of it, for the words on it.
  */
 @Composable
-fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, other: GroundLook?, track: GroundTrack? = null, fadesIn: Move? = null): Modifier {
+fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, track: GroundTrack? = null, fadesIn: Move? = null): Modifier {
     val stage = LocalStage.current
-    val m = motion
     val painter = remember { GroundPainter() }
-    if (stage == null || m.still) return drawBehind { with(painter) { paint(own.color, own.top.toPx(), own.bottom.toPx()) } }
+    if (stage == null || motion.still) return drawBehind { with(painter) { paint(own.color, own.top.toPx(), own.bottom.toPx()) } }
+    val ground = track ?: remember(key) { GroundTrack(key) }
+    ground.bind(stage, during)
+    return this.then(GroundElement(stage, ground, own, fadesIn))
+}
+
+private class GroundElement(val stage: Stage, val track: GroundTrack, val own: GroundLook, val fadesIn: Move?) : ModifierNodeElement<GroundNode>() {
+    override fun create() = GroundNode(stage.geometry, End(track.key, stage.screen, track.during).also { it.look = own }, stage, track, own, fadesIn)
+
+    override fun update(node: GroundNode) {
+        node.rebind(stage.geometry, track.key, stage.screen, track.during)
+        node.end.look = own
+        node.stage = stage
+        node.track = track
+        node.own = own
+        node.fadesIn = fadesIn
+        node.invalidateDraw()
+    }
+
+    override fun equals(other: Any?): Boolean = other is GroundElement && other.stage === stage && other.track === track &&
+        other.own === own && other.fadesIn == fadesIn
+
+    override fun hashCode(): Int = System.identityHashCode(track) * 31 + System.identityHashCode(own)
+}
+
+private class GroundNode(
+    geometry: StageGeometry,
+    end: End,
+    var stage: Stage,
+    var track: GroundTrack,
+    var own: GroundLook,
+    var fadesIn: Move?,
+) : EndNode(geometry, end), DrawModifierNode {
+    private val painter = GroundPainter()
+
+    override fun ContentDrawScope.draw() {
+        val stage = stage
+        val track = track
+        val own = own
+        when {
+            !stage.isMoving(track.during) -> {
+                // Arriving by [fadesIn] (a sale rising by itself), it fades in on the stage's line; leaving by it, out.
+                val f = fadesIn
+                val seen = if (f != null && stage.isMoving(f)) stage.shown() else 1f
+                with(painter) { paint(own.color.copy(alpha = own.color.alpha * seen), own.top.toPx(), own.bottom.toPx()) }
+            }
+            // Moving: the stage draws the one ground where its line puts it on this frame, over both screens; neither
+            // end draws itself (decision 175).
+            track.locate() -> Unit
+            // No partner (a sale whose row is off the shift): it fades with its screen, the one under it showing through.
+            else -> with(painter) { paint(own.color.copy(alpha = own.color.alpha * stage.shown()), own.top.toPx(), own.bottom.toPx()) }
+        }
+        drawContent()
+    }
+}
+
+/** Every moving ground on this frame, drawn by the stage in its overlay under everything on them. */
+private class GroundsPainter(private val geometry: StageGeometry) {
+    private val painter = GroundPainter()
+
+    fun DrawScope.paint() {
+        for (i in 0 until geometry.size()) {
+            val c = geometry.at(i)
+            val to = c.to ?: continue
+            if (to.look == null || !geometry.locate(c, to.during)) continue
+            with(painter) { paintCourse(c) }
+        }
+    }
+}
+
+/** A rounded rectangle with its own top and bottom corners; its path made once and reused. */
+private class GroundPainter {
+    private val path = Path()
+    private val radii = FloatArray(8)
+
+    fun DrawScope.paint(color: Color, top: Float, bottom: Float) {
+        if (top == bottom) {
+            drawRoundRect(color, cornerRadius = CornerRadius(top))
+            return
+        }
+        rounded(0f, 0f, size.width, size.height, top, bottom)
+        drawPath(path, color)
+    }
+
+    /** [course]'s ground on this frame, in the stage's overlay: its colour and corners [Course.p] of the way between its ends' looks. */
+    fun DrawScope.paintCourse(course: Course) {
+        val a = course.from?.look
+        val b = course.to?.look ?: return
+        val from = a ?: b
+        val p = course.p
+        val top = lerp(from.top.toPx(), b.top.toPx(), p)
+        val bottom = lerp(from.bottom.toPx(), b.bottom.toPx(), p)
+        rounded(course.left, course.top, course.right, course.bottom, top, bottom)
+        drawPath(path, lerp(from.color, b.color, p))
+    }
+
+    private fun rounded(l: Float, t: Float, r: Float, b: Float, top: Float, bottom: Float) {
+        radii.fill(top, 0, 4)
+        radii.fill(bottom, 4, 8)
+        path.rewind()
+        path.asAndroidPath().addRoundRect(l, t, r, b, radii, android.graphics.Path.Direction.CW)
+    }
+}
+
+/**
+ * The code's [bitmap] as [key]'s surface between a sale and its enlarged
+ * code ([during]): while they change, the stage draws it once, over
+ * everything (its overlay's [Layers.CODE]), as one image scaled to the
+ * straight line between the two codes' places at the stage's progress:
+ * the same read that places the white it sits on ([sharedGround]), so the
+ * quiet zone runs from one rest margin to the other and is never below
+ * the smaller (decision 175); neither end draws itself. Never re-laid out,
+ * re-encoded or faded (principle 3, decision 148). A code with no partner
+ * on a frame of its move is drawn only by the screen that is the picture
+ * then (decision 146).
+ */
+@Composable
+fun Modifier.sharedCode(key: String, during: Move, track: GroundTrack, bitmap: ImageBitmap): Modifier {
+    val stage = LocalStage.current ?: return this
+    if (motion.still) return this
+    track.bind(stage, during)
+    return this.then(CodeElement(stage, track, key, bitmap))
+}
+
+private class CodeElement(val stage: Stage, val track: GroundTrack, val key: String, val bitmap: ImageBitmap) : ModifierNodeElement<CodeNode>() {
+    override fun create() = CodeNode(stage.geometry, End(key, stage.screen, track.during).also { it.bitmap = bitmap }, stage, track)
+
+    override fun update(node: CodeNode) {
+        node.rebind(stage.geometry, key, stage.screen, track.during)
+        node.end.bitmap = bitmap
+        node.stage = stage
+        node.track = track
+        node.invalidateDraw()
+    }
+
+    override fun equals(other: Any?): Boolean = other is CodeElement && other.stage === stage && other.track === track && other.key == key && other.bitmap === bitmap
+
+    override fun hashCode(): Int = key.hashCode() * 31 + System.identityHashCode(track)
+}
+
+private class CodeNode(geometry: StageGeometry, end: End, var stage: Stage, var track: GroundTrack) : EndNode(geometry, end), DrawModifierNode {
+    override fun ContentDrawScope.draw() {
+        val stage = stage
+        val track = track
+        when {
+            !stage.isMoving(track.during) -> drawContent()
+            // Moving: the stage draws the code over everything, on its white's line (decision 175).
+            track.locate() -> Unit
+            stage.shown() >= Nav.HALF_WAY -> drawContent()
+        }
+    }
+}
+
+/**
+ * This node is [key]'s surface on whichever screen shows it: while the
+ * screens change by [during], its bounds move from one screen's node to
+ * the other's on [Motion.track], in step with the stage's progress, and
+ * its content, scaled as a layer, crossfades. Only for a glyph with no
+ * words in it (a badge into a hero): a glyph drawn through a changing
+ * scale is rasterised again at every scale (decision 128), so words ride a
+ * [sharedGround] instead; the code is a [sharedCode]. Any other move, or
+ * Still, leaves it alone, so a sale that came up by itself doesn't grow
+ * out of a row the cashier didn't tap. A surface with a higher [layer]
+ * draws over one with a lower while both move.
+ */
+@Composable
+fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleShape, layer: Float = 0f): Modifier {
+    val stage = LocalStage.current ?: return this
+    val m = motion
+    if (m.still) return this
     val shared = stage.shared
     val config = remember(stage, during) {
         object : SharedContentConfig {
@@ -654,50 +1043,76 @@ fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, other: Gro
     }
     val state = shared.rememberSharedContentState(key, config)
     val bounds = remember(m) { BoundsTransform { _, _ -> m.track.spec(Rect.VisibilityThreshold) } }
-    val clip = track ?: remember { GroundTrack() }
-    SideEffect {
-        clip.state = state
-        clip.stage = stage
-        clip.during = during
-        clip.own = own
-        clip.other = other
-    }
-    return with(shared) {
+    val overlayClip = remember(shared, clip) { shared.OverlayClip(clip) }
+    val surface = with(shared) {
         sharedBounds(
-            // Each side stays in the overlay while it leaves (an exit that holds alpha at 1, so no layer), so its track
-            // is told where it is on every frame of the move ([keptOpaque]).
+            // The face going stays drawn, opaque, for the whole move (an exit that holds alpha at 1, so no layer of its
+            // own), and the crossfade below shows it fading ([keptOpaque]).
             state, stage.content, enter = EnterTransition.None, exit = keptOpaque(m.track.fraction),
-            boundsTransform = bounds, resizeMode = ScaledToFill, zIndexInOverlay = Layers.GROUND,
-            clipInOverlayDuringTransition = clip,
+            boundsTransform = bounds, resizeMode = ScaledToWidth, zIndexInOverlay = layer, clipInOverlayDuringTransition = overlayClip,
         )
-    }.drawBehind {
-        when {
-            !stage.isMoving(during) -> {
-                clip.rest()
-                // Arriving by [fadesIn] (a sale rising by itself), it fades in on the stage's line; leaving by it, out.
-                val seen = if (fadesIn != null && stage.isMoving(fadesIn)) stage.shown() else 1f
-                with(painter) { paint(own.color.copy(alpha = own.color.alpha * seen), own.top.toPx(), own.bottom.toPx()) }
-            }
-            // Its colour everywhere the overlay's clip lets it show: the clip is the ground's shape on this frame, its
-            // layout (the scale it is drawn at) an update behind. It reaches past its own size by twice the ground's
-            // last step, never further (decision 160): a fill four sizes wide, drawn once by the overlay before its clip
-            // was set, painted the whole window white before every enlarge (146).
-            state.isMatchFound -> if (other != null) {
-                val reach = clip.reach(size)
-                drawRect(lerp(other.color, own.color, stage.shownDuring(during)), topLeft = Offset(-reach, -reach), size = Size(size.width + 2 * reach, size.height + 2 * reach))
-            }
-            // Its move is under way and the overlay has no shape for it on this frame (the match is found a frame after
-            // the change starts, and lost a frame before it lands): the screen that is the picture on this frame draws
-            // its ground whole and the other nothing, never the arriving one's at its layout size over the leaving one
-            // (decision 146: a whole white window for a frame before every enlarge). A side that can't draw the move
-            // ([other] null) keeps its ground: its partner, which would have drawn it, isn't there.
-            other == null || stage.shown() >= Nav.HALF_WAY -> {
-                clip.bounds = null
-                with(painter) { paint(own.color, own.top.toPx(), own.bottom.toPx()) }
-            }
-            else -> clip.bounds = null
-        }
     }
+    // The crossfade inside the bounds, per draw (ModulateAlpha): an enter or exit fade would composite each face through
+    // an offscreen buffer of its own, a full-screen texture a frame for a sale, which the GPU's cache then keeps.
+    val share = m.crossfadeOnTrack
+    return surface.graphicsLayer {
+        alpha = stage.faceDuring(during, share)
+        compositingStrategy = CompositingStrategy.ModulateAlpha
+    }
+}
+
+/** Laid out once at its own size and scaled as one layer while the bounds move: nothing inside is measured per frame. */
+private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Alignment.TopCenter)
+
+/**
+ * A payment code on a screen whose [ground] is moving by [during] is drawn
+ * whole or not at all: only on the frames whose ground holds all of it, so
+ * a moving edge never cuts a code (decision 177). Its white goes with it:
+ * the code is never drawn without the ground it needs to scan.
+ */
+@Composable
+fun Modifier.wholeOn(ground: GroundTrack, during: Move): Modifier {
+    val stage = LocalStage.current ?: return this
+    if (motion.still) return this
+    return this.then(WholeElement(stage, ground, during))
+}
+
+private class WholeElement(val stage: Stage, val ground: GroundTrack, val during: Move) : ModifierNodeElement<WholeNode>() {
+    override fun create() = WholeNode(stage, ground, during)
+
+    override fun update(node: WholeNode) {
+        node.stage = stage
+        node.ground = ground
+        node.during = during
+        node.invalidateDraw()
+    }
+
+    override fun equals(other: Any?): Boolean = other is WholeElement && other.stage === stage && other.ground === ground && other.during == during
+
+    override fun hashCode(): Int = System.identityHashCode(ground) * 31 + during.hashCode()
+}
+
+private class WholeNode(var stage: Stage, var ground: GroundTrack, var during: Move) : Modifier.Node(), LayoutAwareModifierNode, DrawModifierNode {
+    private var placed: LayoutCoordinates? = null
+
+    override fun onPlaced(coordinates: LayoutCoordinates) {
+        placed = coordinates
+    }
+
+    override fun ContentDrawScope.draw() {
+        val mine = placed
+        if (mine == null || !stage.isMoving(during) || !ground.locate()) return drawContent()
+        val at = stage.inOverlay(mine)
+        if (ground.located.holds(at.x, at.y, at.x + size.width, at.y + size.height)) drawContent()
+    }
+}
+
+/** Where the surfaces' parts draw while they move: grounds under what's on them, the code over everything. */
+object Layers {
+    const val GROUND = 0f
+
+    const val OVER_GROUND = 1f
+    const val CODE = 2f
 }
 
 /**
@@ -714,31 +1129,9 @@ fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, other: Gro
  */
 private fun keptOpaque(spec: FiniteAnimationSpec<Float>): ExitTransition = fadeOut(spec, targetAlpha = 1f)
 
-
-/** An empty ground stretched to its moving bounds as one layer: nothing inside to measure, nothing to rasterise again. */
-private val ScaledToFill = ResizeMode.scaleToBounds(ContentScale.FillBounds, Alignment.Center)
-
 /** Where a node was last placed, for a draw that needs it. */
 private class Placed {
     var coordinates: LayoutCoordinates? = null
-}
-
-/** A rounded rectangle with its own top and bottom corners at rest; its path made once and reused. */
-private class GroundPainter {
-    private val path = Path()
-    private val radii = FloatArray(8)
-
-    fun DrawScope.paint(color: Color, top: Float, bottom: Float) {
-        if (top == bottom) {
-            drawRoundRect(color, cornerRadius = CornerRadius(top))
-            return
-        }
-        radii.fill(top, 0, 4)
-        radii.fill(bottom, 4, 8)
-        path.rewind()
-        path.asAndroidPath().addRoundRect(0f, 0f, size.width, size.height, radii, android.graphics.Path.Direction.CW)
-        drawPath(path, color)
-    }
 }
 
 /**
@@ -750,12 +1143,16 @@ private class GroundPainter {
  * sit on, where it is on that frame) or, arriving, one of [lift] (words
  * arriving where a ground still moves, so its edge never cuts them:
  * decision 147; leaving, they stay under the ground growing over them).
- * A move whose ground [on] has nowhere to go (a row the cashier didn't
- * tap) leaves them as they are. With [fades] false they are lifted and
+ * Words on a moving ground [on] show only while it holds them: arriving,
+ * their fade starts once it covers them; leaving, it ends before it
+ * uncovers them; and arriving words wait for [clear]'s shrinking ground to
+ * have passed them (decision 176). With [fades] false they are lifted and
  * clipped but not faded: a container whose words fade one by one around a
  * code that never fades (decision 148). Alpha is applied per draw, through
  * a layer made only while one of their moves is under way, never an
- * offscreen buffer and nothing at rest.
+ * offscreen buffer and nothing at rest. [through] and [lift] are compared
+ * on every recomposition, so a call site passes top-level sets, never a
+ * `setOf` made in place.
  */
 @Composable
 fun Modifier.words(
@@ -770,23 +1167,23 @@ fun Modifier.words(
     val m = motion
     if (m.still) return this
     val lifted = if (over == null && lift.isEmpty()) this else with(stage.shared) {
+        // Lifted for as long as the stage's own move runs, which the shared bounds' matches (isTransitionActive) don't
+        // span: the stage draws the grounds over both screens from the change's first frame to its last (decision 175).
         renderInSharedTransitionScopeOverlay(Layers.OVER_GROUND) {
-            if (!isTransitionActive) return@renderInSharedTransitionScopeOverlay false
             val move = stage.moving()
-            (move != null && move == over && (on == null || on.moving)) || (move in lift && stage.arriving())
+            (move != null && move == over && (on == null || on.locate())) || (move in lift && stage.arriving())
         }
     }
     val clipped = if (over == null || on == null) lifted else {
         val placed = remember { Placed() }
         // Clipped to the ground they sit on, where it is on this frame: nothing shows outside it, over the other screen.
         lifted.onPlaced { placed.coordinates = it }.drawWithContent {
-            val ground = on.bounds
             val mine = placed.coordinates
-            if (ground == null || mine == null || !stage.isMoving(over)) {
+            if (mine == null || !stage.isMoving(over) || !on.locate()) {
                 drawContent()
             } else {
                 val at = stage.inOverlay(mine)
-                clipRect(ground.left - at.x, ground.top - at.y, ground.right - at.x, ground.bottom - at.y) { this@drawWithContent.drawContent() }
+                clipRect(on.left - at.x, on.top - at.y, on.right - at.x, on.bottom - at.y) { this@drawWithContent.drawContent() }
             }
         }
     }
@@ -848,28 +1245,38 @@ private class FadeThroughNode(
         compositingStrategy = CompositingStrategy.ModulateAlpha
     }
 
-    /** One of its moves: one its ground has somewhere to go in, if it has a ground. */
-    private fun fades(move: Move?): Boolean {
-        if (move == null || (move != over && move !in through)) return false
-        val ground = on ?: return true
-        return ground.during != move || ground.moving
-    }
+    /** One of its moves. Every screen's words fade through a move that is theirs, a row's the cashier didn't tap too (164). */
+    private fun fades(move: Move?): Boolean = move != null && (move == over || move in through)
 
     private fun alpha(): Float {
         val move = stage.moving()
         if (!fades(move)) return 1f
-        val a = stage.throughDuring(move!!, leaving, arriving)
-        // Arriving where [clear]'s ground still is, they wait until it has passed: no edge sweeps through them.
-        return if (a > 0f && stage.arriving() && meets(clear?.bounds)) 0f else a
-    }
-
-    private fun meets(ground: Rect?): Boolean {
-        val mine = placed ?: return false
-        if (ground == null || !mine.isAttached) return false
-        val at = stage.inOverlay(mine)
-        val w = mine.size.width
-        val h = mine.size.height
-        return at.x < ground.right && at.x + w > ground.left && at.y < ground.bottom && at.y + h > ground.top
+        val arrivingHere = stage.arriving()
+        // The plain shares of the move: out over its first [leaving], in over its last [arriving] (decision 131).
+        var start = 1f - arriving
+        var end = leaving
+        val mine = placed
+        if (mine != null && mine.isAttached) {
+            val at = stage.inOverlay(mine)
+            val r = at.x + mine.size.width
+            val b = at.y + mine.size.height
+            val ground = on
+            // On a moving ground: arriving, they start once it holds them; leaving, they are gone before it lets go.
+            if (ground != null && ground.during == move && ground.locate()) {
+                val course = ground.located
+                course.holding(at.x, at.y, r, b)
+                if (arrivingHere) start = maxOf(start, course.heldFrom) else end = min(end, course.heldUntil)
+            }
+            // Arriving where [clear]'s ground still is, they wait until it has passed: no edge sweeps through them.
+            val c = clear
+            if (arrivingHere && c != null && c.locate()) start = maxOf(start, c.located.clearOf(at.x, at.y, r, b))
+        }
+        val p = stage.toward()
+        return if (arrivingHere) {
+            if (start >= 1f) 0f else ((p - start) / (1f - start)).coerceIn(0f, 1f)
+        } else {
+            if (end <= 0f) 0f else ((end - p) / end).coerceIn(0f, 1f)
+        }
     }
 
     override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
@@ -921,14 +1328,15 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float): Modifier {
         { if (targetState == EnterExitState.Visible) m.fade.fraction else m.fadeQuick.fraction }, label = "face seen",
     ) { if (it == EnterExitState.Visible) 1f else 0f }
     val clip = remember { RoundClip() }
+    val layer = Layers.GROUND
     return with(shared) {
         // Over every clip for as long as its face is changing: a page's hero sits in a scroll, whose clip would cut
         // the circle on the frames the shared bounds hand drawing back before the change has landed.
-        renderInSharedTransitionScopeOverlay(Layers.GROUND) { face.transition.isRunning }.sharedBounds(
+        renderInSharedTransitionScopeOverlay(layer) { face.transition.isRunning }.sharedBounds(
             // The going face stays drawn for the whole change (an exit holding alpha at 1, so no layer of its own);
             // the crossfade is the per-draw alpha below ([keptOpaque]).
             state, face, enter = EnterTransition.None, exit = keptOpaque(m.surface.fraction),
-            boundsTransform = bounds, resizeMode = ScaledToFit, zIndexInOverlay = Layers.GROUND,
+            boundsTransform = bounds, resizeMode = ScaledToFit, zIndexInOverlay = layer,
         )
     }.graphicsLayer {
         alpha = seen.value
@@ -951,7 +1359,7 @@ private val ScaledToFit = ResizeMode.scaleToBounds(ContentScale.Fit, Alignment.C
 private class RoundClip {
     private val path = Path()
 
-    fun around(size: androidx.compose.ui.geometry.Size, r: Float): Path {
+    fun around(size: Size, r: Float): Path {
         path.rewind()
         path.asAndroidPath().addRoundRect(0f, 0f, size.width, size.height, r, r, android.graphics.Path.Direction.CW)
         return path
