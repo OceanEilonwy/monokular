@@ -170,3 +170,13 @@ object Handoff {
         }
     }
 }
+/** Where a let-go bubble goes: the nearer side, [x] the window's left edge for a window [width] wide. */
+data class EdgeSnap(val left: Boolean, val x: Int)
+
+object Edge {
+    /** The side nearer the bubble's centre, and the left edge that puts the window flush against it. */
+    fun snap(x: Int, width: Int, screenWidth: Int): EdgeSnap {
+        val left = x + width / 2 < screenWidth / 2
+        return EdgeSnap(left, if (left) 0 else screenWidth - width)
+    }
+}

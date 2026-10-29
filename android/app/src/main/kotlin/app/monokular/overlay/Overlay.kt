@@ -1,6 +1,5 @@
 package app.monokular.overlay
 
-import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.PixelFormat
@@ -9,12 +8,14 @@ import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
 import android.view.View
+import android.view.VelocityTracker
 import android.view.ViewConfiguration
 import android.view.ViewTreeObserver
 import android.view.WindowManager
 import android.widget.Button
 import android.widget.FrameLayout
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -23,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
 import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.Lifecycle
@@ -39,6 +41,7 @@ import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import app.monokular.ui.LocalPointOfSale
+import app.monokular.ui.LocalMotion
 import app.monokular.ui.MonokularTheme
 import app.monokular.ui.Motion
 import kotlinx.coroutines.CoroutineScope
@@ -47,8 +50,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
-import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 /** What the overlay's windows show. */
 data class OverlayState(
@@ -240,7 +243,7 @@ class Overlay(
         val presence = Presence(if (atRest) 1f else 0f)
         // On a tablet the bubble stays up beside the floating panel: a second tap lowers it.
         lateinit var frame: BubbleFrame
-        frame = BubbleFrame(context, wm, params, onTap = { if (panelOpen.value) lower() else panelOpen.value = true }) { left, y ->
+        frame = BubbleFrame(context, wm, params, scope, onTap = { if (panelOpen.value) lower() else panelOpen.value = true }) { left, y ->
             prefs.bubbleOnLeft = left
             prefs.bubbleY = y
             frame.doOnPreDraw { locate(frame) }
@@ -251,7 +254,11 @@ class Overlay(
             compose {
                 presence.Attach()
                 val s by state.collectAsStateWithLifecycle()
-                SideEffect { frame.describe(Bubble.label(s.look)) }
+                val m = LocalMotion.current
+                SideEffect {
+                    frame.describe(Bubble.label(s.look))
+                    frame.motion = m
+                }
                 // Appearing and going, the circle scales and fades inside its window (M4).
                 Box(
                     Modifier.graphicsLayer {
@@ -397,6 +404,8 @@ private class BubbleFrame(
     context: Context,
     private val wm: WindowManager,
     private val params: WindowManager.LayoutParams,
+    /** The overlay's scope: the snap runs in it on the UI dispatcher, whose frame clock it springs by. */
+    private val scope: CoroutineScope,
     private val onTap: () -> Unit,
     private val onMoved: (left: Boolean, y: Int) -> Unit,
 ) : FrameLayout(context) {
@@ -406,8 +415,13 @@ private class BubbleFrame(
     private var startX = 0
     private var startY = 0
     private var dragging = false
+    private var velocity: VelocityTracker? = null
+    private var snapping: Job? = null
     /** Which side the window's x is measured from. */
     private var fromLeft = params.gravity and Gravity.HORIZONTAL_GRAVITY_MASK == Gravity.START
+
+    /** The motion the bubble's window asked for (its composition sets it). */
+    var motion: Motion = Motion.Full
 
     init {
         isClickable = true
@@ -437,13 +451,19 @@ private class BubbleFrame(
     override fun onTouchEvent(ev: MotionEvent): Boolean {
         when (ev.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
+                // The finger has it: a snap on its way stops where it is.
+                snapping?.cancel()
+                snapping = null
                 downX = ev.rawX
                 downY = ev.rawY
                 startX = absoluteX()
                 startY = params.y
                 dragging = false
+                velocity?.recycle()
+                velocity = VelocityTracker.obtain().also { it.addMovement(ev) }
             }
             MotionEvent.ACTION_MOVE -> {
+                velocity?.addMovement(ev)
                 val dx = ev.rawX - downX
                 val dy = ev.rawY - downY
                 if (!dragging && hypot(dx, dy) > slop) {
@@ -457,8 +477,18 @@ private class BubbleFrame(
                     runCatching { wm.updateViewLayout(this, params) }
                 }
             }
-            MotionEvent.ACTION_UP -> if (dragging) snap() else performClick()
-            MotionEvent.ACTION_CANCEL -> if (dragging) snap()
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                val tracker = velocity
+                tracker?.addMovement(ev)
+                tracker?.computeCurrentVelocity(1000)
+                val vx = tracker?.xVelocity ?: 0f
+                tracker?.recycle()
+                velocity = null
+                when {
+                    dragging -> snap(vx)
+                    ev.actionMasked == MotionEvent.ACTION_UP -> performClick()
+                }
+            }
         }
         return true
     }
@@ -469,29 +499,26 @@ private class BubbleFrame(
         return true
     }
 
-    /** Slides to the nearer side (the system's animation scale applies: none when animations are off). */
-    private fun snap() {
+    /**
+     * Slides to the nearer side on `motion.flick`, starting at the speed the
+     * finger let go at (`docs/motion.md` M3): the window's x moves once a
+     * frame, by the UI dispatcher's frame clock, until the spring lands; with
+     * motion off it's at the edge at once.
+     */
+    private fun snap(vx: Float) {
         dragging = false
-        val left = params.x + width / 2 < screenWidth() / 2
-        val target = if (left) 0 else screenWidth() - width
-        ValueAnimator.ofInt(params.x, target).apply {
-            duration = (120 + abs(target - params.x) / 6).toLong().coerceAtMost(250)
-            addUpdateListener {
-                params.x = it.animatedValue as Int
+        val to = Edge.snap(params.x, width, screenWidth())
+        val x = Animatable(params.x.toFloat())
+        snapping = scope.launch(AndroidUiDispatcher.Main) {
+            x.animateTo(to.x.toFloat(), motion.flick.px, initialVelocity = vx) {
+                params.x = value.roundToInt()
                 runCatching { wm.updateViewLayout(this@BubbleFrame, params) }
             }
-            doOnEnd {
-                params.gravity = Gravity.TOP or if (left) Gravity.START else Gravity.END
-                params.x = 0
-                fromLeft = left
-                runCatching { wm.updateViewLayout(this@BubbleFrame, params) }
-                onMoved(left, params.y)
-            }
-            start()
+            params.gravity = Gravity.TOP or if (to.left) Gravity.START else Gravity.END
+            params.x = 0
+            fromLeft = to.left
+            runCatching { wm.updateViewLayout(this@BubbleFrame, params) }
+            onMoved(to.left, params.y)
         }
     }
-
-    private fun ValueAnimator.doOnEnd(block: () -> Unit) = addListener(object : android.animation.AnimatorListenerAdapter() {
-        override fun onAnimationEnd(animation: android.animation.Animator) = block()
-    })
 }
