@@ -1,6 +1,8 @@
 package app.monokular
 
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
+import app.monokular.overlay.Panel
 import app.monokular.receipt.PaymentCode
 import app.monokular.receipt.Receipt
 import app.monokular.sales.FoundSale
@@ -112,7 +114,7 @@ class ShiftListTest {
 
     @Test
     fun `each row says how its sale stands, in its state's colour`() {
-        fun row(sale: TillSale) = ShiftList.row(sale, secondsLeft = 552, Locale.US, zone).let { Triple(it.sub, it.tone, it.icon) }
+        fun row(sale: TillSale) = ShiftList.row(sale, PointOfSale.Square, secondsLeft = 552, Locale.US, zone).let { Triple(it.sub, it.tone, it.icon) }
         assertEquals(Triple("Waiting · 9:12 left", Tone.Link, StateIcon.Ring), row(sale("w")))
         assertEquals(Triple("Seen on the network", Tone.Link, StateIcon.Ring), row(sale("w", SalePhase.Seen)))
         assertEquals(Triple("Confirming", Tone.Link, StateIcon.Ring), row(sale("w", SalePhase.Confirming)))
@@ -136,10 +138,88 @@ class ShiftListTest {
             Triple("Code expired · not paid · on another till", Tone.Muted, StateIcon.Close),
             row(sale("x", SalePhase.Expired, mine = false, device = null)),
         )
-        val refunded = ShiftList.row(shift.single { it.orderId == "refunded" }, 0, Locale.US, zone)
+        val refunded = ShiftList.row(shift.single { it.orderId == "refunded" }, PointOfSale.Square, 0, Locale.US, zone)
         assertEquals("Sale #refunded · ${SaleText.amount(sale("refunded"))}", refunded.title, "the amount as the locale writes it")
         assertEquals(true, refunded.quiet, "a refunded sale's title is muted too")
-        assertEquals(false, ShiftList.row(sale("w"), 0).quiet)
+        assertEquals(false, ShiftList.row(sale("w"), PointOfSale.Square, 0).quiet)
+    }
+
+    @Test
+    fun `a Clover till's rows and pages name Clover, and a sale to refund in Clover needs action`() {
+        val clover = PointOfSale.Clover
+        fun sub(sale: TillSale) = ShiftList.row(sale, clover, 0, Locale.US, zone).sub
+        assertEquals("Closed · not paid · refund it in Clover", sub(sale("c", closedAt = at)))
+        assertEquals("Refunded in Clover · 3:58 PM", sub(sale("r", SalePhase.Expired, closedAt = at - 60, refundedAt = at)))
+        val pending = sale("p", SalePhase.Expired, endedAt = at - 60).copy(refundPendingAt = at)
+        val row = ShiftList.row(pending, clover, 0, Locale.US, zone)
+        assertEquals("Refund it in Clover · order o… · 3:58 PM", row.sub)
+        assertEquals(Tone.Warn, row.tone)
+        assertEquals(StateIcon.Refund, row.icon)
+        assertEquals(1, ShiftList.needsAction(listOf(pending)), "told to refund it and not yet seen: it needs the cashier")
+        assertEquals("Not paid · refund it in Clover", SaleText.status(pending, clover))
+        val page = SalePage.of(pending, clover, now = at, Locale.US, zone)
+        assertEquals(listOf(PageAction.Refund), page.actions)
+        assertEquals(
+            "Refund this sale in Clover, then tap Refund to say it's done. While the shift is on, Monokular notices by itself too.",
+            page.note?.text,
+        )
+        assertEquals("Told to refund it", page.facts.last().label)
+        assertEquals(
+            "Clover has this sale as Monero. If the customer isn't paying, refund it. Monokulo keeps watching for a late payment for a while: " +
+                "if one arrives, this sale turns paid.",
+            SalePage.of(sale("c", closedAt = at), clover, now = at, Locale.US, zone).note?.text,
+        )
+        assertEquals("No: refund it in Clover", Closing.title(CloseChoice.RefundIt, sale("w"), clover))
+        assertEquals(
+            "Monokular closes it and shows you how to refund it in Clover.",
+            Closing.detail(CloseChoice.RefundIt, sale("w"), clover, source = clover, secondsLeft = 0),
+        )
+        assertEquals("Monokular refunds the sale and closes it.", Closing.detail(CloseChoice.RefundIt, sale("w"), PointOfSale.Square, PointOfSale.Square, 0))
+        assertEquals(
+            "Monokular closes it and shows you how to refund it in Square.",
+            Closing.detail(CloseChoice.RefundIt, sale("w"), PointOfSale.Square, source = clover, secondsLeft = 0),
+            "a Square sale on a till now on Clover: refunded in Square, by the cashier",
+        )
+    }
+
+    @Test
+    fun `an order's title at the point of sale is the page's first fact`() {
+        val titled = sale("t", closedAt = at).let { it.copy(found = it.found!!.copy(title = "Table 4")) }
+        val page = SalePage.of(titled, PointOfSale.Clover, now = at, Locale.US, zone)
+        assertEquals(Fact("Order", "Table 4"), page.facts.first())
+        assertEquals(listOf("Rung up", "Closed"), SalePage.of(sale("u", closedAt = at), PointOfSale.Clover, now = at, Locale.US, zone).facts.map { it.label })
+    }
+
+    @Test
+    fun `a sale found before the point of sale changed keeps the name of the one that took it`() {
+        val before = sale("old", closedAt = at, refundedAt = at).let { it.copy(found = it.found!!.copy(pointOfSale = PointOfSale.Clover)) }
+        val after = sale("new", closedAt = at, refundedAt = at)
+        assertEquals(PointOfSale.Clover, PosText.of(before, PointOfSale.Square))
+        assertEquals(PointOfSale.Square, PosText.of(after, PointOfSale.Clover), "found at Square: Square's, whatever the till's now")
+        assertEquals(PointOfSale.Clover, PosText.of(sale("theirs", mine = false), PointOfSale.Clover), "another till's: the till's own")
+        assertEquals(null, PosText.of(sale("theirs", mine = false), null))
+        assertEquals("Refunded in Clover", SaleText.status(before, PosText.of(before, PointOfSale.Square)))
+        val closed = SalePage.of(sale("c", closedAt = at), PointOfSale.Clover, now = at, Locale.US, zone, elsewhere = true)
+        assertEquals(listOf(PageAction.ShowCodeAgain), closed.actions, "this till can't refund it, or see its refund")
+        assertEquals(
+            "This sale was rung up in Clover before this till changed its point of sale. If the customer isn't paying, refund it in Clover.",
+            closed.note?.text,
+        )
+        val told = sale("t", SalePhase.Expired, endedAt = at).copy(refundPendingAt = at)
+        val pendingThere = SalePage.of(told, PointOfSale.Clover, now = at, Locale.US, zone, elsewhere = true)
+        assertEquals(listOf(PageAction.Refund), pendingThere.actions, "already told to refund it there: Refund takes the cashier's word")
+        assertEquals(
+            "This sale was rung up in Clover before this till changed its point of sale. Refund it in Clover, then tap Refund to say it's done.",
+            pendingThere.note?.text,
+        )
+        assertEquals(listOf(CloseChoice.CloseForNow, CloseChoice.KeepUp), Closing.choices(sale("w"), elsewhere = true))
+        assertEquals(CloseChoice.entries, Closing.choices(sale("w")))
+    }
+
+    @Test
+    fun `a till with no point of sale says so in plain words`() {
+        assertEquals("Closed · not paid · refund it in your point of sale", ShiftList.row(sale("c", closedAt = at), null, 0, Locale.US, zone).sub)
+        assertEquals("Refund it in your point of sale on Back till.", Panel.endedLine(sale("t", SalePhase.Expired, mine = false), null))
     }
 
     @Test
@@ -150,10 +230,10 @@ class ShiftListTest {
         assertEquals(CloseChoice.entries, Closing.choices(sale("w")))
         val theirs = sale("t", mine = false)
         assertEquals(listOf(CloseChoice.CloseForNow, CloseChoice.KeepUp), Closing.choices(theirs), "this till can't refund another's")
-        assertEquals("No: close it", Closing.title(CloseChoice.CloseForNow, theirs))
-        assertEquals("Refund it in Square on Back till. A late payment still shows here.", Closing.detail(CloseChoice.CloseForNow, theirs, 0))
-        assertEquals("Not sure: close it for now", Closing.title(CloseChoice.CloseForNow, sale("w")))
-        assertEquals("14:52 left to pay.", Closing.detail(CloseChoice.KeepUp, sale("w"), 892))
+        assertEquals("No: close it", Closing.title(CloseChoice.CloseForNow, theirs, PointOfSale.Square))
+        assertEquals("Refund it in Square on Back till. A late payment still shows here.", Closing.detail(CloseChoice.CloseForNow, theirs, PointOfSale.Square, PointOfSale.Square, 0))
+        assertEquals("Not sure: close it for now", Closing.title(CloseChoice.CloseForNow, sale("w"), PointOfSale.Square))
+        assertEquals("14:52 left to pay.", Closing.detail(CloseChoice.KeepUp, sale("w"), PointOfSale.Square, PointOfSale.Square, 892))
         assertEquals(emptyList(), Closing.choices(shift.single { it.orderId == "refunded" }), "nothing to ask: no X")
         assertEquals(emptyList(), Closing.choices(sale("w", closedAt = 1)))
         assertTrue(Closing.applies(sale("w")), "the code is still up: the answer stands")
@@ -161,8 +241,8 @@ class ShiftListTest {
         assertFalse(Closing.applies(sale("w", closedAt = 1)))
         assertFalse(Closing.applies(null), "gone from the shift")
         val amount = SaleText.amount(sale("w"))
-        assertEquals("Sale #w · $amount · Square has it as Monero", Closing.subtitle(sale("w")))
-        assertEquals("Sale #t · $amount · From Back till", Closing.subtitle(theirs))
+        assertEquals("Sale #w · $amount · Square has it as Monero", Closing.subtitle(sale("w"), PointOfSale.Square))
+        assertEquals("Sale #t · $amount · From Back till", Closing.subtitle(theirs, PointOfSale.Square))
     }
 
     @Test
@@ -171,13 +251,13 @@ class ShiftListTest {
         assertEquals("1 minute ", SalePage.after(100, 160))
         assertEquals("15 minutes ", SalePage.after(100, 100 + 15 * 60 + 30))
         assertEquals("", SalePage.after(null, 100))
-        val late = SalePage.of(shift.single { it.orderId == "latePaid" }, now = at, Locale.US, zone)
+        val late = SalePage.of(shift.single { it.orderId == "latePaid" }, PointOfSale.Square, now = at, Locale.US, zone)
         assertEquals(
             "The customer paid 15 minutes after the sale was closed. Square already has it as Monero, so there's nothing to do. Hand over the order if they're still here.",
             late.note?.text,
         )
         assertEquals(listOf("Rung up", "Closed", "Paid"), late.facts.map { it.label })
-        val expiredThenPaid = SalePage.of(sale("x", SalePhase.Paid, endedAt = at - 60, paidAt = at), now = at, Locale.US, zone)
+        val expiredThenPaid = SalePage.of(sale("x", SalePhase.Paid, endedAt = at - 60, paidAt = at), PointOfSale.Square, now = at, Locale.US, zone)
         assertEquals("Paid after the code expired", expiredThenPaid.heading)
         assertEquals(true, expiredThenPaid.note!!.text.startsWith("The customer paid 1 minute after the code ran out."))
         assertEquals(listOf("Rung up", "Code expired", "Paid"), expiredThenPaid.facts.map { it.label })
@@ -185,7 +265,7 @@ class ShiftListTest {
 
     @Test
     fun `each page says what the design says, without times the app doesn't know`() {
-        fun page(id: String) = SalePage.of(shift.single { it.orderId == id }, now = at, Locale.US, zone)
+        fun page(id: String) = SalePage.of(shift.single { it.orderId == id }, PointOfSale.Square, now = at, Locale.US, zone)
         val paid = page("paid")
         assertEquals("Paid", paid.heading)
         assertEquals("0.0336 XMR received · 3:58 PM", paid.line)
@@ -199,9 +279,9 @@ class ShiftListTest {
             "Square has this sale as Monero. If the customer isn't paying, refund it. Monokulo keeps watching for a late payment for a while: if one arrives, this sale turns paid.",
             closed.note?.text,
         )
-        val stillLive = SalePage.of(sale("c", closedAt = at).copy(expiresAt = at + 1440), now = at, Locale.US, zone)
+        val stillLive = SalePage.of(sale("c", closedAt = at).copy(expiresAt = at + 1440), PointOfSale.Square, now = at, Locale.US, zone)
         assertEquals(true, stillLive.note!!.text.contains("The code is still live until 4:22 PM, and Monokulo keeps watching"))
-        val settled = SalePage.of(sale("c", SalePhase.Expired, endedAt = at).copy(settled = true), now = at, Locale.US, zone)
+        val settled = SalePage.of(sale("c", SalePhase.Expired, endedAt = at).copy(settled = true), PointOfSale.Square, now = at, Locale.US, zone)
         assertEquals(true, settled.note!!.text.endsWith("Monokulo has stopped watching it."))
         assertEquals(listOf(PageAction.Refund), settled.actions, "an expired code can't be shown again")
 
@@ -263,8 +343,8 @@ class ShiftListTest {
         assertEquals(3 to 5, SaleText.shownLines(receipt(8)).let { it.first.size to it.second })
         assertNull(SaleText.tax(receipt(1)), "no tax lines: the last row is the total")
         assertEquals("1.00 USD", SaleText.total(receipt(1)))
-        assertEquals("Square receipt k4Rt · 4:07 PM", SaleText.receiptLabel(receipt(1), withTime = true, Locale.US, zone))
-        assertEquals("Square receipt k4Rt", SaleText.receiptLabel(receipt(1), withTime = false, Locale.US, zone))
+        assertEquals("Square receipt k4Rt · 4:07 PM", SaleText.receiptLabel(receipt(1), PointOfSale.Square, withTime = true, Locale.US, zone))
+        assertEquals("Square receipt k4Rt", SaleText.receiptLabel(receipt(1), PointOfSale.Square, withTime = false, Locale.US, zone))
         val taxed = receipt(2).copy(tax = Receipt.Tax(listOf(Receipt.TaxLine(0.05, 0.5), Receipt.TaxLine(0.08875, 0.63))))
         assertEquals("Tax 1.13", SaleText.tax(taxed))
         assertEquals("Scan with any Monero wallet · 14:52 left", SaleText.hint(sale("w"), 892))

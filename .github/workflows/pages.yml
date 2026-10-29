@@ -1,6 +1,6 @@
 name: Pages
 
-# site/ as it is: the debug build's Square sign-in page (site/square/debug/).
+# site/ as it is: the debug build's Square and Clover sign-in pages (site/square/debug/, site/clover/debug/).
 on:
   push:
     branches: [main]

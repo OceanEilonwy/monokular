@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta name="robots" content="noindex">
+<title>Back to Monokular</title>
+<style>
+  :root { --ground: #fbfaf7; --ink: #23201c; --muted: #6b655c; --accent: #e8590c; color-scheme: light dark; }
+  @media (prefers-color-scheme: dark) { :root { --ground: #1b1916; --ink: #f2efe9; --muted: #a59e93; } }
+  body { margin: 0; background: var(--ground); color: var(--ink); font: 17px/1.5 system-ui, sans-serif; }
+  main { max-width: 28rem; margin: 0 auto; padding: 4rem 16px; text-align: center; }
+  p { color: var(--muted); }
+  a.button { display: inline-block; margin-top: 1rem; padding: 0.8rem 1.4rem; border-radius: 999px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Back to Monokular</h1>
+  <p id="say">Opening the app…</p>
+  <a class="button" id="open" hidden>Open Monokular</a>
+</main>
+<script>
+  // Clover sends a debug build's sign-in here, over https, as it only sends
+  // to a path under the application's Site URL; this hands the query
+  // (merchant_id, employee_id, client_id and code, state when Clover echoes
+  // it, or error) to the debug build's own scheme. The code is no use without the verifier, which
+  // never leaves the device (PKCE). Nothing else is loaded or sent.
+  const back = "intent://clover" + location.search + "#Intent;scheme=monokular-debug;end";
+  const open = document.getElementById("open");
+  open.href = back;
+  if (location.search) {
+    location.replace(back);
+    setTimeout(() => {
+      document.getElementById("say").textContent = "If Monokular didn't open, tap below.";
+      open.hidden = false;
+    }, 1500);
+  } else {
+    document.getElementById("say").textContent = "Clover sends a debug build of Monokular here after signing in. There's nothing to do on its own.";
+  }
+</script>
+<noscript><p>Monokular's debug sign-in needs JavaScript on this page to return to the app.</p></noscript>
+</body>
+</html>
