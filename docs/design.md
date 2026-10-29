@@ -469,9 +469,10 @@ monokulo by default and as `monokulo-engine` when separate.
 
 Keeping them apart means a monokulo built with `--no-default-features`
 drops the relay's server code, APNs/FCM clients and OAuth entirely, and
-another Rust sender (the Bell) only takes the small crate. The Bell depends
-on `push` from the monokulo repository (a git dependency pinned to one
-monokulo commit until `push` is published to crates.io).
+another Rust sender (the Bell) only takes the small crate. The Bell is
+`monokulo-bell` in monokulo's workspace and takes `push` (and
+`live-settings`, `sqlite`, `rate-limit`, `abuse`, `service-runtime`,
+`outbound`) as path dependencies.
 
 ### The `push` crate (`crates/push`)
 
@@ -1085,8 +1086,5 @@ relay and Bell, and the Square spike (1) are open.
   `relay.monokulo.com` are placeholders. The Square sign-in redirect and the
   App Links are on `monokular.monokulo.com` (this repo's GitHub Pages);
   connect codes are on each store's own host.
-- Publishing `push` to crates.io so the Bell needn't use a git dependency.
-  Until then the Bell pins one monokulo commit; after the push PRs merge
-  the pin moves to `main`'s commit.
 - App Store review of a crypto-payments companion; Google Play's "display
   over other apps" declaration and its foreground service type for a shift.
