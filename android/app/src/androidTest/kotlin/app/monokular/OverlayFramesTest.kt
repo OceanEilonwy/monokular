@@ -19,6 +19,7 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
+import androidx.compose.ui.test.swipeWithVelocity
 import androidx.compose.ui.geometry.Rect
 import app.monokular.overlay.CODE_SLOT_TAG
 import app.monokular.overlay.HERO_TAG
@@ -58,7 +59,7 @@ class OverlayFramesTest {
     private var lowered = 0
     private var opened = 0
     private val actions = PanelActions(
-        onLower = { lowered++ }, onFlung = {}, onOpenShift = { opened++ }, onOrder = { opened++ }, onBackToCode = {},
+        onLower = { lowered++ }, onFlung = { velocity -> motion.raise.exit(velocity, landsAt = Panel.IN_BUBBLE) }, onOpenShift = { opened++ }, onOrder = { opened++ }, onBackToCode = {},
         onCopy = { opened++ }, onCopyXmr = { opened++ }, onFullScreen = { opened++ },
     )
     /** Fifteen minutes from now, so the frames show a countdown a cashier would see. */
@@ -490,5 +491,64 @@ class OverlayFramesTest {
                 assertTrue(frames > 4, "$name $move ran $frames frames")
             }
         }
+    }
+
+    /**
+     * A grabber flung down keeps going down after the finger lets go (M2,
+     * decision 190): the drag runs on at the release speed while the raise
+     * collapses, so the card's top is lower on each of the first two frames
+     * after the release than on the one before, then the collapse takes it
+     * up into the bubble. Before 190 the top turned up on the first frame.
+     * The speed is the review's fling (about 6000 px a second, 98 px a
+     * frame on the recording).
+     */
+    @Test
+    fun aFlungPanelKeepsTheFingersWayAfterTheRelease() {
+        panel(raised = 1f)
+        // The free bubble at the top of the end edge, beside the dock, where the panel is mostly raised from.
+        val metrics = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics
+        freeBubble.value = Offset(metrics.widthPixels - 44 * metrics.density, 140 * metrics.density)
+        compose.mainClock.advanceTimeBy(100)
+        val grabber = compose.onAllNodesWithContentDescription("Lower to the bubble", useUnmergedTree = true).fetchSemanticsNodes()
+            .first { it.size.width > it.size.height }
+        val start = grabber.boundsInRoot.center
+        compose.onNodeWithTag("window").performTouchInput {
+            swipeWithVelocity(start, start + Offset(0f, 420f), endVelocity = 6000f, durationMillis = 120)
+        }
+        val tops = mutableListOf<Float>()
+        val raises = mutableListOf<Float>()
+        repeat(14) {
+            tops += compose.onNodeWithTag(CARD_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
+            raises += motion.raise.value
+            compose.mainClock.advanceTimeByFrame()
+        }
+        // The release is the last frame drawn at rest, the finger's last place; the two after it carry on down.
+        val release = raises.indexOfFirst { it < 1f } - 1
+        assertTrue(release in 0..2, "the collapse starts with the release: raises $raises")
+        assertTrue(tops[release + 1] > tops[release] && tops[release + 2] > tops[release + 1], "flung down, the card's top goes on down: tops $tops raises $raises")
+        assertTrue(tops.last() < tops.max(), "then the collapse takes it into the bubble: tops $tops")
+    }
+
+    /**
+     * Thrown and raised again before it was gone (the docked bubble tapped
+     * mid-collapse), the card comes back to its own place, not a throw's
+     * length below it (decision 190).
+     */
+    @Test
+    fun aThrownPanelRaisedAgainComesBackToItsPlace() {
+        panel(raised = 1f)
+        val rest = compose.onNodeWithTag(CARD_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val grabber = compose.onAllNodesWithContentDescription("Lower to the bubble", useUnmergedTree = true).fetchSemanticsNodes()
+            .first { it.size.width > it.size.height }
+        val start = grabber.boundsInRoot.center
+        compose.onNodeWithTag("window").performTouchInput {
+            swipeWithVelocity(start, start + Offset(0f, 420f), endVelocity = 6000f, durationMillis = 120)
+        }
+        repeat(5) { compose.mainClock.advanceTimeByFrame() }
+        assertTrue(motion.raise.value in 0.2f..0.95f, "mid-collapse: ${motion.raise.value}")
+        motion.raise.enter()
+        compose.mainClock.advanceTimeBy(1_500)
+        val back = compose.onNodeWithTag(CARD_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        assertEquals(rest.top, back.top, 1f, "raised again, the card is at its place")
     }
 }
