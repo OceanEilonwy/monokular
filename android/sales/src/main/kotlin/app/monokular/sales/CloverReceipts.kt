@@ -9,7 +9,7 @@ import java.time.Instant
 
 /**
  * A Clover order as an Open Receipt Format receipt (`docs/design.md` §4),
- * built on the till (decision A134). Clover repeats a line item once per
+ * built on the till (decision 134). Clover repeats a line item once per
  * unit, so equal ones are counted onto one line; an item sold by measure is
  * one line of its `unitQty` thousandths. The order carries its total, tax
  * included, but its tax only per line behind another expand: the receipt

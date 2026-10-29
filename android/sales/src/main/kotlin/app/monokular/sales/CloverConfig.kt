@@ -2,7 +2,7 @@ package app.monokular.sales
 
 /**
  * Which of Clover's platforms a merchant is on: each has its own sign-in
- * page and API host, and its own developer apps (decision A127).
+ * page and API host, and its own developer apps (decision 127).
  */
 enum class CloverEnvironment(
     /** The name builds and the Bell's `/v1/info` use for it. */

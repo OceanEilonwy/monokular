@@ -31,11 +31,11 @@ class CloverException(
 
 /**
  * Clover's v2 OAuth for a low-trust app: the authorization code with PKCE,
- * on the device, and no secret anywhere (decision A127). Access tokens last
+ * on the device, and no secret anywhere (decision 127). Access tokens last
  * about 30 minutes and are refreshed when under [REFRESH_BEFORE] is left;
  * a refresh token is single-use, so the new pair is saved before anything
  * else, and Clover caps how many a merchant's app may hold, so a refused
- * refresh means signing in again (A128).
+ * refresh means signing in again (decision 128).
  */
 class CloverAuth(
     private val http: OkHttpClient,

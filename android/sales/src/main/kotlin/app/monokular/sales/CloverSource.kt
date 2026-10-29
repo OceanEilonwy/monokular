@@ -29,9 +29,9 @@ sealed interface TenderState {
  * since the till started watching, kept to the Monero tender's, that
  * succeeded and weren't voided or refunded. A tender made over REST shares
  * its `labelKey` with every external payment, so the tender's id, which
- * the till found or made, is what tells Monero apart (decision A129).
+ * the till found or made, is what tells Monero apart (decision 129).
  * Clover has no API that refunds such a payment: the cashier does, in
- * Clover's Orders app, and [refunds] looks for it (A130).
+ * Clover's Orders app, and [refunds] looks for it (decision 130).
  */
 class CloverSource(
     private val api: CloverApi,

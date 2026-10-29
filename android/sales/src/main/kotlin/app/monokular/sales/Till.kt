@@ -425,7 +425,7 @@ class Till(
         /** The most sales a shift keeps, newest first: older ones drop off the list and the saved shift. */
         const val MAX_SALES = 500
 
-        /** The timer asks the POS about pending refunds at most this often, in seconds (decision A130). */
+        /** The timer asks the POS about pending refunds at most this often, in seconds (decision 130). */
         const val REFUND_LOOK_SECONDS = 30L
 
         /** `sq:` and the start of SHA-256 of the POS's payment id: the same for every till, and opaque. */

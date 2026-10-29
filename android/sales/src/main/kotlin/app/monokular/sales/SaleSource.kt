@@ -34,7 +34,7 @@ interface SaleSource {
 }
 
 /**
- * Who refunds a sale never paid in Monero (decision A130). A type rather
+ * Who refunds a sale never paid in Monero (decision 130). A type rather
  * than a `refund()` that does nothing at a point of sale with no refund in
  * its API: there, the till can only look, by construction.
  */
@@ -48,7 +48,7 @@ sealed interface Refunds {
      * The cashier does, in the point of sale, and the till watches for it
      * (Clover: no API refunds an external-tender payment). It carries no
      * words: what the cashier is told names the sale's own point of sale
-     * ([FoundSale.pointOfSale]), worded in the app (decision A136).
+     * ([FoundSale.pointOfSale]), worded in the app (decision 136).
      */
     fun interface InPos : Refunds {
         /** Whether the point of sale now shows [sale] refunded. */

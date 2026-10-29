@@ -141,7 +141,7 @@ class CloverApi(
 
     /**
      * Adds a tender labelled [label]. One made over REST must take a system
-     * tender's `labelKey`: the external payment's (decision A129). It opens
+     * tender's `labelKey`: the external payment's (decision 129). It opens
      * no cash drawer and takes no tips. Needs Merchant write.
      */
     suspend fun createTender(merchantId: String, label: String): CloverTender {
