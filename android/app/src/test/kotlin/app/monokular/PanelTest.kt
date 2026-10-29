@@ -84,4 +84,15 @@ class PanelTest {
         assertFalse(Panel.landed(paid, "1044", wasLive = false), "already paid at the last look: not news")
         assertFalse(Panel.landed(paid, "1043", wasLive = true), "another sale, still waiting")
     }
+
+    @Test
+    fun `the free bubble pulses only while a code waits for its money and the panel is down`() {
+        assertTrue(Panel.pulses(BubbleLook.Lit, SalePhase.Waiting, panelUp = false))
+        assertTrue(Panel.pulses(BubbleLook.Lit, SalePhase.Partial, panelUp = false), "part paid, the rest still to come")
+        assertFalse(Panel.pulses(BubbleLook.Lit, SalePhase.Waiting, panelUp = true), "docked above the panel: nothing to call for")
+        assertFalse(Panel.pulses(BubbleLook.Lit, SalePhase.Seen, panelUp = false), "the payment is on its way")
+        assertFalse(Panel.pulses(BubbleLook.Lit, SalePhase.Confirming, panelUp = false))
+        assertFalse(Panel.pulses(BubbleLook.Paid, SalePhase.Paid, panelUp = false))
+        assertFalse(Panel.pulses(BubbleLook.Idle, SalePhase.Waiting, panelUp = false))
+    }
 }

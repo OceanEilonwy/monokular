@@ -1,5 +1,13 @@
 package app.monokular.overlay
 
+import android.os.Build
+import android.view.HapticFeedbackConstants
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -43,7 +51,6 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
@@ -52,6 +59,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -136,6 +144,15 @@ object Panel {
     fun landed(sales: List<TillSale>, shown: String?, wasLive: Boolean): Boolean =
         wasLive && sales.firstOrNull { it.orderId == shown }?.phase == SalePhase.Paid
 
+    /**
+     * Whether the bubble pulses: lit for a code still waiting for its money
+     * (Waiting, or part paid), and only the free bubble with the panel down;
+     * the pulse calls the cashier to raise the panel, so once it's up, or
+     * the payment is seen, there's nothing to call for.
+     */
+    fun pulses(look: BubbleLook, phase: SalePhase, panelUp: Boolean): Boolean =
+        look == BubbleLook.Lit && !panelUp && (phase == SalePhase.Waiting || phase == SalePhase.Partial)
+
     /** The header's second line before "Open the shift": the till's location for its own sale, else who took it. */
     fun where(sale: TillSale, location: String?): String = when {
         sale.found != null -> location ?: "This till"
@@ -175,41 +192,104 @@ class PanelActions(
 
 /**
  * The bubble (the design's Bubble part), in each [look]: faded and grey
- * with nothing to do, white with the loading mark (and a pulse) for a
- * sale, the paid tick on its pale ground once it's paid. Its colours are
- * the design's whatever the theme: it sits over another app.
+ * with nothing to do, white with the [phase]'s ring (and a pulse) for a
+ * sale, the ring closed in green round the tick on its pale ground once
+ * it's paid. Its colours are the design's whatever the theme: it sits over
+ * another app. [pulse] is false for the bubble docked above the panel,
+ * which has nothing left to call for.
  */
 @Composable
-fun BubbleFace(look: BubbleLook, pulse: Boolean = true) = Box(
-    Modifier.padding(12.dp).clearAndSetSemantics {},
+fun BubbleFace(look: BubbleLook, pulse: Boolean = true, phase: SalePhase = SalePhase.Waiting) = Box(
+    Modifier.padding(if (pulse) BubblePadding else DockedPadding).clearAndSetSemantics {},
     contentAlignment = Alignment.Center,
-) { Circle(look, pulse) }
+) { Circle(look, pulse, phase) }
 
+/** Room round the bubble's circle in its window: the pulse's halo reaches 16 dp out and isn't clipped. */
+val BubblePadding = 16.dp
+
+/** Round the docked bubble, which doesn't pulse: the design's spacing above the panel. */
+private val DockedPadding = 12.dp
+
+/** The bubble's circle. */
+private val BubbleSize = 56.dp
+
+/**
+ * One circle whatever the look (`docs/motion.md` M4): its shadow and place
+ * stay; its alpha and ground fade (read in the layer and in its draw, so
+ * a change recomposes nothing per frame), the ring sweeps closed on paid,
+ * and only the middle crossfades: the grey logo, the loading mark, the tick.
+ */
 @Composable
-private fun Circle(look: BubbleLook, pulse: Boolean) {
-    when (look) {
-        BubbleLook.Idle -> Box(
-            Modifier.alpha(0.55f).shadow(4.dp, CircleShape).size(56.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.9f)),
-            contentAlignment = Alignment.Center,
-        ) { Logo(38.dp, ring = Color(0xFF565656), grey = true) }
-        BubbleLook.Lit -> {
-            val turn = motion.pulse
-            val ring = if (pulse && turn != null) {
-                rememberInfiniteTransition(label = "pulse").animateFloat(0f, 1f, turn, label = "ring")
-            } else {
-                null
+private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
+    val m = motion
+    val alpha by animateFloatAsState(if (look == BubbleLook.Idle) 0.55f else 1f, m.fade.fraction, label = "bubble")
+    val ground by animateColorAsState(
+        when (look) {
+            BubbleLook.Idle -> Fixed.White.copy(alpha = 0.9f)
+            BubbleLook.Lit -> Fixed.White
+            BubbleLook.Paid -> LightTokens.paidGround
+        },
+        m.fade.spec(),
+        label = "ground",
+    )
+    // The ring closes green round the tick on paid; lit, the loading mark's own ring is the ring (#18).
+    val ringShown by animateFloatAsState(if (look == BubbleLook.Paid) 1f else 0f, m.fade.fraction, label = "ring")
+    val turn = m.pulse
+    val halo = if (turn != null && Panel.pulses(look, phase, panelUp = !pulse)) {
+        rememberInfiniteTransition(label = "pulse").animateFloat(0f, 1f, turn, label = "halo")
+    } else {
+        null
+    }
+    Confirm(look)
+    Box(
+        Modifier.size(BubbleSize)
+            .drawBehind {
+                val p = halo?.value ?: return@drawBehind
+                drawCircle(Fixed.Accent.copy(alpha = 0.55f * (1f - p)), radius = size.minDimension / 2 + BubblePadding.toPx() * p)
             }
-            Box(
-                Modifier.size(56.dp).drawBehind {
-                    val p = ring?.value ?: return@drawBehind
-                    drawCircle(Fixed.Accent.copy(alpha = 0.55f * (1f - p)), radius = size.minDimension / 2 + 16.dp.toPx() * p)
-                }.shadow(6.dp, CircleShape).clip(CircleShape).background(Color.White),
-                contentAlignment = Alignment.Center,
-            ) { LoadingMark(40.dp, label = "New sale", ring = Fixed.Ink) }
+            .graphicsLayer {
+                this.alpha = alpha
+                shadowElevation = 6.dp.toPx()
+                shape = CircleShape
+                clip = true
+            }
+            .drawBehind { drawCircle(ground) },
+        contentAlignment = Alignment.Center,
+    ) {
+        PhaseRing(
+            if (look == BubbleLook.Paid) SalePhase.Paid else phase, 40.dp,
+            Modifier.graphicsLayer { this.alpha = ringShown },
+            track = Fixed.Track, fill = Fixed.Accent, paid = LightTokens.paid,
+        )
+        AnimatedContent(
+            look,
+            transitionSpec = { (fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
+            contentAlignment = Alignment.Center,
+            label = "face",
+        ) { shown ->
+            when (shown) {
+                BubbleLook.Idle -> Logo(38.dp, ring = Color(0xFF565656), grey = true)
+                BubbleLook.Lit -> LoadingMark(40.dp, label = "New sale", ring = Fixed.Ink)
+                BubbleLook.Paid -> Icon(MkIcons.Tick, contentDescription = null, tint = LightTokens.paid, modifier = Modifier.size(24.dp))
+            }
         }
-        BubbleLook.Paid -> Box(Modifier.shadow(6.dp, CircleShape)) {
-            PaidHero(56.dp, ground = LightTokens.paidGround, tint = LightTokens.paid)
+    }
+}
+
+/**
+ * One confirming buzz when a payment lands on the bubble the cashier can
+ * see (`docs/motion.md` §6): not when a bubble comes up already paid (the
+ * free one taking over from the docked one), and never from the panel.
+ */
+@Composable
+private fun Confirm(look: BubbleLook) {
+    val view = LocalView.current
+    val last = remember { arrayOf(look) }
+    LaunchedEffect(look) {
+        if (look == BubbleLook.Paid && last[0] != BubbleLook.Paid) {
+            view.performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.CONTEXT_CLICK)
         }
+        last[0] = look
     }
 }
 
@@ -492,7 +572,7 @@ fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage,
             Modifier.clip(CircleShape)
                 .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = actions.onLower)
                 .semantics { contentDescription = "Lower to the bubble" },
-        ) { BubbleFace(look) }
+        ) { BubbleFace(look, pulse = false, phase = sale.phase) }
     }
     // Taps on the panel itself stay there.
     val panel = @Composable { sideBySide: Boolean ->
