@@ -1081,3 +1081,64 @@ design unchanged.
     one container whose bounds are animated in layout, which reshapes
     `PhonePanel` more than a round allows next to M1's handoff, and a
     crossfade already says "the same panel, another face".
+103. **A screen's clock is a `LongState`, and a countdown is its own
+     composable** (dev2, M12, amendment 10). `rememberNowSeconds()` at a
+     screen's root ticks one `mutableLongStateOf` on each second's
+     boundary and is handed down as `LongState`, not `State<Long>`:
+     `State<Long>.value` boxes a Unix time on every read. The read happens
+     inside `Countdown` (a restartable `Text` wrapper) or a live shift
+     row, never in an inline `Column`/`Row`, which would make the read the
+     enclosing screen's. Each screen's clock is a default parameter, so
+     tests drive it and the panel's `OrderContent` makes its own. Under
+     Still the status words swap with the quick fade, not a snap: section
+     7 makes every crossfade `fadeQuick`, and a snap between "Waiting" and
+     "Seen" is the hard cut it exists to avoid.
+104. **Recompositions are counted in the instrumented tests, by the
+     compiler's trace markers** (dev2). `Composer.setTracer` in
+     `androidTest/Recompositions.kt` counts each composable body that
+     runs (a skipped one doesn't), so "the shift doesn't tick", "the code
+     isn't recomposed by the grow" are assertions that fail in CI on the
+     emulator, not a Layout Inspector session someone has to repeat. Test
+     code only; it opts in to `InternalComposeTracingApi`.
+105. **A shared surface is enabled only during its own move, and the
+     grow moves don't fade whole screens** (dev2, M7, M8). `Nav.move` is
+     a pure rule from the pair of screens (and whether the till, not the
+     cashier, changed it); `Modifier.sharedSurface(key, during)` passes a
+     `SharedContentConfig` whose `isEnabled` asks the running transition,
+     at layout time, whether the move is `during`, so a sale that came up
+     by itself rises instead of growing out of the row that appears for
+     it in the same frame, and the sale root's surface stays off while
+     its code or order card grows. Every surface is `scaleToBounds`
+     (FillWidth, top): laid out once at its screen's size and scaled as a
+     layer, never remeasured per frame. In `RowGrow`, `OrderGrow` and
+     `CodeGrow` the screens themselves don't fade: the surface does the
+     one crossfade inside its bounds and the screen leaving stays under
+     it until it lands. On the software-GL emulator three full-screen
+     alpha layers a frame (both screens fading plus the surface) cost
+     more than the rest of the frame. The QR image's surface doesn't
+     fade at all: the same bitmap on both sides, so one solid code shows
+     on every frame. Settings' fade-through overlaps (exit `fadeQuick`,
+     enter `fade` from 0.96) rather than waiting for the exit: a "then"
+     would be a delay.
+106. **Back is the activity's, so the gesture can preview it** (dev2,
+     M7, decision 77 unchanged). The enlarged code's and the order page's
+     own `BackHandler`s moved to the root, which calls the same `back()`.
+     From a sale, its code, its order page and Settings, a
+     `PredictiveBackHandler` seeks the stage's `SeekableTransitionState`
+     toward `AppViewModel.backTarget()` (where `back()` would go, with no
+     side effects), springs back from wherever it is on cancel, and calls
+     `back(from)` only after the commit animation lands. Under Still it is
+     the plain `BackHandler`.
+107. **The emulator can't pass "no frame over twice the old p95" for a
+     full-screen container transform, and that isn't a regression to fix
+     there** (dev2, measured on emulator-5556, SwiftShader, host load
+     20–50). A cut draws one or two frames a switch; a grow draws ten to
+     fifteen, each rasterising both screens and the surface in software.
+     Composition and layout per frame stay at the cut's level (anim p50
+     2–19 ms against 5–12, layout p50 0.3–4.6 ms); the raster doubles.
+     The code enlarge passes (p95 138–151 ms against 151, max 217 against
+     a 302 limit); shift to sale doesn't (p95 434–630 against 209). Native
+     heap steps up about 10 MB on the first transitions and then holds
+     (+1.3 MB over ten more round trips): on SwiftShader the transition's
+     layers are native memory. Both are to be measured on a device before
+     anything is changed for them.
