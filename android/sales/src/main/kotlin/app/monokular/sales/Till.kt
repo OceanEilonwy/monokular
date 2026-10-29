@@ -342,15 +342,24 @@ class Till(
     }
 
     /**
-     * The refund sheet's "I've refunded it", for a POS where the cashier
-     * refunds ([Refunds.InPos]): asks the POS now. True, and the sale is
-     * refunded, when it shows the refund; false, and the sale stays as it
-     * was, when it doesn't yet or couldn't be asked.
+     * The refund sheet's "I've refunded it", for a sale the cashier was told
+     * to refund in the POS ([TillSale.refundPendingAt]): asks the POS now.
+     * True, and the sale is refunded, when it shows the refund; false, and
+     * the sale stays as it was, when it doesn't yet or couldn't be asked.
+     *
+     * When the till's source can no longer ask that POS (the cashier changed
+     * the point of sale, so the source refunds [Refunds.ByTill] and the timer
+     * never looks), nothing can check: the cashier's word marks the sale
+     * refunded, so it isn't left needing action for the rest of the shift.
      */
     suspend fun confirmRefund(orderId: String): Boolean {
         val sale = state.value.sales.firstOrNull { it.orderId == orderId } ?: return false
         if (sale.refundedAt != null) return true
-        val refunds = source.refunds as? Refunds.InPos ?: return false
+        if (sale.refundPendingAt == null) return false
+        val refunds = source.refunds as? Refunds.InPos ?: run {
+            markRefunded(orderId)
+            return true
+        }
         val found = sale.found ?: return false
         if (!seenRefunded(refunds, found)) return false
         markRefunded(orderId)

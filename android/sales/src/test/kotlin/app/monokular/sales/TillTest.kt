@@ -547,6 +547,45 @@ class TillTest {
     }
 
     @Test
+    fun `a sale told to refund in a POS the till no longer uses is refunded on the cashier's word`() = runBlocking {
+        var clock = 10L
+        val clover = InPosSource(listOf(sale))
+        val shift = MemoryShift()
+        val till = Till(clover, monokulo, connection, now = { clock }, store = shift)
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Expired)
+        till.refund("ord_1")
+        assertEquals(Standing.RefundInPos, till.sales.value.sales.single().standing)
+        // The cashier changed the point of sale to Square: the shift's sales stay, Clover can't be asked.
+        val square = FakeSource(emptyList())
+        clock = 100
+        val again = Till(square, monokulo, connection, now = { clock }, store = shift)
+        assertEquals(Standing.RefundInPos, again.sales.value.sales.single().standing)
+        again.check()
+        assertEquals(0, clover.looks, "the timer asks no POS")
+        assertEquals(Standing.RefundInPos, again.sales.value.sales.single().standing, "and marks nothing itself")
+        assertTrue(again.confirmRefund("ord_1"), "nothing to ask: the cashier's word")
+        val refunded = again.sales.value.sales.single()
+        assertEquals(Standing.Refunded, refunded.standing)
+        assertEquals(100L, refunded.refundedAt)
+        assertFalse(refunded.needsAction)
+        assertTrue(square.refunded.isEmpty(), "and nothing is refunded at Square")
+        assertEquals(0, clover.looks)
+        assertEquals(Standing.Refunded, MemoryShift(shift.saved).load().single().standing, "and saved")
+    }
+
+    @Test
+    fun `I've refunded it changes nothing for a sale never told to refund in the POS`() = runBlocking {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        till.onStatus("ord_1", SalePhase.Expired)
+        assertFalse(till.confirmRefund("ord_1"))
+        assertEquals(Standing.Expired, till.sales.value.sales.single().standing)
+    }
+
+    @Test
     fun `the till looks for a refund in the POS at most every 30 seconds, and marks the one it sees`() = runBlocking {
         var clock = 100L
         val source = InPosSource(listOf(sale))
