@@ -14,12 +14,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.FilterQuality
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import app.monokular.Move
+import app.monokular.sharedSurface
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -66,25 +69,50 @@ fun codeBitmap(text: String): ImageBitmap = codes.getOrPut(text) { qrBitmap(text
 
 /**
  * A payment code on its white card (the design's QR part): ink on white
- * whatever the theme, the card's padding its quiet zone.
+ * whatever the theme, the card's padding its quiet zone. With [shared]
+ * (the sale's order id) in the app, the code is one shared element
+ * between the sale and the enlarged code (M8): the image moves and scales
+ * as one layer, never re-laid out, and drawn whole on every frame; with
+ * [sharedCard] the white card is the surface that grows into the enlarged
+ * code's white screen.
  */
 @Composable
-fun QrCode(text: String, description: String, modifier: Modifier = Modifier, padding: Dp = 20.dp, radius: Dp = 36.dp) {
+fun QrCode(
+    text: String,
+    description: String,
+    modifier: Modifier = Modifier,
+    padding: Dp = 20.dp,
+    radius: Dp = 36.dp,
+    shared: String? = null,
+    sharedCard: Boolean = true,
+) {
     val bitmap = remember(text) { codeBitmap(text) }
-    Box(
-        modifier
-            .aspectRatio(1f)
-            .clip(RoundedCornerShape(radius))
-            .background(Fixed.White)
-            .padding(padding)
-            .semantics { contentDescription = description },
-    ) {
-        Image(
-            bitmap = bitmap,
-            contentDescription = null,
-            modifier = Modifier.fillMaxSize(),
-            contentScale = ContentScale.Fit,
-            filterQuality = FilterQuality.None,
-        )
+    val shape = remember(radius) { RoundedCornerShape(radius) }
+    CodeCard(modifier.aspectRatio(1f), shape, shared?.takeIf { sharedCard }) {
+        Box(Modifier.padding(padding).semantics { contentDescription = description }) { CodeImage(bitmap, shared) }
     }
 }
+
+/**
+ * The white card, a shared surface when [shared]. Its own restartable
+ * scope, so a transition starting or landing re-runs this and not
+ * [QrCode].
+ */
+@Composable
+private fun CodeCard(modifier: Modifier, shape: Shape, shared: String?, content: @Composable () -> Unit) = Box(
+    modifier
+        .then(if (shared != null) Modifier.sharedSurface("code-card/$shared", Move.CodeGrow, shape) else Modifier)
+        .clip(shape)
+        .background(Fixed.White),
+) { content() }
+
+/** The code's one bitmap, scaled to fit with no smoothing; one shared layer when [shared]. */
+@Composable
+private fun CodeImage(bitmap: ImageBitmap, shared: String?) = Image(
+    bitmap = bitmap,
+    contentDescription = null,
+    modifier = Modifier.fillMaxSize()
+        .then(if (shared != null) Modifier.sharedSurface("code/$shared", Move.CodeGrow, fade = false) else Modifier),
+    contentScale = ContentScale.Fit,
+    filterQuality = FilterQuality.None,
+)

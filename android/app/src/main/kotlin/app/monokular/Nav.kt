@@ -7,6 +7,7 @@ import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
 import androidx.compose.animation.BoundsTransform
 import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
@@ -26,6 +27,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
@@ -197,9 +199,11 @@ private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Ali
  * the other's with [Motion.surface] and its content, scaled as a layer,
  * crossfades. Any other move, or Still, leaves it alone, so a sale that
  * came up by itself doesn't grow out of a row the cashier didn't tap.
+ * Without [fade] both sides draw fully throughout: for the code, the same
+ * bitmap on both, so every frame shows one solid, scannable code.
  */
 @Composable
-fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleShape): Modifier {
+fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleShape, fade: Boolean = true): Modifier {
     val stage = LocalStage.current ?: return this
     val m = motion
     if (m.still) return this
@@ -215,8 +219,21 @@ fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleSha
     return with(shared) {
         sharedBounds(
             state, stage.content,
-            enter = fadeIn(m.fade.fraction), exit = fadeOut(m.fadeQuick.fraction),
+            enter = if (fade) fadeIn(m.fade.fraction) else EnterTransition.None,
+            exit = if (fade) fadeOut(m.fadeQuick.fraction) else ExitTransition.None,
             boundsTransform = bounds, resizeMode = ScaledToWidth, clipInOverlayDuringTransition = overlayClip,
         )
     }
+}
+
+/**
+ * Whether the screen this is on has finished arriving: true at once with
+ * no stage or when it was already there, else once its transition lands.
+ * Read where it's needed, so only that recomposes, once.
+ */
+@Composable
+fun landed(): Boolean {
+    val stage = LocalStage.current ?: return true
+    val transition = stage.content.transition
+    return remember(transition) { derivedStateOf { !transition.isRunning && transition.currentState == EnterExitState.Visible } }.value
 }
