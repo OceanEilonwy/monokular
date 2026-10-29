@@ -30,28 +30,26 @@ class CourseTest {
     fun aGrowingGroundHoldsAWordOnlyOnceItsEdgeHasPassedIt() {
         val c = course(row, screen)
         // A word under the row, on the sale: the ground's bottom reaches 169.5 (170 less half a pixel) at 0.61875 of the move.
-        c.holding(10f, 150f, 90f, 170f)
-        assertEquals(0.61875f, c.heldFrom, 1e-4f)
-        assertEquals(1f, c.heldUntil)
+        val under = c.holding(10f, 150f, 90f, 170f)
+        assertEquals(0.61875f, Course.heldFrom(under), 1e-4f)
+        assertEquals(1f, Course.heldUntil(under))
         // The row's own words: held from the first frame to the last.
-        c.holding(10f, 102f, 90f, 118f)
-        assertEquals(0f, c.heldFrom)
-        assertEquals(1f, c.heldUntil)
+        val own = c.holding(10f, 102f, 90f, 118f)
+        assertEquals(0f, Course.heldFrom(own))
+        assertEquals(1f, Course.heldUntil(own))
     }
 
     @Test
     fun aShrinkingGroundLetsGoOfAWordAsItsEdgePassesIt() {
-        val c = course(screen, row)
-        c.holding(10f, 150f, 90f, 170f)
-        assertEquals(0f, c.heldFrom)
-        assertEquals(0.38125f, c.heldUntil, 1e-4f)
+        val held = course(screen, row).holding(10f, 150f, 90f, 170f)
+        assertEquals(0f, Course.heldFrom(held))
+        assertEquals(0.38125f, Course.heldUntil(held), 1e-4f)
     }
 
     @Test
     fun aWordAShrinkingGroundNeverHeldIsNeverHeld() {
-        val c = course(row, row)
-        c.holding(10f, 150f, 90f, 170f)
-        assertTrue(c.heldFrom > c.heldUntil, "never held: ${c.heldFrom}..${c.heldUntil}")
+        val held = course(row, row).holding(10f, 150f, 90f, 170f)
+        assertTrue(Course.heldFrom(held) > Course.heldUntil(held), "never held: ${Course.heldFrom(held)}..${Course.heldUntil(held)}")
     }
 
     @Test
@@ -73,26 +71,30 @@ class CourseTest {
     }
 
     /**
-     * A course keeps the ends it last drew between (the code's bitmap among
-     * them) only while one of them is on a screen: a key is a sale's, so
-     * the stage would otherwise hold a code for every sale ever opened.
+     * A course (the code's bitmap among what it drew between) lasts only
+     * while one of its ends is on a screen: a key is a sale's, so the stage
+     * would otherwise hold a course and a code for every sale ever opened,
+     * and walk them all on every frame of a move.
      */
     @Test
-    fun itForgetsTheEndsItDrewBetweenOnceBothHaveLeft() {
-        val c = Course("code/a1")
-        val a = End("code/a1", Screen.Sale("a1"), Move.CodeGrow)
-        val b = End("code/a1", Screen.Code("a1"), Move.CodeGrow)
-        c.add(a)
-        c.add(b)
-        c.place(a, b, row[0], row[1], row[2], row[3], screen[0], screen[1], screen[2], screen[3], 0.5f, 1L, false)
-        assertEquals(a, c.from)
-        assertEquals(b, c.to)
-        assertEquals(1L, c.drawnIn)
-        c.remove(a)
-        assertEquals(b, c.to, "one end still on its screen: the course keeps what it drew")
-        c.remove(b)
-        assertEquals(null, c.from)
-        assertEquals(null, c.to)
-        assertEquals(-1L, c.drawnIn)
+    fun theStageKeepsACourseOnlyWhileOneOfItsEndsIsOnAScreen() {
+        // Three sales' screens opened and left, each with its row, its code and its order card: ends come and go.
+        val courses = Courses()
+        val screens = listOf(Screen.Till, Screen.Sale("a1"))
+        for (sale in listOf("a1", "a2", "a3")) {
+            val ends = listOf("sale/$sale", "code/$sale", "order/$sale").flatMap { key -> screens.map { End(key, it, Move.RowGrow) } }
+            ends.forEach(courses::add)
+            assertEquals(3, courses.size(), "one course per surface on screen")
+            ends.forEach(courses::remove)
+            assertEquals(0, courses.size(), "nothing left of $sale's surfaces")
+            assertEquals(null, courses.find("code/$sale"))
+        }
+        // One end left of a surface keeps its course, and the course is found by key.
+        val left = End("sale/a4", Screen.Till, Move.RowGrow)
+        courses.add(left)
+        courses.add(End("sale/a4", Screen.Sale("a4"), Move.RowGrow))
+        courses.remove(left)
+        assertEquals(1, courses.size())
+        assertEquals(Move.RowGrow, courses.find("sale/a4")?.during)
     }
 }

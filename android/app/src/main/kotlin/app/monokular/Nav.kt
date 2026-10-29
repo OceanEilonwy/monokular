@@ -63,6 +63,7 @@ import androidx.compose.ui.layout.Measurable
 import androidx.compose.ui.layout.MeasureResult
 import androidx.compose.ui.layout.MeasureScope
 import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.platform.InspectorInfo
 import androidx.compose.ui.node.DrawModifierNode
 import androidx.compose.ui.node.invalidateDraw
 import androidx.compose.ui.graphics.drawscope.ContentDrawScope
@@ -85,6 +86,9 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.util.lerp
+import androidx.compose.ui.util.packFloats
+import androidx.compose.ui.util.unpackFloat1
+import androidx.compose.ui.util.unpackFloat2
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntOffset
@@ -476,6 +480,17 @@ fun TillStage(
     val root = remember { StageRoot() }
     val held = remember(m) { HeldMove(cameUpByItself, m.still) }
     val geometry = remember(transition, held) { StageGeometry(transition, held, { state.fraction }, root) }
+    // The frame being drawn while a change runs, so each surface is placed once a frame however many parts ask.
+    LaunchedEffect(transition, geometry) {
+        snapshotFlow { transition.currentState != transition.targetState }.collect { changing ->
+            if (!changing) return@collect
+            try {
+                while (transition.currentState != transition.targetState) withFrameNanos { geometry.frame = it }
+            } finally {
+                geometry.frame = 0L
+            }
+        }
+    }
     // At rest the held move is forgotten, so the next change between the same two screens is read afresh: no surface
     // need draw at rest for it to be (nothing recomposes for this; the flow runs off the frame).
     LaunchedEffect(transition, held) {
@@ -525,24 +540,27 @@ internal class StageGeometry(
     private val progress: () -> Float,
     private val root: StageRoot,
 ) {
-    private val courses = HashMap<String, Course>()
+    private val courses = Courses()
 
-    /** The same courses in a list, walked by index as the stage draws, so a frame makes no iterator. */
-    private val list = ArrayList<Course>()
+    /**
+     * The frame being drawn while a change runs (its frame time, from [TillStage]'s frame loop), 0 when no loop is
+     * ticking: a course placed on this frame is not placed again by the next reader of the same frame.
+     */
+    internal var frame = 0L
 
-    /** [key]'s course, made the first time an end or a track asks for it (in composition or on attach, never in draw). */
-    fun course(key: String): Course = courses.getOrPut(key) { Course(key).also { list += it } }
+    /** [key]'s course while one of its ends is on a screen; null otherwise. A find, never a make: read in draw. */
+    fun find(key: String): Course? = courses.find(key)
 
     /** Whether a change is under way: the stage's overlay layers draw only then. */
     fun moving(): Boolean = held.during(transition.currentState, transition.targetState) != null
 
     /** Every moving code's bitmap, scaled as one image to its course on this frame (principle 3: never re-laid out). */
     fun paintCodes(scope: DrawScope) {
-        for (i in list.indices) {
-            val c = list[i]
-            val image = c.to?.bitmap ?: continue
-            val during = c.to?.during ?: continue
+        for (i in 0 until courses.size()) {
+            val c = courses.at(i)
+            val during = c.during ?: continue
             if (!locate(c, during)) continue
+            val image = c.to?.bitmap ?: continue
             val l = c.left.roundToInt()
             val t = c.top.roundToInt()
             scope.drawImage(
@@ -552,17 +570,13 @@ internal class StageGeometry(
         }
     }
 
-    internal fun size(): Int = list.size
+    internal fun size(): Int = courses.size()
 
-    internal fun at(i: Int): Course = list[i]
+    internal fun at(i: Int): Course = courses.at(i)
 
-    fun add(end: End) {
-        course(end.key).add(end)
-    }
+    fun add(end: End) = courses.add(end)
 
-    fun remove(end: End) {
-        courses[end.key]?.remove(end)
-    }
+    fun remove(end: End) = courses.remove(end)
 
     /**
      * Puts [course]'s place on this frame of [during] in it: false at rest,
@@ -573,6 +587,9 @@ internal class StageGeometry(
         val from = transition.currentState
         val to = transition.targetState
         if (held.during(from, to) != during) return course.lost()
+        // Placed already on this frame (an end node, the words on it, the stage's painter all ask): the same place.
+        val p = progress()
+        if (course.placedOn(frame, held.generation, p)) return true
         val r = root.coordinates ?: return course.lost()
         val a = course.endOn(from) ?: return course.lost()
         val b = course.endOn(to) ?: return course.lost()
@@ -582,9 +599,40 @@ internal class StageGeometry(
         val e = r.localPositionOf(cb, Offset.Zero)
         course.place(
             a, b, o.x, o.y, o.x + ca.size.width, o.y + ca.size.height, e.x, e.y, e.x + cb.size.width, e.y + cb.size.height,
-            progress(), held.generation, held.interrupted,
+            p, held.generation, held.interrupted, frame,
         )
         return true
+    }
+}
+
+/**
+ * The courses of the surfaces on screen, by key and in a list walked by
+ * index as the stage draws (so a frame makes no iterator). A course is
+ * made with its first end (on attach, never in draw) and goes with its
+ * last, so the stage keeps one per surface on screen, not one per sale
+ * ever opened, and a frame walks only those.
+ */
+internal class Courses {
+    private val byKey = HashMap<String, Course>()
+    private val list = ArrayList<Course>()
+
+    fun find(key: String): Course? = byKey[key]
+
+    fun size(): Int = list.size
+
+    fun at(i: Int): Course = list[i]
+
+    fun add(end: End) {
+        byKey.getOrPut(end.key) { Course(end.key).also { list += it } }.add(end)
+    }
+
+    fun remove(end: End) {
+        val c = byKey[end.key] ?: return
+        c.remove(end)
+        if (c.ends.isEmpty()) {
+            byKey.remove(end.key)
+            list.remove(c)
+        }
     }
 }
 
@@ -607,6 +655,9 @@ internal class End(val key: String, val screen: Screen, val during: Move) {
  */
 internal class Course(val key: String) {
     val ends = ArrayList<End>(2)
+
+    /** The move its ends are shared by: what the stage draws it during, whatever was placed last. */
+    val during: Move? get() = if (ends.isEmpty()) null else ends[0].during
     var from: End? = null
         private set
     var to: End? = null
@@ -642,6 +693,7 @@ internal class Course(val key: String) {
     private var valid = false
     private var generation = -1L
     private var snapped = false
+    private var frame = 0L
     private var kl = 0f
     private var kt = 0f
     private var kr = 0f
@@ -654,19 +706,9 @@ internal class Course(val key: String) {
         ends += end
     }
 
-    /**
-     * [end] has left its screen. With no end left, the course forgets the
-     * ends it last drew between: an end keeps its code's bitmap, and a key
-     * is a sale's, so a course kept whole for every sale ever opened would
-     * hold a code for each of them for the life of the stage.
-     */
+    /** [end] has left its screen; with none left the course goes from the stage ([Courses]), its code bitmap with it. */
     fun remove(end: End) {
         ends.remove(end)
-        if (ends.isEmpty()) {
-            from = null
-            to = null
-            valid = false
-        }
     }
 
     fun endOn(screen: Screen): End? {
@@ -682,13 +724,17 @@ internal class Course(val key: String) {
         return false
     }
 
+    /** Whether it was placed on [frame] (not 0: a frame loop is ticking) of [generation]'s change at [p] already. */
+    fun placedOn(frame: Long, generation: Long, p: Float): Boolean =
+        valid && frame != 0L && frame == this.frame && generation == this.generation && p == this.p
+
     /**
      * Where the surface is at [p] of [generation]'s change from end [a], laid
      * out at [ol]..[ob] in the stage, to end [b] at [el]..[eb].
      */
     fun place(
         a: End, b: End, ol: Float, ot: Float, or: Float, ob: Float, el: Float, et: Float, er: Float, eb: Float,
-        p: Float, generation: Long, interrupted: Boolean,
+        p: Float, generation: Long, interrupted: Boolean, frame: Long = 0L,
     ) {
         if (generation != this.generation) {
             // A change that took over another mid-move starts from where this surface was drawn last, not from the
@@ -706,6 +752,7 @@ internal class Course(val key: String) {
         from = a
         to = b
         valid = true
+        this.frame = frame
     }
 
     /** The straight line from one box to the other, and the point [p] of the way along it: where the surface is now. */
@@ -729,38 +776,36 @@ internal class Course(val key: String) {
     fun holds(l: Float, t: Float, r: Float, b: Float): Boolean =
         left <= l + EDGE && top <= t + EDGE && right >= r - EDGE && bottom >= b - EDGE
 
-    private var lo = 0f
-    private var hi = 1f
-
     /**
-     * The part of the move over which the surface holds the box [l]..[b]:
-     * from [heldFrom] to [heldUntil] (the first above the second when it
-     * never does). Its edges move on straight lines, so this is exact.
+     * The part of the move over which the surface holds the box [l]..[b],
+     * packed as two floats ([packFloats]): from its first ([heldFrom]) to
+     * its second ([heldUntil]), the first above the second when it never
+     * does. Its edges move on straight lines, so this is exact. Nothing is
+     * kept: every word run on one ground asks for its own box.
      */
-    fun holding(l: Float, t: Float, r: Float, b: Float) {
-        lo = 0f
-        hi = 1f
-        atMost(sl, el, l + EDGE)
-        atMost(st, et, t + EDGE)
-        atMost(-sr, -er, -(r - EDGE))
-        atMost(-sb, -eb, -(b - EDGE))
-    }
-
-    val heldFrom: Float get() = lo
-    val heldUntil: Float get() = hi
-
-    /** Narrows [lo]..[hi] to where s + (e - s) p ≤ c. */
-    private fun atMost(s: Float, e: Float, c: Float) {
-        val d = e - s
-        if (abs(d) < EDGE) {
-            if (s > c) {
-                lo = 2f
-                hi = -1f
+    fun holding(l: Float, t: Float, r: Float, b: Float): Long {
+        var lo = 0f
+        var hi = 1f
+        // Each edge narrows lo..hi to where s + (e - s) p ≤ c.
+        for (edge in 0 until 4) {
+            val s: Float
+            val e: Float
+            val c: Float
+            when (edge) {
+                0 -> { s = sl; e = el; c = l + EDGE }
+                1 -> { s = st; e = et; c = t + EDGE }
+                2 -> { s = -sr; e = -er; c = -(r - EDGE) }
+                else -> { s = -sb; e = -eb; c = -(b - EDGE) }
             }
-            return
+            val d = e - s
+            if (abs(d) < EDGE) {
+                if (s > c) return packFloats(2f, -1f)
+                continue
+            }
+            val x = (c - s) / d
+            if (d > 0f) hi = min(hi, x) else lo = maxOf(lo, x)
         }
-        val x = (c - s) / d
-        if (d > 0f) hi = min(hi, x) else lo = maxOf(lo, x)
+        return packFloats(lo, hi)
     }
 
     /**
@@ -778,9 +823,15 @@ internal class Course(val key: String) {
         return ((c - s) / (e - s)).coerceIn(0f, 1f)
     }
 
-    private companion object {
+    companion object {
         /** Half a pixel: a box laid out on a pixel edge is held by a surface on the same edge. */
-        const val EDGE = 0.5f
+        private const val EDGE = 0.5f
+
+        /** Where a [holding] range starts. */
+        fun heldFrom(range: Long): Float = unpackFloat1(range)
+
+        /** Where a [holding] range ends. */
+        fun heldUntil(range: Long): Float = unpackFloat2(range)
     }
 }
 
@@ -836,16 +887,19 @@ class GroundTrack(val key: String) {
     private var course: Course? = null
 
     internal fun bind(stage: Stage, during: Move) {
-        if (this.stage === stage && this.during == during) return
         this.stage = stage
         this.during = during
-        course = stage.geometry.course(key)
     }
 
-    /** Whether the surface is moving on this frame (both its ends are there), its place then in [left]..[bottom]. */
+    /**
+     * Whether the surface is moving on this frame (both its ends are there), its place then in [left]..[bottom]. Its
+     * course is looked up by key each time, never held from a bind: a row reused by the shift's list, or a course that
+     * went with its last end, can't leave a track pointing at one no longer drawn.
+     */
     fun locate(): Boolean {
         val s = stage ?: return false
-        val c = course ?: return false
+        val c = s.geometry.find(key) ?: return false
+        course = c
         return s.geometry.locate(c, during)
     }
 
@@ -856,9 +910,6 @@ class GroundTrack(val key: String) {
     internal val top: Float get() = located.top
     internal val right: Float get() = located.right
     internal val bottom: Float get() = located.bottom
-
-    /** The surface's bounds on this frame of its move, in the stage's overlay; null at rest or with an end missing. */
-    val bounds: Rect? get() = if (locate()) Rect(left, top, right, bottom) else null
 }
 
 /**
@@ -917,6 +968,14 @@ private class GroundElement(val stage: Stage, val track: GroundTrack, val own: G
         node.invalidateDraw()
     }
 
+    override fun InspectorInfo.inspectableProperties() {
+        name = "sharedGround"
+        properties["key"] = track.key
+        properties["during"] = track.during
+        properties["own"] = own
+        properties["fadesIn"] = fadesIn
+    }
+
     override fun equals(other: Any?): Boolean = other is GroundElement && other.stage === stage && other.track === track &&
         other.own === own && other.fadesIn == fadesIn
 
@@ -961,8 +1020,8 @@ private class GroundsPainter(private val geometry: StageGeometry) {
     fun DrawScope.paint() {
         for (i in 0 until geometry.size()) {
             val c = geometry.at(i)
-            val to = c.to ?: continue
-            if (to.look == null || !geometry.locate(c, to.during)) continue
+            val during = c.during ?: continue
+            if (!geometry.locate(c, during) || c.to?.look == null) continue
             with(painter) { paintCourse(c) }
         }
     }
@@ -1031,6 +1090,12 @@ private class CodeElement(val stage: Stage, val track: GroundTrack, val key: Str
         node.stage = stage
         node.track = track
         node.invalidateDraw()
+    }
+
+    override fun InspectorInfo.inspectableProperties() {
+        name = "sharedCode"
+        properties["key"] = key
+        properties["during"] = track.during
     }
 
     override fun equals(other: Any?): Boolean = other is CodeElement && other.stage === stage && other.track === track && other.key == key && other.bitmap === bitmap
@@ -1166,6 +1231,12 @@ private class WholeElement(val stage: Stage, val ground: GroundTrack, val during
         node.invalidateDraw()
     }
 
+    override fun InspectorInfo.inspectableProperties() {
+        name = "wholeOn"
+        properties["ground"] = ground.key
+        properties["during"] = during
+    }
+
     override fun equals(other: Any?): Boolean = other is WholeElement && other.stage === stage && other.ground === ground && other.during == during
 
     override fun hashCode(): Int = System.identityHashCode(ground) * 31 + during.hashCode()
@@ -1293,6 +1364,14 @@ private class FadeThroughElement(
         node.arriving = arriving
     }
 
+    override fun InspectorInfo.inspectableProperties() {
+        name = "words"
+        properties["over"] = over
+        properties["through"] = through
+        properties["on"] = on?.key
+        properties["clear"] = clear?.key
+    }
+
     override fun equals(other: Any?): Boolean = other is FadeThroughElement && other.stage === stage && other.over == over &&
         other.through == through && other.on === on && other.clear === clear && other.leaving == leaving && other.arriving == arriving
 
@@ -1344,9 +1423,8 @@ private class FadeThroughNode(
             val ground = on
             // On a moving ground: arriving, they start once it holds them; leaving, they are gone before it lets go.
             if (ground != null && ground.during == move && ground.locate()) {
-                val course = ground.located
-                course.holding(at.x, at.y, r, b)
-                if (arrivingHere) start = maxOf(start, course.heldFrom) else end = min(end, course.heldUntil)
+                val held = ground.located.holding(at.x, at.y, r, b)
+                if (arrivingHere) start = maxOf(start, Course.heldFrom(held)) else end = min(end, Course.heldUntil(held))
             }
             // Arriving where [clear]'s ground still is, they wait until it has passed: no edge sweeps through them.
             val c = clear

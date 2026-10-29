@@ -248,7 +248,7 @@ class StageBackTest {
         gesture(0.05f)
         for (p in listOf(0.25f, 0.5f, 0.75f)) {
             gesture(p)
-            val drawn = tracks["code/a1"]?.firstNotNullOfOrNull { it.bounds }
+            val drawn = tracks["code/a1"]?.firstNotNullOfOrNull { it.drawn() }
             assertTrue(drawn != null, "at $p the code is moving under the finger")
             val want = lerp(big.width, card.width, model.stage.fraction)
             assertTrue(abs(drawn.width - want) <= 2f, "at $p (the stage at ${model.stage.fraction}) the code is ${drawn.width} px wide, not $want: between ${big.width} and ${card.width}")
