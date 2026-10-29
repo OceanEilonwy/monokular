@@ -24,6 +24,13 @@ enum class SalePhase {
     /** Nothing more will happen to it. */
     val isFinal: Boolean get() = this == Paid || isUnpaid
 
+    /**
+     * Nothing of the money has been seen yet (waiting, or part paid and
+     * waiting for the rest), so the code's time left is what matters: the
+     * countdown shows beside the code.
+     */
+    val countsDown: Boolean get() = this == Waiting || this == Partial
+
     /** It ended without being paid: expired, cancelled or reversed. */
     val isUnpaid: Boolean get() = this == Expired || this == Cancelled || this == DoubleSpend
 
