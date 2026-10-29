@@ -54,6 +54,8 @@ import app.monokular.sharedSurface
  * each fades through a screen change by its own place under a moving
  * ground, never the page as one block (decision 176).
  */
+// [words] is not this page's modifier but its words' (each of its parts takes it), so it is not named or placed as one.
+@Suppress("ModifierParameter")
 @Composable
 fun SaleDetail(
     sale: TillSale,

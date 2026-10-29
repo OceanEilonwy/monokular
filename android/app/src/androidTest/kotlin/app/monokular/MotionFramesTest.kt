@@ -179,7 +179,7 @@ class MotionFramesTest {
     }
 
     /** Where the moving code is drawn on this frame: its track, not where either screen laid it out. */
-    private fun codeDrawn(): Rect = tracks["code/a1"]?.firstNotNullOfOrNull { it.bounds } ?: bounds("Payment code")
+    private fun codeDrawn(): Rect = tracks["code/a1"]?.firstNotNullOfOrNull { it.drawn() } ?: bounds("Payment code")
 
     /**
      * A seek moves the code as it moves the words (decision 166): at p of the way, the code is p of the way along
@@ -212,9 +212,9 @@ class MotionFramesTest {
         // Only a ground still in the overlay is told its shape as the move goes on: half way, then three quarters.
         val row = tracks["sale/a1"]?.firstOrNull()
         seekOnto(state, 0.5f, Screen.Sale("a1"))
-        val half = row?.bounds
+        val half = row?.drawn()
         seekOnto(state, 0.75f, Screen.Sale("a1"))
-        val threeQuarters = row?.bounds
+        val threeQuarters = row?.drawn()
         assertTrue(threeQuarters != null && threeQuarters != half, "the row's ground is drawn through its clip at 75 % of its grow: $half, then $threeQuarters")
     }
 

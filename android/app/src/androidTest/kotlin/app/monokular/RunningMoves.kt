@@ -165,8 +165,8 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         val codes = drawnOf(mine and SemanticsMatcher("a payment code") { n -> n.config.getOrNull(SemanticsProperties.ContentDescription)?.any { it.startsWith("Payment code") } == true })
         val texts = compose.onAllNodes(mine and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text), useUnmergedTree = true).fetchSemanticsNodes()
             .map { (it.config.getOrNull(SemanticsProperties.Text)?.joinToString().orEmpty()) to it.drawn().half() }
-        val ground = groundKey?.let { k -> tracks[k]?.firstNotNullOfOrNull { it.bounds } }?.half()
-        val code = tracks["code/${sale.orderId}"]?.firstNotNullOfOrNull { it.bounds }?.half()
+        val ground = groundKey?.let { k -> tracks[k]?.firstNotNullOfOrNull { it.drawn() } }?.half()
+        val code = tracks["code/${sale.orderId}"]?.firstNotNullOfOrNull { it.drawn() }?.half()
         val words = stages.keys.associateWith { s ->
             compose.onAllNodes(hasAnyAncestor(hasTestTag(tag(s))) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text), useUnmergedTree = true).fetchSemanticsNodes()
                 .map { (it.config.getOrNull(SemanticsProperties.Text)?.joinToString().orEmpty()) to it.drawn().half() }
@@ -257,3 +257,6 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         }
     }
 }
+
+/** Where [GroundTrack]'s surface is drawn on this frame of its move, in the stage's overlay; null at rest or with an end missing. */
+internal fun GroundTrack.drawn(): Rect? = if (locate()) Rect(left, top, right, bottom) else null
