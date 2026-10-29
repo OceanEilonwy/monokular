@@ -3026,3 +3026,20 @@ design unchanged.
     for that: 96 commits, every subject a full sentence, no fixup or
     wip, `./gradlew build` green at the tip; `gh pr checks` on the
     draft will say what CI makes of the base.
+
+207. **The Needs action count is a pill concentric with its chip** (the
+    owner's report, 2026-10-30: the badge "doesn't follow the curvature
+    + padding"). The badge was a 20 dp box with 10 dp corners, 8 dp from
+    the chip's top and bottom but 14 dp from its end, so it sat off the
+    centre of the chip's round end, and a longer count made it a
+    rounded rectangle. Now `FilterChip` names its sizes once (chip 36,
+    badge 20) and insets the badge from the chip's end by
+    (36 - 20) / 2, as from its top and bottom; the badge fills the
+    chip's height inside that inset, is at least as wide as it is tall,
+    and has fully round ends, so it is a circle for one digit, a pill
+    for more, and stays concentric at any font scale. Labels and counts
+    stay on one line, and the chip row scrolls sideways when a large
+    font makes the chips wider than the screen, where a label used to
+    wrap into a blob under a fixed 36 dp height. `FilterChipTest`
+    measures the drawn badge against the chip: counts 1, 9, 12 and 128,
+    selected and in the dark, and at twice the font size.
