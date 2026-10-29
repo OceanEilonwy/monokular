@@ -907,3 +907,97 @@ SwiftShader, decision 191): `OverlayFramesTest`, `PresenceOnDeviceTest`,
 `PanelGlyphsOnDeviceTest`, `BubbleOnDeviceTest`, `PanelFaceOnDeviceTest` and
 `PhaseRingOnDeviceTest` pass, 45 tests; the three new ones fail on
 `a63b39a`. The owner's phone was not used (191).
+
+## Round 6, screens track (dev2, on emulator-5556, `Pixel_9_Pro_dev2`)
+
+What changed: a leaving screen keeps the sale it showed (close for now,
+expiry and refund leave with the code on its card; decisions 185, 194);
+paid or ended on the enlarged code folds the code's white into the page's
+hero (184, 195); the stage's courses live only while an end is on screen,
+are placed once a frame and are painted from their own ends (193); a
+takeover of a move still at 0 stays a plain retarget (188, 192). The
+owner's phone was not used (197); every number here is an emulator's, on
+a host whose load average ran from 6 to 28 during the run.
+
+### Memory, named (N-R5-1; decision 196)
+
+`tmp/dev2-r6/heap.sh`: fresh on the shift, a GC'd Java heap dump and
+`meminfo`; then ten shift to sale round trips (the order line's tap found
+no `ORDER` node on this AVD, so one order open), 10 s at rest, a
+`RUNNING_CRITICAL` trim, a dump and `meminfo` again. Base `f274ad7`
+(`lead/app-debug-fake.apk`) and this branch alternately, the same sales
+on the shift for both. PSS in kB (Java heap / native heap):
+
+| | base 4 | after 4 | after 5 | base 5 |
+| --- | --- | --- | --- | --- |
+| Fresh on the shift | 102 707 (14 700 / 22 172) | 107 635 (15 756 / 23 760) | 107 637 (15 556 / 23 692) | 103 237 (14 352 / 22 144) |
+| After the flow and a trim | 105 375 (14 812 / 22 928) | 110 840 (15 828 / 25 016) | 111 203 (15 696 / 25 088) | 105 610 (14 464 / 22 904) |
+| The session's own growth | +2.7 MB | +3.2 MB | +3.6 MB | +2.4 MB |
+
+Trimmed step over the base +5.5 and +5.6 MB, as rounds 4 and 5; fresh
+step +4.9 and +4.4 MB; the session itself grows half a megabyte more than
+the base's. Java heap, app heap's shallow bytes (`hprof_hist.py`):
+
+| | base → after, fresh | after, fresh → trim | base, fresh → trim |
+| --- | --- | --- | --- |
+| Shallow bytes | +1 306 008 | +138 667 | +109 342 |
+| Objects | +27 322 | +2 105 | +1 657 |
+
+The top of the fresh step, by bytes: `Object[][]` +163 KB, `byte[]`
++136 KB, `int[]` +82 KB, `SnapshotMutableStateImpl$StateStateRecord`
++68 KB (350 → 2 477), `long[]` +66 KB,
+`LookaheadDelegateForLayoutModifierNode` +40 KB (0 → 327),
+`MutableObjectIntMap` +35 KB (169 → 1 051),
+`ParcelableSnapshotMutableState` +30 KB (195 → 1 259),
+`LookaheadPassDelegate` and `InnerNodeCoordinator$LookaheadDelegateImpl`
+(0 → 193 each), `AtomicInt` (246 → 1 558). The 1 259 `mutableStateOf`s
+are held by `TransitionInstance` 160, `TransformScopeImpl` 126,
+`Animatable` 96, `MutableTransitionState` 93, `SharedElementEntry` 90,
+`animateValueAsState` 72, `LazyLayoutItemAnimation` 50,
+`SharedMutableTransformState` 42, `BoundsAnimation` 30
+(`hprof_owners.py`). Native: `smaps` by mapping in the first pair puts
+the difference in `scudo:primary` (+1.4 MB) with `scudo:secondary`
+-2.0 MB; the native heap itself moved by 30 MB between runs of one build
+on this AVD, so only pairs are read. Not brought to +2 MB: accepted as
+the shift's standing motion machinery (decision 196).
+
+### Frames (`dev2-r5-ab.sh`: five times row → sale → enlarge → shrink → Back; `MainActivity` window)
+
+| | frames | janky | p50 | p90 | p95 | p99 |
+| --- | --- | --- | --- | --- | --- | --- |
+| base 1 | 40 | 80.0 % | 65 | 150 | 150 | 150 |
+| after 1 | 283 | 63.3 % | 57 | 97 | 133 | 200 |
+| base 2 | 45 | 77.8 % | 81 | 150 | 150 | 200 |
+| after 2 | 291 | 64.6 % | 57 | 89 | 125 | 200 |
+
+The base cuts, so it draws a seventh of the frames; per frame the moves
+are at or under its times at p50 to p95 on a host this loaded, as round
+5 read. The first enlarge after launch is not judged here (197).
+
+### Size
+
+Release, unsigned: 8 085 234 B file, 4 609 448 B download, against round
+5's 8 085 234 / 4 609 471.
+
+### Device tests
+
+`connectedDebugAndroidTest` on emulator-5556: 161 tests, all green, with
+the round's seven new `RunningMovesTest` cases (close for now in both
+themes, expiry and refund as the screen is left, paid on the enlarged code
+in both themes, a rise over a Back at its start). Without the leaving
+screen's rule `closeForNowLeavesWithItsCodeLight` fails from frame 1
+(the row's ground the whole screen, no code under it); without the
+hero's end `paidOnTheEnlargedCodeFoldsIntoTheHeroDark` fails with no
+white on any frame.
+
+### Recordings (emulator, the host GPU through `ro.hardware.egl=emulation`, sparse frames)
+
+`review-r6-dev2/paid-on-code-5556.png`: the code screen, its foot
+fading, the white closing toward the hero with the code already faded,
+the paid page. `review-r6-dev2/close-for-now-5556.png`: the sheet drops,
+the code stays on its card while the sale's words fade, the code whole
+on the sale's ground as the row takes it. The emulator's `screenrecord`
+keeps a frame only when the picture changes enough, so the in-between
+frames of the shrink are not in either; the GPU recordings the reviews
+ask for are still to be made (197). Clips: `tmp/dev2-r6-M15.mp4`,
+`tmp/dev2-r6-M16.mp4`.
