@@ -85,7 +85,8 @@ is no position to carry. `Spring.StiffnessMedium` is 1500 and
 | `Motion.stage` | `Motion.surface.fraction` on the stage's progress, null under Still | 450 ms | What moves the stage's progress to a screen: an uninterrupted change and the release of a back gesture alike, so a seek and a spring share one physics (decision 120) |
 | `Motion.fade` | `tween(200, LinearEasing)` | 200 ms | Crossfades between two faces of the same thing: the bubble's content, the status words, a row's badge, the paid hero's icon |
 | `Motion.fadeQuick` | `tween(120, LinearEasing)` | 120 ms | Exits under something that is arriving, and every crossfade under reduced motion |
-| `Motion.fadeThrough` | `tween(200, delayMillis = 120, LinearEasing)` (120 ms under Still) | 320 ms | An entrance in the place of a different thing leaving under `fadeQuick`: the panel's buttons and words when its face changes ("Copy address" to "Done"), so two labels are never drawn over each other (added in round 2, decision 115) |
+| `Motion.crossfadeOnTrack`, `Motion.fadeOutOnTrack` | `fade` and `fadeQuick` as shares of `track` (0.44, 0.27) | (shares) | On a screen change, a glyph surface's faces crossfade over `crossfadeOnTrack`; a screen's words fade out over the first `fadeOutOnTrack` and in over the last `crossfadeOnTrack`, so two screens' words are never drawn together (decisions 125, 138) |
+| `Motion.fadeThrough` | `tween(200, delayMillis = 120, LinearEasing)` (120 ms, still after its 120 ms wait, under Still: decision 141) | 320 ms | An entrance in the place of a different thing leaving under `fadeQuick`: the panel's buttons and words when its face changes ("Copy address" to "Done"), so two labels are never drawn over each other (added in round 2, decision 115) |
 | `Motion.pulse` | `tween(1600, LinearOutSlowInEasing)`, repeating | loop | The lit bubble's pulse, only while a code waits and the panel is down |
 | `Motion.glints` | `tween(GLINT_MS, LinearEasing)`, repeating | loop | The loading mark (unchanged) |
 | `Motion.Dwell.paid` | `5_000 ms` | — | How long a paid moment is held before the till moves on: the sale screen stepping back to the shift (`TillNav.PAID_STEP_BACK_MS`), the panel lowering, the bubble staying green and the chip its tick (`Bubble.PAID_MS`, today 4 s; see M9) |
@@ -332,9 +333,10 @@ code's foot, a shift row's badge, the close sheet's "Yes" glyph.
     returns it into the row if the row is on screen, else the plain back
     below.
   - Shift to sale, a new sale coming up by itself (`TillNav.follow`): the
-    sale fades in and settles from 0.94 scale (`Motion.surface`, enter
-    only, the shift fading under it with `fadeQuick`); there is no row to
-    grow from, and it mustn't look like something the cashier did.
+    sale fades in and rises from 4 % of the height below (`Motion.track`,
+    enter only, the shift fading under it with `fadeQuick`; a slide, not a
+    scale, so its code is never smaller than at rest: decision 141); there
+    is no row to grow from, and it mustn't look like something the cashier did.
   - Sale to code (M8), sale to order page: the order card is the page's
     list card (`sharedBounds("order/$id")`), the rest crossfades.
   - Code or order back to sale, sale back to shift: the reverse of how

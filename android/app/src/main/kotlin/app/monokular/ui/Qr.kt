@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.monokular.Move
 import app.monokular.Layers
+import app.monokular.GroundLook
 import app.monokular.sharedGround
 import app.monokular.sharedSurface
 import com.google.zxing.BarcodeFormat
@@ -109,7 +110,7 @@ private fun CodeCard(modifier: Modifier, shape: Shape, radius: Dp, shared: Strin
     modifier.clip(shape).then(if (shared == null) Modifier.background(Fixed.White) else Modifier),
 ) {
     if (shared != null && sharedCard) {
-        Box(Modifier.matchParentSize().sharedGround(codeGround(shared), Move.CodeGrow, Fixed.White, radius, CodeScreenCorner))
+        Box(Modifier.fillMaxSize().sharedGround(codeGround(shared), Move.CodeGrow, GroundLook(Fixed.White, radius), GroundLook(Fixed.White, CodeScreenCorner)))
     }
     content()
 }

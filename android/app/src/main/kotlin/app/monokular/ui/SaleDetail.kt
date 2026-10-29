@@ -21,10 +21,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -55,7 +57,8 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
     val pos = header.pos
     val page = SalePage.of(sale, pos, now = System.currentTimeMillis() / 1000, elsewhere = header.elsewhere)
     val subtitle = header.place + sale.createdAt.takeIf { it > 0 }?.let { " · " + SaleText.time(it) }.orEmpty()
-    Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
+    // Its ground is the screen's (SaleScreen), so the live sale it turns from fades over one ground.
+    Surface(Modifier.fillMaxSize(), color = Color.Transparent, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
             Column(Modifier.widthIn(max = 560.dp).fillMaxSize()) {
                 SaleBar(sale, subtitle, actions)
@@ -67,7 +70,7 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         // The code card closed into this (M10); stepping back to the shift, this becomes the row's badge.
                         Box(Modifier.sharedSurface(badgeKey(sale.orderId), Move.RowGrow, CircleShape, layer = Layers.OVER_GROUND)) {
-                            Box(Modifier.faceSurface(heroKey(sale.orderId), HeroSize / 2, CodeCorner)) {
+                            Box(Modifier.faceSurface(heroKey(sale.orderId), HeroSize / 2, other = CodeCornerShare).testTag(HeroTag)) {
                                 StateBadge(sale, page.icon, page.ground, HeroSize, 38.dp)
                             }
                         }
@@ -113,6 +116,9 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
         RefundInPosSheet(sale, refundSheet, onRefunded = { actions.onRefundDone(sale.orderId) }, onNotYet = actions.onRefundSheetDismissed)
     }
 }
+
+/** The hero's tag, for the device tests that look at it mid-move; it has nothing to say to a screen reader (the heading does). */
+const val HeroTag = "hero"
 
 /** The timeline card: when it was rung up, seen, closed, paid; another till's sale's till. */
 @Composable
