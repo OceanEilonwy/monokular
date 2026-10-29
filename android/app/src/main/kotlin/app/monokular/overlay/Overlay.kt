@@ -7,8 +7,8 @@ import android.os.Build
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
-import android.view.View
 import android.view.VelocityTracker
+import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewTreeObserver
 import android.view.WindowManager
@@ -23,6 +23,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
@@ -296,6 +297,7 @@ class Overlay(
                     Modifier.graphicsLayer {
                         val p = presence.value
                         alpha = p
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
                         scaleX = 0.6f + 0.4f * p
                         scaleY = scaleX
                     },
