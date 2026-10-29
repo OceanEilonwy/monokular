@@ -1064,3 +1064,20 @@ design unchanged.
     live) no longer lowers itself after five seconds; it stays until Done,
     as any panel the cashier raised does. The dwell is for a payment that
     lands, not for looking back at one.
+102. **The panel's code folds into its hero in place; the order crossfades
+    in for now** (M5, dev1, round 1). Live to paid or ended, the code's
+    slot stays: its height follows one `motion.surface` progress in a
+    layout lambda, the white card scales down into the 88 dp circle at the
+    same centre in its own layer (laid out once at 264 or 280 dp, never
+    re-laid out, held to that size on every frame by a device test) and
+    fades under `fadeQuick` while the hero fades in; the next sale's code
+    grows back out of the same circle. The words under it and the buttons
+    crossfade (`AnimatedContent`, the words' height settling). What the
+    middle shows is `Panel.face(sale)`, tested on the JVM. The code and
+    the order swap by crossfade (the docked bubble going with the code),
+    and on a tablet the card's height settles to the order's; the phone's
+    card-to-window container transform with the corner radius 32 to 0
+    from M5 is not in this round: it needs the card and the order to share
+    one container whose bounds are animated in layout, which reshapes
+    `PhonePanel` more than a round allows next to M1's handoff, and a
+    crossfade already says "the same panel, another face".
