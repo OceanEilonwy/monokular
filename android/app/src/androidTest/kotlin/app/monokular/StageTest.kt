@@ -10,12 +10,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.unit.IntSize
 import app.monokular.OneClockTest.Companion.noActions
 import app.monokular.OneClockTest.Companion.status
+import app.monokular.ui.CodeScreen
 import app.monokular.ui.SaleScreen
 import app.monokular.ui.ShiftScreen
 import kotlinx.coroutines.CoroutineScope
@@ -128,5 +130,52 @@ class StageTest {
         scope.launch { state.animateTo(Screen.Sale("a1")) }
         compose.mainClock.advanceTimeBy(1_500)
         assertEquals(full, back(), "cancelled, it springs back")
+    }
+
+    @Test
+    fun theCodeGrowsOutOfItsCardLaidOutOnceAndAShrinkMidGrowReverses() {
+        var screen by mutableStateOf<Screen>(Screen.Sale("a1"))
+        val state = SeekableTransitionState<Screen>(Screen.Sale("a1"))
+        compose.setContent {
+            Till {
+                LaunchedEffect(screen) { state.animateTo(screen) }
+                TillStage(state, cameUpByItself = { false }) { s ->
+                    when (s) {
+                        is Screen.Code -> CodeScreen(sale, onBack = {})
+                        else -> SaleScreen(sale, "Front", refunding = false, refundProblem = null, actions = noActions, now = now)
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        val small = code().fetchSemanticsNode().size
+        compose.mainClock.autoAdvance = false
+
+        screen = Screen.Code("a1")
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeByFrame()
+        fun big() = compose.onNodeWithContentDescription("Payment code, tap to shrink", useUnmergedTree = true).fetchSemanticsNode()
+        val bigSize = big().size
+        recompositions.reset()
+        val drawn = mutableListOf<Float>()
+        for (t in listOf(0L, 75L, 75L)) {
+            compose.mainClock.advanceTimeBy(t)
+            assertEquals(bigSize, big().size, "the enlarged code keeps its laid-out size at every frame")
+            assertEquals(small, code().fetchSemanticsNode().size, "and so does the sale's")
+            drawn += big().boundsInRoot.width
+        }
+        assertEquals(0, recompositions.count("app.monokular.ui.QrCode"), "the code isn't recomposed by the grow")
+        assertTrue(drawn[0] < drawn[2] && drawn[2] < bigSize.width, "mid-grow it is drawn between the card and the screen: $drawn of ${bigSize.width}")
+
+        screen = Screen.Sale("a1")
+        compose.mainClock.advanceTimeByFrame()
+        compose.mainClock.advanceTimeBy(50)
+        val shrinking = big().boundsInRoot.width
+        compose.mainClock.advanceTimeBy(50)
+        assertTrue(big().boundsInRoot.width < shrinking && shrinking <= drawn[2] + 1f, "Back mid-grow shrinks from where it got to: ${drawn[2]} -> $shrinking -> ${big().boundsInRoot.width}")
+
+        compose.mainClock.advanceTimeBy(1_500)
+        compose.onAllNodesWithContentDescription("Payment code, tap to shrink", useUnmergedTree = true).assertCountEquals(0)
+        assertEquals(small, code().fetchSemanticsNode().size, "and lands at its 264 dp card")
     }
 }

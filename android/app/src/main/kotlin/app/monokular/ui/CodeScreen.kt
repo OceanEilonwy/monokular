@@ -34,7 +34,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
+import app.monokular.Move
 import app.monokular.SaleText
+import app.monokular.landed
+import app.monokular.sharedSurface
 import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
@@ -62,14 +65,16 @@ object CodeText {
 fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
     if (!sale.live) LaunchedEffect(sale.orderId) { onBack() }
     KeepScreenOn()
-    FullBrightness()
+    // Once the white has spread to the screen: a brightness jump mid-grow would flash the whole display (M8).
+    if (landed()) FullBrightness()
     val now = rememberNowSeconds()
     // The design's light roles, fixed: this screen is white in both themes.
     val ink = LightTokens.ink
     val muted = LightTokens.muted
     CompositionLocalProvider(LocalContentColor provides ink) {
         Column(
-            Modifier.fillMaxSize().background(Fixed.White)
+            // The sale's white code card, grown to the screen (M8).
+            Modifier.fillMaxSize().sharedSurface("code-card/${sale.orderId}", Move.CodeGrow).background(Fixed.White)
                 .clickable(onClickLabel = "Shrink the code", indication = null, interactionSource = null, onClick = onBack)
                 .safeDrawingPadding()
                 .padding(start = 6.dp, end = 6.dp, top = 20.dp, bottom = 28.dp),
@@ -92,6 +97,8 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
                     Modifier.size(min(maxWidth, maxHeight)),
                     padding = 12.dp,
                     radius = 0.dp,
+                    shared = sale.orderId,
+                    sharedCard = false,
                 )
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

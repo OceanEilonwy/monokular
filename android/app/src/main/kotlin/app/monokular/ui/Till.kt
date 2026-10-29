@@ -308,6 +308,7 @@ private fun Code(sale: TillSale, side: Dp, onEnlarge: () -> Unit) = Box(
         Modifier.width(side),
         padding = 18.dp,
         radius = 32.dp,
+        shared = sale.orderId,
     )
     Box(
         Modifier.align(Alignment.BottomEnd).padding(10.dp).size(32.dp).clip(CircleShape).background(Fixed.Ink),
