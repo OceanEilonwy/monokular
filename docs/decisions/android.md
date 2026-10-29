@@ -2833,3 +2833,123 @@ design unchanged.
     phone A/B (`lead/ab-r4.sh` with the phone's serial under the flock,
     `adb install -r` only, the shift, a sale, the enlarge, the order and
     Back) runs the moment the user says so in a session of their own.
+163. **The code and its white travel as one surface on the enlarge and
+    the shrink** (designer, round 4 review; major, screens track; 132
+    reopened, 146 and 160 half-answered). On emulator-5558 the dark flash
+    of round 3 is gone from every recorded enlarge (a whole-frame
+    luminance check over `r4p-dark` finds no frame lighter than both its
+    neighbours), but the code and its white still run on two different
+    progressions. Light, second enlarge after launch, 720 px frames
+    (`review-r4/phone-enlarge-code-outside-white.webp`): f43 the code is
+    362 px wide inside a white 355 px wide and reaches 10 px below the
+    white's bottom; f44 to f46 the code sits 1 to 5 px outside the white
+    left and right (2 to 9 device pixels) while the white has already
+    grown past it top and bottom, so the quiet zone is gone for about
+    90 ms of every enlarge; by f46 the code is at its full size while the
+    white is 66 % of the way. On the shrink
+    (`phone-shrink-white-lags-code.webp`) the order is the other way: at
+    f24 the code is 76 % of the way home and the white 68 %, its margins
+    147 and 159 px, a white halo that collapses after the code has
+    landed; the tablet's shrink shows the same (margins 58 to 91 px
+    settling over three frames after the code is at rest). In dark the
+    loss is invisible as white but the code's edge modules merge into the
+    ground. The rule, 132's restated: the white drawn on a frame is the
+    clip rect of that frame, from the one read that also places the code
+    (the fill of 160 is drawn by the clip node itself, not scaled an
+    update behind it and reached past), and the code's scale derives from
+    the same rect, so the margin runs linearly between the two rest
+    margins and is never below the smaller. The lead's clip rig measures
+    the margin per frame of a recorded enlarge and shrink (the designer's
+    `an.py` does it from `screenrecord` frames), since the test clock's
+    harness composes, clips and draws in one pass and cannot see this.
+164. **Two screens' words are never readable together, and words lifted
+    above a ground wait for it** (designer, round 4 review; major,
+    screens track; 131, 147 and 155 together). On a row opening into its
+    sale (`review-r4/phone-row-grow-words-overlap.webp`, f158 to f159)
+    "This shift", the store line and the chips are at full alpha when
+    "$9.80" and "Sale #1433" arrive over them; the shift's chrome never
+    fades, it is cut when the shift leaves on the landing frame. 147
+    lifts arriving words above the moving ground so no glyph is cut, and
+    155 keeps leaving words under it; what is missing is the half: lifted
+    words start their fade only once the ground's bounds cover their
+    place, and the leaving screen's words (its chrome included, not only
+    its rows) fade over the first `fadeOutOnTrack` as 138 says. A frame
+    may show one screen's words above half alpha, never two.
+165. **Back from a sale that came up by itself goes into its row, and a
+    code is never drawn without its white** (designer, round 4 review;
+    major, screens track; the continuity map of `docs/motion.md` §3 and
+    148 extended). Light, Back on a risen sale whose row is on the shift
+    (`review-r4/phone-back-after-rise-naked-code.webp`, f82): the sale's
+    words and its card's white are gone in the first frame, the code sits
+    naked on the beige ground, the row's words are drawn faded at their
+    final place, and the next frame (69 ms later) is the shift whole. Dark
+    (`phone-back-after-rise-dark.webp`, f259 to f260): the row's dark
+    ground caps the top of the code's white while the sale's words are
+    gone. Neither is the row the sale came from receiving it. The rule:
+    when the row exists, Back after a Rise is `RowGrow` reversed, the
+    same as a sale the cashier opened; `cameUpByItself` decides only how
+    a sale arrives. And the code's white is part of the code's surface
+    (`Layers.CODE`) on every frame of any fade, slide or move: 148's "at
+    alpha 1 from its first frame" includes the ground the code needs to
+    scan, so no frame of any change draws the modules on the screen's
+    ground.
+166. **A back gesture's preview moves the surface, not only the words**
+    (designer, round 4 review; major, screens track; M7 and 120). A
+    predictive back on the enlarged code, half the width over 700 ms
+    (`review-r4/phone-predictive-back-no-preview.webp`): the code's width
+    goes from 524 to 514 px over the whole gesture (f487 to f506) while
+    the code screen's words are gone by 200 ms and the sale's words come
+    in under it, so the stage's progress passed 56 %; on release the code
+    springs from 514 to 312 px in 160 ms. Back on a sale toward the shift
+    is the same: the rows fade in under a full-size card, then the card
+    drops into the row at the commit. The words follow the seek, the
+    grounds and the code do not. The rule is 120's: one progress drives
+    every part of a change, a seeked frame and a sprung frame alike, so
+    the code shrinks toward its card as the finger moves and the release
+    continues from where the finger left it with its velocity. Under
+    Still the preview stays off.
+167. **Sale to shift reveals the shift under a shrinking white and starts
+    on the frame after the tap** (designer, round 4 review; major, screens
+    track; M7 "the reverse of how they came"). On "Back to the shift"
+    (`review-r4/phone-sale-to-shift-cut-then-code-falls.webp`) the sale's
+    words go, the card holds at rest for three frames (about 65 ms), then
+    at f133 the shift's chrome and list card cut in whole under the code
+    card at full alpha, and the code shrinks into its row over 170 ms
+    while the surface that should carry it is invisible (white over the
+    list's white in light). The grow (f157 to f160) is a white surface
+    growing from the row and revealing the sale at full size; its reverse
+    is a white surface shrinking to the row, clipping the sale and
+    revealing the shift, with the shift's words fading in over the last
+    `crossfadeOnTrack` and the sale's fading out over the first
+    `fadeOutOnTrack` of the same track, not before it. Two rules fall out:
+    the leaving sale's words fade concurrently with the surface's first
+    frames (no hold, the first moving frame follows the tap within one
+    frame), and a payment code is drawn whole or not at all, never clipped
+    by a moving ground: f157 shows the top fifth of the full-size code
+    inside the one-row-tall window on the grow's first frame.
+168. **The paid moment is not signed off from the emulator; the card's
+    white shrinks into the hero on every frame** (designer, round 4
+    review; major, both tracks; M5, M10, 143). The app's fold
+    (`review-r4/phone-paid-fold-crossfade.webp`) is five frames 62, 20 and
+    68 ms apart: the tick appears at the card's place and size at about
+    30 % over the fading code (f90, f91), then the hero is at the top of
+    the page (f92) with nothing between; the panel's
+    (`r4p-ov2-light`, f80 to f82) fades the code to grey at full size
+    with its white already gone, then shows the hero 100 ms later. Both
+    may be dropped frames on a renderer that composes the paid page under
+    the fold, which the lead's `framestats` on the fold says; but the
+    frame that exists already breaks a rule: the card's white left before
+    the hero arrived, and the hero never travelled. The fold the spec
+    asks for is one white surface shrinking from the card to the 88 or
+    72 dp circle with the tick fading in inside it; the white is on
+    every frame. A real-device recording of the fold is the acceptance,
+    not the test clock.
+169. **The panel's next sale: the header follows the hero, never leads
+    it** (designer, round 4 review; minor, overlay track; M5). With a
+    second sale waiting, two frames after the dwell
+    (`review-r4/phone-panel-next-sale-header-ahead-of-hero.webp`, f93 to
+    f94) read "Sale #1444 · $9.80 · 2 items" above "Paid · 0.0588 XMR
+    received", the amount of the sale just paid; then the hero grows into
+    the next code, which is right and reads well. The header, amount and
+    order line crossfade in step with the hero's grow, from the same
+    progress, so no frame mixes two sales.
