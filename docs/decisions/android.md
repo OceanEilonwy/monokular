@@ -1382,3 +1382,22 @@ design unchanged.
     `@color/ground`, which a JVM test holds equal to `LightTokens.ground`
     and `DarkTokens.ground`, so the colour role stays defined once in
     `Theme.kt` and the resource follows it.
+120. **A surface's two faces crossfade per draw, on the stage's progress,
+    never through an offscreen layer each** (dev2, round 2; the review's
+    native-heap blocker). On the host-GPU emulator the GPU's resource cache
+    after ten shift-to-sale round trips held 86 MB (84 MB of it purgeable
+    scratch textures) against 2.3 MB before: `sharedBounds`' `fadeIn`/
+    `fadeOut` are `graphicsLayer` alphas with the default compositing, so
+    each face of a full-screen surface was drawn into a screen-sized
+    offscreen texture on every frame of the move, and the cache kept them.
+    The faces now draw straight into the overlay with
+    `CompositingStrategy.ModulateAlpha`, their alpha a function of
+    `SeekableTransitionState.fraction` toward the screen they belong to
+    (the arriving face in over the first `Motion.crossfadeOnTrack` of the
+    move, the leaving one out over the last), read in `graphicsLayer {}`,
+    so a cancelled gesture fades back the way it came. The leaving face's
+    exit is a `fadeOut` that holds alpha at 1 for the move: the
+    `sharedBounds` contract needs an exit to keep a leaving face drawn, and
+    one at full opacity costs no layer. After: 5.1 MB and 0.2 MB of GPU
+    cache in two runs. `Motion.crossfadeOnTrack` (fade's share of track)
+    is the third preset this round adds to `Motion.kt`.
