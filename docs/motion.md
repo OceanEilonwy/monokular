@@ -19,7 +19,8 @@ Contents: [principles](#1-principles) · [presets](#2-the-motion-presets) ·
 [spatial model](#3-the-spatial-model) · [opportunities](#4-opportunities)
 · [rejected](#5-rejected) · [haptics](#6-haptics) · [reduced
 motion](#7-reduced-motion) · [measuring](#8-measuring) · [order of
-work](#9-order-of-work-and-tracks).
+work](#9-order-of-work-and-tracks) · [performance rules](#10-performance-rules)
+· [tech lead amendments](#11-tech-lead-amendments).
 
 ---
 
@@ -619,3 +620,145 @@ a refinement (M9's dwell is one).
 
 Conflicts to watch: PR #18 touches `BubbleFace` and `Mark.kt` (M4 note);
 PR #16 and #17 don't touch these files.
+
+## 10. Performance rules
+
+What every motion commit is reviewed against (the owner's "blazing fast,
+memory efficient, no hacky animation code"), in one place so a review says
+"rule 3" and not "I'd rather". Decisions 91 to 97 say why.
+
+1. **Animated values are read in draw or layout only**: `graphicsLayer {}`,
+   `drawBehind {}`, `Modifier.offset {}`, a `Canvas` lambda, a
+   `Modifier.Node`. A composable's parameters never change per frame.
+   `QrCode`, `PhaseRing`, `PanelCard`, `SaleRow` and `StatusPill` recompose
+   zero times per animated frame (Layout Inspector's counts).
+2. **Nothing is allocated per frame**: no lambdas, `Path`s, `Shape`s,
+   `String`s or data classes inside a draw or animation lambda; shapes and
+   paths are made once (`MarkPaths` is the model).
+3. **One frame clock, Compose's.** No `ValueAnimator`, `Handler.postDelayed`,
+   `delay()`-chained choreography, reflection or hand-rolled loops. A motion
+   that needs "wait, then" is two motions, or one driven by the other's
+   progress or completion.
+4. **Every spec is a named preset** from `ui/Motion.kt` (`motion.surface`,
+   `settle`, `flick`, `sweep`, `fade`, `fadeQuick`, `pulse`, `glints`,
+   `Motion.Dwell.PAID_MS`), through `.fraction`, `.px` or `.spec(threshold)`.
+   A literal duration, stiffness or threshold at a call site fails review.
+   Springs for anything with a position; tweens only for opacity.
+5. **Every transition is interruptible and keeps its velocity**:
+   `Animatable.animateTo` from the current value with `initialVelocity`;
+   `Transition`, `AnimatedContent` and `SeekableTransitionState` retarget.
+   Nothing blocks input. The payment code is scannable on every frame.
+6. **The code is one bitmap, scaled as one layer.** Encoded once per text
+   (`codeBitmap`), laid out once, moved only by `sharedElement` with
+   `ScaleToBounds` or a `graphicsLayer` scale; never inside an
+   `animateContentSize` node, never re-laid out, re-encoded, faded in or
+   drawn module by module; at rest never below its designed size.
+7. **Two loops in the app**: the bubble's pulse and the loading mark's
+   glints, each only while something is waited for and visible (the pulse:
+   the free bubble, a code Waiting or Partial, the panel down). Two loops in
+   one window share one `rememberInfiniteTransition`.
+8. **Reduced motion is one switch**: `motion.still` (`Motion.Still` while
+   the animator scale is 0, followed live). Loops off, spatial presets
+   `snap()`, crossfades `fadeQuick`, predictive back without a preview,
+   dwells unchanged. No other read of the animator scale anywhere.
+9. **Overlay windows**: made per open, content added at progress 0, removed
+   with `removeView` after the exit lands (`removeViewImmediate` only in
+   `stop()`). The bubble's x on release is the only window-attribute
+   animation (one `updateViewLayout` per frame for about 300 ms); nothing
+   else animates window attributes, `screenBrightness` included.
+10. **Stable inputs**: `TillActions` and `PanelActions` are `@Immutable` and
+    remembered per sale; what a screen reads is hoisted behind
+    `derivedStateOf` or `remember` so the root `AnimatedContent` isn't
+    handed new lambdas on every poll of the runner.
+11. **No new third-party dependency**: androidx compose animation,
+    foundation, ui and activity-compose; for tests `ui-test-junit4` and
+    `ui-test-manifest`, with `androidx.test:runner` 1.7.0 and
+    `espresso-core` 3.7.0 pinned (the ones they bring reflect on
+    `InputManager.getInstance`, gone in Android 16). No Robolectric, no
+    dynamicanimation, no Material motion library, no BOM bump (2026.09.00
+    has everything).
+12. **Measured before and after** with the same scripts on the same emulator
+    instance in one session (`gfxinfo reset`/`framestats`, `meminfo`,
+    `apkanalyzer`), compared as counts and ratios; final numbers on a
+    device. Pass: no new janky frames at p95 on the device, PSS at rest
+    within 2 MB, APK within 50 KB, zero recompositions per animated frame of
+    the composables in rule 1.
+
+## 11. Tech lead amendments
+
+Where the spec met the codebase or the performance rules, what changed and
+why, each against the section or item it amends. Decisions 97 to 99 in
+`docs/decisions/android.md` record the calls.
+
+1. **Presets are generic over what moves (§2, M13).** A Compose spec is
+   typed by its value: `FiniteAnimationSpec<Float>` for a progress,
+   `<IntOffset>` for `animateItem`'s placement, `<IntSize>` for
+   `animateContentSize`, `<Rect>` for a `boundsTransform`, `<Color>` for a
+   ground; one `Motion.surface` value can't be all of them. Each preset is
+   a `Preset` with `fraction` (a value in 0..1, finished within a
+   thousandth so a full-screen surface never jumps its last pixel), `px`
+   (within half a pixel) and `spec(visibilityThreshold)` for the rest. Call
+   sites read `motion.surface.fraction`,
+   `motion.settle.spec(IntOffset.VisibilityThreshold)`,
+   `motion.surface.spec<Rect>()`. §2's thresholds live inside the preset,
+   never at a call site.
+2. **`Motion.reduced` is `motion.still`, and the reduced presets are a
+   second instance (§2, §7, M13).** `Motion.Still` is the same class with
+   `snap()` for the spatial presets, the 120 ms tween for `fade`, and
+   `pulse` and `glints` null, so a loop can't be started by mistake
+   (`rememberInfiniteTransition` needs a spec to run). `MonokularTheme`
+   provides `LocalMotion` from `rememberMotion()`, one Binder read per
+   window and a `ContentObserver` after; `reducedMotion()` is gone.
+3. **`Motion.Dwell.paid` is `Motion.Dwell.PAID_MS` (§2, M9)**, the repo's
+   style for a constant with a unit (`FLING_DP_PER_S`, `GLINT_MS`).
+   `Bubble.PAID_MS` (4 s) and `TillNav.PAID_STEP_BACK_MS` are removed; the
+   panel's, the service's, the overlay's and the view model's timers read
+   the one constant now. The rest of M9 (the bubble's fade following the
+   panel's collapse) is the tracks'.
+4. **Instrumented tests have a harness (§8, decision 95).**
+   `ui-test-junit4` and `ui-test-manifest` (androidx, test-only), with
+   `AndroidJUnitRunner`; `androidx.test:runner` 1.7.0 and `espresso-core`
+   3.7.0 are pinned because the versions `ui-test-junit4` brings fail on
+   API 36 (`NoSuchMethodException: InputManager.getInstance`) before any
+   test runs. `app/src/androidTest/` holds the foundation's two tests,
+   green on `Pixel_9_Pro_motion` (emulator-5558); the tracks add theirs
+   beside them and run `connectedDebugAndroidTest` on their emulator
+   before a PR.
+5. **The code's bitmap cache is in the foundation (M5, M8, decision 96).**
+   `codeBitmap(text)` in `Qr.kt` keeps the last four codes, so the sale
+   screen, the enlarged code, the panel and a shared element between them
+   get one `ImageBitmap` for one text; `QrCode` reads it already. Both
+   tracks' shared elements need it, so neither waits for the other.
+6. **The handoff frame is a pre-draw listener (M1).** "The free bubble
+   window is removed on the frame the panel window has drawn" is
+   `View.doOnPreDraw` (core-ktx; one listener that removes itself) on the
+   panel's view, and the same on the free bubble's view for the lower; not
+   a post, not a delay. Both windows are added at progress 0, so the
+   pre-draw frame shows nothing either way.
+7. **The bubble's snap runs on the UI dispatcher (M3).** An `Animatable`
+   needs a `MonotonicFrameClock` in its coroutine context, which
+   `lifecycleScope` doesn't carry: the snap is
+   `scope.launch(AndroidUiDispatcher.Main)` on the overlay's existing
+   scope (the dispatcher that ticks with the Choreographer), and the next
+   `ACTION_DOWN` cancels the job. No scope per bubble, no
+   `GlobalScope`.
+8. **PR #18 and the bubble (M4).** `BubbleFace(look, pulse, phase)` keeps
+   its signature; when #18 lands, its loading mark's glints and the pulse
+   share the bubble's one `rememberInfiniteTransition`. dev1 reads #18's
+   diff before starting M4 and says in the PR what will conflict.
+9. **`AnimatedContent`'s key is the `Screen` itself (M7).** The screens
+   are data classes, so the default `contentKey` already makes `Sale(a)`
+   to `Sale(b)` a transition and `Sale(a)` to `Sale(a)` with new sales
+   none. No custom key.
+10. **One clock per screen (M12).** One `LaunchedEffect` ticking a
+    `mutableLongStateOf` at the screen's root, handed down as a
+    `State<Long>` and read only inside the `Text` that shows the
+    countdown, so a tick recomposes those texts and nothing above them;
+    `secondsLeft(expiresAt)` with its own effect per text goes.
+11. **Who owns the shared files (§9).** dev1: `overlay/*`, `ui/PhaseRing.kt`
+    (M6, used by both), `ui/Mark.kt`, `TillService.kt`. dev2: `ui/Parts.kt`,
+    `ui/Qr.kt`, `ui/Theme.kt`, `ui/Till.kt`, `SaleText.kt`,
+    `MainActivity.kt`, `AppViewModel.kt` and the rest of `ui/`. The lead:
+    `ui/Motion.kt`, `notify/SaleNotifications.kt`, the docs and the
+    numbers. A change needed in the other track's file is asked of its
+    owner, not made.

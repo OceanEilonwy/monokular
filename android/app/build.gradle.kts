@@ -38,6 +38,7 @@ android {
         // The project's Monokular Bell (docs/design.md §3), which Settings ›
         // Wake-ups offers by name. A placeholder until one is deployed.
         buildConfigField("String", "BELL_URL", "\"${providers.gradleProperty("monokular.bell.url").getOrElse("https://bell.monokulo.com")}\"")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -90,6 +91,8 @@ dependencies {
     implementation(libs.lifecycle.service)
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
+    implementation(libs.compose.foundation)
+    implementation(libs.compose.animation)
     implementation(libs.compose.material3)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.camerax.camera2)
@@ -98,7 +101,15 @@ dependencies {
     implementation(libs.zxing.core)
     implementation(libs.okhttp)
     debugImplementation(libs.compose.ui.tooling)
+    // Compose UI tests on the emulator (decision 95): the test activity comes with the manifest artifact.
+    debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.junit)
     testImplementation(libs.okhttp.mockwebserver)
+    androidTestImplementation(platform(libs.compose.bom))
+    androidTestImplementation(libs.kotlin.test.junit)
+    androidTestImplementation(libs.compose.ui.test.junit4)
+    // The runner and Espresso ui-test-junit4 brings reflect on InputManager.getInstance, gone in Android 16: these run there.
+    androidTestImplementation(libs.androidx.test.runner)
+    androidTestImplementation(libs.androidx.test.espresso.core)
 }

@@ -108,7 +108,7 @@ sealed interface Ongoing {
     /** The newest sale whose code is up. */
     data class Sale(val sale: TillSale) : Ongoing
 
-    /** A sale just paid, for [app.monokular.Bubble.PAID_MS]. */
+    /** A sale just paid, for [app.monokular.ui.Motion.Dwell.PAID_MS]. */
     data class Paid(val sale: TillSale) : Ongoing
 
     companion object {

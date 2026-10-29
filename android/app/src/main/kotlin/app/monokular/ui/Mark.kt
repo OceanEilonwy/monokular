@@ -1,16 +1,10 @@
 package app.monokular.ui
 
-import android.provider.Settings
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
@@ -21,7 +15,6 @@ import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.vector.PathParser
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -147,15 +140,6 @@ private fun DrawScope.mark(ring: Color, grey: Boolean, time: Float?) {
     }
 }
 
-/** Whether the person asked for less motion ("Remove animations" sets the animator scale to 0). */
-@Composable
-fun reducedMotion(): Boolean {
-    val context = LocalContext.current
-    return remember {
-        Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) == 0f
-    }
-}
-
 /** The Monokulo logo; [label] null when it's decoration. */
 @Composable
 fun Logo(size: Dp, modifier: Modifier = Modifier, ring: Color = mk.ink, grey: Boolean = false, label: String? = null) {
@@ -166,12 +150,13 @@ fun Logo(size: Dp, modifier: Modifier = Modifier, ring: Color = mk.ink, grey: Bo
 /**
  * The loading mark: the logo with glints running round it, which says
  * "watching" or "waiting". Still when the person has asked for less
- * motion, as the web's `prefers-reduced-motion` does.
+ * motion ([Motion.Still]), as the web's `prefers-reduced-motion` does.
  */
 @Composable
 fun LoadingMark(size: Dp, label: String, modifier: Modifier = Modifier, ring: Color = mk.ink) {
     val described = modifier.size(size).semantics { contentDescription = label }
-    if (reducedMotion()) {
+    val glints = motion.glints
+    if (glints == null) {
         Canvas(described) { mark(ring, false, null) }
         return
     }
@@ -179,7 +164,7 @@ fun LoadingMark(size: Dp, label: String, modifier: Modifier = Modifier, ring: Co
     val time = rememberInfiniteTransition(label = "loading mark").animateFloat(
         initialValue = 0f,
         targetValue = GLINT_MS.toFloat(),
-        animationSpec = infiniteRepeatable(tween(GLINT_MS, easing = LinearEasing), RepeatMode.Restart),
+        animationSpec = glints,
         label = "glints",
     )
     Canvas(described) { mark(ring, false, time.value) }

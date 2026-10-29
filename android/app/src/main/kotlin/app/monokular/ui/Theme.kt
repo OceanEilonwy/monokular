@@ -174,7 +174,7 @@ fun MonokularTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable (
         headlineMedium = base.headlineMedium.copy(fontFamily = Manrope, fontWeight = FontWeight.ExtraBold),
         headlineSmall = base.headlineSmall.copy(fontFamily = Manrope, fontWeight = FontWeight.ExtraBold),
     )
-    CompositionLocalProvider(LocalTokens provides t) {
+    CompositionLocalProvider(LocalTokens provides t, LocalMotion provides rememberMotion()) {
         MaterialTheme(colorScheme = scheme, typography = type, content = content)
     }
 }
