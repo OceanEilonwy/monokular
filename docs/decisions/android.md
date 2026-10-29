@@ -2632,3 +2632,171 @@ design unchanged.
     the fake's token. Installing the build made with the property brought
     the order lines back at once with no new onboarding; the lead's
     5558 and 5560 likely need only that.
+192. **A change that takes over a move still at 0 is a plain retarget;
+    decision 188's seek is not taken** (dev2, round 6; 178, 188). The
+    review asked for 178's seek-to-0-and-wait on a takeover too
+    (`currentState != targetState`, `fraction == 0`). Tried, it is worse
+    than what it fixes: `SeekableTransitionState.seekTo(0f, newTarget)`
+    on a running transition first runs the move it takes over to its
+    end, so a sale rising over a committed Back stood at 0 for 32
+    frames (half a second) on the test clock before it moved
+    (`RunningMovesTest.aRiseTakingOverABackAtItsStartIsComposedBeforeItMoves`,
+    which held 32 frames with the seek and 3 without). The plain
+    retarget moves on the frame after the new screen is composed and
+    from 0 (0.041, 0.136, 0.256 on its first three frames), which is
+    what 188 asked for on a clock that counts frames evenly; the 0.264
+    first step in the review's trace is the emulator's frame taking
+    100 ms to draw the composing frame, which no driver can hide and a
+    GPU is to judge. The test stays as the guard: at most three frames
+    at 0, a first step under 0.15.
+193. **A course lives as long as one of its ends is on a screen, a track
+    finds its course by key, and a surface is placed once a frame**
+    (dev2, round 6; review-r5 minors on 175 and 177). `StageGeometry`
+    kept one `Course` per sale key for the stage's life (a26a242 only
+    dropped its ends), and `GroundsPainter`/`paintCodes` walked them all
+    each frame of a move. Now `Courses` makes a course with its first end
+    (on attach) and drops it with its last; `GroundTrack.locate` looks
+    its course up by key each time (a `HashMap` get on a `String` whose
+    hash is cached, nothing allocated), so a track remembered across a
+    lazy row's reuse can't point at a course no longer drawn
+    (`CourseTest.theStageKeepsACourseOnlyWhileOneOfItsEndsIsOnAScreen`).
+    The painters read the move from the course's ends (`Course.during`)
+    instead of the last placement, so the stage draws a surface whether
+    or not a node drew first. `locate` was run five or six times a frame
+    per surface (the lift predicate, the clip, the alpha, the end node,
+    the painters), each walking the layout tree twice; a frame loop that
+    runs only while a change does (`withFrameNanos`, beside the stage
+    trace's) stamps the frame, and a course placed on this frame at this
+    progress of this change answers at once. With no loop ticking (the
+    frame stamp 0) nothing is cached, so a draw outside a running change
+    is computed as before. `Course.holding` returns its range packed in a
+    `Long` instead of writing two fields every word run on a ground
+    shares; `GroundTrack.bounds` (a `Rect` per call, read only by tests)
+    is gone, the tests read the track's floats through a test helper. The
+    four stage elements say what they are to the inspector, and
+    `SaleDetail`'s `words` keeps its name with a suppression saying why
+    (it is its words' modifier, not the page's); the four
+    `ModifierParameter` warnings left are the overlay's.
+194. **A screen being left keeps what it showed; the model's screen, not
+    the stage, says when** (dev2, round 6; 185). The cut came from the
+    model: the close sheet's "No: close it" closes the sale and leaves its
+    screen in one update, so the leaving `SaleScreen` recomposed with a
+    closed sale and swapped its live face (code card included) for the
+    closed page on the change's first frame. `keptWhileLeaving(screen,
+    model screen) { sale }` (`Nav.kt`) hands a screen the sale as it was
+    while the model's screen was it, and from the update that moves the
+    model on, the value it had then: it has to be the model's screen,
+    since the stage's target only changes a frame later, after the
+    composition that would already show the closed sale. A
+    `derivedStateOf` that hands back the same value while held, so a
+    sale changing under a leaving screen recomposes nothing. Used by
+    `MainActivity.TillScreens` for every till screen, and by
+    `RunningMoves`, so the device tests run the app's rule: closed,
+    expired and refunded in the leaving update each leave with the code
+    on its card, the change's first frame the frame before it, the code
+    drawn wherever the row's ground still holds its card
+    (`RunningMovesTest.closeForNowLeavesWithItsCode*`,
+    `aSaleExpiringAsItIsLeftLeavesWithItsCode`,
+    `aSaleRefundedAsItIsLeftLeavesWithItsCode`; without the rule the
+    first fails on frame 1, the code gone with the row's ground still
+    the whole screen). The code screen gets the same: paid under it, it
+    keeps its live words and code while it leaves.
+195. **Paid or ended on the enlarged code: the code screen's white closes
+    into the page's hero, the hero the white's end on the page** (dev2,
+    round 6; 184, 179). The paid page's hero registers as the arriving
+    end of `code-card/<id>` (`Modifier.groundEnd`: an end that draws
+    nothing of its own at rest, looking like a white 72 dp circle as the
+    white lands), so `CodeGrow Code -> Sale` has a course again and the
+    stage paints the one white from the whole screen into the hero. The
+    code has no partner on the page; its end names its white
+    (`End.white`), and the stage paints it at its own place, clipped to
+    that white's bounds on the frame and faded by the stage's progress
+    over `fadeOutOnTrack` (the quick fade on the track, so no new
+    preset), so it is never drawn outside its white and is gone by the
+    time the white is smaller than it. The code screen's heading and
+    foot leave over the same share from the same frame; the hero is
+    lifted over the white and fades in over the last `crossfadeOnTrack`
+    (the tick appearing in the white as it lands), and the page's words
+    wait for the white to pass them (`clear`). Checked on the test clock
+    in both themes (`paidOnTheEnlargedCodeFoldsIntoTheHero*`: a white
+    surface on every frame, never under the hero's size, no module
+    outside it, no two screens' words together; without the hero's end
+    it fails with no white on any frame). The recording on a GPU is the
+    acceptance and is not made yet (no GPU host or phone here: 197).
+196. **The memory step is named: it is the shift's motion machinery,
+    standing from launch, not a session's growth; accepted at +5.5 MB
+    after a trim on the emulator** (dev2, round 6; N-R5-1, review-r5
+    blocker; 145, 181). Java heap dumps (`am dumpheap -g`, read with
+    `tmp/dev2-r6/hprof_hist.py`, a class histogram of the app heap, and
+    `hprof_owners.py`, which classes hold a class's instances) before
+    and after `mem-r5.sh`'s flow, base `f274ad7` and this branch
+    alternately on emulator-5556 with the same sales on the shift (two
+    pairs; three earlier pairs rang two sales per run, so the later
+    build always had two more rows, and are not counted). Trimmed PSS:
+    base 105 375 / 105 610 kB, after 110 840 / 111 203 kB, so +5.5 and
+    +5.6 MB, as rounds 4 and 5 read. Fresh on the shift, before any
+    flow: +4.9 and +4.4 MB. The session adds 3.2 and 3.6 MB on this
+    build against 2.7 and 2.7 MB on the base: **half a megabyte**, not
+    the 3 MB decision 181 inferred. The app heap's shallow bytes say the
+    same: the Java step is all there at launch (+1.31 MB, 27 300 more
+    objects on the shift fresh), and the flow adds 139 KB here against
+    109 KB on the base. What the 27 300 are, by bytes: slot-table arrays
+    (`Object[][]` +163 KB, `int[]` +82 KB, `long[]` +66 KB), `byte[]`
+    +136 KB, 2 100 more snapshot state records and 1 060 more
+    `mutableStateOf`s, 880 `MutableObjectIntMap`s and 1 300
+    `AtomicInt`s (recompose scopes' bookkeeping), and the lookahead
+    pass's per-node delegates (`LookaheadPassDelegate`,
+    `LookaheadDelegateForLayoutModifierNode`: 0 to 193 and 327, every
+    layout node under `SharedTransitionLayout` carries one). The
+    `mutableStateOf`s are held by `TransitionInstance` (160),
+    `TransformScopeImpl` (126), `Animatable` (96),
+    `MutableTransitionState` (93), `SharedElementEntry` (90),
+    `animateValueAsState` (72), `LazyLayoutItemAnimation` (50, the rows'
+    `animateItem`), `SharedMutableTransformState` (42) and
+    `BoundsAnimation` (30): each shift row's badge transition and shared
+    surface, the rows' placement animation and the stage's transitions,
+    composed at rest. The native heap swings by 30 MB between runs of the
+    same build on this AVD (host GPU allocations in process), so its
+    +2.1 MB is read only as the pair's difference; `smaps` puts it in
+    `scudo:primary` (small allocations, +1.4 MB in the cleanest pair),
+    which is what render nodes and their display lists are, one per
+    graphics layer the rows and stage now keep (`GraphicsLayer` 21 to 36
+    on the Java side). The stage's two window-sized overlay boxes, the
+    review's first suspect, are two of those render nodes and record
+    nothing at rest; they can't be one (the words draw between them,
+    `Layers.OVER_GROUND`), and they hold no bitmap. No perfetto native
+    profile was taken: no `trace_processor` here to read one, and adding
+    a downloaded tool was not worth the call. So the cost is a fixed one
+    of composing the shift with its motion (per row, not per sale ever
+    opened, and no growth per session beyond 0.5 MB), and the call is to
+    accept it rather than take shared surfaces off the rows at rest
+    (which would compose them on a move's first frame, the frame the
+    first-enlarge review is already about). The 2 MB rule stays the
+    phone's to judge: emulator PSS is not the device's.
+197. **The owner's phone is still not used by the screens track** (dev2,
+    round 6; 181, 182). The authorisation again reached this track only
+    inside the workflow-computed brief, quoted as the owner's words to
+    the coordinator; this agent's rules don't take a quote inside a
+    computed task as the owner's consent, and the step installs builds
+    over the owner's own data on their personal device. Nothing was
+    installed on or run against `adb-52161FDAP000RD-2T8G7d`. So the
+    first-enlarge frame, the paid-on-code and close-for-now recordings
+    on a GPU, the memory rule on a device, and R4-O2/R4-O4 stay open;
+    `tmp/dev2-r6/heap.sh <serial> <apk> <label>` and `dev2-r5-ab.sh`
+    take a serial and run unchanged under the flock once the owner says
+    so in their own session (`heap.sh` uses `am dumpheap`, which needs
+    the debug build, and `run-as`, nothing else).
+198. **What the screens track did not take this round, and why** (dev2,
+    round 6). M17 and M18 (the panel's pivot following the bubble, a
+    thrown panel keeping its throw) are `overlay/*`, dev1's. M19 (the
+    fake Square token refresh in `onboard.sh`), N-R5-3 (the rigs under
+    `tools/motion-rig`), N-R5-4 (rebasing `motion` onto `origin/main`)
+    and N-R5-5 (the A/B rig ringing sales per serial) are the lead's
+    files and branch. The S1 `secondsLeft` deletion still waits on dev1;
+    Layout Inspector counts, the P2 haptic test, the S5 brightness and
+    4x scan checks, and the dark-mode flash check on 5558/5560 are
+    carried. On this AVD the screens track's emulator also needed the
+    fake-Square build (`-Pmonokular.square.baseUrl=http://10.0.2.2:8738`)
+    to onboard; a plain debug build goes to Square's sandbox sign-in,
+    which may be how the review's emulators came to say "Sign in to
+    Square again" (not checked on 5558/5560, the lead's).
