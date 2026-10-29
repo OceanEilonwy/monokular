@@ -54,19 +54,26 @@ class PosTextTest {
 
     @Test
     fun `the refund sheet says what to refund, where, and what the till saw`() {
-        assertEquals("Refund in Clover", PosText.refundSheetTitle("Clover"))
+        assertEquals("Refund in Clover", PosText.refundSheetTitle(clover))
+        assertEquals("Refund in Square", PosText.refundSheetTitle(square))
         assertEquals(
             "This sale wasn't paid in Monero. Refund it in Clover's Orders app: order 7F3KQ2MA, 4:07 PM, $13.88, paid with Monero. " +
                 "Monokular will notice when it's done.",
-            PosText.refundSheetBody("Clover's Orders app", "7F3KQ2MA", "4:07 PM", "$13.88"),
+            PosText.refundSheetBody(clover, asks = true, "7F3KQ2MA", "4:07 PM", "$13.88"),
         )
         assertEquals(
             "This sale wasn't paid in Monero. Refund it in Clover's Orders app: $13.88, paid with Monero. Monokular will notice when it's done.",
-            PosText.refundSheetBody("Clover's Orders app", null, null, "$13.88"),
+            PosText.refundSheetBody(clover, asks = true, null, null, "$13.88"),
+        )
+        assertEquals(
+            "This sale wasn't paid in Monero. Refund it in Square's Transactions: order bP9m, $13.88, paid with Monero. " +
+                "Tap I've refunded it once it's done.",
+            PosText.refundSheetBody(square, asks = false, "bP9m", null, "$13.88"),
+            "a sale of the point of sale the till changed from: only the cashier's word",
         )
         assertEquals(
             "Clover doesn't show a refund yet. Finish it in Clover's Orders app, then tap again.",
-            PosText.refundNotSeen("Clover", "Clover's Orders app"),
+            PosText.refundNotSeen(clover),
         )
     }
 

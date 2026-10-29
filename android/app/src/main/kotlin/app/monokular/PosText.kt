@@ -147,12 +147,12 @@ object PosText {
     // A sale's words, by the point of sale it was rung up at.
 
     /**
-     * The point of sale [sale] was rung up at, as far as this till knows: one
-     * found before the till's point of sale changed is [earlier]'s, any other
-     * the till's own, another till's included, since Monokulo doesn't say which
-     * point of sale took it (decision 141).
+     * The point of sale [sale] was rung up at: the one that found it
+     * (`FoundSale.pointOfSale`), so it keeps that name after the till's
+     * changes; another till's sale is named by the till's own, since
+     * Monokulo doesn't say which point of sale took it (decision 141).
      */
-    fun of(sale: TillSale, till: PointOfSale?, earlier: Map<String, PointOfSale>): PointOfSale? = earlier[sale.orderId] ?: till
+    fun of(sale: TillSale, till: PointOfSale?): PointOfSale? = sale.found?.pointOfSale ?: till
 
     fun refundedIn(pos: PointOfSale?): String = "Refunded in ${name(pos)}"
 
@@ -187,17 +187,28 @@ object PosText {
 
     fun startHint(pos: PointOfSale?): String = "Start watching and Monokular checks ${name(pos)} for Monero sales until you stop it."
 
-    /** The refund sheet for a point of sale whose API can't refund (acceptance T4.1): [posName] and [where] are the source's. */
-    fun refundSheetTitle(posName: String): String = "Refund in $posName"
+    /** The refund sheet's title (acceptance T4.1), for the point of sale that took the sale. */
+    fun refundSheetTitle(pos: PointOfSale): String = "Refund in ${pos.displayName}"
 
-    /** What to refund, and where: the order by its id, when it was rung up, the amount. */
-    fun refundSheetBody(where: String, order: String?, time: String?, amount: String): String =
-        "This sale wasn't paid in Monero. Refund it in $where: " +
+    /** Where at [pos] the cashier refunds a sale. */
+    fun refundWhere(pos: PointOfSale): String = when (pos) {
+        PointOfSale.Square -> "Square's Transactions"
+        PointOfSale.Clover -> "Clover's Orders app"
+    }
+
+    /**
+     * What to refund, and where: the order by its id or title, when it was rung up, the
+     * amount. [asks]: the till can ask [pos] whether it's done; else (the till has changed
+     * its point of sale since) the cashier's word is all it has (decision 138).
+     */
+    fun refundSheetBody(pos: PointOfSale, asks: Boolean, order: String?, time: String?, amount: String): String =
+        "This sale wasn't paid in Monero. Refund it in ${refundWhere(pos)}: " +
             listOfNotNull(order?.let { "order $it" }, time, amount).joinToString(", ") +
-            ", paid with Monero. Monokular will notice when it's done."
+            ", paid with Monero. " + if (asks) "Monokular will notice when it's done." else "Tap $REFUNDED_IT once it's done."
 
     /** "I've refunded it" asked, and the point of sale doesn't show it. */
-    fun refundNotSeen(posName: String, where: String): String = "$posName doesn't show a refund yet. Finish it in $where, then tap again."
+    fun refundNotSeen(pos: PointOfSale): String =
+        "${pos.displayName} doesn't show a refund yet. Finish it in ${refundWhere(pos)}, then tap again."
 
     const val REFUNDED_IT = "I've refunded it"
     const val NOT_YET = "Not yet"

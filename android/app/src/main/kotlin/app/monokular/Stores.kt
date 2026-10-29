@@ -18,7 +18,6 @@ import app.monokular.sales.TokenStore
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.builtins.ListSerializer
-import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.SetSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -209,31 +208,11 @@ class Stores(private val secure: SecureStore) {
         override fun load() = read("shift.sales", ListSerializer(TillSale.serializer())).orEmpty()
         override fun save(sales: List<TillSale>) {
             write("shift.sales", ListSerializer(TillSale.serializer()), sales.ifEmpty { null })
-            val earlier = earlierPos
-            if (earlier.isNotEmpty()) {
-                val kept = earlier.filterKeys { id -> sales.any { it.orderId == id } }
-                if (kept.size != earlier.size) earlierPos = kept
-            }
         }
     }
 
-    /**
-     * The point of sale each of this shift's sales found before the till's
-     * changed was rung up at, by order id (decision 141); forgotten with the sale.
-     */
-    var earlierPos: Map<String, PointOfSale>
-        get() = read("shift.pos", MapSerializer(String.serializer(), String.serializer())).orEmpty()
-            .mapNotNull { (id, wire) -> PointOfSale.fromWire(wire)?.let { id to it } }.toMap()
-        private set(value) = write("shift.pos", MapSerializer(String.serializer(), String.serializer()), value.mapValues { it.value.wire }.ifEmpty { null })
-
-    /** The shift's sales found at [pos] so far are named by it from now on. */
-    fun keepSalesNamed(pos: PointOfSale) {
-        val earlier = earlierPos
-        earlierPos = earlier + shift.load().filter { it.found != null && it.orderId !in earlier }.associate { it.orderId to pos }
-    }
-
     /** [sale]'s point of sale, for its words ([PosText.of]). */
-    fun pointOfSale(sale: TillSale): PointOfSale? = PosText.of(sale, pointOfSale, earlierPos)
+    fun pointOfSale(sale: TillSale): PointOfSale? = PosText.of(sale, pointOfSale)
 
     /** Forgets the store and everything about this till's point of sale. */
     fun forgetAll() {

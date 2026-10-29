@@ -172,9 +172,14 @@ class ShiftListTest {
         assertEquals("No: refund it in Clover", Closing.title(CloseChoice.RefundIt, sale("w"), clover))
         assertEquals(
             "Monokular closes it and shows you how to refund it in Clover.",
-            Closing.detail(CloseChoice.RefundIt, sale("w"), clover, refundsInPos = true, secondsLeft = 0),
+            Closing.detail(CloseChoice.RefundIt, sale("w"), clover, source = clover, secondsLeft = 0),
         )
-        assertEquals("Monokular refunds the sale and closes it.", Closing.detail(CloseChoice.RefundIt, sale("w"), PointOfSale.Square, false, 0))
+        assertEquals("Monokular refunds the sale and closes it.", Closing.detail(CloseChoice.RefundIt, sale("w"), PointOfSale.Square, PointOfSale.Square, 0))
+        assertEquals(
+            "Monokular closes it and shows you how to refund it in Square.",
+            Closing.detail(CloseChoice.RefundIt, sale("w"), PointOfSale.Square, source = clover, secondsLeft = 0),
+            "a Square sale on a till now on Clover: refunded in Square, by the cashier",
+        )
     }
 
     @Test
@@ -187,18 +192,25 @@ class ShiftListTest {
 
     @Test
     fun `a sale found before the point of sale changed keeps the name of the one that took it`() {
-        val before = sale("old", closedAt = at, refundedAt = at)
+        val before = sale("old", closedAt = at, refundedAt = at).let { it.copy(found = it.found!!.copy(pointOfSale = PointOfSale.Clover)) }
         val after = sale("new", closedAt = at, refundedAt = at)
-        val earlier = mapOf("old" to PointOfSale.Clover)
-        assertEquals(PointOfSale.Clover, PosText.of(before, PointOfSale.Square, earlier))
-        assertEquals(PointOfSale.Square, PosText.of(after, PointOfSale.Square, earlier), "found since: the till's own")
-        assertEquals(null, PosText.of(after, null, earlier))
-        assertEquals("Refunded in Clover", SaleText.status(before, PosText.of(before, PointOfSale.Square, earlier)))
+        assertEquals(PointOfSale.Clover, PosText.of(before, PointOfSale.Square))
+        assertEquals(PointOfSale.Square, PosText.of(after, PointOfSale.Clover), "found at Square: Square's, whatever the till's now")
+        assertEquals(PointOfSale.Clover, PosText.of(sale("theirs", mine = false), PointOfSale.Clover), "another till's: the till's own")
+        assertEquals(null, PosText.of(sale("theirs", mine = false), null))
+        assertEquals("Refunded in Clover", SaleText.status(before, PosText.of(before, PointOfSale.Square)))
         val closed = SalePage.of(sale("c", closedAt = at), PointOfSale.Clover, now = at, Locale.US, zone, elsewhere = true)
         assertEquals(listOf(PageAction.ShowCodeAgain), closed.actions, "this till can't refund it, or see its refund")
         assertEquals(
             "This sale was rung up in Clover before this till changed its point of sale. If the customer isn't paying, refund it in Clover.",
             closed.note?.text,
+        )
+        val told = sale("t", SalePhase.Expired, endedAt = at).copy(refundPendingAt = at)
+        val pendingThere = SalePage.of(told, PointOfSale.Clover, now = at, Locale.US, zone, elsewhere = true)
+        assertEquals(listOf(PageAction.Refund), pendingThere.actions, "already told to refund it there: Refund takes the cashier's word")
+        assertEquals(
+            "This sale was rung up in Clover before this till changed its point of sale. Refund it in Clover, then tap Refund to say it's done.",
+            pendingThere.note?.text,
         )
         assertEquals(listOf(CloseChoice.CloseForNow, CloseChoice.KeepUp), Closing.choices(sale("w"), elsewhere = true))
         assertEquals(CloseChoice.entries, Closing.choices(sale("w")))
@@ -219,9 +231,9 @@ class ShiftListTest {
         val theirs = sale("t", mine = false)
         assertEquals(listOf(CloseChoice.CloseForNow, CloseChoice.KeepUp), Closing.choices(theirs), "this till can't refund another's")
         assertEquals("No: close it", Closing.title(CloseChoice.CloseForNow, theirs, PointOfSale.Square))
-        assertEquals("Refund it in Square on Back till. A late payment still shows here.", Closing.detail(CloseChoice.CloseForNow, theirs, PointOfSale.Square, false, 0))
+        assertEquals("Refund it in Square on Back till. A late payment still shows here.", Closing.detail(CloseChoice.CloseForNow, theirs, PointOfSale.Square, PointOfSale.Square, 0))
         assertEquals("Not sure: close it for now", Closing.title(CloseChoice.CloseForNow, sale("w"), PointOfSale.Square))
-        assertEquals("14:52 left to pay.", Closing.detail(CloseChoice.KeepUp, sale("w"), PointOfSale.Square, false, 892))
+        assertEquals("14:52 left to pay.", Closing.detail(CloseChoice.KeepUp, sale("w"), PointOfSale.Square, PointOfSale.Square, 892))
         assertEquals(emptyList(), Closing.choices(shift.single { it.orderId == "refunded" }), "nothing to ask: no X")
         assertEquals(emptyList(), Closing.choices(sale("w", closedAt = 1)))
         assertTrue(Closing.applies(sale("w")), "the code is still up: the answer stands")

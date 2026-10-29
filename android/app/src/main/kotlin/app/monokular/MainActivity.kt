@@ -34,7 +34,6 @@ import app.monokular.ui.ScanScreen
 import app.monokular.ui.SettingsActions
 import app.monokular.ui.SettingsScreen
 import app.monokular.ui.SettingsState
-import app.monokular.ui.LocalEarlierPos
 import app.monokular.ui.LocalPointOfSale
 import app.monokular.ui.PointOfSaleScreen
 import app.monokular.ui.PosSetup
@@ -86,7 +85,7 @@ class MainActivity : ComponentActivity() {
                 // Step 4 has no Back in setup (as Square's had none), but goes back to Settings when opened from there.
                 val stepFour = screen == Screen.PointOfSale && !model.setupDone
                 BackHandler(enabled = screen != Screen.Welcome && screen != Screen.Till && !stepFour) { model.back() }
-                CompositionLocalProvider(LocalPointOfSale provides model.pointOfSale, LocalEarlierPos provides model.earlierPos) {
+                CompositionLocalProvider(LocalPointOfSale provides model.pointOfSale) {
                     when (val s = screen) {
                         Screen.Welcome -> WelcomeScreen(onStart = { model.go(Screen.Scan) })
                         Screen.Scan -> ScanScreen(onCode = model::onCode, onBack = model::back)
@@ -158,8 +157,7 @@ class MainActivity : ComponentActivity() {
                                 else -> null
                             }?.let { id -> sales.firstOrNull { it.orderId == id } }
                             val pos = model.pointOfSale
-                            val refundsInPos = runner.refundsInPos != null
-                            val actions = remember(multiWindow, pos, refundsInPos) { tillActions(multiWindow, pos, refundsInPos) }
+                            val actions = remember(multiWindow, pos, runner.source) { tillActions(multiWindow, pos, runner.source) }
                             when {
                                 // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
                                 // a disconnected till shows why, whatever was on screen.
@@ -250,7 +248,7 @@ class MainActivity : ComponentActivity() {
         startedAt = model.shiftStartedAt,
     )
 
-    private fun tillActions(multiWindow: Boolean, pos: PointOfSale?, refundsInPos: Boolean) = TillActions(
+    private fun tillActions(multiWindow: Boolean, pos: PointOfSale?, source: PointOfSale) = TillActions(
         onSettings = model::openSettings,
         onOpen = model::open,
         onBack = model::leave,
@@ -268,7 +266,7 @@ class MainActivity : ComponentActivity() {
         onSignIn = ::signIn,
         onForget = model::forget,
         onStartShift = { model.setShift(true) },
-        refundsInPos = refundsInPos,
+        source = source,
     )
 
     override fun onStart() {

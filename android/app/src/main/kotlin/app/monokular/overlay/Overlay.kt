@@ -31,7 +31,6 @@ import app.monokular.Graph
 import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
-import app.monokular.ui.LocalEarlierPos
 import app.monokular.ui.LocalPointOfSale
 import app.monokular.ui.MonokularTheme
 import kotlinx.coroutines.CoroutineScope
@@ -173,7 +172,7 @@ class Overlay(
         setViewTreeLifecycleOwner(owner)
         setViewTreeSavedStateRegistryOwner(owner)
         setContent {
-            MonokularTheme { CompositionLocalProvider(LocalPointOfSale provides graph.stores.pointOfSale, LocalEarlierPos provides graph.stores.earlierPos) { content() } }
+            MonokularTheme { CompositionLocalProvider(LocalPointOfSale provides graph.stores.pointOfSale) { content() } }
         }
     }
 

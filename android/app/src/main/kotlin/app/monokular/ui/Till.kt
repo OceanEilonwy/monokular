@@ -68,12 +68,9 @@ import kotlinx.coroutines.delay
  */
 val LocalPointOfSale = compositionLocalOf<PointOfSale?> { null }
 
-/** The points of sale of the shift's sales found before the till's changed, by order id (decision 141). */
-val LocalEarlierPos = compositionLocalOf<Map<String, PointOfSale>> { emptyMap() }
-
-/** The point of sale that names [sale]'s words: the one that took it, as far as the till knows ([PosText.of]). */
+/** The point of sale that names [sale]'s words: the one that took it, else the till's ([PosText.of]). */
 @Composable
-fun posOf(sale: TillSale): PointOfSale? = PosText.of(sale, LocalPointOfSale.current, LocalEarlierPos.current)
+fun posOf(sale: TillSale): PointOfSale? = PosText.of(sale, LocalPointOfSale.current)
 
 /** Seconds left until [expiresAt], ticking. */
 @Composable
@@ -129,8 +126,8 @@ class TillActions(
     val onSignIn: () -> Unit,
     val onForget: () -> Unit,
     val onStartShift: () -> Unit,
-    /** The till's point of sale can't refund through its API: the cashier refunds there, guided ([RefundSheet]). */
-    val refundsInPos: Boolean = false,
+    /** The point of sale the till's source watches ([RunnerState.source]), for the close sheet's "No" ([Closing.refundsThere]). */
+    val source: PointOfSale = PointOfSale.Square,
 )
 
 /**
@@ -205,7 +202,7 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
         }
     }
     if (asking) {
-        CloseSheet(sale, actions.refundsInPos, onChoice = { actions.onClose(sale.orderId, it) }, onDismiss = { asking = false })
+        CloseSheet(sale, actions.source, onChoice = { actions.onClose(sale.orderId, it) }, onDismiss = { asking = false })
     }
 }
 

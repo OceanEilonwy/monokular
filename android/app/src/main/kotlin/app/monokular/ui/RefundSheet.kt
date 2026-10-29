@@ -25,18 +25,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.monokular.PosText
 import app.monokular.SaleText
+import app.monokular.core.PointOfSale
 import app.monokular.sales.TillSale
 
 /**
- * The refund sheet over a sale's page at a point of sale whose API can't
- * refund it (Clover, decision 130): open while the cashier refunds [orderId]
- * there. [posName] and [where] are the source's words; [checking] while "I've
- * refunded it" asks the point of sale, [notSeen] when it answered no refund yet.
+ * The refund sheet over a sale's page, open while the cashier refunds [orderId]
+ * at [pointOfSale], the one that took it (decision 130): one whose API can't
+ * refund it (Clover), or one the till has changed from since. [asks]: the till
+ * can ask [pointOfSale] whether it's done. [checking] while "I've refunded it"
+ * asks, [notSeen] when it answered no refund yet.
  */
 data class RefundSheet(
     val orderId: String,
-    val posName: String,
-    val where: String,
+    val pointOfSale: PointOfSale,
+    val asks: Boolean,
     val checking: Boolean = false,
     val notSeen: Boolean = false,
 )
@@ -51,7 +53,7 @@ data class RefundSheet(
 @Composable
 fun RefundInPosSheet(sale: TillSale, sheet: RefundSheet, onRefunded: () -> Unit, onNotYet: () -> Unit) {
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
-    val title = PosText.refundSheetTitle(sheet.posName)
+    val title = PosText.refundSheetTitle(sheet.pointOfSale)
     ModalBottomSheet(
         onDismissRequest = onNotYet,
         sheetState = state,
@@ -71,7 +73,8 @@ fun RefundInPosSheet(sale: TillSale, sheet: RefundSheet, onRefunded: () -> Unit,
             Text(title, style = display(22), modifier = Modifier.padding(horizontal = 4.dp).semantics { heading() })
             Text(
                 PosText.refundSheetBody(
-                    sheet.where,
+                    sheet.pointOfSale,
+                    sheet.asks,
                     order = sale.found?.let { it.title ?: it.orderId },
                     time = sale.createdAt.takeIf { it > 0 }?.let { SaleText.time(it) },
                     amount = SaleText.amount(sale),
@@ -80,7 +83,7 @@ fun RefundInPosSheet(sale: TillSale, sheet: RefundSheet, onRefunded: () -> Unit,
             )
             if (sheet.notSeen) {
                 Text(
-                    PosText.refundNotSeen(sheet.posName, sheet.where), fontSize = 14.sp, lineHeight = 20.sp, color = mk.ink,
+                    PosText.refundNotSeen(sheet.pointOfSale), fontSize = 14.sp, lineHeight = 20.sp, color = mk.ink,
                     modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(mk.warnGround)
                         .padding(horizontal = 14.dp, vertical = 12.dp).semantics { liveRegion = LiveRegionMode.Polite },
                 )

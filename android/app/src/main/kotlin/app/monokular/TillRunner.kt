@@ -1,7 +1,6 @@
 package app.monokular
 
 import app.monokular.core.Connection
-import app.monokular.core.PointOfSale
 import app.monokular.core.MonokuloException
 import app.monokular.core.PointOfSale
 import app.monokular.core.Problems
@@ -9,9 +8,12 @@ import app.monokular.core.StreamEvent
 import app.monokular.push.interval
 import app.monokular.sales.CloverSource
 import app.monokular.sales.FoundSale
+import app.monokular.sales.PosException
 import app.monokular.sales.Refunds
 import app.monokular.sales.SaleSource
 import app.monokular.sales.Shift
+import app.monokular.sales.Standing
+import app.monokular.sales.standing
 import app.monokular.sales.SquareSource
 import app.monokular.sales.Till
 import app.monokular.sales.TillState
@@ -37,17 +39,27 @@ data class RunnerState(
     val disconnected: Boolean = false,
     /** What the event stream's last failure said, while it's closed: `too-many-streams`, say. */
     val streamProblem: String? = null,
-    /** The till's point of sale can't refund through its API: the cashier refunds there (decision 130). */
-    val refundsInPos: Refunds.InPos? = null,
+    /**
+     * The point of sale the till's source watches ([SaleSource.pointOfSale]):
+     * with [Closing.refundsThere] and a sale's own, whether its "No" is
+     * refunded by the till or by the cashier there (decision 130).
+     */
+    val source: PointOfSale = PointOfSale.Square,
     val till: TillState = TillState(),
 )
 
-/** A source for a till that runs without a point of sale: it shows other tills' sales only. */
-private object NoSource : SaleSource {
+/**
+ * A source for a till that runs without a point of sale signed in: it shows
+ * other tills' sales only. A Square sale's refund fails rather than marking
+ * the sale refunded with nothing sent to Square (decision 143); any other
+ * point of sale's is marked to refund there, as `Till` does for a sale its
+ * source didn't take.
+ */
+internal object NoSource : SaleSource {
     override val pointOfSale = PointOfSale.Square
     override suspend fun newSales() = emptyList<FoundSale>()
     override suspend fun receipt(sale: FoundSale) = null
-    override val refunds = Refunds.ByTill {}
+    override val refunds = Refunds.ByTill { throw PosException(0, "Sign in to Square first") }
     override fun handled(sale: FoundSale) = Unit
 }
 
@@ -119,7 +131,7 @@ class TillRunner(private val graph: Graph) {
             PointOfSale.Clover -> if (merchant != null && graph.cloverAuth().signedIn) graph.cloverSource(merchant) else NoSource
             null -> NoSource
         }
-        mutable.update { it.copy(refundsInPos = source.refunds as? Refunds.InPos) }
+        mutable.update { it.copy(source = source.pointOfSale) }
         return Till(source, graph.monokulo, connection, store = stores.shift)
     }
 
@@ -162,6 +174,9 @@ class TillRunner(private val graph: Graph) {
             till.refund(orderId)
         }
     }
+
+    /** Where [orderId] stands in the till itself, ahead of [state]'s copy. */
+    fun standing(orderId: String): Standing? = till?.sales?.value?.sales?.firstOrNull { it.orderId == orderId }?.standing
 
     /** The refund sheet's "I've refunded it": whether the point of sale now shows the sale refunded (decision 130). */
     suspend fun confirmRefund(orderId: String): Boolean = till?.confirmRefund(orderId) ?: false

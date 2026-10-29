@@ -46,7 +46,8 @@ data class SalePageModel(
  * sale's. A sale whose order has a title at the point of sale (Clover's "Table
  * 4") shows it first among the facts. [elsewhere]: the sale was rung up at a
  * point of sale this till has since changed from (decision 141), so the till
- * can't refund it or see its refund, and says to refund it there.
+ * can't refund it or see its refund, and says to refund it there; one already
+ * told to refund it there keeps Refund, for the cashier's word that it's done.
  */
 object SalePage {
     fun of(
@@ -156,13 +157,16 @@ object SalePage {
                 note = null, order = true, facts = listOfNotNull(rungUp, fact("Seen on the network", sale.seenAt)), actions = emptyList(),
             )
         }
-        val here = if (elsewhere && PageAction.Refund in model.actions) {
-            model.copy(
+        val here = when {
+            !elsewhere || PageAction.Refund !in model.actions -> model
+            // Already told to refund it there: Refund opens the sheet, whose "I've refunded it" takes the cashier's word.
+            sale.standing == Standing.RefundInPos -> model.copy(
+                note = Note("This sale was rung up in $name before this till changed its point of sale. Refund it in $name, then tap Refund to say it's done."),
+            )
+            else -> model.copy(
                 actions = model.actions - PageAction.Refund,
                 note = Note("This sale was rung up in $name before this till changed its point of sale. If the customer isn't paying, refund it in $name."),
             )
-        } else {
-            model
         }
         val title = sale.found?.title ?: return here
         return here.copy(facts = listOf(Fact("Order", title)) + here.facts)
@@ -248,15 +252,26 @@ object Closing {
     }
 
     /**
-     * The line under an answer, with [secondsLeft] on the code for "Yes". [refundsInPos]: the
-     * till can't refund at its point of sale, the cashier does it there (decision 130).
+     * Whether "No" on a sale of [pos] leaves the refund to the cashier there, with the
+     * refund sheet: [pos] isn't the point of sale the till's [source] watches (the
+     * cashier changed it since), or [source]'s API can't refund (Clover, decision 130).
+     * `Till.refund`'s own rule, from the two points of sale.
      */
-    fun detail(choice: CloseChoice, sale: TillSale, till: PointOfSale?, refundsInPos: Boolean, secondsLeft: Long): String = when (choice) {
+    fun refundsThere(pos: PointOfSale?, source: PointOfSale): Boolean = pos != source || when (source) {
+        PointOfSale.Square -> false
+        PointOfSale.Clover -> true
+    }
+
+    /**
+     * The line under an answer, with [secondsLeft] on the code for "Yes"; [pos] is the sale's
+     * point of sale, [source] the one the till's source watches ([refundsThere]).
+     */
+    fun detail(choice: CloseChoice, sale: TillSale, pos: PointOfSale?, source: PointOfSale, secondsLeft: Long): String = when (choice) {
         CloseChoice.RefundIt ->
-            if (refundsInPos) "Monokular closes it and shows you how to refund it in ${PosText.name(till)}."
+            if (refundsThere(pos, source)) "Monokular closes it and shows you how to refund it in ${PosText.name(pos)}."
             else "Monokular refunds the sale and closes it."
         CloseChoice.CloseForNow -> if (sale.found == null) {
-            PosText.refundOnOtherTill(till, sale.deviceName ?: "the till that rang it up") + " A late payment still shows here."
+            PosText.refundOnOtherTill(pos, sale.deviceName ?: "the till that rang it up") + " A late payment still shows here."
         } else {
             "It stays in the shift. A late payment still counts, and you can refund it there."
         }

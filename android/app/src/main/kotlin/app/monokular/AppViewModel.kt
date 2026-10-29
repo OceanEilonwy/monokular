@@ -18,10 +18,12 @@ import app.monokular.push.WakeUpStatus
 import app.monokular.sales.CloverMerchant
 import app.monokular.sales.Pkce
 import app.monokular.sales.PosException
+import app.monokular.sales.Standing
 import app.monokular.sales.SquareAuth
 import app.monokular.sales.SquareLocation
 import app.monokular.sales.TenderState
 import app.monokular.sales.TillSale
+import app.monokular.sales.standing
 import app.monokular.sales.live
 import app.monokular.ui.CloverTender
 import app.monokular.ui.RefundSheet
@@ -199,9 +201,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** The point of sale chosen, null until the cashier taps one (or with a till that runs without one). */
     val pointOfSale: PointOfSale? get() = stores.pointOfSale
 
-    /** The points of sale of this shift's sales found before the till's changed (decision 141). */
-    val earlierPos: Map<String, PointOfSale> get() = stores.earlierPos
-
     /** Signed in to the chosen point of sale. */
     val posSignedIn: Boolean
         get() = when (stores.pointOfSale) {
@@ -335,7 +334,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** What changing the point of sale touches: the Bell, the old sign-in, the choice. */
     private val switchSide = object : PosSwitchSide {
         override suspend fun takeBellRegistrationBack() = graph.wakeUps.unregister()
-        override fun keepSalesNamed(pos: PointOfSale) = stores.keepSalesNamed(pos)
         override fun signOut(pos: PointOfSale) = signOutHere(pos)
         override fun choose(pos: PointOfSale) {
             stores.pointOfSale = pos
@@ -632,17 +630,27 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Refunds a sale's point-of-sale sale ([close] it first: the close sheet's "No"); its button
-     * waits for the point of sale's answer. Where the till can't refund (Clover), the sale is
-     * marked for the cashier to refund there and the refund sheet opens (decision 130).
+     * waits for the point of sale's answer. A sale the till leaves to the cashier (`Till.refund`:
+     * Clover, decision 130) is marked to refund there, and the refund sheet opens once it stands
+     * so, whichever point of sale took it.
      */
     fun refund(orderId: String, close: Boolean = false) {
         if (orderId in refunding.value) return
-        // Rung up at a point of sale this till has changed from: refunded there, not by this till (decision 141).
-        if (stores.earlierPos[orderId]?.let { it != stores.pointOfSale } == true) return
+        val sale = graph.runner.state.value.till.sales.firstOrNull { it.orderId == orderId } ?: return
+        val found = sale.found ?: return
+        // Rung up at a point of sale this till has changed from: refunded there, and only a sale
+        // already told so opens the sheet, for the cashier's word (decisions 138, 141).
+        if (found.pointOfSale != stores.pointOfSale && sale.standing != Standing.RefundInPos) return
         val job = graph.runner.refund(orderId, close) ?: return
-        graph.runner.state.value.refundsInPos?.let { refunds -> refundSheet.value = RefundSheet(orderId, refunds.posName, refunds.where) }
         refunding.update { it + orderId }
-        job.invokeOnCompletion { refunding.update { it - orderId } }
+        job.invokeOnCompletion {
+            refunding.update { it - orderId }
+            if (graph.runner.standing(orderId) == Standing.RefundInPos) {
+                val pos = found.pointOfSale
+                val source = graph.runner.state.value.source
+                refundSheet.value = RefundSheet(orderId, pos, asks = pos == source && Closing.refundsThere(pos, source))
+            }
+        }
     }
 
     /** The refund sheet's "I've refunded it": the point of sale asked now; the sheet goes once it shows the refund. */

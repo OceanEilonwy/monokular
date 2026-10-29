@@ -10,9 +10,6 @@ interface PosSwitchSide {
     /** The Bell's registration taken back, awaited, while the old sign-in is still here (acceptance T5.5). */
     suspend fun takeBellRegistrationBack()
 
-    /** The shift's sales found at [pos] keep its name once another is chosen (decision 141). */
-    fun keepSalesNamed(pos: PointOfSale)
-
     /** Signed out of [pos]: its tokens, its location or merchant, its cursor and remembered tender id forgotten. */
     fun signOut(pos: PointOfSale)
 
@@ -29,14 +26,14 @@ interface PosSwitchSide {
  * tender id behind, then saves the new;
  * the Wake-ups choice and the shift's saved sales are never touched, so the
  * Bell registers again for the new point of sale once it is signed in, and
- * the old sales' pages still open, named by the point of sale that took them.
+ * the old sales' pages still open, named by the point of sale that took them
+ * (`FoundSale.pointOfSale`).
  */
 object PosSwitch {
     /** Whether anything changed: the caller then shows the new point of sale's sign-in. */
     suspend fun choose(side: PosSwitchSide, from: PointOfSale?, signedIn: Boolean, to: PointOfSale): Boolean {
         if (from == to) return false
         if (from != null) {
-            side.keepSalesNamed(from)
             if (signedIn) side.takeBellRegistrationBack()
             side.signOut(from)
         }

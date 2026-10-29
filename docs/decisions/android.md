@@ -1457,6 +1457,14 @@ says otherwise.
      signed in to is left behind; only the Bell step waits on a sign-in.
      It is `PosSwitch`, a pure helper tested on a recording fake,
      as `TillNav` is.
+     `Till` keeps the old sales safe from the new source: a sale another
+     point of sale took is only ever marked to refund there
+     (`refundPendingAt`), never sent to the till's point of sale, whose
+     payment ids it doesn't know, and the timer never asks the new one
+     about it; its "I've refunded it" takes the cashier's word, since
+     nothing can ask the point of sale that took it, and the sheet says
+     so ("Tap I've refunded it once it's done") instead of "Monokular will
+     notice".
 139. **A `401` from Clover before the token's expiry (Clover ended it early)
      is met by one refresh and the request asked once more**; a refresh
      another request already made is used instead, and a fresh token
@@ -1471,17 +1479,20 @@ says otherwise.
      Orders app.
 141. **A sale found before the till's point of sale changed keeps the name
      of the one that took it, and is refunded there** (acceptance D6's
-     "their source name shown as it was"). `FoundSale` doesn't say which
-     point of sale found it, so the app remembers it: changing the point of
-     sale (`PosSwitch`) first writes the shift's found sales' order ids
-     with the old point of sale (`shift.pos`), forgotten as each sale leaves
-     the shift, and `PosText.of(sale, till, earlier)` names every sale's
-     words, receipt label and notification by it; any other sale, another
-     till's included (Monokulo doesn't say), by the till's own. The till
-     can't refund such a sale or see its refund (it is signed in elsewhere),
-     so its page drops Refund and says to refund it there, and its close
-     sheet offers what another till's does. Carrying the point of sale on
-     `FoundSale` itself would let `sales` do this, and is a follow-up there.
+     "their source name shown as it was"). `FoundSale.pointOfSale` says
+     which point of sale found it (a sale saved before Clover joined reads
+     as Square's), so `PosText.of(sale, till)` is that, or the till's own
+     for another till's sale (Monokulo doesn't say), and names every sale's
+     words, receipt label and notification; the app keeps no list of its
+     own. The till can't refund such a sale or see its refund (it is signed
+     in elsewhere), so its page drops Refund and says to refund it there,
+     and its close sheet offers what another till's does; one already told
+     to refund it there keeps Refund, which opens the refund sheet named by
+     the sale's point of sale, for the cashier's word (decision 138). The
+     close sheet's "No" says the cashier refunds it when the sale's point
+     of sale isn't the one the till's source watches or that one can't
+     refund (`Closing.refundsThere`), `Till.refund`'s own rule, and any sale
+     that then stands as `RefundInPos` opens the sheet.
      A step 4 opened from Settings has Back and Done in place of the step
      number and the test sale, and the shift's top row says a Clover
      merchant's name once when it is the store's.
@@ -1489,3 +1500,10 @@ says otherwise.
      sale**: changing it would change Square's keys for sales in flight,
      and two points of sale's payment ids never meet at one Monokulo
      connection.
+143. **A till not signed in to a point of sale refuses a Square sale's
+     refund rather than marking it refunded with nothing sent**:
+     `TillRunner`'s `NoSource` (Square's, so a Clover sale is marked to
+     refund in Clover as decision 141 has) throws `PosException` "Sign in to
+     Square first", which the sale page shows as its refund problem. Before,
+     its `Refunds.ByTill` did nothing and `Till` marked the sale refunded,
+     on Wake-ups too.

@@ -44,7 +44,7 @@ import kotlinx.coroutines.launch
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CloseSheet(sale: TillSale, refundsInPos: Boolean, onChoice: (CloseChoice) -> Unit, onDismiss: () -> Unit) {
+fun CloseSheet(sale: TillSale, source: PointOfSale, onChoice: (CloseChoice) -> Unit, onDismiss: () -> Unit) {
     val pos = posOf(sale)
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -71,7 +71,7 @@ fun CloseSheet(sale: TillSale, refundsInPos: Boolean, onChoice: (CloseChoice) ->
             }
             val left = secondsLeft(sale.expiresAt)
             for (choice in Closing.choices(sale, elsewhere = pos != LocalPointOfSale.current)) {
-                Answer(choice, sale, pos, refundsInPos, left) {
+                Answer(choice, sale, pos, source, left) {
                     // Only once the sheet is down: a sale paid meanwhile swaps
                     // the screen out, cancels the hide and drops the answer.
                     scope.launch { state.hide() }.invokeOnCompletion { cause ->
@@ -92,7 +92,7 @@ private fun Answer(
     choice: CloseChoice,
     sale: TillSale,
     pos: PointOfSale?,
-    refundsInPos: Boolean,
+    source: PointOfSale,
     secondsLeft: Long,
     onClick: () -> Unit,
 ) = Row(
@@ -108,7 +108,7 @@ private fun Answer(
     }
     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(Closing.title(choice, sale, pos), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Text(Closing.detail(choice, sale, pos, refundsInPos, secondsLeft), fontSize = 13.sp, color = mk.muted)
+        Text(Closing.detail(choice, sale, pos, source, secondsLeft), fontSize = 13.sp, color = mk.muted)
     }
 }
 
