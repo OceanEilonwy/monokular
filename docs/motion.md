@@ -80,6 +80,7 @@ is no position to carry. `Spring.StiffnessMedium` is 1500 and
 | `Motion.surface` | `spring(stiffness = 380f, dampingRatio = 0.86f)` | 450 ms | A window-sized thing arriving or leaving: the panel growing out of the bubble and collapsing back; the enlarged code growing from the sale's code; a screen's container transform (shift row to sale, order card to order page); the sale's code card turning into its paid or ended hero |
 | `Motion.settle` | `spring(stiffness = 800f, dampingRatio = 1f)` | 250 ms | Small things finding their place with no bounce: a shift row moving when another arrives or leaves; the status pill resizing when its words change; the panel's buttons changing width; the docked bubble sliding to its slot |
 | `Motion.flick` | `spring(stiffness = 600f, dampingRatio = 0.8f)` seeded with the release velocity | 300 ms | What the finger let go of: the bubble snapping to its edge; the grabber springing back; the close sheet settling (Material's own spring is kept) |
+| `Motion.thrown` | `exponentialDecay()` (the platform's plain friction) seeded with the release velocity; null under Still | runs until the card it moves has landed | What the finger threw, running on while something else brings it home: the grabber's fling past the rule (decision 190) |
 | `Motion.sweep` | `spring(stiffness = 170f, dampingRatio = 1f)` | 600 ms | The phase ring's arc growing a quarter: slow enough to be a sweep, overdamped so it never overshoots a quarter mark, and a second step arriving mid-sweep just retargets |
 | `Motion.track` | `tween(450, LinearEasing)` | (a line, not a time) | The straight line every spatial part of a screen change follows (shared surfaces' bounds, rises, slides), so the stage at progress p has each part p of the way (decision 120) |
 | `Motion.stage` | `Motion.surface.fraction` on the stage's progress, null under Still | 450 ms | What moves the stage's progress to a screen: an uninterrupted change and the release of a back gesture alike, so a seek and a spring share one physics (decision 120) |
@@ -175,7 +176,10 @@ developer: dev1 is the overlay, dev2 the app's screens; the tech lead owns
 - Phone, lower: the reverse. The free bubble window is added back at the
   edge slot *before* the panel window is removed, and the panel window
   goes on the frame after the free bubble has drawn: the handoff is
-  pixel-identical. The shadow, grabber and header collapse with the card;
+  pixel-identical. Flung down the grabber, the drag runs on at the
+  finger's speed (`Motion.thrown`, a decay) inside the card's scaling
+  layer while the raise collapses, so the first frames after the release
+  carry on down before the collapse takes the card (decision 190). The shadow, grabber and header collapse with the card;
   nothing inside the card animates separately.
 - Tablet: the floating panel scales and fades up from the corner of the
   card nearest the bubble (pivot clamped to the card's bounds; see the
@@ -205,8 +209,12 @@ developer: dev1 is the overlay, dev2 the app's screens; the tech lead owns
   -velocity / height)` from the current drag offset: the panel keeps
   moving in the finger's direction for the first frames while it shrinks
   toward the dock, so a fling reads as the panel being thrown away. The
-  drag offset is kept (it is part of the layer's translation) and decays
-  with the progress. Short of the rule: `drag.animateTo(0f, Motion.flick,
+  drag offset runs on from the release at the finger's speed under
+  `Motion.thrown` (`drag.animateDecay`), inside the card's scaling layer,
+  so on screen it is the drag times the card's scale: the first two frames
+  after the release carry on down, then the collapse takes the card into
+  the bubble (decision 190). Raised again mid-collapse, the drag springs
+  back to 0 under `Motion.flick`. Short of the rule: `drag.animateTo(0f, Motion.flick,
   initialVelocity = velocity)`.
 - Tablet: the drag fades the card (decision 65); past the rule the fade
   completes with the same collapse spring, seeded the same way.

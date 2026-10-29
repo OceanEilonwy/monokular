@@ -3345,3 +3345,30 @@ design unchanged.
     grows out of it; that is the spatial model the review asked for.
     Recorded on emulator-5554 with a host GPU
     (`review-r5/gpu-panel-raise-from-far-bubble.webp`).
+190. **A grabber fling carries on after the release: the drag runs on as
+    a decay inside the card's scaling layer** (dev1, round 6; 187, M18).
+    187's literal fix, the drag under `Motion.flick` toward 0 seeded with
+    the release velocity, turns the card round on the first frame or the
+    second at any fling speed (simulated at 1500 to 5000 px/s: `flick`'s
+    pull from a 400 px drag outweighs the throw within 16 ms). So the
+    drag runs on under a decay (`Animatable.animateDecay`), the new
+    `Motion.thrown` preset (`exponentialDecay()` with the platform's
+    defaults, null under Still: nothing carried past a release), and the
+    offset is the drag alone, applied inside the grow's layer, so on
+    screen it is the drag times the card's scale and goes with the card
+    (before, it was the drag times the raise, also inside the layer, so
+    on screen drag × raise × scale, which reversed on the release frame).
+    The first two frames after the release carry on down at a review-like
+    6000 px/s, then the collapse takes the card; a thrown card fades out
+    lower than an untouched lower's, which is the throw being seen, and
+    the only lower 189's "touch" rule does not hold for. Raised again
+    mid-collapse (the docked bubble tapped), the drag springs home under
+    `flick`, from a coroutine waiting on the raise's target
+    (`Presence.heading`), not a frame read; before, a re-raise after a
+    lower past the rule kept the drag and came up a drag's length low.
+    Tests: `aFlungPanelKeepsTheFingersWayAfterTheRelease` (a 6000 px/s
+    `swipeWithVelocity`, the top lower on each of the two frames after
+    release, then rising) and `aThrownPanelRaisedAgainComesBackToItsPlace`
+    (the old code puts the card 1823 px low); `MotionTest` checks the
+    preset is null under Still. `docs/motion.md` M2 and the preset table
+    say so.
