@@ -18,7 +18,9 @@ seeked frame. Regenerate with:
 | The panel collapsing into it | `phone-lower-q*.png` |
 | The same over Square's white, where its shadow must go with it (decision 134) | `phone-lower-light-q1..3.png` |
 | The code folding into the paid tick | `phone-paid-fold-q*.png` |
-| The next sale's code growing out of the tick | `phone-next-sale-q*.png` |
+| The next sale's code growing out of the tick, opaque from its first frame (decision 135) | `phone-next-sale-q*.png` |
+| A tablet's code coming back from the order: whole under the order fading off it | `tablet-back-to-code-q*.png` |
+| A phone's code coming back from the order under Still (Remove animations) | `phone-still-back-to-code-q*.png` |
 | The order growing out of the card to the window | `phone-order-grow-q*.png` |
 
 The screens track's moves (RowGrow, CodeGrow, OrderGrow, Rise) are theirs
