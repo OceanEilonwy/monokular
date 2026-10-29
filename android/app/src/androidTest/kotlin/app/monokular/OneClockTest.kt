@@ -28,6 +28,7 @@ class OneClockTest {
             List(6) { testSale("paid$it", phase = app.monokular.core.SalePhase.Paid, paidAt = 990) }
         compose.setContent { Till { ShiftScreen(status, sales, noActions, now) } }
         compose.waitForIdle()
+        assertEquals(true, recompositions.count("androidx.compose.animation.AnimatedContent") > 0, "the tracer sees the badges' transitions")
         recompositions.reset()
 
         repeat(5) {
@@ -40,6 +41,9 @@ class OneClockTest {
         val rows = recompositions.count("app.monokular.ui.SaleRow")
         assertEquals(0, rows % 5, "each live row on screen once a tick, nothing else: $rows")
         assertEquals(true, rows in 5..30, "only the live rows: $rows")
+        // A row's badge transition is called only when its glyph changes, never by the row's countdown.
+        assertEquals(0, recompositions.count("app.monokular.ui.RowBadge"), "the badges don't tick")
+        assertEquals(0, recompositions.count("androidx.compose.animation.AnimatedContent"), "nor their transitions")
     }
 
     @Test
