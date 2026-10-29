@@ -2102,3 +2102,15 @@ design unchanged.
     every one. The same test writes every screen move's seeked frames for
     review (the `additionalTestOutputDir` the runner pulls), so a cropped
     code is caught in CI rather than in a recording.
+117. **The order page fades in over the sale while its card grows**
+    (dev2, round 2; the designer's review of M7's OrderGrow). Only the
+    list is the order's surface; the page's own ground, bar, heading and
+    "Show the code" bar were drawn at full opacity on the first frame,
+    covering the sale while the card was still its sale size, so the move
+    read as a page appearing and then a card stretching. The page now
+    fades in (`fade`) over the sale, which stays under it, and on the way
+    back fades out first (`fadeQuick`) over the sale returning beneath. One
+    full-screen alpha layer for 200 ms, which the host-GPU emulator draws
+    within the frame; the RowGrow and CodeGrow pairs keep their
+    no-fade rule (105). A device test checks the frame at progress 0 is
+    the sale itself.

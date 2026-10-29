@@ -158,7 +158,11 @@ fun AnimatedContentTransitionScope<Screen>.transform(move: Move, motion: Motion,
         // The shared surface grows or shrinks between the two and does the one crossfade, inside its bounds. The
         // screens themselves don't fade: the one going stays as it is under the surface until the surface lands
         // (it covers it by then, or it is the one shown), so no frame composites a whole screen through an alpha layer.
-        Move.RowGrow, Move.OrderGrow, Move.CodeGrow -> EnterTransition.None togetherWith ExitTransition.KeepUntilTransitionsFinished
+        Move.RowGrow, Move.CodeGrow -> EnterTransition.None togetherWith ExitTransition.KeepUntilTransitionsFinished
+        // Only the order's list is the surface: the page's ground, bar, heading and foot fade in over the sale as the
+        // card grows (the sale staying under them), and out first on the way back, so the card and the page are one move.
+        Move.OrderGrow ->
+            if (back) EnterTransition.None togetherWith fadeOut(quick) else fadeIn(fade) togetherWith ExitTransition.KeepUntilTransitionsFinished
         Move.Rise -> (fadeIn(fade) + scaleIn(motion.track.fraction, initialScale = Nav.RISE_FROM)) togetherWith fadeOut(quick)
         Move.FadeThrough -> (fadeIn(fade) + scaleIn(motion.track.fraction, initialScale = Nav.SETTINGS_FROM)) togetherWith fadeOut(quick)
         is Move.Slide -> {
