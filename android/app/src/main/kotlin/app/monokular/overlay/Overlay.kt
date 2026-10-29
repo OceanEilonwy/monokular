@@ -27,7 +27,6 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import app.monokular.Bubble
 import app.monokular.BubbleLook
 import app.monokular.Graph
-import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import app.monokular.ui.MonokularTheme
@@ -201,7 +200,7 @@ class Overlay(
             compose {
                 val s by state.collectAsStateWithLifecycle()
                 androidx.compose.runtime.SideEffect { frame.describe(Bubble.label(s.look)) }
-                BubbleFace(s.look, phase = s.sale?.phase ?: SalePhase.Waiting)
+                BubbleFace(s.look)
             }.apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS },
         )
         runCatching { wm.addView(frame, params) }.onSuccess { bubble = frame }
