@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import app.monokular.Move
 import app.monokular.LocalStage
+import app.monokular.Nav
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.derivedStateOf
 import app.monokular.SaleText
@@ -75,7 +76,7 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
     // The bars' icons turn dark as the white passes half the screen change, and back as it does on the way out (M8):
     // read from the stage's line, so this recomposes twice a move, not per frame.
     val stage = LocalStage.current
-    val white by remember(stage) { derivedStateOf { stage == null || stage.shown() >= HALF_WAY } }
+    val white by remember(stage) { derivedStateOf { stage == null || stage.shown() >= Nav.HALF_WAY } }
     if (white) DarkBarIcons()
     val now = rememberNowSeconds()
     // The design's light roles, fixed: this screen is white in both themes.
@@ -169,9 +170,6 @@ private fun DarkBarIcons() {
         }
     }
 }
-
-/** Half way through the screen change: the white covers the screen's middle from here. */
-private const val HALF_WAY = 0.5f
 
 private tailrec fun Context.activity(): Activity? = when (this) {
     is Activity -> this
