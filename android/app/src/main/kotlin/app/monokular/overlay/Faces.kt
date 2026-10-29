@@ -1,14 +1,8 @@
 package app.monokular.overlay
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.LinearOutSlowInEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
-import androidx.compose.animation.core.snap
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -84,6 +78,7 @@ import app.monokular.ui.Fixed
 import app.monokular.ui.LightTokens
 import app.monokular.ui.Logo
 import app.monokular.ui.MkIcons
+import app.monokular.ui.Motion
 import app.monokular.ui.OrderContent
 import app.monokular.ui.OutlineButton
 import app.monokular.ui.PhaseRing
@@ -91,7 +86,7 @@ import app.monokular.ui.PrimaryButton
 import app.monokular.ui.QrCode
 import app.monokular.ui.display
 import app.monokular.ui.mk
-import app.monokular.ui.reducedMotion
+import app.monokular.ui.motion
 import app.monokular.ui.secondsLeft
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -130,7 +125,7 @@ object Panel {
     /**
      * Whether the sale the panel showed, [shown], live at the last look
      * ([wasLive]), has just been paid: the panel then shows it paid for
-     * [app.monokular.Bubble.PAID_MS] before moving on to the next sale
+     * [Motion.Dwell.PAID_MS] before moving on to the next sale
      * waiting, so the cashier sees the payment land where they're looking.
      */
     fun landed(sales: List<TillSale>, shown: String?, wasLive: Boolean): Boolean =
@@ -187,10 +182,9 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
             contentAlignment = Alignment.Center,
         ) { Logo(38.dp, ring = Color(0xFF565656), grey = true) }
         BubbleLook.Lit -> {
-            val ring = if (pulse && !reducedMotion()) {
-                rememberInfiniteTransition(label = "pulse").animateFloat(
-                    0f, 1f, infiniteRepeatable(tween(1600, easing = LinearOutSlowInEasing), RepeatMode.Restart), label = "ring",
-                )
+            val turn = motion.pulse
+            val ring = if (pulse && turn != null) {
+                rememberInfiniteTransition(label = "pulse").animateFloat(0f, 1f, turn, label = "ring")
             } else {
                 null
             }
@@ -221,7 +215,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
  */
 @Composable
 fun SalePanel(sale: TillSale, where: String, wide: Boolean, actions: PanelActions, sideBySide: Boolean = false) {
-    if (sale.phase == SalePhase.Paid) LaunchedEffect(sale.orderId) { delay(5_000); actions.onLower() }
+    if (sale.phase == SalePhase.Paid) LaunchedEffect(sale.orderId) { delay(Motion.Dwell.PAID_MS); actions.onLower() }
     // No Surface gives the overlay's window a text colour: the panel sets its own.
     CompositionLocalProvider(LocalContentColor provides mk.ink) { PanelCard(sale, where, wide, sideBySide, actions) }
 }
@@ -232,7 +226,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
     val drag = remember { Animatable(0f) }
     var height by remember { mutableFloatStateOf(0f) }
     val fling = with(LocalDensity.current) { Panel.FLING_DP_PER_S.dp.toPx() }
-    val still = reducedMotion()
+    val springBack = motion.flick.px
     Column(
         Modifier.then(if (wide) Modifier.width(360.dp) else Modifier.fillMaxWidth())
             .onSizeChanged { height = it.height.toFloat() }
@@ -260,7 +254,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                         if (Panel.lowers(drag.value, height, velocity, fling)) {
                             actions.onLower()
                         } else {
-                            drag.animateTo(0f, if (still) snap() else spring())
+                            drag.animateTo(0f, springBack)
                         }
                     }
                 },

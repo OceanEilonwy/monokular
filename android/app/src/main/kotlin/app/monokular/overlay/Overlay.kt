@@ -31,6 +31,7 @@ import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import app.monokular.ui.MonokularTheme
+import app.monokular.ui.Motion
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -127,7 +128,7 @@ class Overlay(
         paidTimer?.cancel()
         justPaid.value = true
         paidTimer = scope.launch {
-            delay(Bubble.PAID_MS)
+            delay(Motion.Dwell.PAID_MS)
             justPaid.value = false
         }
     }

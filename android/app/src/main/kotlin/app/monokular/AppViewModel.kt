@@ -16,6 +16,7 @@ import app.monokular.sales.SquareException
 import app.monokular.sales.SquareLocation
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
+import app.monokular.ui.Motion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -103,7 +104,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         TillNav.paidOnScreen(next, sales, liveBefore)?.let { paid ->
             stepBack?.cancel()
             stepBack = viewModelScope.launch {
-                delay(TillNav.PAID_STEP_BACK_MS)
+                delay(Motion.Dwell.PAID_MS)
                 if (screenState.value == Screen.Sale(paid)) leave(paid)
             }
         }

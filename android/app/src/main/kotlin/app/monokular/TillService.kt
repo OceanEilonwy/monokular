@@ -15,6 +15,7 @@ import app.monokular.notify.SaleNotifications
 import app.monokular.overlay.Overlay
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
+import app.monokular.ui.Motion
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,7 +69,7 @@ class TillService : LifecycleService() {
                             justPaid.value = sale.orderId
                             paidTimer?.cancel()
                             paidTimer = lifecycleScope.launch {
-                                delay(Bubble.PAID_MS)
+                                delay(Motion.Dwell.PAID_MS)
                                 justPaid.value = null
                             }
                         }

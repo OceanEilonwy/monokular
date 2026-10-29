@@ -188,9 +188,6 @@ object TillNav {
 
     private fun liveOrUnknown(sales: List<TillSale>, orderId: String): Boolean =
         sales.firstOrNull { it.orderId == orderId }?.live ?: true
-
-    /** How long a sale paid on screen shows as paid before the till steps back (decision 42). */
-    const val PAID_STEP_BACK_MS = 5_000L
 }
 
 /**
@@ -214,7 +211,7 @@ class PhaseChanges {
 enum class BubbleLook { Idle, Lit, Paid }
 
 object Bubble {
-    /** Green for a few seconds after a sale is paid, then lit while a sale's code is up, else faded. */
+    /** Green for [app.monokular.ui.Motion.Dwell.PAID_MS] after a sale is paid, then lit while a sale's code is up, else faded. */
     fun look(sales: List<TillSale>, justPaid: Boolean): BubbleLook = when {
         justPaid -> BubbleLook.Paid
         sales.any { it.live } -> BubbleLook.Lit
@@ -238,7 +235,4 @@ object Bubble {
         BubbleLook.Lit -> "Monokular, new sale, tap to show the code"
         BubbleLook.Paid -> "Monokular, paid"
     }
-
-    /** How long the bubble stays green after a sale is paid. */
-    const val PAID_MS = 4_000L
 }
