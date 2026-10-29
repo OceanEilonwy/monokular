@@ -2035,3 +2035,19 @@ design unchanged.
      the next expiry), no polling. The dev server's fake orders still
      don't expire on their own; that is the other repository's, and the
      till no longer depends on it.
+118. **A tablet's panel sits beside the bubble, and grows out of the
+     bubble's side of it** (dev1, round 2; R1-O4, replaces the overlap QA
+     logged under 90). With the bubble on the end edge the floating panel's
+     window now stands off that edge by the bubble's window and an 8 dp gap
+     (`Panel.floatingInsetDp`), so the card is next to the bubble and no
+     frame has the bubble under it; with the bubble on the other edge the
+     panel keeps to its own edge as before. The card grows from its side
+     nearest the bubble at the bubble's height (held to the card), not from
+     a corner, so the origin is literally beside the bubble. The plan said
+     to slide the bubble to the panel's near corner on `settle` and back on
+     lower; that would be a second window-attribute animation, which
+     performance rule 9 allows only for the bubble's release, and it would
+     move the thing the cashier placed. Moving the panel's window once, when
+     it is made, costs nothing per frame. A bubble dragged to the other edge
+     while the panel is up moves the panel's window once, on the snap's
+     landing.
