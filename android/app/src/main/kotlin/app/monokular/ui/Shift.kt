@@ -269,16 +269,7 @@ private fun SaleRow(sale: TillSale, now: LongState, onOpen: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(Modifier.clearAndSetSemantics {}) {
-            // Ring to tick, ring to clock: one face of the badge fading into the next; the ring's own arc sweeps (M6).
-            val fade = motion.fade.fraction
-            // Opening a sale that isn't live, the badge grows into its page's hero; a paid sale stepping back, the hero shrinks into it.
-            AnimatedContent(targetState = row.icon, transitionSpec = { (fadeIn(fade) togetherWith fadeOut(fade)).using(null) }, label = "row badge") { icon ->
-                Box(Modifier.sharedSurface(badgeKey(sale.orderId), Move.RowGrow, CircleShape, layer = Layers.OVER_GROUND)) {
-                    StateBadge(sale, icon, badgeGround(icon), RingRowSize, 18.dp, quiet = true)
-                }
-            }
-        }
+        RowBadge(sale, row.icon)
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(row.title, fontSize = 16.sp, color = if (row.quiet) mk.muted else mk.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(row.sub, fontSize = 13.sp, color = toneColor(row.tone), maxLines = 2, overflow = TextOverflow.Ellipsis)
@@ -287,6 +278,23 @@ private fun SaleRow(sale: TillSale, now: LongState, onOpen: () -> Unit) {
             Icon(MkIcons.Code, contentDescription = null, tint = mk.muted, modifier = Modifier.size(22.dp))
         } else {
             Icon(MkIcons.Chevron, contentDescription = null, tint = mk.muted, modifier = Modifier.size(16.dp))
+        }
+    }
+}
+
+/**
+ * A row's badge: ring to tick, ring to clock, one face fading into the
+ * next (the ring's own arc sweeps, M6). Its own skippable scope, so the
+ * row's countdown ticking doesn't call into its transition: it runs only
+ * when the glyph changes. Opening a sale that isn't live, the badge grows
+ * into its page's hero; a paid sale stepping back, the hero shrinks into it.
+ */
+@Composable
+private fun RowBadge(sale: TillSale, icon: StateIcon) = Box(Modifier.clearAndSetSemantics {}) {
+    val fade = motion.fade.fraction
+    AnimatedContent(targetState = icon, transitionSpec = { (fadeIn(fade) togetherWith fadeOut(fade)).using(null) }, label = "row badge") { face ->
+        Box(Modifier.sharedSurface(badgeKey(sale.orderId), Move.RowGrow, CircleShape, layer = Layers.OVER_GROUND)) {
+            StateBadge(sale, face, badgeGround(face), RingRowSize, 18.dp, quiet = true)
         }
     }
 }
