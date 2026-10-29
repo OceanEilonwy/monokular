@@ -14,6 +14,7 @@ import org.junit.Rule
 import org.junit.Test
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.min
 import kotlin.test.assertTrue
 
 /**
@@ -63,6 +64,10 @@ class RunningMovesTest {
 
     @Test fun thePaidFoldDark() = paidFold(dark = true)
 
+    @Test fun backFromASaleThatRoseGoesIntoItsRowLight() = backAfterRise(dark = false)
+
+    @Test fun backFromASaleThatRoseGoesIntoItsRowDark() = backAfterRise(dark = true)
+
     @Test fun theCodeGrowsUnderStillLight() = stillEnlarge(dark = false)
 
     @Test fun theCodeGrowsUnderStillDark() = stillEnlarge(dark = true)
@@ -81,13 +86,46 @@ class RunningMovesTest {
     private fun codeGrow(dark: Boolean) {
         moves.start(Screen.Sale("a1"), dark)
         val frames = moves.run(Screen.Code("a1"), groundKey = codeGround("a1"))
-        check("code-grow", dark, frames, Move.CodeGrow, glyphs = true, grows = true, bars = if (dark) barsTurnAtHalf(frames) else emptyList())
+        check("code-grow", dark, frames, Move.CodeGrow, glyphs = true, grows = true, bars = (if (dark) barsTurnAtHalf(frames) else emptyList()) + margins(frames))
     }
 
     private fun codeShrink(dark: Boolean) {
         moves.start(Screen.Code("a1"), dark)
         val frames = moves.run(Screen.Sale("a1"), groundKey = codeGround("a1"))
-        check("code-shrink", dark, frames, Move.CodeGrow, glyphs = true, grows = true, bars = if (dark) barsTurnAtHalf(frames) else emptyList())
+        check("code-shrink", dark, frames, Move.CodeGrow, glyphs = true, grows = true, bars = (if (dark) barsTurnAtHalf(frames) else emptyList()) + margins(frames))
+    }
+
+    /**
+     * The code and its white are one surface (decision 163): on every frame of the move the code is inside its white,
+     * and its margin on each side is never below the smaller of that side's margins at the move's two ends (the two
+     * run on one line, so the margin runs straight from one to the other).
+     */
+    private fun margins(frames: List<RunningMoves.Frame>): List<String> {
+        val both = frames.mapNotNull { f -> val g = f.ground; val c = f.code; if (g != null && c != null) Triple(f, g, c) else null }
+        if (both.size < 3) return listOf("the code and its white move together on only ${both.size} frames")
+        fun sides(g: Rect, c: Rect) = listOf(c.left - g.left, c.top - g.top, g.right - c.right, g.bottom - c.bottom)
+        val first = sides(both.first().second, both.first().third)
+        val last = sides(both.last().second, both.last().third)
+        val names = listOf("left", "top", "right", "bottom")
+        val out = mutableListOf<String>()
+        for ((f, g, c) in both) {
+            val m = sides(g, c)
+            for (i in m.indices) {
+                val least = min(first[i], last[i]) - MARGIN_SLACK
+                if (m[i] < least) out += "f${f.index}: the code's ${names[i]} margin is ${"%.1f".format(m[i])} px, below the smaller rest margin ${"%.1f".format(least + MARGIN_SLACK)} (code $c, white $g)"
+            }
+        }
+        return out
+    }
+
+    /**
+     * Back from a sale that came up by itself, with its row on the shift (decision 165): the row it came from takes it
+     * back, the same move as a sale the cashier opened, the code whole on its white or not drawn at all on every frame.
+     */
+    private fun backAfterRise(dark: Boolean) {
+        moves.start(Screen.Till, dark)
+        moves.run(Screen.Sale("a1"), byItself = true)
+        check("back-after-rise", dark, moves.run(Screen.Till, groundKey = "sale/a1"), Move.RowGrow, glyphs = false, grows = true)
     }
 
     /**
@@ -195,10 +233,146 @@ class RunningMovesTest {
             else for (i in shaped.first()..shaped.last()) if (moving[i].ground == null) failures += "f${moving[i].index}: the moving ground has no shape mid-move"
         }
         for (f in frames) failures += if (move == Move.CodeGrow) codeOnWhite(f) else codeNotGrey(f)
-        if (glyphs) for (f in moving) failures += cutGlyphs(f, frames.first().bitmap)
+        if (move == Move.RowGrow) for (f in moving) failures += codeWholeOrNone(f)
+        if (grows) failures += startsAtOnce(moving)
+        if (move != null) failures += wordsTogether(frames)
+        if (glyphs) for (f in moving) failures += cutGlyphs(f, frames.first().bitmap, frames.last().bitmap)
         if (grows) failures += groundTravels(frames)
         if (dark) failures += flashes(frames)
         report("$name-${theme(dark)}", frames, failures)
+    }
+
+    /**
+     * The moving ground has a shape from the change's first frame, and travels within [PRIMED] frames more: the
+     * arriving screen's first frame is drawn at 0 before the spring's clock starts (decision 178), and then it goes,
+     * with no hold while the leaving screen's words go (decision 167).
+     */
+    private fun startsAtOnce(moving: List<RunningMoves.Frame>): List<String> {
+        val first = moving.indexOfFirst { it.ground != null }
+        if (first < 0) return emptyList()
+        if (first > 1) return listOf("f${moving[first].index}: the ground first has a shape ${first + 1} frames into the move")
+        val a = moving[first].ground!!
+        val goes = moving.drop(first + 1).indexOfFirst { f ->
+            val b = f.ground ?: return@indexOfFirst false
+            abs(b.left - a.left) + abs(b.top - a.top) + abs(b.right - a.right) + abs(b.bottom - a.bottom) >= 1f
+        }
+        return if (goes < 0 || goes >= PRIMED + 1) listOf("f${moving[first].index}: the ground holds at $a for ${if (goes < 0) "the whole move" else "${goes + 1} frames"}") else emptyList()
+    }
+
+    /**
+     * On a row's grow and shrink, the sale's code is drawn whole or not at all (decision 167): where the ground holds
+     * its card, the code's darkest modules are there; where it doesn't, none of its modules show inside the ground.
+     */
+    private fun codeWholeOrNone(f: RunningMoves.Frame): List<String> {
+        val g = f.ground ?: return emptyList()
+        val out = mutableListOf<String>()
+        for (c in f.codes.filter { it.width > 20f }) {
+            val inside = Rect(maxOf(c.left, g.left), maxOf(c.top, g.top), min(c.right, g.right), min(c.bottom, g.bottom))
+            if (inside.width <= 2f || inside.height <= 2f) continue
+            val holds = g.left <= c.left + 1f && g.top <= c.top + 1f && g.right >= c.right - 1f && g.bottom >= c.bottom - 1f
+            // Modules and the white between them: a code, as no ground of either theme is both.
+            val (dark, white) = inkAndWhite(f.bitmap, inside)
+            if (!holds && dark > CODE_SHARE && white > CODE_SHARE) out += "f${f.index}: part of the code at $c is drawn inside the ground at $g"
+        }
+        return out
+    }
+
+    /** How much of [r] in [b] is a module's ink, and how much the white round it. */
+    private fun inkAndWhite(b: Bitmap, r: Rect): Pair<Float, Float> {
+        var dark = 0
+        var white = 0
+        var n = 0
+        for (y in r.top.toInt().coerceAtLeast(0) until r.bottom.toInt().coerceAtMost(b.height) step 2) {
+            for (x in r.left.toInt().coerceAtLeast(0) until r.right.toInt().coerceAtMost(b.width) step 2) {
+                val l = lum(b.getPixel(x, y))
+                if (l < MODULE) dark++
+                if (l >= WHITE) white++
+                n++
+            }
+        }
+        return if (n == 0) 0f to 0f else dark.toFloat() / n to white.toFloat() / n
+    }
+
+    /**
+     * Two screens' words are never both readable on one frame (decisions 131, 164). How much of a text run shows on a
+     * frame is read from the picture: the slope of its region's pixels against the same region at rest (the move's
+     * first frame for the screen leaving, its last for the one arriving), which is its alpha whatever ground it is
+     * drawn over and whatever else crosses it. No frame has a leaving and an arriving run both above half.
+     */
+    private fun wordsTogether(frames: List<RunningMoves.Frame>): List<String> {
+        val first = frames.first()
+        val last = frames.last()
+        val from = first.words.entries.firstOrNull { it.value.isNotEmpty() }?.key ?: return emptyList()
+        val to = last.words.entries.firstOrNull { it.key != from && it.value.isNotEmpty() }?.key ?: return emptyList()
+        fun runs(f: RunningMoves.Frame, s: Screen) = f.words[s].orEmpty().filter { (_, r) -> r.width > 8f && r.height > 6f && spread(f.bitmap, r) > INK_SPREAD }
+        val leaving = runs(first, from)
+        val arriving = runs(last, to)
+        val out = mutableListOf<String>()
+        for (f in frames.drop(1).dropLast(1)) {
+            val l = leaving.firstOrNull { (_, r) -> shows(f.bitmap, first.bitmap, last.bitmap, r) > HALF }
+            val a = arriving.firstOrNull { (_, r) -> shows(f.bitmap, last.bitmap, first.bitmap, r) > HALF }
+            if (l != null && a != null) out += "f${f.index}: \"${l.first}\" (leaving, ${"%.2f".format(shows(f.bitmap, first.bitmap, last.bitmap, l.second))}) and \"${a.first}\" (arriving, ${"%.2f".format(shows(f.bitmap, last.bitmap, first.bitmap, a.second))}) both show"
+        }
+        return out
+    }
+
+    /**
+     * How much of [rest]'s picture in [region] shows in [f]: [f] fitted by least squares as a mix of the move's two
+     * ends there ([rest] and [other], whose own likeness to each other is so taken out), [rest]'s weight.
+     */
+    private fun shows(f: Bitmap, rest: Bitmap, other: Bitmap, region: Rect): Float {
+        val a = ArrayList<Float>()
+        val b = ArrayList<Float>()
+        val y = ArrayList<Float>()
+        for (py in region.top.toInt().coerceAtLeast(0) until region.bottom.toInt().coerceAtMost(f.height)) {
+            for (px in region.left.toInt().coerceAtLeast(0) until region.right.toInt().coerceAtMost(f.width)) {
+                a += lum(rest.getPixel(px, py))
+                b += lum(other.getPixel(px, py))
+                y += lum(f.getPixel(px, py))
+            }
+        }
+        if (a.size < 8) return 0f
+        val ma = a.average()
+        val mb = b.average()
+        val my = y.average()
+        var saa = 0.0
+        var sbb = 0.0
+        var sab = 0.0
+        var say = 0.0
+        var sby = 0.0
+        for (i in a.indices) {
+            val da = a[i] - ma
+            val db = b[i] - mb
+            val dy = y[i] - my
+            saa += da * da
+            sbb += db * db
+            sab += da * db
+            say += da * dy
+            sby += db * dy
+        }
+        if (saa < 1.0) return 0f
+        val det = saa * sbb - sab * sab
+        // The two ends alike, or the other flat there: [rest] alone explains the frame.
+        if (sbb < 1.0 || det < 1e-6 * saa * sbb) return (say / saa).toFloat()
+        return ((say * sbb - sby * sab) / det).toFloat()
+    }
+
+    /** The standard deviation of [region]'s luminance in [b]: a text run's ink against its ground. */
+    private fun spread(b: Bitmap, region: Rect): Float {
+        var sum = 0.0
+        var sq = 0.0
+        var n = 0
+        for (y in region.top.toInt().coerceAtLeast(0) until region.bottom.toInt().coerceAtMost(b.height)) {
+            for (x in region.left.toInt().coerceAtLeast(0) until region.right.toInt().coerceAtMost(b.width)) {
+                val l = lum(b.getPixel(x, y)).toDouble()
+                sum += l
+                sq += l * l
+                n++
+            }
+        }
+        if (n == 0) return 0f
+        val m = sum / n
+        return kotlin.math.sqrt((sq / n - m * m).coerceAtLeast(0.0)).toFloat()
     }
 
     private fun report(name: String, frames: List<RunningMoves.Frame>, failures: List<String>) {
@@ -247,13 +421,15 @@ class RunningMovesTest {
      * No arriving text run on [f] half under the moving ground's edge: ink on the side away from the ground and none
      * under it (decision 147). Words on the ground, clipped to it, are the other way about, and stay.
      */
-    private fun cutGlyphs(f: RunningMoves.Frame, first: Bitmap): List<String> {
+    private fun cutGlyphs(f: RunningMoves.Frame, first: Bitmap, last: Bitmap): List<String> {
         val g = f.ground ?: return emptyList()
         val out = mutableListOf<String>()
         for ((text, t) in f.texts) {
             if (t.width < 4f || t.height < 4f || !t.overlaps(g)) continue
             val (under, beside) = split(t, g) ?: continue
-            if (ink(f.bitmap, beside) && changed(f.bitmap, first, beside) && !ink(f.bitmap, under)) out += "f${f.index}: \"$text\" at $t is cut by the ground's edge at $g"
+            // The ink beside the edge is this text's (the picture there is more its rest picture than the first frame's),
+            // not a leaving word's going under the ground there (decision 155).
+            if (ink(f.bitmap, beside) && changed(f.bitmap, first, beside) && shows(f.bitmap, last, first, beside) > HALF && !ink(f.bitmap, under)) out += "f${f.index}: \"$text\" at $t is cut by the ground's edge at $g"
         }
         return out
     }
@@ -308,7 +484,9 @@ class RunningMovesTest {
         val grows = last > first
         val out = mutableListOf<String>()
         var still = 0
-        for (i in 1 until areas.size) {
+        // The frames drawn at 0 before the spring starts are [startsAtOnce]'s to bound; the travel is checked after them.
+        val off = areas.indexOfFirst { abs(it.second - first) > whole * TURN }.coerceAtLeast(1)
+        for (i in off until areas.size) {
             val (index, area) = areas[i]
             val step = area - areas[i - 1].second
             if (if (grows) step < -whole * TURN else step > whole * TURN) out += "f$index: the moving ground turns back (${"%.0f".format(step)} px²)"
@@ -350,5 +528,23 @@ class RunningMovesTest {
 
         /** How far off a ground's edge a glyph's ink is looked for: the ground's own edge is a contrast too. */
         const val EDGE = 3f
+
+        /** Frames a change is drawn at 0 before its spring starts: the arriving screen's first composition (decision 178). */
+        const val PRIMED = 2
+
+        /** A margin may round a pixel of the half-size frame below the smaller rest margin. */
+        const val MARGIN_SLACK = 1f
+
+        /** A code's module. */
+        const val MODULE = 60f
+
+        /** A region with this much of both modules and white has a code in it. */
+        const val CODE_SHARE = 0.05f
+
+        /** A text run with this much spread of luminance in its region has ink in it to be read. */
+        const val INK_SPREAD = 12f
+
+        /** Above half shown: readable (decision 131). */
+        const val HALF = 0.5f
     }
 }

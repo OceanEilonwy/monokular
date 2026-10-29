@@ -91,7 +91,7 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
             val ground = rememberGroundTrack(codeGround(sale.orderId))
             Box(
                 Modifier.fillMaxSize()
-                    .sharedGround(codeGround(sale.orderId), Move.CodeGrow, GroundLook(Fixed.White, CodeScreenCorner), GroundLook(Fixed.White, CodeCorner), ground),
+                    .sharedGround(codeGround(sale.orderId), Move.CodeGrow, GroundLook(Fixed.White, CodeScreenCorner), ground),
             )
             Column(
                 Modifier.fillMaxSize().safeDrawingPadding().padding(start = 6.dp, end = 6.dp, top = 20.dp, bottom = 28.dp),

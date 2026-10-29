@@ -90,8 +90,11 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
     val placement = motion.settle.spec(IntOffset.VisibilityThreshold)
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
+            // The shift's own words, its chrome as much as its rows, fade through a row's grow and shrink at their own
+            // size, so they are never read together with the sale's (decision 164).
+            val chrome = Modifier.words(through = ShiftThrough)
             LazyColumn(Modifier.widthIn(max = 640.dp).fillMaxSize()) {
-                item(key = "top") { TopRow(status, actions) }
+                item(key = "top") { Box(chrome) { TopRow(status, actions) } }
                 if (status.disconnected) {
                     item(key = "disconnected") {
                         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -103,13 +106,13 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                     return@LazyColumn
                 }
                 item(key = "problem") {
-                    Notice(status.problem, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
+                    Notice(status.problem, chrome.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
                     if (status.signInAgain) {
-                        PrimaryButton("Sign in to Square again", actions.onSignIn, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth())
+                        PrimaryButton("Sign in to Square again", actions.onSignIn, chrome.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth())
                     }
                 }
                 item(key = "summary") {
-                    Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Column(chrome.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("This shift", style = display(28, -0.4), modifier = Modifier.semantics { heading() })
                         Text(
                             if (status.running) ShiftList.summary(sales, status.startedAt) else "Not watching",
@@ -119,12 +122,12 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                 }
                 if (!status.running || sales.isEmpty()) item(key = "idle") { Idle(status.running, actions) }
                 if (sales.isNotEmpty()) {
-                    item(key = "chips") { Chips(filter, ShiftList.needsAction(sales)) { filter = it } }
+                    item(key = "chips") { Box(chrome) { Chips(filter, ShiftList.needsAction(sales)) { filter = it } } }
                     if (rows.isEmpty()) {
                         item(key = "empty") {
                             Text(
                                 ShiftList.empty(filter), fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
+                                modifier = chrome.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
                             )
                         }
                     }
@@ -140,7 +143,7 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                                 .padding(horizontal = 16.dp).fillMaxWidth(),
                         ) {
                             val ground = rememberGroundTrack("sale/${sale.orderId}")
-                            Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, rowLook(ends, mk.card), GroundLook(mk.ground, 0.dp), ground))
+                            Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, rowLook(ends, mk.card), ground))
                             Column(Modifier.fillMaxWidth().words(over = Move.RowGrow, on = ground).clip(shape)) {
                                 if (i > 0) Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(mk.divider))
                                 SaleRow(sale, now) { actions.onOpen(sale.orderId) }
@@ -153,6 +156,9 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
         }
     }
 }
+
+/** The moves the shift's chrome fades through: a row growing into its sale, and back. */
+private val ShiftThrough = setOf(Move.RowGrow)
 
 /** The rows' card's corner. */
 private val RowCorner = 20.dp

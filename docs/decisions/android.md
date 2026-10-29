@@ -2282,3 +2282,79 @@ design unchanged.
     per second for every live sale with the panel up, so it was taken
     out. Whether a real GPU draws the first open in time is the phone's
     question (R4-O2).
+175. **The stage draws every moving ground and the code from one read of
+    its progress** (dev2, round 5; answers 163 and 166, and the
+    desynchronisation behind 146, 160 and 165). The grounds and the code
+    rode `sharedBounds`: a bounds animation of its own, placed with the
+    layout of the update before, a clip computed with this frame's, and a
+    fill reaching past to cover the gap (160). Three reads of one move, and
+    a back gesture's seek moved the words (which read the stage's
+    progress) but not them. Now each shared surface's two ends register
+    where their screens lay them out (`StageGeometry`, `End`, one
+    `Modifier.Node` each), and on every frame of a move its place is the
+    straight line between the two at the stage's own progress, the number
+    the words read, the spring drives and a seek sets (`Course`). The stage
+    draws the moving grounds and the code itself, in two window-sized
+    layers of the overlay (a node's own overlay layer is cut to the node,
+    so a ground drawn from a 264 dp card could not cover the screen); the
+    code is its one bitmap drawn into its line's box with no smoothing, so
+    it is still one image scaled whole (principle 3), and the code and its
+    white come from the same read, so the quiet zone runs straight from
+    one rest margin to the other. A change that takes over another
+    mid-move (a Back during a grow) starts each surface from where it was
+    drawn last, so nothing jumps. `GroundTrack` is now each screen's view
+    of a course (the words' clip, what waits for it, a test or the trace
+    reading it) and `LocalGroundTracks` is documented as the test seam it
+    is. On 5556, a recorded enlarge, shrink and slow back gesture
+    (`dev2-r5-flow-light2.mp4`, every encoded frame measured with the
+    designer's `an.py`): the code's side margins stay 25 to 29 px on every
+    frame against 27 at rest (review-r4's f43 to f46 had it outside the
+    white), and the gesture shrinks the code with the finger (612 to 570 px
+    wide over the first half of it). `RunningMovesTest` fails on
+    round 4's head (margins of 22 and 14.6 px against a rest 27,
+    `margins`) and passes; `MotionFramesTest` holds every seeked code on
+    the line between its rests.
+176. **Words wait for the ground they sit on, and every screen's words
+    fade through a row's grow, the shift's chrome too** (dev2, round 5;
+    answers 164). Words on a moving ground (`words(on = …)`) now show
+    only while it holds them: arriving, their fade starts once the ground
+    covers their place, leaving, it ends before the ground lets go of
+    them; arriving words under a shrinking white (`clear`) start once it
+    has passed them. Each is a point of the move worked out from the
+    course's line (`Course.holding`, `clearOf`; the edges move on straight
+    lines, so it is exact and per draw, with no state), not a frame
+    noticed late, so no fade jumps. The shift's top row, summary, notice
+    and chips fade through `RowGrow` like its rows, and the rows the
+    cashier didn't tap no longer stand at full alpha until the cut. The
+    sale's page passes its words modifier to each of its parts, since one
+    page-sized block is never held by a ground until it lands.
+    `RunningMovesTest.wordsTogether` fits each frame's text regions as a
+    mix of the move's two ends and fails any frame with a leaving and an
+    arriving run both above half, on every move both ways.
+177. **A payment code on a moving row ground is drawn whole or not at all;
+    Back from a risen sale is its row's shrink** (dev2, round 5; answers
+    165 and 167's code). The sale's code card (white, code, badge) draws
+    only on the frames the row's ground holds all of it (`wholeOn`), so
+    the one-row-tall clip no longer shows a strip of a full-size code on
+    the grow's first frames, nor a code without its white on the way back.
+    Back from a sale that rose by itself was already `RowGrow` by
+    `Nav.move`; what the review saw was the stage's ground cut to a node
+    and words lifted only while a shared match was active
+    (`isTransitionActive`), which the stage's own move now replaces.
+    `backFromASaleThatRoseGoesIntoItsRow` (light and dark) runs it, with
+    the whole-or-none check on every frame of every row move; it fails on
+    round 4's head (part of the code drawn inside the one-row ground on
+    f1 to f3).
+178. **A change from rest composes its new screen once at 0 before its
+    spring starts** (dev2, round 5; 167's "hold then jump"). The arriving
+    screen's first frame is the change's heaviest (a whole screen
+    composed and laid out), and counted on the spring's clock it put the
+    stage a third to a half of the way there on the first frame drawn: on
+    5556 a row grow went from the row to most of the screen between two
+    16 ms frames. `FollowScreen` now seeks to 0 and waits one frame, as a
+    back gesture already did, so that frame shows the screen left, and
+    the spring starts from 0 on the next; mid-move a new target is still
+    retargeted from where it got to. The cost is one frame before the
+    first moving one; the check (`startsAtOnce`) allows two at 0 and then
+    requires travel, and round 4's head failed it with the ground standing
+    at its rest for three.
