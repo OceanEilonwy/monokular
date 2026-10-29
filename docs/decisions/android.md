@@ -2358,3 +2358,17 @@ design unchanged.
     first moving one; the check (`startsAtOnce`) allows two at 0 and then
     requires travel, and round 4's head failed it with the ground standing
     at its rest for three.
+179. **The paid fold is one white surface closing into the hero, and the
+    pill's words fade through** (dev2, round 5; the app's half of 168).
+    The live card's face (`faceSurface(code = true)`) keeps its white,
+    clipped to the corner it is closing to, under its fading code for as
+    long as the fold runs, and the hero is drawn over it (`Layers.HERO`),
+    so the tick fades in on white and the screen's ground never shows
+    through. Reversed ("Show the code again") the card is opaque from its
+    first frame under the fading hero (148). The pill's new words fade
+    through (`fadeThrough`), so "Paid" is never over "Waiting for
+    payment". Recorded on 5556 in dark (`dev2-r5-fold-yes.mp4`): the card
+    closes over seven frames at seven sizes with white round the hero on
+    each. `RunningMovesTest.foldKeepsItsSurface` fails on round 4's head
+    in dark (the screen's ground inside the folding card at f13) and
+    passes. The panel's fold is the overlay track's.

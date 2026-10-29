@@ -385,7 +385,7 @@ private fun Code(sale: TillSale, side: Dp, card: GroundTrack, ground: GroundTrac
     // Opening from its row or shrinking back into it, the code and its white are drawn whole or not at all: only on
     // the frames the row's ground holds all of the card (decision 177). Paid or ended, the card closes into the page's
     // hero (M10).
-    Modifier.wholeOn(ground, Move.RowGrow).faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle)
+    Modifier.wholeOn(ground, Move.RowGrow).faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle, code = true)
         .clip(RoundedCornerShape(CodeCorner)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
 ) {
     QrCode(
@@ -420,12 +420,13 @@ internal fun StatusPill(sale: TillSale, now: LongState) = Row(
 ) {
     PhaseRing(sale.phase, 30.dp)
     Column {
-        val fade = motion.fade.fraction
+        val through = motion.fadeThrough.fraction
         val fadeQuick = motion.fadeQuick.fraction
         AnimatedContent(
             targetState = SaleText.status(sale),
-            // The pill's own size animates; the words' box takes the wider of the two while they cross.
-            transitionSpec = { (fadeIn(fade) togetherWith fadeOut(fadeQuick)).using(null) },
+            // The pill's own size animates; the words' box takes the wider of the two while they change. The new words
+            // fade through, in once the old are out, never over them ("Paid" over "Waiting for payment": decision 168).
+            transitionSpec = { (fadeIn(through) togetherWith fadeOut(fadeQuick)).using(null) },
             label = "status words",
         ) { words ->
             Text(

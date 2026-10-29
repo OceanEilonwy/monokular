@@ -19,13 +19,13 @@ import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
 
-/** M12 on a real frame clock: the status words crossfade, and a countdown's digits tick without moving the words. */
+/** M12 on a real frame clock: the status words fade through (the new in once the old are out, decision 168), and a countdown's digits tick without moving the words. */
 class StatusWordsTest {
     @get:Rule
     val compose = createComposeRule()
 
     @Test
-    fun newStatusWordsCrossfadeOverTheOldAndThenStandAlone() {
+    fun newStatusWordsFadeThroughTheOldAndThenStandAlone() {
         var sale by mutableStateOf(testSale("a"))
         val now = mutableLongStateOf(0)
         compose.setContent { Till { StatusPill(sale, now) } }
