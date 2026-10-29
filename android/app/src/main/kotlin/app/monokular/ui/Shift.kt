@@ -58,6 +58,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.monokular.Ground
+import app.monokular.Move
 import app.monokular.RowEnds
 import app.monokular.RowOpens
 import app.monokular.ShiftFilter
@@ -66,6 +67,7 @@ import app.monokular.ShiftList
 import app.monokular.StateIcon
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
+import app.monokular.sharedSurface
 
 /**
  * The shift (the design's ShiftList; decisions 60, 64, 72): what this
@@ -124,9 +126,13 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                     itemsIndexed(rows, key = { _, sale -> sale.orderId }) { i, sale ->
                         // A row arriving fades in, the rows it displaces slide to their place, a row leaving fades (M11);
                         // its corners, which follow its index, snap.
+                        // Tapped, the row's card grows into its sale (M7) and the sale shrinks back into it.
+                        val shape = rowShape(ShiftList.ends(i, rows.lastIndex))
                         Column(
                             Modifier.animateItem(fadeInSpec = arrive, placementSpec = placement, fadeOutSpec = leave)
-                                .padding(horizontal = 16.dp).fillMaxWidth().clip(rowShape(ShiftList.ends(i, rows.lastIndex))).background(mk.card),
+                                .padding(horizontal = 16.dp).fillMaxWidth()
+                                .sharedSurface("sale/${sale.orderId}", Move.RowGrow, shape)
+                                .clip(shape).background(mk.card),
                         ) {
                             if (i > 0) Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(mk.divider))
                             SaleRow(sale, now) { actions.onOpen(sale.orderId) }

@@ -4,7 +4,6 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.view.WindowManager
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -57,13 +56,12 @@ object CodeText {
 /**
  * The code enlarged (the design's CodeB, note s3): the whole screen white
  * whatever the theme, at full brightness and kept on, the code as large as
- * the screen allows. A tap anywhere, the shrink button or Android's back
- * goes back ([onBack]); so does the sale stopping being live (paid, ended,
+ * the screen allows. A tap anywhere or the shrink button goes back
+ * ([onBack]; Android's back is the activity's, which previews it); so does the sale stopping being live (paid, ended,
  * closed), where the sale's own page says what happened.
  */
 @Composable
 fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
-    BackHandler(onBack = onBack)
     if (!sale.live) LaunchedEffect(sale.orderId) { onBack() }
     KeepScreenOn()
     FullBrightness()
