@@ -471,3 +471,186 @@ interruptions at 25, 50 and 75 %), `StageBackTest` (7), `StageTest`,
 frames are in `frames/` (README, round 3 section), and
 `after/r3-row-grow-and-back.mp4` is a recording of a row growing into its
 sale and back on this build.
+
+## Round 3, integrated build (motion at 9f55280), by the lead
+
+The integrated branch is round 2's `3124bf5`, the overlay track's six
+round-3 commits, then the screens track's six replayed over them with
+their decisions renumbered 137 to 143 (decision 144). Measured as round 2
+was (`ab-r3.sh`, a copy of `ab-r2.sh` with this build's APK; raw dumps
+under `measure-r3/<serial>/<before|after><n>/` in the lead's scratch
+folder): before is `f274ad7`'s debug build, after is this branch, run
+alternately twice over on each emulator, the phone (emulator-5558, Pixel 9
+Pro, SwiftShader) and the tablet (emulator-5560) at the same time to fit
+the round, both freshly onboarded on the shared dev stack with this
+build (the stack had been reset and the rig's key no longer worked; the
+fake Square is shared, so sales rung up by every agent's rig reach both
+tills, which is why the shift grew from a few rows to a scrolling list
+between the first and second before passes). Host load was 31 to 59
+through the after passes and up to 148 through the second before pass:
+the frame medians below are the host's swap chain more than the app
+(`phases.py`: animation, layout and record together are under 2 ms a
+frame on the shift and under 30 on the grows), so they are read against
+each other, not against 16.7 ms.
+
+### Phone (emulator-5558, SwiftShader), before and after alternately
+
+| Flow | before 1 / 2 | after 1 / 2 | 2 × before p95 | verdict |
+| --- | --- | --- | --- | --- |
+| Shift scroll, window p50 / p90 / p99 / max | (13 frames: not yet scrollable), 70.4 / 120.7 / 134.8 / 136.0 | 116.9 / 200.4 / 253.7 / 254.5 (load 45), 55.3 / 87.6 / 100.7 / 114.5 | | app work under 2 ms a frame on both; the rest is the host |
+| Code enlarge + shrink × 3, frames; p50 / p90 / p99 / max | 19; 16.8 / 97.5 / 112.1 / 112.1, 18; 16.8 / 86.4 / 100.2 / 100.2 | 78; 55.7 / 120.1 / **450.1** / 450.1, 96; 48.3 / 76.4 / **316.5** / 316.5 | 200–225 | **fails on one frame: the first enlarge after launch (below)** |
+| Shift ↔ sale × 10, frames; p50 / p90 / p99 / max | 61; 33.5 / 102.5 / 356.7 / 356.7, 61; 33.5 / 93.4 / 319.8 / 319.8 | 120 of 400+; 34.6 / 75.2 / 167.4 / 185.9, 120; 33.5 / 76.6 / 117.7 / 128.8 | 300–370 | passes, under the cuts' own max |
+| Cold start, debug, median of 3 (ms) | 2988, 2481 | 2845, 2106 | | within noise |
+| PSS at rest after the round trips (MB) / native heap | 96.5 / 14.4, 101.1 / 15.7 | 107.8 / 18.0, 113.2 / 19.4 | | +11 to +12 before a trim; the trim table below is the rule's number |
+| PSS with the bubble up, 10 s after the overlay flows / native | 103.7 / 15.0, 103.6 / 15.0 | 113.5 / 21.8, 114.6 / 22.0 | | +10 to +11, native +7 |
+
+### Tablet (emulator-5560), before and after alternately
+
+| Flow | before 1 / 2 | after 1 / 2 | 2 × before p95 | verdict |
+| --- | --- | --- | --- | --- |
+| Shift scroll, window p50 / p90 / p99 / max | (12 frames: not yet scrollable), 66.9 / 104.5 / 117.7 / 133.8 | 113.2 / 209.9 / 359.3 / 365.8 (load 44), 50.1 / 71.3 / 87.7 / 91.8 | | as the phone |
+| Code enlarge + shrink × 3, frames; p50 / p90 / p99 / max | 19; 16.8 / 96.5 / 99.6 / 99.6, 18; 13.4 / 72.6 / 83.5 / 83.5 | 73; 66.8 / 150.2 / **570.9** / 570.9, 93; 50.1 / 68.8 / **266.4** / 266.4 | 170–200 | **fails on the same first frame** |
+| Shift ↔ sale × 10, frames; p50 / p90 / p99 / max | 62; 33.5 / 100.3 / 368.3 / 368.3, 61; 33.4 / 102.2 / 424.7 / 424.7 | 120; 36.3 / 70.4 / 155.3 / 183.6, 120; 26.6 / 50.2 / 100.1 / 100.2 | 300–400 | passes, under the cuts' own max |
+| Cold start, debug, median of 3 (ms) | 2313, 1879 | 2383, 2047 | | within noise |
+| PSS at rest after the round trips (MB) / native heap | 98.2 / 14.4, 101.7 / 15.1 | 108.1 / 17.6, 109.1 / 18.4 | | +7 to +10 before a trim |
+| PSS with the bubble up / native | 105.4 / 15.1, 105.2 / 15.0 | 110.6 / 17.7, 113.3 / 19.4 | | +5 to +8 |
+
+**The first enlarge after launch.** In all four after passes the enlarged
+code's first open in the process (each pass force-stops the app first)
+draws one frame whose `IssueDrawCommands` to `SwapBuffers` takes 118 to
+384 ms, and the two frames behind it wait on it: 282 / 317 / 251 ms on
+the phone's second pass, 543 / 555 / 571 on the tablet's first
+(`slow-frames.py` over `framestats-code-open-close.txt`; the app's own
+animation, layout and record on those frames are under 30 ms). Every
+later open and close in the same pass is under 170 ms. Round 2's
+integrated build had an issue phase of at most 9 ms on the same first
+open (its max was 91 ms), and the baseline's cut spends its 100 ms in
+layout. So round 3's code grow does something on its first frame that
+the renderer has not done before in that process: on SwiftShader that
+reads as a pipeline compiled on first use, or a first large allocation
+(one pass in two flags a slow bitmap upload). The screens track's own
+host-GPU run shows the same shape (max 317 to 321 ms against the cuts'
+227 to 242), so it is not only SwiftShader. Suspects, in the order to
+try: the moving ground's fill drawn at nine times its size under the
+overlay's path clip (`Nav.kt`, `FILL`), the words' overlay layers
+(`renderInSharedTransitionScopeOverlay` per `words` call), and the code
+bitmap's first draw at the enlarged size. It is one hitch per launch and
+the code stays scannable through it, but it is a frame rule failure with
+the cause not named, so it is not justified here.
+
+### Overlay (the bubble found by its window; process-wide `gfxinfo`)
+
+| Flow | Phone before 1 / 2 | Phone after 1 / 2 | Tablet before 1 / 2 | Tablet after 1 / 2 |
+| --- | --- | --- | --- | --- |
+| Lit bubble alone, 5 s: frames; p50 | 261; 31, 298; 25 | 301; 19, 300; 5 | 259; 27, 283; 26 | 255; 27, 248; 34 |
+| Panel up and still, 5 s: frames; p50 / p99 | 138; 65 / 101, 160; 57 / 85 | **5**; 25 / 34, **5**; 16 / 34 | 218; 42 / 77, 263; 32 / 69 | **5**; 18 / 48, **5**; 16 / 17 |
+| Raise + lower × 5: frames; janky; p50 / p95 / p99 | 1047; 26.6 %; 17 / 77 / 150, 1139; 24.9 %; 16 / 69 / 89 | 770; 15.1 %; 20 / 57 / 133, 792; 11.6 %; 16 / 53 / 93 | 528; 77.5 %; 61 / 129 / 200, 649; 70.9 %; 57 / 97 / 133 | 453; 60.5 %; 48 / 105 / 150, 623; 43.0 %; 36 / 73 / 93 |
+| Drag + snap × 2: p50 / p95 / p99 | 25 / 34 / 38, 17 / 27 / 34 | 28 / 48 / 300, 22 / 36 / 46 | 57 / 125 / 250, 61 / 97 / 121 | 34 / 85 / 105, 28 / 57 / 81 |
+
+As in round 2: a panel up and still draws 5 frames in 5 s against the
+baseline's 138 to 263, the raise and lower is smoother on both (fewer
+janky frames, a lower p95), and the tablet's drag and snap halves its
+p50. The pulse draws every frame on both builds. The phone's first after
+pass has one 300 ms frame in the drag (p99; the pass ran at load 45);
+the second has none. `after/r3-overlay-paid-next-sale-lower.mp4` is the
+overlay track's recording of this build on emulator-5554: a sale paid,
+the next sale's code coming up out of the tick, the panel lowering, and
+a new sale arriving (its frame at partial alpha is the open review item
+below).
+
+### Memory at rest, after a trim (`mem-r3.sh`, both emulators)
+
+Fresh sales, ten shift ↔ sale round trips, the order opened five times,
+10 s of rest, then `am send-trim-memory RUNNING_CRITICAL`, before and
+after alternately, twice, on each emulator (host load 31 to 118):
+
+| Build | PSS on the shift, fresh | PSS at rest / native | after trim / native | Java heap after trim | glyph cache | GPU caches |
+| --- | --- | --- | --- | --- | --- | --- |
+| Phone before 1 / 2 | 97.9, 95.7 | 108.2 / 15.4, 104.5 / 14.9 | 104.4 / 15.0, 104.6 / 15.0 | 17.0, 17.1 | 0.23 MB | 2.25 MB |
+| Phone after 1 / 2 | 114.4 (Java heap 31.6, not yet collected), 101.3 | 107.2 / 15.6, 116.7 / 17.7 | **107.1 / 15.7**, **111.0 / 17.2** | 18.7, 18.9 | 0.24 MB | 2.32 MB, 30.5 MB (28.4 purgeable) |
+| Tablet before 1 / 2 | 96.1, 99.5 | 108.1 / 14.9, 106.4 / 14.5 | 105.5 / 14.8, 103.2 / 14.1 | 17.7, 17.4 | 0.12, 0.14 MB | 2.22 MB, 10.5 MB (8.4 purgeable) |
+| Tablet after 1 / 2 | 105.1, 102.9 | 112.2 / 17.2, 116.8 / 17.6 | **110.3 / 16.6**, **111.8 / 17.1** | 19.0, 19.4 | 0.14 MB | 18.0 MB (15.8 purgeable), 33.6 MB (31.5 purgeable) |
+
+After a trim the integrated build holds **+2.5 to +6.4 MB on the phone
+and +4.8 to +8.6 MB on the tablet** over the baseline, against round 2's
++10.6 to +19.0. Round 2's cause is gone: the glyph cache is the
+baseline's 0.12 to 0.24 MB (round 2: 3.0 to 4.3 MB) and the native heap
+is +0.7 to +2.5 MB (round 2: +11 to +15). What is left is spread thin:
+the Java heap +1.6 to +2.0 MB after a trim (a larger app, and one
+`graphicsLayer` per `words` call site, ten of them, one per shift row),
+the native heap +0.7 to +2.5, and the rest in code and other mappings.
+The purgeable GPU textures (one to three phone screens' worth, listed
+under `gfxinfo`'s caches) appear on both builds, the baseline's tablet
+pass included, and on SwiftShader they are counted against the native
+heap; `RUNNING_CRITICAL` did not purge them on either build. The bubble
+up is the larger step: +10 to +11 MB PSS on the phone with the native
+heap +7 MB (`ab-r3.sh`'s overlay rows above), against round 2's +14 and
++11; that is the overlay's windows and belongs to the overlay track.
+Over the 2 MB rule on every pair, by less than round 2 on every pair.
+
+### Review findings (the integrated diff, every line)
+
+Both tracks' round-3 code reads its animated values in layers and draw
+lambdas, rewinds its paths rather than allocating them, and keeps its
+colours and offsets in value classes; the driver and the back gesture
+(`FollowScreen`, `StageBack`) release their hold in `finally` and tell a
+cancelled seek apart from a cancelled driver. What is left for round 4:
+
+- The first code enlarge's frame, above (screens track).
+- `LateOrderLine` (`Faces.kt`) keeps the last receipt in a remembered
+  array written during composition; a `remember { mutableStateOf }`
+  updated the same way is the idiom Compose's own docs use for content
+  kept through its exit (overlay track, minor).
+- `words(over, through, alsoThrough, on)` names its third move
+  `alsoThrough`; a small set or `vararg` of moves reads better and
+  removes the ceiling of two (screens track, minor).
+- `sharedGround` and `faceSurface` keep their leaving side drawn with an
+  exit of `fadeOut(..., targetAlpha = 1f)`, an exit that changes
+  nothing; it works and is commented, but the comment should name the
+  Compose behaviour it works around so the next reader does not "fix" it
+  (screens track, minor).
+- `Motion.fadeThrough` keeps its 120 ms wait under Still (decision 141),
+  so a ring or a label is blank for 120 ms between faces with
+  animations off; acceptable, but the designer should see it once on a
+  device (both tracks, minor).
+- The overlay track's note of a whole-panel frame at partial alpha about
+  2 s after a payment under a load of 100: that alpha is `Panel.shown`
+  below a third, which only a `lower()` and re-raise draws, and
+  `Overlay.show` lowers whenever `usable` flips (`runner.disconnected`
+  on a timed-out poll, or `appVisible`); worth a log line on `usable`'s
+  changes and a quiet-host run before it is called anything (overlay
+  track, open).
+- The rebase onto `origin/main` (seventeen files, decision 144) is the
+  lead's, before the PR.
+
+### Size
+
+Release, unsigned (`apkanalyzer`): 8 068 850 B file, 4 597 216 B
+download, against round 2's 8 068 850 / 4 591 565 (+0 / +5.6 KB; the
+dex is +19 KB) and the baseline's 7 951 910 / 4 517 799 (+117 KB / +79 KB
+over the 50 KB rule, as rounds 1 and 2 were; no dependency was added).
+
+### Device tests
+
+`connectedDebugAndroidTest` on emulator-5558 at this head: 120
+instrumented tests, both tracks' suites together for the first time, all
+green (`./gradlew build`, with the unit tests and lint, is green too).
+The run uninstalls the till from 5558, which is re-onboarded with
+`onboard-r3.sh` before the next measurement.
+
+### Verdict
+
+Frames: the round trip, the raise and lower, the drag and the panel at
+rest are all level with or better than round 2 and the baseline on both
+emulators, and the shift's own work per frame is under 2 ms on both
+builds. One frame fails the rule: the first code enlarge after launch,
+250 to 570 ms of renderer work once per process, with the cause not
+named (above). Memory: +2.5 to +8.6 MB after a trim, a third of round 2's
+step with its cause (text rasterised per scale) gone; of that, the 2 to
+3 MB at start-up is accepted (decision 145), which leaves the phone's
+second pair and the tablet over the rule by 1 to 6 MB, and +7 MB of
+native heap with the bubble up. Start-up: within noise on both. Size:
++5.6 KB over round 2. Not signed off: the first enlarge's frame (screens
+track) and the bubble's native heap with the panel lowered (overlay
+track) are the items for round 4, with the after-trim pairs re-read on
+a quiet host.

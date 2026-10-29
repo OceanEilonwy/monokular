@@ -2502,3 +2502,40 @@ design unchanged.
     in place, the paid fold's move. `MotionFramesTest` saves those frames
     at 60, 120, 240 and 300 ms and checks the hero is whole on each. M10's
     "a close from the sheet" is read that way.
+144. **Round 3 is integrated as the overlay track's six commits, then the
+    screens track's six replayed over them, each left a clean, buildable
+    commit; the screens track's decisions are renumbered after the
+    overlay track's; the rebase onto `origin/main` waits for round 4**
+    (lead, round 3). Both tracks branched from `motion` at `3124bf5`, so
+    `motion` fast-forwards to `motion-dev1` and `motion-dev2`'s commits
+    are cherry-picked on top: no merge commits, and the one source overlap
+    (`ui/CodeScreen.kt`: `CodeText.left` reading `countsDown`, and the
+    screen's `words` modifiers) merged by itself. Both tracks numbered
+    their decisions from 133, so dev2's 133 to 139 are 137 to 143 here,
+    and every reference to them in `Nav.kt`, `Till.kt`, the tests,
+    `motion.md`, `after.md` and `frames/README.md` is renumbered in the
+    commit that adds it, not in a fix-up after. `origin/main` has moved by
+    the wake-ups, bell-pos and bubble-loading-mark PRs since the base
+    (`f274ad7`), and seventeen files conflict (`Faces.kt`, `Overlay.kt`,
+    `Till.kt`, `Nav.kt`'s neighbours, `build.gradle.kts`): that rebase is
+    the lead's first job of round 4, done once on the integrated branch
+    rather than by each track against a moving target, with the loading
+    mark put inside `Circle`'s `AnimatedContent` and the bubble's
+    `presence` kept to its shadow (decision 134), before the PR opens.
+145. **The 2 to 3 MB of PSS over the baseline at start-up is accepted; what
+    the moves and the overlay add on top of it is still measured against
+    the 2 MB rule** (lead, round 3; relayed by the workflow's coordinator
+    on 2026-10-29 as the owner's acceptance, not heard from the owner
+    directly). The screens track's round-3 run put the residual at
+    start-up, before any move (Java heap +2.4 to +4.6 MB fresh: the larger
+    app's classes and code), and the integrated run agrees (decision 144's
+    report). So a start-up step of that size is no longer an issue or a
+    blocker. The rule still applies to what a session adds: the memory
+    after ten round trips and a trim is read as (after − before) less the
+    start-up step, and the bubble's +7 MB of native heap with the panel
+    lowered is the overlay track's open item. Measuring on the owner's
+    physical phone was relayed in the same message as approved; the lead
+    did not act on it, since installing on the owner's own device is the
+    owner's call and the only words of theirs in this run do not mention
+    it. The emulators' numbers stand, read against each other at the
+    host's load, until the owner says so themselves.
