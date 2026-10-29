@@ -30,6 +30,7 @@ The cashier's side and QA's switches:
     POST /fake/webhook  {"objectId": "O:...", "type": "DELETE", "merchant_id"?, "appId"?}
     POST /fake/expire-tokens                    every access token expires now
     POST /fake/revoke   {"merchant_id": "..."}  every access and refresh token of the merchant dies
+    POST /fake/limit    {"count": 1, "retry_after": 2}  the next count /v3 requests are 429 with retry-after
 
 Env: FAKE_CLOVER_PORT (8740), FAKE_CLOVER_ACCESS_TTL (seconds an access token
 lives, 1800), FAKE_CLOVER_REFRESH_CAP (live refresh tokens per merchant, 3:
@@ -80,7 +81,12 @@ state = {
     "payments": {m: [] for m in MERCHANTS},
     "orders": {m: {} for m in MERCHANTS},
     "refunds": {m: [] for m in MERCHANTS},
+    "limit": {"count": 0, "retry_after": 1},  # /fake/limit: the next requests answered 429
 }
+
+# Clover returns at most this many elements of a nested collection (an
+# order's line items, a payment's refunds) when it is expanded.
+NESTED_MAX = 100
 
 
 def new_id():
@@ -152,7 +158,7 @@ def order_view(order, expand):
             if "lineItems.taxRates" in expand:
                 item["taxRates"] = {"elements": line["taxRates"]}
             items.append(item)
-        view["lineItems"] = {"elements": items}
+        view["lineItems"] = {"elements": items[:NESTED_MAX]}
     return view
 
 
@@ -162,7 +168,7 @@ def payment_view(merchant, payment, expand):
     order = state["orders"][merchant][payment["order"]["id"]]
     view["order"] = order_view(order, set()) if "order" in expand else {"id": order["id"]}
     if "refunds" in expand:
-        view["refunds"] = {"elements": payment["refunds"]}
+        view["refunds"] = {"elements": payment["refunds"][:NESTED_MAX]}
     return view
 
 
@@ -261,6 +267,11 @@ class Clover(BaseHTTPRequestHandler):
         if merchant not in MERCHANTS or token is None or token_merchant(token) != merchant:
             self.message(401, "401 Unauthorized")
             return None, parts
+        if state["limit"]["count"] > 0:
+            state["limit"]["count"] -= 1
+            self.send(429, {"message": "429 Too Many Requests"},
+                      {"retry-after": str(state["limit"]["retry_after"])})
+            return None, parts
         return merchant, parts
 
     def do_GET(self):
@@ -302,10 +313,12 @@ class Clover(BaseHTTPRequestHandler):
         expand = {e for v in q.get("expand", []) for e in v.split(",") if e}
         data = MERCHANTS[merchant]
         if not rest:
-            return self.send(200, {"href": "https://fake-clover/v3/merchants/" + merchant, "id": merchant,
-                                   "name": data["name"], "owner": data["owner"],
-                                   "address": {"address1": "1 Market St", "city": "San Francisco", "state": "CA",
-                                               "zip": "94105", "country": "US"}})
+            answer = {"href": "https://fake-clover/v3/merchants/" + merchant, "id": merchant,
+                      "name": data["name"], "owner": data["owner"]}
+            if "address" in expand:
+                answer["address"] = {"address1": "1 Market St", "city": "San Francisco", "state": "CA",
+                                     "zip": "94105", "country": "US"}
+            return self.send(200, answer)
         if rest == ["properties"]:
             return self.send(200, {"defaultCurrency": data["currency"], "timezone": data["timezone"],
                                    "tipsEnabled": True, "locale": "en_US", "orderTitle": "AUTO"})
@@ -444,6 +457,10 @@ class Clover(BaseHTTPRequestHandler):
                 return self.message(400, "objectId and type are required")
             status = send_webhook(merchant, body["objectId"], body["type"], body.get("appId"), wait=True)
             return self.send(200, {"bell_status": status})
+        if path == "/fake/limit":
+            state["limit"] = {"count": int(body.get("count", 1)), "retry_after": int(body.get("retry_after", 1))}
+            log("the next %d /v3 requests are limited" % state["limit"]["count"])
+            return self.send(200, state["limit"])
         if path == "/fake/expire-tokens":
             for held in state["access"].values():
                 held["expires"] = int(time.time()) - 1

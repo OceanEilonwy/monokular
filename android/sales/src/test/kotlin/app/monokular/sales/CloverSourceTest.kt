@@ -1,5 +1,6 @@
 package app.monokular.sales
 
+import app.monokular.core.PointOfSale
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -148,7 +149,7 @@ class CloverSourceTest {
         val sales = source.newSales()
         assertEquals(listOf("PAY_MONERO_0", "PAY_MONERO_1", "PAY_MONERO_2"), sales.map { it.id }, "a voided refund doesn't count")
         val sale = sales[1]
-        assertEquals(FoundSale("PAY_MONERO_1", 2205, "USD", null, "ORDER_CL_1", "2026-10-28T08:56:00Z", "DEV_FRONT", "Table 4"), sale)
+        assertEquals(FoundSale("PAY_MONERO_1", 2205, "USD", null, "ORDER_CL_1", "2026-10-28T08:56:00Z", "DEV_FRONT", "Table 4", PointOfSale.Clover), sale)
         assertEquals(listOf(null, "Table 4", null), sales.map { it.title }, "an order with no title has none")
         val request = server.takeRequest()
         assertEquals("/v3/merchants/MCLOVER00001/payments", request.url.encodedPath)
@@ -264,8 +265,6 @@ class CloverSourceTest {
     @Test
     fun `a sale is refunded when its refunds reach its amount, it was voided, or its order reads refunded`() = runBlocking {
         val refunds = source().refunds
-        assertEquals("Clover", refunds.posName)
-        assertEquals("Clover's Orders app", refunds.where)
         val sale = FoundSale("PAY_MONERO_1", 2205, "USD", null, "ORDER_CL_1", "2026-10-28T08:56:00Z", "DEV_FRONT")
 
         server.enqueue(json(cloverResource("payment-refunded.json")))

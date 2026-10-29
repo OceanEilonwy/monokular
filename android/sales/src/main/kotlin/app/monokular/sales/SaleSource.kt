@@ -1,5 +1,6 @@
 package app.monokular.sales
 
+import app.monokular.core.PointOfSale
 import app.monokular.receipt.Receipt
 import kotlinx.serialization.Serializable
 
@@ -8,6 +9,13 @@ import kotlinx.serialization.Serializable
  * "POS sources"): Square, Clover.
  */
 interface SaleSource {
+    /**
+     * The point of sale this source watches: a sale another one took (the
+     * cashier changed the point of sale since) is never refunded or asked
+     * about through this one.
+     */
+    val pointOfSale: PointOfSale
+
     /**
      * Sales tendered as Monero since the source started watching, oldest
      * first, that haven't been [handled]. Calling it again gives the same
@@ -38,15 +46,11 @@ sealed interface Refunds {
 
     /**
      * The cashier does, in the point of sale, and the till watches for it
-     * (Clover: no API refunds an external-tender payment).
+     * (Clover: no API refunds an external-tender payment). It carries no
+     * words: what the cashier is told names the sale's own point of sale
+     * ([FoundSale.pointOfSale]), worded in the app (decision A136).
      */
-    interface InPos : Refunds {
-        /** The point of sale's name: "Clover". */
-        val posName: String
-
-        /** Where, in the cashier's words: "Clover's Orders app". */
-        val where: String
-
+    fun interface InPos : Refunds {
         /** Whether the point of sale now shows [sale] refunded. */
         suspend fun refunded(sale: FoundSale): Boolean
     }
@@ -70,4 +74,10 @@ data class FoundSale(
     val deviceId: String?,
     /** The name the cashier gave the order ("Table 4"), when the POS has one: Clover's title; Square leaves it null. */
     val title: String? = null,
+    /**
+     * The point of sale that took it, so a shift's saved sales keep naming it
+     * after the till changes point of sale; a sale saved before Clover joined
+     * reads as Square's.
+     */
+    val pointOfSale: PointOfSale = PointOfSale.Square,
 )

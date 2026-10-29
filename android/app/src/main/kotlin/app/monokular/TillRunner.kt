@@ -3,6 +3,7 @@ package app.monokular
 import app.monokular.core.Connection
 import app.monokular.core.PointOfSale
 import app.monokular.core.MonokuloException
+import app.monokular.core.PointOfSale
 import app.monokular.core.Problems
 import app.monokular.core.StreamEvent
 import app.monokular.push.interval
@@ -43,6 +44,7 @@ data class RunnerState(
 
 /** A source for a till that runs without a point of sale: it shows other tills' sales only. */
 private object NoSource : SaleSource {
+    override val pointOfSale = PointOfSale.Square
     override suspend fun newSales() = emptyList<FoundSale>()
     override suspend fun receipt(sale: FoundSale) = null
     override val refunds = Refunds.ByTill {}
