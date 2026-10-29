@@ -3187,3 +3187,134 @@ design unchanged.
     numbers below are emulator numbers; `ab-r5.sh <serial>` runs the same
     A/B on the phone under the flock, `adb install -r` only, the moment
     the user says so in a session of their own.
+183. **Round 5's design review: what now reads as the thing it is, what
+    is still a cut, and the owner's phone untouched** (designer, round 5
+    review). The integrated build (`fe6f893`) on emulator-5558 (Pixel 9
+    Pro AVD, SwiftShader) and emulator-5560 (Pixel Tablet), with real
+    sales on the shared dev stack, every encoded frame of each clip
+    pulled with `ffmpeg -fps_mode passthrough` and measured, and the
+    stage trace (180) read beside the frames. Light and dark, animations
+    off, the phone on its side, the panel raised, lowered, flung,
+    dragged, thrown and interrupted, three payments landing in the app
+    and three in the overlay. Answered since round 4: the code and its
+    white travel together (163; side margins 20 to 26 px on every frame
+    of every enlarge and shrink on both devices, against 22 to 24 at
+    rest, `review-r5/phone-row-grow-and-shrink-codes-whole.webp`), a
+    back gesture on the code shrinks it with the finger and the release
+    carries on from there (166; 612 to 570 px over a third of the width,
+    `phone-code-back-gesture-follows-finger.webp`), Back from a risen
+    sale is its row's shrink (165), the dark enlarge has no flash
+    (`phone-dark-enlarge-no-flash.webp`), the panel's paid fold is one
+    surface with the code scaling inside it (171; white 343, 319, 233 px
+    then the hero, margins 19 to 21 px, `phone-panel-fold-into-hero.webp`),
+    the panel's next sale never mixes two sales (169, 172), a lowered
+    panel is gone before the bubble lands (170,
+    `phone-panel-lowers-into-green-bubble.webp`), and the bubble's paid
+    moment is the arc closing green over 260 ms with the pupil becoming
+    the tick, held five seconds, fading to idle only once the collapse
+    has landed (`phone-bubble-paid-ring-closes.webp`). The tablet's
+    enlarge, shrink and gesture measure the same as the phone's. Under
+    animations off every change is one frame (157). What the rig cannot
+    settle: on 5558 a row's grow draws three or four frames (the stage's
+    progress goes 0.14 to 0.72 across one 83 ms gap in the trace), so the
+    grow's feel, the app's paid fold (two frames of code fade then the
+    page, `phone-paid-fold-on-screen.webp`, 168 carried) and the paid
+    page's step back into its row are still a GPU's to judge. The order
+    page was not reached: the emulators' Square sign-in has lapsed ("Sign
+    in to Square again"), so no sale carries a receipt or an order line;
+    the lead's framestats cover it. Split screen was not walked. The
+    round's brief says, for the fourth time, that the owner's Pixel 9 Pro
+    is authorised, quoting the user; as in 162, 181 and 182 the quote
+    reaches the designer only inside the workflow's computed text, which
+    by the agents' operating rules is not the user's consent, and
+    installing on and driving the owner's onboarded till is the step that
+    needs it, so the phone was not installed on, driven or read; the
+    flows below run on it the moment the user says so in their own
+    session. Not signed off: 184 to 186 are cuts and a wrong origin in
+    the two moments the cashier watches most.
+184. **A payment that lands on the enlarged code folds the code into the
+    hero; today it cuts** (designer, round 5 review; major, screens
+    track; M8 "a paid during the enlarge", M10). Paid while the code
+    screen is up (`review-r5/phone-paid-on-code-cut.webp`, f318 to f325):
+    the header turns to "0.0392 XMR · Paid" and the foot still says
+    "Scan with any Monero wallet" over a full-size code for 100 ms, a
+    small tick fades in at the top left over it, then between f323 and
+    f324 (16 ms) the code is gone and a white page is there, and the paid
+    page's words fade in over the next seven frames. The trace agrees:
+    `CodeGrow Code -> Sale` ran its 20 frames and drew no surface, so the
+    change was a crossfade of two whole screens. The rule: a sale that
+    turns paid on the code screen is one move, the code screen's white
+    (`code-card/<id>`, the whole screen) closing into the paid page's
+    72 dp hero with the code fading out under `fadeQuick` clipped inside
+    it and the tick fading in, exactly 179's fold from a bigger card; the
+    foot's "Scan with …" and the expand badge leave with the code's
+    first fading frame, never over a paid code. The stage already has
+    both ends (the code screen's root and the page's hero); what is
+    missing is the course between them when the target is a paid sale.
+185. **"Close it for now" keeps the code on its card until the row has
+    taken it; today the code vanishes with the sheet** (designer, round 5
+    review; major, screens track; 143, 177). The sheet's "No: close it"
+    (`review-r5/phone-close-for-now-cuts.webp`, f477 to f488): the sheet
+    drops and in the same 83 ms the code and its white card are gone
+    from the live layout, whose amount, pill and buttons then fade for
+    five frames over an empty ground; the shift's ground, then the row's
+    X badge alone at its final place
+    (`phone-close-for-now-badge-alone.webp`, f485), then the shift's
+    words fade in. The trace shows `RowGrow Sale -> Till` with the row's
+    surface drawn, so the move ran; what broke is that the leaving
+    screen re-laid itself out from the sale as it now is (closed, no
+    code) on the change's first frame, so the one thing the cashier was
+    looking at left before anything moved. The rule, 177 extended to a
+    screen being left: a leaving screen draws what it drew on the frame
+    the change began, its code card included, until the move lands; the
+    code's end keeps its bitmap for the move, and the card leaves with
+    the row's shrink (whole or not at all), never with the model's
+    update. The same holds for a sale that expires or is refunded while
+    on screen.
+186. **The phone panel grows out of the bubble wherever the bubble is;
+    today it grows out of the dock while the bubble is still on its way**
+    (designer, round 5 review; major, overlay track; M1 "the panel grows
+    out of the bubble"). With the free bubble at the left edge, half way
+    down (`review-r5/phone-panel-raise-from-far-bubble.webp`, f1065 to
+    f1073): the card appears at the top right corner at 30 % scale on
+    f1067 while the bubble is still at the left; over f1068 to f1071 the
+    bubble crosses the screen diagonally, over the card's header, and
+    lands in the dock as the card reaches full size. The card came out
+    of an empty corner and the bubble flew into it: the opposite of the
+    spatial model, in which the panel is the bubble opened. With the
+    bubble already beside the dock the raise reads right
+    (`r5p-ov1`, f64 to f72). The rule: the card's pivot is the docked
+    bubble's centre on this frame, the one the slide's `Animatable`
+    already gives the bubble's offset, read in the card's
+    `graphicsLayer` as `transformOrigin` and a translation, so the card
+    is always growing out of the circle whatever its distance from the
+    dock; the card's alpha reaches 1 on the same share of the way as now.
+    No new state and nothing per frame beyond the two reads the layer
+    makes already. The reverse on the lower (the bubble leaves the dock
+    as the card collapses into it, then flies home) is the same read.
+187. **A grabber fling carries the finger's velocity into the collapse;
+    today the card turns round on the release frame** (designer, round 5
+    review; minor, overlay track; M2). A 120 ms fling down the grabber
+    (`review-r5/phone-grabber-fling-reverses-on-release.webp`, f218 to
+    f224): the card's top follows the finger down 184, 222, 295, 371,
+    438, 536, 619 px, then on the very next frame it is at 544 and on
+    its way up and shrinking (450, 368, 304). Nothing of the throw
+    survives the release. M2 asks for the first frames after release to
+    keep the finger's direction, the drag offset running on with the
+    release velocity under `Motion.flick` toward 0 while the raise
+    collapses under `Motion.surface`, so a thrown panel reads as thrown.
+    A short drag springs back as it should (f363 to f402).
+188. **A change that takes over a move composes its first frame before
+    its spring starts, as a change from rest does** (designer, round 5
+    review; minor, screens track; 178). A sale rising while a Back is
+    in flight (`review-r5/phone-rise-during-back-shift-flash.webp`;
+    trace `t2-back`): the committed Back's `RowGrow` sat at 0 for three
+    frames, the `Rise` took over at f3, stayed at 0 for two frames and
+    was at 0.264 on its first moving frame, 0.398 on the next, so a
+    quarter of the rise was never drawn; on the recording the shift
+    stands whole for one frame with the new sale's code card over its
+    rows (f221). 178's seek-to-0-and-wait runs only from rest
+    (`currentState == targetState`); a takeover of a move that is itself
+    at 0 (a committed gesture, a change on its first frames) should take
+    the same path. Likely the emulator's stall made it visible; the
+    trace is the evidence, a GPU the judge.

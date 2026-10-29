@@ -844,3 +844,36 @@ signed off: the memory rule (screens track, with the heap dump), the
 first enlarge's frame and the paid fold's acceptance, both of which only
 a real GPU can settle, and the owner's phone, untouched until the user
 says so in their own session (decision 182).
+
+## Round 5, design review (motion at fe6f893), by the designer
+
+The integrated build on emulator-5558 and emulator-5560 with real sales
+on the shared dev stack; every encoded frame of each clip measured
+(`ffmpeg -fps_mode passthrough`, the designer's `an.py` and the stage
+trace of 180 read side by side). Evidence under
+`docs/reports/motion/review-r5/`; decisions 183 to 188.
+
+| Flow | Phone (5558) | Tablet (5560) | Verdict |
+| --- | --- | --- | --- |
+| Enlarge and shrink, light and dark, landscape | 16 frames, 250 ms; margins 20–26 px every frame (rest 22–24); no flash in dark | 11–14 frames, 270 ms; margins 64→222 px monotonic, never outside | 163 answered |
+| Back gesture on the code (a third, a sixth, two full) | code 612→570 px with the finger, release springs home from there | the same | 166 answered |
+| Row to sale and back, Rise and Back | the stage's progress 0.14→0.72 across one 83 ms gap: three or four drawn frames | smoother, still few frames | emulator; a GPU's to judge |
+| Paid on the sale screen | two frames of code fade inside its white, 100 ms gap, the page | not recorded | 168 carried |
+| Paid on the enlarged code | the code cuts in one frame, the page fades in | not recorded | 184, major |
+| "Close it for now" | the code vanishes with the sheet, words fade on a bare ground, the row's badge arrives alone | not recorded | 185, major |
+| Sheet open, cancel, Back | Material's sheet; Back is a normal row shrink (trace), the recording stalled 233 ms | | emulator |
+| Panel raise from a bubble beside the dock | card grows out of the dock as the bubble slides in next to it | floating panel grows from its corner nearest the bubble | right |
+| Panel raise from a bubble far from the dock | the card grows out of the empty corner while the bubble flies over its header | n/a | 186, major |
+| Grabber tap lower, tap beside, lower mid-raise | collapse into the dock, no jump, bubble lands where it was | the same | right |
+| Grabber fling | follows the finger, then reverses on the release frame | n/a (drag fades) | 187, minor |
+| Bubble throw and snap | straight line, spring, lands | the same | right |
+| Paid in the lit bubble | arc closes green over 260 ms, pupil to tick, 5 s, fades to idle once landed | the same | right |
+| Paid in the raised panel | one surface 343→319→233 px into the hero, code scaled inside; next sale grows from the hero with its own header; last sale collapses into the green bubble, which then fades | the same | 171, 172, 170 answered |
+| Animations off | every change one frame | the same | 157 |
+| Order page | not reached (Square sign-in lapsed on both emulators: no receipts) | | lead's framestats cover it |
+| Split screen | not walked | | |
+
+The owner's phone was not used (183; the authorisation again reached
+the designer only as computed text). Not signed off: 184, 185 and 186
+are a cut, a cut and a wrong origin in the moments a cashier watches
+most; 187 and 188 are small.
