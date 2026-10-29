@@ -10,9 +10,18 @@ import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import kotlin.test.assertFalse
+import kotlin.test.assertTrue
 import androidx.compose.ui.unit.dp
 import app.monokular.core.SalePhase
+import app.monokular.overlay.CODE_SLOT_TAG
 import app.monokular.overlay.CODE_TAG
+import app.monokular.overlay.STATUS_TAG
 import app.monokular.overlay.PanelActions
 import app.monokular.overlay.Presence
 import app.monokular.overlay.SalePanel
@@ -83,6 +92,45 @@ class PanelFaceOnDeviceTest {
         compose.mainClock.advanceTimeBy(1_000)
         assertCodeAt(264)
         compose.onNodeWithText("Full screen").assertExists()
+    }
+
+    private fun slotHeight(): Float =
+        compose.onNodeWithTag(CODE_SLOT_TAG, useUnmergedTree = true).fetchSemanticsNode().size.height.toFloat()
+
+    /** Every word drawn inside a status row. */
+    private fun statusWords(): List<String> =
+        compose.onAllNodes(hasAnyAncestor(hasTestTag(STATUS_TAG)), useUnmergedTree = true).fetchSemanticsNodes()
+            .flatMap { node -> node.config.getOrNull(SemanticsProperties.Text).orEmpty().map { it.text } }
+
+    @Test
+    fun theFoldStartsOnThePaymentsFrameAndTheStatusRowNeverSaysPaid() {
+        panel(wide = false)
+        val rest = slotHeight()
+        shown = sale("1", SalePhase.Paid)
+        var folding = -1
+        repeat(40) { frame ->
+            compose.mainClock.advanceTimeByFrame()
+            if (folding < 0 && slotHeight() < rest) folding = frame
+            val words = statusWords()
+            assertFalse(words.any { it.startsWith("Paid") }, "frame $frame: the leaving status row says $words")
+        }
+        assertTrue(folding in 0..2, "the code starts folding within two frames of the payment (frame $folding)")
+    }
+
+    @Test
+    fun theNextSalesWordsAreNeverClippedToTheOldWordsWidth() {
+        panel(wide = false)
+        shown = sale("1", SalePhase.Paid)
+        compose.mainClock.advanceTimeBy(2_000)
+        shown = sale("2", SalePhase.Waiting)
+        repeat(40) { frame ->
+            compose.mainClock.advanceTimeByFrame()
+            compose.onAllNodesWithText("Waiting for payment", useUnmergedTree = true).fetchSemanticsNodes().forEach { words ->
+                val drawn = words.boundsInRoot.width
+                val laidOut = words.size.width.toFloat()
+                assertTrue(drawn >= laidOut - 1f, "frame $frame: the words are clipped to $drawn of $laidOut px")
+            }
+        }
     }
 
     @Test
