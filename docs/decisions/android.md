@@ -1177,3 +1177,46 @@ design unchanged.
     and the baseline's files are left as they were. A flow that draws more
     frames because it now animates (a grow where there was a cut) is read
     by its per-frame cost and its longest frame, not by its frame count.
+112. **A back scrub is linear in distance; the spring belongs to the
+    release** (designer, round 1 review of M7). The gesture seeks the
+    stage's transition by a fraction of its duration, and the surface's
+    bounds move on `Motion.surface`, a spring that covers most of its
+    distance in its first third: on the phone a finger a third of the way
+    across showed the shift complete with the sale already folded to its
+    row, on the tablet a quarter of the way showed nothing moved. Neither
+    is a preview. While the stage is being seeked, every spatial child
+    (the shared surfaces' bounds, the slides) follows a linear track of one
+    `Motion` duration, so progress 0.3 is 30 % of the way; the release,
+    commit or cancel, animates the remaining fraction with
+    `Motion.surface` seeded from the gesture (`SeekableTransitionState.
+    animateTo(target, spec)`), which is where the physics was wanted. An
+    uninterrupted move drives the same linear track with the same spring
+    on its fraction, so the two paths cannot drift apart. Frames in
+    `docs/reports/motion/review-r1/phone-back-scrub-hold.png`.
+113. **The code's own surface is above every ground, and the ground
+    carries no code** (designer, round 1 review of M8; sharpens
+    principle 3). On both emulators, light and dark, the first frames of
+    the enlarge show the enlarged screen's layout scaled into the card's
+    width and clipped by it, a cropped code with no quiet zone, and then
+    the whole-layer code jumps ahead of the white ground and hangs over
+    its edge (`review-r1/phone-code-grow-frames.png`, `tablet-code-grow-
+    frames.png`). "Scans on any frame" means the one bitmap, square, with
+    its quiet zone, inside a ground that moves in step with it. The rule:
+    `code/<id>` has a higher `zIndexInOverlay` than `code-card/<id>`; a
+    ground's shared layer never includes the bitmap (what it scales is
+    white, the heading and the foot); the two bounds run on the same
+    track so they land together; the ground's corner radius follows the
+    same progress from the card's to the screen's rather than snapping
+    square on the first frame. A device test seeks the transition to a
+    quarter, a half and three quarters and checks the code's node is
+    square, un-clipped by its ground and no smaller than at rest.
+114. **Overlay timing is read from framestats and screencaps, never from a
+    recording on the software emulator** (designer, measurement). Every
+    `screenrecord` of the phone and the tablet showed the panel appearing
+    0.8–1.2 s after the tap, yet `dumpsys gfxinfo framestats` put the
+    panel window's first frame 50–84 ms after the input command returned
+    and its last at 404–443 ms, and a `screencap` 300 ms after a lower
+    caught the collapse mid-way. The emulator's recorder lags overlay
+    layers by up to a second and the in-app layers by less, so a
+    recording can order events but not time them; it is used for what
+    moves, and `framestats` for when.
