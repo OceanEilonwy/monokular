@@ -132,7 +132,7 @@ private fun CodeImage(bitmap: ImageBitmap, description: String, shared: String?)
     bitmap = bitmap,
     contentDescription = null,
     modifier = Modifier.fillMaxSize()
-        .then(if (shared != null) Modifier.sharedCode("code/$shared", Move.CodeGrow, rememberGroundTrack("code/$shared"), bitmap) else Modifier)
+        .then(if (shared != null) Modifier.sharedCode("code/$shared", Move.CodeGrow, rememberGroundTrack("code/$shared"), bitmap, white = codeGround(shared)) else Modifier)
         .semantics { contentDescription = description },
     contentScale = ContentScale.Fit,
     filterQuality = FilterQuality.None,
