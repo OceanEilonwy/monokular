@@ -3318,3 +3318,30 @@ design unchanged.
     at 0 (a committed gesture, a change on its first frames) should take
     the same path. Likely the emulator's stall made it visible; the
     trace is the evidence, a GPU the judge.
+189. **The phone panel scales about the docked bubble where it is on
+    each frame, so it grows out of the bubble from anywhere** (dev1,
+    round 6; 186, M17). `grows` took the dock's centre as the card's
+    pivot, so from a free bubble far from the dock the card came out of
+    the empty top corner while the bubble flew across it. The pivot is
+    now `PanelMotion.bubbleNow(raise)`, `Panel.docked`: the free
+    bubble's place lerped to the dock by `Panel.opened`, the same point
+    the docked bubble is drawn at, read in the card's layer as
+    `transformOrigin` (an `Offset` and a `TransformOrigin` are values:
+    nothing allocated, no read the layer did not make already). No
+    translation is added: scaling about a point holds that point, so the
+    card at 0.3 sits round the bubble wherever it is and opens out to its
+    place as the bubble reaches the dock; the lower is the same read
+    backwards, the card folding into the bubble as the bubble leaves the
+    dock for home. Alpha keeps its share (`Panel.shown`). On a phone's
+    order page the same point is used, so a lower from the order folds
+    toward the free bubble too. The device test
+    (`OverlayFramesTest.theCardGrowsOutOfTheBubbleOnEveryFrameWhereverTheBubbleIs`)
+    reads "touch" as within the design's 12 dp between the docked
+    bubble's circle and the card at rest (`DockedPadding`): at rest the
+    circle is 12 dp above the card by design, so the literal "touch" of
+    the review cannot hold on the last frames; the old pivot fails it by
+    260 dp on the first frame. A side effect to look at: mid-grow the
+    bubble sits inside the card's top, over its header, since the card
+    grows out of it; that is the spatial model the review asked for.
+    Recorded on emulator-5554 with a host GPU
+    (`review-r5/gpu-panel-raise-from-far-bubble.webp`).

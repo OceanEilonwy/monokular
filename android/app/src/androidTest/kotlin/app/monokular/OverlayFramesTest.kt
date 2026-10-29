@@ -66,6 +66,8 @@ class OverlayFramesTest {
     private var sale by mutableStateOf(testSale("f1", expiresAt = expires))
     private var page by mutableStateOf<PanelPage>(PanelPage.Code)
     private lateinit var motion: PanelMotion
+    /** Where the free bubble is on screen. */
+    private val freeBubble = mutableStateOf<Offset?>(null)
 
     /** `motion.surface` settles in about this long (`docs/motion.md` §2): the seek points are its quarters. */
     private val surfaceMs = 450L
@@ -73,7 +75,8 @@ class OverlayFramesTest {
     /** The panel over a backdrop: a strong colour by default, so the card's edges show; [white] for Square's own ground. */
     private fun panel(raised: Float, white: Boolean = false, tablet: Boolean = false, presets: Motion = Motion.Full) {
         compose.mainClock.autoAdvance = false
-        motion = PanelMotion(raised, mutableStateOf<Offset?>(Offset(1200f, 900f)))
+        freeBubble.value = Offset(1200f, 900f)
+        motion = PanelMotion(raised, freeBubble)
         compose.setContent {
             Till(presets) {
                 motion.raise.Attach()
@@ -423,5 +426,69 @@ class OverlayFramesTest {
         compose.onNodeWithTag("window").performTouchInput { click(spots[1]) }
         compose.mainClock.advanceTimeByFrame()
         assertEquals(1, opened, "at rest the header's tap opens the shift")
+    }
+
+    /** The docked bubble's circle on this frame, in the root: its centre and radius. */
+    private fun dockedCircle(): Pair<Offset, Float>? {
+        val dp = compose.density.density
+        val bubble = compose.onAllNodesWithContentDescription("Lower to the bubble", useUnmergedTree = true).fetchSemanticsNodes()
+            .filter { abs(it.size.width - it.size.height) <= 2 && it.size.width > 0 }
+            .minByOrNull { abs(it.size.width - 80 * dp) } ?: return null
+        return bubble.boundsInRoot.center to 28 * dp
+    }
+
+    /** How far [circle] is from [rect]'s nearest edge, past its radius; 0 or less where they touch or overlap. */
+    private fun gap(rect: Rect, circle: Pair<Offset, Float>): Float {
+        val (c, r) = circle
+        val dx = maxOf(rect.left - c.x, 0f, c.x - rect.right)
+        val dy = maxOf(rect.top - c.y, 0f, c.y - rect.bottom)
+        return kotlin.math.hypot(dx, dy) - r
+    }
+
+    /**
+     * The card grows out of the docked bubble wherever the free bubble was,
+     * and folds back into it on its way home (M1, decision 189): on every
+     * frame of a raise and a lower, from a free bubble at the far edge (the
+     * left, half way down) and one beside the dock, the card's scaled
+     * bounds hold or touch the docked bubble's circle, as near as the
+     * design's 12 dp between them at rest. Before 189 the card scaled about
+     * the dock, so from the far edge it came out of the empty top corner
+     * with the bubble 1000 px away.
+     */
+    @Test
+    fun theCardGrowsOutOfTheBubbleOnEveryFrameWhereverTheBubbleIs() {
+        val metrics = InstrumentationRegistry.getInstrumentation().targetContext.resources.displayMetrics
+        val dp = metrics.density
+        val places = mapOf(
+            "far" to Offset(44 * dp, metrics.heightPixels / 2f),
+            "near" to Offset(metrics.widthPixels - 44 * dp, 140 * dp),
+        )
+        val touching = 12 * dp + 2f
+        panel(raised = 1f)
+        places.forEach { (name, at) ->
+            listOf("raise" to 0f, "lower" to 1f).forEach { (move, from) ->
+                freeBubble.value = at
+                motion.raise.snap(from)
+                compose.mainClock.advanceTimeBy(100)
+                if (from == 0f) motion.raise.enter() else motion.raise.exit(landsAt = Panel.IN_BUBBLE)
+                var frames = 0
+                var worst = -1f
+                var worstAt = ""
+                while (frames < 90) {
+                    compose.mainClock.advanceTimeByFrame()
+                    frames++
+                    val raise = motion.raise.value
+                    // Lowered, the window goes at IN_BUBBLE; what is past it is never drawn.
+                    if (from == 1f && raise <= Panel.IN_BUBBLE) break
+                    val card = compose.onNodeWithTag(CARD_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+                    val circle = dockedCircle() ?: continue
+                    val g = gap(card, circle)
+                    if (g > worst) { worst = g; worstAt = "frame $frames raise $raise card $card bubble ${circle.first}" }
+                    assertTrue(g <= touching, "$name $move, $worstAt: the card is ${g / dp} dp from the docked bubble's circle")
+                    if (from == 0f && raise >= 0.999f) break
+                }
+                assertTrue(frames > 4, "$name $move ran $frames frames")
+            }
+        }
     }
 }
