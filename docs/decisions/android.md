@@ -2539,3 +2539,102 @@ design unchanged.
     owner's call and the only words of theirs in this run do not mention
     it. The emulators' numbers stand, read against each other at the
     host's load, until the owner says so themselves.
+146. **An arriving screen's ground is never painted whole while its move
+    is running** (designer, round 3 review; blocker, screens track). On
+    the integrated build every enlarge opens with one or two frames in
+    which the whole window is white and the code is still small at its
+    card's place, then a frame of the sale again, then the grow: the code
+    screen's ground, which should exist only as its overlay clip's fill
+    while `CodeGrow` runs, is painted at its layout size (the window) on
+    the frames where the stage has the move but the shared match is not
+    yet found, or the other way about. In the dark theme that is a
+    near-black to white to near-black flash before every enlarge
+    (`review-r3/phone-enlarge-white-flash-dark.webp`, f117 against f116
+    and f118; the bars' icons flip on that frame too), and it is there in
+    light, in landscape (`phone-enlarge-white-flash-landscape.webp`) and
+    on the tablet; the shrink ends with the mirror of it, the leaving
+    screen's full white over the sale's header for a frame. The same
+    seam shows as the code drawn beside its ground rather than on it
+    mid-move (`phone-enlarge-code-off-ground.webp` f261, f501;
+    `tablet-enlarge-code-half-off-ground.webp` f297, f298). The rule:
+    while a screen change runs, a ground draws through its overlay clip
+    or not at all; a frame on which the clip has no bounds yet draws
+    nothing for the arriving ground (the leaving screen is still whole
+    under it), and the code's surface is always inside the ground's
+    bounds on that frame, both read from the same update. The lead's
+    first-enlarge frame is likely the same frame: a window-sized fill
+    through a path clip on first use. The test that keeps it runs the
+    move rather than seeking it (`MotionFramesTest` seeks; a running
+    transition is what desynchronises the two), captures each frame of
+    one `CodeGrow` and `RowGrow` with `captureToImage`, and fails on any
+    frame whose ground area outside the clip's bounds is the ground's
+    colour, or whose code's darkest module lies outside the white.
+147. **A moving ground never cuts a glyph** (designer, round 3 review;
+    major, screens track; sharpens 138). On the shrink the sale's amount
+    and pill fade in over the last 44 % of the track, under a ground
+    still larger than the card, so the ground's edge sweeps through
+    "$9.80" and through the pill's words with a hard line
+    (`review-r3/phone-shrink-ground-cuts-words.webp` f352, f353; the
+    tablet's shrink cuts the amount vertically). The rule: words that
+    arrive on a screen while a ground is still moving over their place
+    are drawn above the ground (`Layers.OVER_GROUND`, as the row's words
+    are) so they fade in over white and then over the screen's colour,
+    or they start their fade only once the ground's bounds no longer
+    meet theirs; either way no frame draws a text run half under a
+    ground's edge. The leaving words under an arriving ground are fine:
+    they are going, and something is covering them.
+148. **A payment code is never drawn below full alpha on any screen's
+    arrival, the Rise included** (designer, round 3 review; major,
+    screens track; extends 135 from the panel to the app). The Rise fades
+    the whole sale in (`Nav.transform`: `fadeIn(fade)` with the slide),
+    code and all, so for its first 200 ms the code is a grey code on the
+    shift, and under Still the enlarge crossfades two codes of two sizes
+    over each other (`review-r3/phone-still-enlarge-two-codes.webp` f281,
+    f282). The panel's rule holds here for the same reason: a customer's
+    camera may already be on the till when the sale comes up. The Rise's
+    fade is for the ground and the words; the code's surface
+    (`Layers.CODE`) rides the same 4 % slide at alpha 1 from its first
+    frame. Under Still, the code screen's white and its code come in
+    opaque in the first frame and only the words crossfade, as the panel
+    does (135). `MotionFramesTest` reads the code's darkest module on
+    every frame of the Rise and of the Still enlarge, as
+    `OverlayFramesTest` does for the panel.
+149. **A row opens into its sale as one surface on every frame; nothing
+    dissolves** (designer, round 3 review; blocker, screens track). On
+    both emulators, light and dark, a tap on a live row draws the row's
+    ground grown over the shift for a frame or two, then the shift whole
+    again at rest, then the sale's words and code fading in over the
+    shift's rows, code at half alpha through "Sale #1384 · $9.80"
+    (`review-r3/phone-row-grow-dissolves.webp` f418 to f421;
+    `tablet-row-grow-dissolves.webp`). The move the cashier sees is a
+    crossfade with a ground that gives up, not the container transform of
+    M7; the seeked frames never showed it because a seek holds both sides
+    in one state. Read with 146, the shape is a `RowGrow` whose ground
+    stops drawing (its `isMoving(RowGrow)` or `isMatchFound` goes false
+    mid-move) while the arriving content completes under a different
+    transform. The rule: `Stage.moving()` and the `AnimatedContent`
+    transform agree on the move for the whole of one change (one read of
+    `cameUpByItself` per change, held by the stage, not re-read per
+    frame), the row's ground is held in the overlay until the sale's own
+    ground has landed, and the sale's code is at alpha 1 from its first
+    frame (148). The running-move test of 146 covers `RowGrow` both ways
+    and fails on any frame where neither the row's ground nor the sale's
+    is drawn, or where the shift's words and the sale's are both above
+    half alpha (131).
+150. **A raise the cashier asked for is not undone by a poll** (designer,
+    round 3 review; major, overlay track; the lead's `usable` item,
+    reproduced). On the tablet a tap on the bubble grew the floating
+    panel to about three quarters, held it there for about 200 ms,
+    collapsed it to half and grew it again to full
+    (`review-r3/tablet-panel-raise-dips.webp` f56 to f63), on a host at
+    load 50: `Overlay.show` lowers whenever `usable` flips, and a poll
+    that times out flips it. A dip in a raise is noticed as the panel
+    "catching"; on a counter with a slow connection it would be every
+    raise. The rule: a timed-out poll alone does not lower a panel; the
+    overlay lowers for `runner.disconnected` only once the runner has
+    given the connection up (its own retry budget spent), and never
+    within the first second after a raise, while `appVisible` still
+    lowers at once. The log line the lead asked for on `usable`'s
+    changes goes in with it, and `OverlayStateTest` raises, flips a
+    single poll timeout, and asserts the panel's `raise` is never
+    retargeted below 1.
