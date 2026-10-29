@@ -826,7 +826,8 @@ private fun EndedHero(sale: TillSale) {
  * with its corners going from 32 dp to square, the code and its docked
  * bubble fading out under it and the order fading in inside it; Back to
  * the code is the same, reversed. The order is laid out once at the
- * window's size, and the container is only a clip read in its draw.
+ * window's size; the container is only a clip read in its draw, and the
+ * order rides its top edge, placed in the layout phase.
  */
 @Composable
 fun PhonePanel(
@@ -874,6 +875,7 @@ fun PhonePanel(
                         // Under Still nothing grows: the order's ground covers the code at once on the way in, and on the
                         // way back goes with its words, a crossfade off the code rather than an empty ground over it.
                         .container(motion, opened, if (stillLeaving) Color.Transparent else mk.ground)
+                        .ridesTop(motion, opened)
                         .graphicsLayer { alpha = orderAlpha.value; compositingStrategy = CompositingStrategy.ModulateAlpha }
                         .then(if (stillLeaving) Modifier.background(mk.ground) else Modifier)
                         .safeDrawingPadding()
@@ -923,6 +925,20 @@ private fun Modifier.container(motion: PanelMotion, opened: State<Float>, ground
             this@onDrawWithContent.drawContent()
         }
     }
+}
+
+/**
+ * The order's content riding the container's top edge while it grows from
+ * the card (and back): placed, not laid out again, so its heading arrives
+ * at the card's top with the first frames of its fade instead of waiting
+ * above the clip for the container to reach it, which left the growing
+ * card an empty ground. At rest it sits where it was laid out.
+ */
+private fun Modifier.ridesTop(motion: PanelMotion, opened: State<Float>): Modifier = offset {
+    val from = motion.card
+    val window = motion.window
+    val p = opened.value
+    if (from == null || window == null || p >= 1f) IntOffset.Zero else IntOffset(0, ((from.top - window.top) * (1f - p)).roundToInt())
 }
 
 @Composable

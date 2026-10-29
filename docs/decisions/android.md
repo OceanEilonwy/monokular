@@ -2661,3 +2661,16 @@ design unchanged.
     (tag `MonokularOverlay`), so the next unexplained lower names its
     cause. On a quiet host the wide raise and lower measured 119
     frames, p50 16.9 ms, max 19.2 ms.
+152. **The phone's order rides its container's top as it grows** (dev1,
+    round 4; the review's minor item on the order page's empty card).
+    The order is laid out once at the window's size and only its clip
+    grew from the card, so its heading sat above the clip until the
+    container reached it: the card was an empty ground from 27 % of the
+    move to 56 %. It is now placed (an `offset {}` read in layout, no
+    relayout) at the container's top edge on every frame, so the order's
+    words arrive at the card's top as soon as they start fading in, and
+    settle to the window's top as the container does. No timing change
+    and no new layer, so 131's rule (two faces never both above half
+    alpha) stands as it was; `PhoneOrderOnDeviceTest` holds the heading
+    at or below the card's top on the grow's first frames and only
+    rising after.
