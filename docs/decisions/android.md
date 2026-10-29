@@ -2390,3 +2390,24 @@ design unchanged.
     of the card, its code, rings, status row and bubble across the move;
     `OverlayFramesTest` saves `phone-late-order-q*.png` and holds the code
     square and opaque on each.
+
+137. **One driver keeps the stage on the model's screen, and a Back says
+    what it left from the model** (dev2, round 3; implements 129 and the
+    lead's stage/model desync finding). `FollowScreen` is the only caller
+    of `animateTo` on the stage: it follows the model's screen with
+    `Motion.stage`, stands aside while a back gesture holds the stage, and
+    when the gesture lets go (committed or cancelled) sends the stage to
+    wherever the model is by then. A run cut short by a gesture's seek
+    (the transition's mutex cancels the run, not the driver) is picked up
+    again when the gesture ends, so a sale coming up or a payment landing
+    under the finger is followed, never dropped. `StageBack` takes what it
+    goes back *from* from the model as the gesture starts, never from
+    `currentState`, which mid-move is the screen before; it previews only
+    from a settled stage, and a Back that lands during a move just tells
+    the model, so the running move retargets from wherever it got to. On
+    release the model is told at once and the stage follows it, rather
+    than the model waiting for the stage to land. `StageBackTest` covers a
+    Back 96 ms into the code's grow (the model goes back to the sale and a
+    second Back reaches the shift), and a sale coming up under a
+    cancelled and a committed gesture (the stage ends on the new sale,
+    and Back still works from there).
