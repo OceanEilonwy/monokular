@@ -197,12 +197,40 @@ object Panel {
     fun collapseVelocity(velocity: Float, height: Float): Float = if (height > 0f) 0f - velocity / height else 0f
 
     /**
+     * The raise below which the panel is wholly in the bubble: the card
+     * invisible at its smallest, the docked bubble where the free one is.
+     * A collapse lands here, not at the spring's last thousandth: the
+     * spring's tail from here to 0 is about a quarter of its length, which
+     * left a faint card at the dock after the bubble had landed (decision
+     * 170). A raise passes it within a frame.
+     */
+    const val IN_BUBBLE = 0.1f
+
+    /**
+     * How far the panel has come out of the bubble at [raise], 0 to 1: the
+     * card's scale and the docked bubble's slide follow this, so both are
+     * done at [IN_BUBBLE].
+     */
+    fun opened(raise: Float): Float = ((raise - IN_BUBBLE) / (1f - IN_BUBBLE)).coerceIn(0f, 1f)
+
+    /**
      * How opaque a growing panel is at [raise]: all there by a third of the
-     * way (`docs/motion.md` M1), so it reads as the bubble opening rather
-     * than a card fading. Its shadow takes the same share, so the shadow
+     * way out of the bubble (`docs/motion.md` M1), so it reads as the bubble
+     * opening rather than a card fading, and gone while the docked bubble
+     * still has the last [BUBBLE_ALONE] of its way to go, so to the eye the
+     * bubble lands alone. Its shadow takes the same share, so the shadow
      * never outlives the card (decision 134).
      */
-    fun shown(raise: Float): Float = (raise * 3f).coerceIn(0f, 1f)
+    fun shown(raise: Float): Float = ((opened(raise) - BUBBLE_ALONE) * 3f).coerceIn(0f, 1f)
+
+    /** The share of the docked bubble's way, nearest the free bubble, it travels with no card (decision 170). */
+    const val BUBBLE_ALONE = 0.05f
+
+    /** The card's scale at [raise]: from [SMALLEST] in the bubble to whole. */
+    fun scale(raise: Float): Float = SMALLEST + (1f - SMALLEST) * opened(raise)
+
+    /** The card's scale in the bubble (`docs/motion.md` M1). */
+    const val SMALLEST = 0.3f
 
     /**
      * The point a growing panel scales about, as fractions of its [card]
@@ -968,7 +996,7 @@ private fun PhoneCode(
                     if (dock == null || from == null) {
                         IntOffset.Zero
                     } else {
-                        val away = 1f - motion.raise.value
+                        val away = 1f - Panel.opened(motion.raise.value)
                         IntOffset(((from.x - dock.x) * away).roundToInt(), ((from.y - dock.y) * away).roundToInt())
                     }
                 }
@@ -1047,8 +1075,8 @@ fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: Panel
 
 /**
  * The panel growing out of the bubble and collapsing back into it
- * (`docs/motion.md` M1): scaled from 0.3 and faded in over the first third
- * of [PanelMotion.raise], about the docked bubble on a phone and the
+ * (`docs/motion.md` M1): scaled from [Panel.SMALLEST] and faded in over the
+ * first third of [Panel.opened], about the docked bubble on a phone and the
  * card's corner nearest the bubble on a tablet. Everything is read in the
  * layer, so a frame of the grow recomposes and relays out nothing.
  */
@@ -1062,7 +1090,7 @@ private fun Modifier.grows(motion: PanelMotion, wide: Boolean, order: Boolean = 
         val card = if (order) motion.window else motion.card
         val from = if (wide) motion.bubbleAt else motion.dock ?: motion.bubbleAt
         if (card != null && from != null) transformOrigin = Panel.origin(from, card, corner = wide)
-        scaleX = 0.3f + 0.7f * raise
+        scaleX = Panel.scale(raise)
         scaleY = scaleX
         alpha = Panel.shown(raise)
         // Faded per draw, not through a window-sized offscreen buffer: the fade is a third of the grow.

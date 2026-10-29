@@ -47,11 +47,20 @@ class Presence(initial: Float = 0f) {
     /**
      * Goes out from wherever it is, at [velocity] (progress a second; null
      * keeps the current one), and calls [landed] once it's out, unless an
-     * [enter] or a [snap] came first.
+     * [enter] or a [snap] came first. Out is [landsAt] or below: what is
+     * drawn there is drawn as at 0, so the window can go on that frame
+     * instead of after the spring's invisible tail.
      */
-    fun exit(velocity: Float? = null, landed: () -> Unit = {}) = go {
-        animatable.animateTo(0f, motion.surface.fraction, initialVelocity = velocity ?: animatable.velocity)
-        landed()
+    fun exit(velocity: Float? = null, landsAt: Float = 0f, landed: () -> Unit = {}) = go {
+        var out = animatable.value <= landsAt
+        if (out) landed()
+        animatable.animateTo(0f, motion.surface.fraction, initialVelocity = velocity ?: animatable.velocity) {
+            if (!out && value <= landsAt) {
+                out = true
+                landed()
+            }
+        }
+        if (!out) landed()
     }
 
     /** Jumps to [to]: the system moved things, not the cashier. */
