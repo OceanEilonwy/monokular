@@ -1714,3 +1714,12 @@ design unchanged.
     Still, `fadeThrough` keeps its 120 ms wait: it puts two different
     labels in one place, and a quick crossfade would overlap them. It
     takes 240 ms where a Still crossfade takes 120.
+142. **What reaches a screen after it came up fades in** (dev2, round 3;
+    N3). A receipt reaches the till about a second after its sale. The
+    order card now fades in with `Motion.fade` (an `Animatable` read per
+    draw: no layer, no recomposition per frame). On a wide window the
+    column beside the code settles to its new height rather than jumping.
+    The header's second line ("From Register 2" to "Front · this till")
+    fades through. `LateReceiptTest` checks the card is half in at 100 ms,
+    and that the code, the pill and the ring are not recomposed by the
+    fade. The panel's order line is the overlay track's, asked of dev1.
