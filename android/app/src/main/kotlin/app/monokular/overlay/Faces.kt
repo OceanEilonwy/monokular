@@ -69,6 +69,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.runtime.State
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -76,6 +77,8 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.DefaultShadowColor
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -593,13 +596,17 @@ private data class FaceShown(val face: PanelFace, val sale: TillSale)
 
 /**
  * The code and its status while live; the tick once paid; else where the
- * code was. One place for all three (`docs/motion.md` M5): paid or ended,
- * the white card scales down into the 88 dp circle at the same centre and
- * fades under it, the slot's height following; the next sale's code grows
- * back out of it. The code is laid out once at its full size and only its
- * layer scales, so it is never re-laid out; at rest it is exactly its
- * designed size. Everything that moves is read in layout or draw, and all
- * of it follows [faces], so the fold and the words start on one frame.
+ * code was. One place for all three (`docs/motion.md` M5, decision 171):
+ * paid or ended, one surface shrinks from the code's white card into the
+ * 88 dp circle at the same centre, its corners rounding into the circle and
+ * its white turning the hero's ground as the hero's icon fades in inside it,
+ * so there is a ground under the tick on every frame and the slot's height
+ * follows; the code's modules fade off that surface, clipped to it. The next
+ * sale's code grows back out of the circle the same way, whole and opaque
+ * from its first frame. The code is laid out once at its full size and only
+ * its layer scales, so it is never re-laid out; at rest it is exactly its
+ * designed size. Everything that moves is read in layout or draw, and all of
+ * it follows [faces], so the fold and the words start on one frame.
  */
 @Composable
 private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, words: Modifier) {
@@ -608,6 +615,7 @@ private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, wo
     val sale = shown.sale
     val live = shown.face == PanelFace.Code
     val codeSize = if (wide) 280.dp else 264.dp
+    val codeCorner = if (wide) 30.dp else 28.dp
     val fold = faces.animateFloat({ m.surface.fraction }, label = "fold") { if (it.face == PanelFace.Code) 0f else 1f }
     // The code only fades out, into a paid or ended hero, where nothing scans; the next sale's grows out of the hero
     // opaque from its first frame (§10 rule 6), so a camera already on the panel never sees it faint.
@@ -618,6 +626,13 @@ private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, wo
     // The last face the code folded into, kept while the next code grows out of it and let go once it has.
     var folded by remember { mutableStateOf<TillSale?>(null) }
     if (!live) folded = sale else if (!faces.isRunning) folded = null
+    val hero = folded?.let { heroLook(it) }
+    val heroGround = hero?.ground ?: Fixed.White
+    val scaled = Modifier.graphicsLayer {
+        val scale = lerp(1f, HeroSize / codeSize, fold.value)
+        scaleX = scale
+        scaleY = scale
+    }
     Box(
         Modifier.testTag(CODE_SLOT_TAG).layout { measurable, constraints ->
             val full = codeSize.roundToPx()
@@ -627,27 +642,36 @@ private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, wo
         },
         contentAlignment = Alignment.Center,
     ) {
-        folded?.let { last ->
-            Box(Modifier.graphicsLayer { alpha = heroAlpha.value }, contentAlignment = Alignment.Center) {
-                if (Panel.face(last) == PanelFace.Paid) PaidHero(HeroSize) else EndedHero(last)
-            }
-        }
+        // The one surface: the code's white card at rest, the hero's circle folded, and every size between.
+        Box(
+            Modifier.size(codeSize).then(scaled).drawBehind {
+                val corner = foldCorner(codeCorner.toPx(), size.minDimension, fold.value)
+                drawRoundRect(lerp(Fixed.White, heroGround, heroAlpha.value), cornerRadius = CornerRadius(corner))
+            },
+        )
         QrCode(
             sale.code.uri,
             "Payment code for ${SaleText.amount(sale)}",
             Modifier.size(codeSize)
+                .then(scaled)
                 .graphicsLayer {
-                    val scale = lerp(1f, HeroSize / codeSize, fold.value)
-                    scaleX = scale
-                    scaleY = scale
                     alpha = if (faces.targetState.face == PanelFace.Code) 1f else codeAlpha.value
                     compositingStrategy = CompositingStrategy.ModulateAlpha
                 }
+                // Folding, the code's own white card is held to the surface's rounding corners, so no square white
+                // corner is left outside the circle; growing back it is whole (§10 rule 6) and covers the surface.
+                .clipToFold(codeCorner, fold, folding = { faces.targetState.face != PanelFace.Code })
                 .testTag(CODE_TAG)
                 .then(if (live) Modifier else Modifier.clearAndSetSemantics {}),
             padding = 16.dp,
-            radius = if (wide) 30.dp else 28.dp,
+            radius = codeCorner,
         )
+        if (hero != null) {
+            Icon(
+                hero.icon, contentDescription = null, tint = hero.tint,
+                modifier = Modifier.size(HeroSize * hero.iconShare).graphicsLayer { alpha = heroAlpha.value }.testTag(HERO_TAG),
+            )
+        }
     }
     faces.AnimatedContent(
         words,
@@ -681,6 +705,50 @@ private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, wo
         }
     }
 }
+
+/**
+ * The folding surface's corner at [fold], in its own unscaled pixels: the
+ * code card's [corner] at rest, half its [side] (a circle) folded.
+ */
+internal fun foldCorner(corner: Float, side: Float, fold: Float): Float = lerp(corner, side / 2f, fold)
+
+/**
+ * The code clipped to the folding surface's corners while [folding]: one
+ * path made per size and rewound per frame, read in the draw only, so a
+ * frame allocates nothing. At rest, or growing back, it draws straight
+ * through.
+ */
+private fun Modifier.clipToFold(corner: Dp, fold: State<Float>, folding: () -> Boolean): Modifier = drawWithCache {
+    val path = Path()
+    val rest = corner.toPx()
+    onDrawWithContent {
+        val p = fold.value
+        if (!folding() || p <= 0f) {
+            drawContent()
+            return@onDrawWithContent
+        }
+        val r = foldCorner(rest, size.minDimension, p)
+        path.rewind()
+        path.asAndroidPath().addRoundRect(0f, 0f, size.width, size.height, r, r, android.graphics.Path.Direction.CW)
+        clipPath(path) { this@onDrawWithContent.drawContent() }
+    }
+}
+
+/** What a folded panel's hero shows: its ground, and the icon in it. */
+@Immutable
+private class HeroLook(val ground: Color, val tint: Color, val icon: ImageVector, val iconShare: Float)
+
+/** Paid as the detail pages show it, the tick on the paid ground; else where the code was, by how the sale ended. */
+@Composable
+private fun heroLook(sale: TillSale): HeroLook = when {
+    Panel.face(sale) == PanelFace.Paid -> HeroLook(mk.paidGround, mk.paid, MkIcons.Tick, 0.53f)
+    sale.refunded -> HeroLook(mk.chip, mk.ink, MkIcons.Refund, 0.5f)
+    sale.phase == SalePhase.DoubleSpend -> HeroLook(mk.dangerGround, mk.danger, MkIcons.Warning, 0.5f)
+    else -> HeroLook(mk.warnGround, mk.warn, MkIcons.Clock, 0.5f)
+}
+
+/** The hero's icon, which fades in inside the folding surface. */
+const val HERO_TAG = "panel-hero"
 
 /** The panel's code, for the tests that hold it to its size. */
 const val CODE_TAG = "panel-code"
@@ -795,7 +863,7 @@ private fun OrderLine(count: String, first: String, oneLine: Boolean, onOrder: (
 
 /**
  * The phase's ring, "Waiting for payment" and the time left at [now]. The
- * words crossfade and the row settles to their width (M12); only the words
+ * words fade through and the row settles to their width (M12); only the words
  * announce: the countdown ticks silently, in tabular figures.
  */
 @Composable
@@ -808,36 +876,14 @@ private fun StatusRow(sale: TillSale, now: LongState) = Row(
     PhaseRing(sale.phase, 26.dp)
     AnimatedContent(
         SaleText.status(sale),
-        transitionSpec = { (fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
+        // Through, not across: "Payment seen" never drawn over "Waiting for payment" (decision 168).
+        transitionSpec = { (fadeIn(m.fadeThrough.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
         label = "status words",
     ) { words ->
         Text(words, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
     }
     if (sale.phase.countsDown) {
         Countdown(now, sale.expiresAt, fontSize = 14.sp, color = mk.muted) { "· ${CodeText.left(sale, it)}" }
-    }
-}
-
-/**
- * Paid as the detail pages show it: the paid tick on the paid ground. The
- * panel takes the theme's; the bubble, over another app, the design's.
- */
-@Composable
-private fun PaidHero(size: Dp, ground: Color = mk.paidGround, tint: Color = mk.paid) =
-    Box(Modifier.size(size).clip(CircleShape).background(ground), contentAlignment = Alignment.Center) {
-        Icon(MkIcons.Tick, contentDescription = null, tint = tint, modifier = Modifier.size(size * 0.53f))
-    }
-
-/** Where the code was, for a sale that stopped being live while the panel was up. */
-@Composable
-private fun EndedHero(sale: TillSale) {
-    val (ground, tint, icon) = when {
-        sale.refunded -> Triple(mk.chip, mk.ink, MkIcons.Refund)
-        sale.phase == SalePhase.DoubleSpend -> Triple(mk.dangerGround, mk.danger, MkIcons.Warning)
-        else -> Triple(mk.warnGround, mk.warn, MkIcons.Clock)
-    }
-    Box(Modifier.size(HeroSize).clip(CircleShape).background(ground), contentAlignment = Alignment.Center) {
-        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(44.dp))
     }
 }
 

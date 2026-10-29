@@ -16,6 +16,8 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import app.monokular.overlay.CODE_SLOT_TAG
+import app.monokular.overlay.HERO_TAG
 import androidx.test.platform.app.InstrumentationRegistry
 import app.monokular.core.SalePhase
 import app.monokular.overlay.CARD_TAG
@@ -278,5 +280,46 @@ class OverlayFramesTest {
         }
         assertTrue(homeAt > 0, "the docked bubble gets home")
         assertTrue(landedAt in 0..homeAt + 2, "the collapse lands on frame $landedAt, the bubble is home on $homeAt")
+    }
+
+    /** The folding surface's width through the slot's middle: everything there that isn't the card's own ground. */
+    private fun surfaceWidth(image: Bitmap): Int {
+        val slot = compose.onNodeWithTag(CODE_SLOT_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val card = compose.onNodeWithTag(CARD_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val y = slot.center.y.toInt()
+        val ground = image.getPixel(card.left.toInt() + 6, y)
+        val middle = slot.center.x.toInt()
+        var from = middle
+        while (from > card.left + 6 && apart(image.getPixel(from - 1, y), ground) > 0.04f) from--
+        var to = middle
+        while (to < card.right - 6 && apart(image.getPixel(to + 1, y), ground) > 0.04f) to++
+        return to - from + 1
+    }
+
+    /**
+     * Paid, one surface shrinks from the code's card into the hero's circle
+     * (decision 171): on every frame there is a ground at least the hero's
+     * size round the tick, it never grows on the way, and it passes through
+     * at least three sizes between the card and the circle.
+     */
+    @Test
+    fun thePaidFoldShrinksOneSurfaceIntoTheHero() {
+        panel(raised = 1f)
+        val density = compose.density.density
+        val card = surfaceWidth(window())
+        val hero = (88 * density).toInt()
+        assertTrue(abs(card - 264 * density) < 6 * density, "at rest the surface is the code's card: $card px")
+        sale = testSale("f1", SalePhase.Paid, expiresAt = expires)
+        val widths = mutableListOf<Int>()
+        repeat(45) {
+            compose.mainClock.advanceTimeByFrame()
+            widths += surfaceWidth(window())
+        }
+        widths.forEachIndexed { frame, w -> assertTrue(w >= hero - 4 * density, "frame $frame: the surface is $w px, under the hero's $hero") }
+        widths.zipWithNext().forEachIndexed { frame, (a, b) -> assertTrue(b <= a + 2 * density, "frame $frame: the surface grew from $a to $b px") }
+        val between = widths.filter { it < card - 8 * density && it > hero + 8 * density }.map { it / (4 * density).toInt() }.toSet()
+        assertTrue(between.size >= 3, "the surface passes through ${between.size} sizes between the card and the hero: $widths")
+        assertTrue(abs(widths.last() - hero) < 4 * density, "it lands at the hero's size: ${widths.last()} px")
+        compose.onNodeWithTag(HERO_TAG, useUnmergedTree = true).assertExists()
     }
 }
