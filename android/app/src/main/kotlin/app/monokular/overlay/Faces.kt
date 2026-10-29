@@ -523,7 +523,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     grabber()
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Details(sale, where, actions, wordsLayer, spacing = 10.dp, oneLine = true)
+                        Details(faces, where, actions, wordsLayer, spacing = 10.dp, oneLine = true)
                         Buttons(faces, actions, wordsLayer)
                     }
                 }
@@ -542,7 +542,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Details(sale, where, actions, wordsLayer, spacing = 14.dp)
+                Details(faces, where, actions, wordsLayer, spacing = 14.dp)
                 Face(faces, wide, now, wordsLayer)
                 Buttons(faces, actions, wordsLayer)
             }
@@ -550,21 +550,43 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
     }
 }
 
-/** The header, the amount and what was bought. */
+/**
+ * The header, the amount and what was bought, for the sale [faces] shows.
+ * When the panel moves on to another sale (the next one waiting, after a
+ * paid dwell), they fade through on the same transition as the hero growing
+ * into its code and the status words (decision 169): the old sale's go under
+ * `fadeQuick` with its "Paid · … received", the new one's arrive with its
+ * status, so no frame reads two sales. A change to the same sale (its
+ * receipt, its phase) is no transition here.
+ */
 @Composable
-private fun Details(sale: TillSale, where: String, actions: PanelActions, words: Modifier, spacing: Dp, oneLine: Boolean = false) {
-    Header(sale, where, actions.onOpenShift, words)
-    Column(Modifier.fillMaxWidth()) {
-        Column(words.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(SaleText.amount(sale), style = display(44, -0.8))
-            Text(
-                SaleText.xmr(sale), fontSize = 15.sp, color = mk.muted,
-                modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                    .clickable(onClickLabel = "Copy the XMR amount") { actions.onCopyXmr(sale) }
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-            )
+private fun Details(faces: Transition<FaceShown>, where: String, actions: PanelActions, words: Modifier, spacing: Dp, oneLine: Boolean = false) {
+    val m = motion
+    faces.AnimatedContent(
+        Modifier.fillMaxWidth(),
+        transitionSpec = {
+            fadeIn(m.fadeThrough.fraction) togetherWith fadeOut(m.fadeQuick.fraction) using
+                SizeTransform(clip = false) { _, _ -> m.settle.spec(IntSize.VisibilityThreshold) }
+        },
+        contentAlignment = Alignment.TopCenter,
+        contentKey = { it.sale.orderId },
+    ) { side ->
+        val sale = side.sale
+        Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(spacing)) {
+            Header(sale, where, actions.onOpenShift, words)
+            Column(Modifier.fillMaxWidth()) {
+                Column(words.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(SaleText.amount(sale), style = display(44, -0.8))
+                    Text(
+                        SaleText.xmr(sale), fontSize = 15.sp, color = mk.muted,
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                            .clickable(onClickLabel = "Copy the XMR amount") { actions.onCopyXmr(sale) }
+                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                    )
+                }
+                LateOrderLine(sale, actions, words, spacing, oneLine)
+            }
         }
-        LateOrderLine(sale, actions, words, spacing, oneLine)
     }
 }
 
