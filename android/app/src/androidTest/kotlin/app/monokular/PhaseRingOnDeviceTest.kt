@@ -118,6 +118,35 @@ class PhaseRingOnDeviceTest {
         for (degrees in listOf(45.0, 135.0, 225.0, 315.0)) assertColour(paid, image.at(degrees), "closed at $degrees")
     }
 
+    /** How far [c] is from the nearest colour between the track and [to]: a stroke fading over the track is on that line. */
+    private fun offLine(c: Color, to: Color): Float {
+        val d = floatArrayOf(to.red - track.red, to.green - track.green, to.blue - track.blue)
+        val v = floatArrayOf(c.red - track.red, c.green - track.green, c.blue - track.blue)
+        val a = ((v[0] * d[0] + v[1] * d[1] + v[2] * d[2]) / (d[0] * d[0] + d[1] * d[1] + d[2] * d[2])).coerceIn(0f, 1f)
+        return maxOf(abs(v[0] - a * d[0]), abs(v[1] - a * d[1]), abs(v[2] - a * d[2]))
+    }
+
+    /** Every frame of a change, the arc where it's filled on both sides is the fill or the paid colour over the track, never a mix of the two (decision 133). */
+    private fun assertNoMixedHue(what: String) {
+        repeat(60) { frame ->
+            val c = frame().at(45.0)
+            val off = minOf(offLine(c, fill), offLine(c, paid))
+            assertTrue(off < 0.06f, "$what, frame $frame: $c is neither colour over the track (off by $off)")
+            compose.mainClock.advanceTimeByFrame()
+        }
+    }
+
+    @Test
+    fun paidAndTheNextSaleNeverDrawTheRingInAMixOfTheirColours() {
+        ring(Motion.Full, SalePhase.Confirming)
+        phase = SalePhase.Paid
+        assertNoMixedHue("closing on paid")
+        assertColour(paid, frame().at(45.0), "closed in the paid colour")
+        phase = SalePhase.Waiting
+        assertNoMixedHue("the next sale's ring")
+        assertColour(fill, frame().at(45.0), "back to the fill")
+    }
+
     @Test
     fun underStillMotionAStepIsDrawnOnTheNextFrame() {
         ring(Motion.Still, SalePhase.Waiting)

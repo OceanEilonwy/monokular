@@ -1,6 +1,5 @@
 package app.monokular.ui
 
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.size
@@ -30,10 +29,15 @@ fun ringFill(phase: SalePhase): Float = SaleText.step(phase) / 4f
  *
  * A step sweeps (`docs/motion.md` M6, `motion.sweep`): the arc grows from
  * where it is, so a second step mid-sweep just carries on, and it closes
- * in [paid] once the sale is paid. The first composition draws the phase's
- * own fill, so a ring that appears at Seen doesn't sweep in. Both animated
- * values are read only in the draw lambda: a step redraws the ring and
- * recomposes nothing, and nothing is allocated per frame.
+ * in [paid] once the sale is paid. The arc's two colours are two strokes,
+ * never a blend of them (decision 133): the one going fades out under
+ * `motion.fadeQuick` before the one coming fades in (`motion.fadeThrough`),
+ * so on the way to paid, or from a paid ring to the next sale's, the ring
+ * is only ever [fill], [paid], or one of them fading over the [track].
+ * The first composition draws the phase's own fill, so a ring that appears
+ * at Seen doesn't sweep in. Every animated value is read only in the draw
+ * lambda: a step redraws the ring and recomposes nothing, and nothing is
+ * allocated per frame.
  */
 @Composable
 fun PhaseRing(
@@ -48,7 +52,9 @@ fun PhaseRing(
 ) {
     val m = motion
     val fraction by animateFloatAsState(ringFill(phase), m.sweep.fraction, label = "ring")
-    val arc by animateColorAsState(if (phase == SalePhase.Paid) paid else fill, m.fade.spec(), label = "arc")
+    val closed = phase == SalePhase.Paid
+    val fillShown by animateFloatAsState(if (closed) 0f else 1f, (if (closed) m.fadeQuick else m.fadeThrough).fraction, label = "fill")
+    val paidShown by animateFloatAsState(if (closed) 1f else 0f, (if (closed) m.fadeThrough else m.fadeQuick).fraction, label = "paid")
     val density = LocalDensity.current
     val strokes = remember(size, density) { RingStrokes(with(density) { size.toPx() }) }
     Canvas(modifier.size(size).clearAndSetSemantics {}) {
@@ -56,9 +62,15 @@ fun PhaseRing(
         val arcSize = Size(this.size.width - 2 * inset, this.size.height - 2 * inset)
         val topLeft = Offset(inset, inset)
         drawArc(track, 0f, 360f, useCenter = false, topLeft = topLeft, size = arcSize, style = strokes.track)
-        val swept = fraction
-        if (swept > 0f) drawArc(arc, -90f, 360f * swept, useCenter = false, topLeft = topLeft, size = arcSize, style = strokes.arc)
-        if (pupil) drawCircle(arc, radius = this.size.minDimension * 0.11f)
+        val sweep = 360f * fraction
+        val radius = this.size.minDimension * 0.11f
+        for (stroke in 0..1) {
+            val colour = if (stroke == 0) fill else paid
+            val shown = if (stroke == 0) fillShown else paidShown
+            if (shown <= 0f) continue
+            if (sweep > 0f) drawArc(colour, -90f, sweep, useCenter = false, topLeft = topLeft, size = arcSize, alpha = shown, style = strokes.arc)
+            if (pupil) drawCircle(colour, radius = radius, alpha = shown)
+        }
     }
 }
 
