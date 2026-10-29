@@ -3000,3 +3000,17 @@ design unchanged.
     and the hero (`dev1-r5-paid-fold.mp4`, f15 to f16, 8 ms apart, with a
     heads-up notification arriving on the same frames), so the recorded
     acceptance 168 asks for still needs the phone or a GPU host.
+172. **The panel's header, amount and order line follow the face
+    transition** (dev1, round 5; 169). `Details` is an `AnimatedContent`
+    on the same `faces` transition as the hero and the status words,
+    keyed by the sale's order id, with the words' own spec (`fadeThrough`
+    in, `fadeQuick` out, the size settling unclipped): the paid sale's
+    header and amount leave with its "Paid · … received", the next sale's
+    arrive with its "Waiting for payment", so no frame reads two sales; a
+    change to the same sale (its receipt, its phase) is no transition
+    there. `theNextSalesHeaderNeverMeetsTheLastSalesAmount` measures each
+    frame's ink of the old "… received" and of the part of the new header
+    past the old header's words, and fails if both are over half their
+    rest strength; it fails on the old code from the first frame. The
+    "where" line ("Front Counter") is the overlay's, one value for both
+    sides; it only differs between sales from different tills.
