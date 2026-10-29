@@ -235,18 +235,19 @@ class Overlay(
                 }
             }
         }
+        // One set of actions for the window's life, outside its content: a new state hands the panel the same ones.
+        val actions = PanelActions(
+            onLower = ::lower,
+            onOpenShift = { lower(); onOpenShift() },
+            onOrder = { page.value = PanelPage.Order },
+            onBackToCode = { page.value = PanelPage.Code },
+            onCopy = onCopy,
+            onCopyXmr = onCopyXmr,
+            onFullScreen = { lower(); onFullScreen(it) },
+        )
         val view = compose {
             val s by state.collectAsStateWithLifecycle()
             val sale = s.sale ?: return@compose
-            val actions = PanelActions(
-                onLower = ::lower,
-                onOpenShift = { lower(); onOpenShift() },
-                onOrder = { page.value = PanelPage.Order },
-                onBackToCode = { page.value = PanelPage.Code },
-                onCopy = { onCopy(sale) },
-                onCopyXmr = { onCopyXmr(sale) },
-                onFullScreen = { lower(); onFullScreen(sale) },
-            )
             if (wide) FloatingPanel(sale, s.where, s.page, actions) else PhonePanel(sale, s.where, s.look, s.page, actions)
         }
         runCatching { wm.addView(view, params) }.onSuccess {
