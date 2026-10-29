@@ -1585,60 +1585,30 @@ says otherwise.
      Bell choice alone leaves the id, as the tokens it refreshes are still
      in use; that Bell's status says "Sign in needed" until the sign-in
      through its row. (QA round 2.)
+## App: motion (2026-10-29)
 
-## App: a Bell for several environments (2026-10-30)
+Made by the motion team (the lead designer, the tech lead and two
+developers) while making the till's transitions fluid, with the owner
+away. The owner's brief: no animation for its own sake, blazing fast and
+memory efficient, no hacky animation code, the code always scannable, the
+design unchanged.
 
-The Bell (monokulo's `crates/monokulo-bell`, `docs/bell.md` there) now
-rings several environments of each point of sale at once: Square's
-production and its sandbox, Clover's regions and its sandbox. Its
-`/v1/info` maps each point of sale to its environments, each to the
-application it hears that environment through, and `POST /v1/register`
-names the environment. Refines 95, 96 and 132.
-
-147. **The till reads its own point of sale's own environment, and nothing
-     else, from `/v1/info`.** `BellInfo.pointsOfSale` is point of sale →
-     environment → application id. In acceptance T5.2's order: the point of
-     sale absent, `Refused("it doesn't ring Clover tills")` as before; the
-     till's environment absent, `Refused` in words naming it ("it doesn't
-     ring Square sandbox tills", "it doesn't ring Clover tills in Europe"),
-     final, as decision 132's "it's for Clover in Europe" was (a Bell for
-     several environments can't be described by one, so the words name the
-     till's instead); that environment's application not the till's,
-     `SignInNeeded` through it, as decision 96 has it, which by
-     construction is the same environment. Environments other than the
-     till's are never read, so one this build doesn't know, or an entry in a
-     shape it doesn't know, is passed over (`BellApi` drops an entry without
-     a string `application_id`) instead of making the Bell "not a Bell" as
-     an unknown environment did before: the Bell may grow environments
-     before the app does. A Bell from before environments
-     (`{"square":{"application_id","environment"}}`) reads as ringing none
-     of the till's environments and refuses it in those words. The till's
-     environment is Square's application's (`SquareConfig.environment`: an
-     id starting `sandbox-` is the sandbox, any other production; the build's
-     `monokular.square.sandbox` still picks Square's hosts) and Clover's
-     build's `monokular.clover.environment` (decision 137).
-148. **A registration remembers its point of sale and environment, and one
-     made for another is taken back before registering.**
-     `BellRegistration.pointOfSale` and `environment` are kept with it; a
-     pass whose sign-in is for another point of sale or environment (a
-     sign-in through another Bell's application, another build) `DELETE`s
-     the old registration and `POST`s again, in the place decision 95 takes
-     back one for an old endpoint, since the Bell keys registrations by
-     endpoint. A registration kept from before this change has neither
-     (both read as null) and counts as made for another, so the first pass
-     after the update re-registers it once, `DELETE` then `POST`. Inferring
-     the environment instead would have kept a registration the Bell may
-     hold under its old, single environment; one extra round trip at one
-     start is cheaper than a till the Bell rings wrongly.
-149. **`POST /v1/register` sends `environment`**, the till's
-     (`PosSignIn.environment`), between `point_of_sale` and the token; the
-     body is still exactly its five fields, as the Bell refuses one it
-     doesn't know. The answer's `environment` and `application_id` are not
-     read: the till keeps the id and what it asked for.
-150. **The contract test's monokulo pin waits for the Bell's change.**
-     `monokulo.sha` stays at `2b200ef2a` in this branch, since the Bell's
-     side isn't merged in monokulo yet; it must move to the monokulo commit
-     that lands the multi-environment Bell once that merges, so the app is
-     checked against the monokulo it ships with. The Bell's own shapes are
-     held here by `BellApiTest` and `BellWakeUpsTest`, written from
-     monokulo's `docs/bell.md` as that change has it.
+90. **Motion is specified once, in `docs/motion.md`, and what it rejects
+    stays rejected.** The spec names the principles, the presets (one
+    `ui/Motion.kt`, springs and durations by purpose, no numbers at call
+    sites), the spatial model (where each surface comes from and goes
+    back to), each opportunity with its interruption and reduced-motion
+    behaviour, and a list of motions considered and cut with the reason
+    (window animation styles, a hand-animated brightness ramp, anything
+    on the QR's modules, staggered lists, count-ups, chip colour fades, a
+    paid celebration, new animation libraries). A cut motion is not
+    brought back without a new argument written beside its old one; a
+    new motion is added to the spec before it is built. The spec's
+    "before" clips (`docs/reports/motion/before/`) were recorded on the
+    base commit so the showcase can put the after beside them. Two
+    things the designer saw while recording are findings, not motion
+    work, and go to QA: the lit bubble's pulse ring is clipped by its
+    own window by about 4 dp (the window's padding is 12 dp, the pulse
+    reaches 16 dp past the circle), and on a tablet the floating panel
+    can cover the free bubble when the bubble sits at the end edge at
+    the panel's height.
