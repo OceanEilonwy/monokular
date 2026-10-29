@@ -1,6 +1,10 @@
 package app.monokular
 
 import app.monokular.core.Connection
+import app.monokular.push.BellAddress
+import app.monokular.push.BellRegistration
+import app.monokular.push.WakeUpChoice
+import app.monokular.push.WakeUpStore
 import app.monokular.sales.CursorStore
 import app.monokular.sales.Pkce
 import app.monokular.sales.ShiftStore
@@ -14,6 +18,9 @@ import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.SetSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
+
+/** A Square sign-in under way: its PKCE, and the application it signs in through when that is a Bell's. */
+data class PendingSignIn(val pkce: Pkce, val applicationId: String? = null)
 
 /** Everything the app keeps, by name, in its [SecureStore]. */
 class Stores(private val secure: SecureStore) {
@@ -69,10 +76,38 @@ class Stores(private val secure: SecureStore) {
         get() = secure.get("bubble.y")?.toIntOrNull()
         set(value) = secure.put("bubble.y", value?.toString())
 
-    /** A Square sign-in under way, kept in case Android ends the app meanwhile. */
-    var pendingSignIn: Pkce?
-        get() = read("square.pending", PkceState.serializer())?.let { Pkce(it.verifier, it.state) }
-        set(value) = write("square.pending", PkceState.serializer(), value?.let { PkceState(it.verifier, it.state) })
+    /**
+     * A Square sign-in under way, kept in case Android ends the app
+     * meanwhile, and the Square application it goes through when that is a
+     * Bell's rather than the one the till signs in through now (decision 96).
+     */
+    var pendingSignIn: PendingSignIn?
+        get() = read("square.pending", PkceState.serializer())?.let { PendingSignIn(Pkce(it.verifier, it.state), it.applicationId) }
+        set(value) = write("square.pending", PkceState.serializer(), value?.let { PkceState(it.pkce.verifier, it.pkce.state, it.applicationId) })
+
+    /**
+     * The Square application the till signs in through when it isn't the
+     * build's own: a Bell's (`docs/design.md` §3, decision 95). Set once a
+     * sign-in through it has finished, never before.
+     */
+    var squareApplicationId: String?
+        get() = secure.get("square.application")
+        set(value) = secure.put("square.application", value?.takeIf { it != BuildConfig.SQUARE_APPLICATION_ID })
+
+    /** Settings › Wake-ups: the choice, and the registration the Bell holds while there is one. */
+    val wakeUps = object : WakeUpStore {
+        override var choice: WakeUpChoice
+            get() = read("wakeups.choice", WakeUpChoice.serializer()) ?: WakeUpChoice.TimerOnly
+            set(value) = write("wakeups.choice", WakeUpChoice.serializer(), value.takeIf { it != WakeUpChoice.TimerOnly })
+
+        override var ownBell: BellAddress?
+            get() = read("wakeups.own", BellAddress.serializer())
+            set(value) = write("wakeups.own", BellAddress.serializer(), value)
+
+        override var registration: BellRegistration?
+            get() = read("wakeups.registration", BellRegistration.serializer())
+            set(value) = write("wakeups.registration", BellRegistration.serializer(), value)
+    }
 
     /** Debug builds: a stand-in Square on the developer's machine. */
     var squareBaseUrl: String?
@@ -80,7 +115,7 @@ class Stores(private val secure: SecureStore) {
         set(value) = secure.put("debug.square.base", value?.takeIf { it.isNotBlank() })
 
     @Serializable
-    private data class PkceState(val verifier: String, val state: String)
+    private data class PkceState(val verifier: String, val state: String, val applicationId: String? = null)
 
     val tokens = object : TokenStore {
         override fun load() = read("square.tokens", SquareTokens.serializer())
@@ -114,5 +149,9 @@ class Stores(private val secure: SecureStore) {
         secure.put("square.handled", null)
         shift.save(emptyList())
         shiftStartedAt = null
+        squareApplicationId = null
+        wakeUps.choice = WakeUpChoice.TimerOnly
+        wakeUps.ownBell = null
+        wakeUps.registration = null
     }
 }

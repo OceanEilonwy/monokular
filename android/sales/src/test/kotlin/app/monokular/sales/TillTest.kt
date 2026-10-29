@@ -185,6 +185,28 @@ class TillTest {
     }
 
     @Test
+    fun `a check counts the sales no check found before, another device's included, and a retried one once`() = runBlocking {
+        val other = sale.copy(id = "pay_2", deviceId = "dev_back")
+        val source = FakeSource(listOf(sale, other))
+        val till = Till(source, monokulo, connection, deviceId = "dev_front")
+        server.enqueue(recordedOrderProblem("engine-unavailable"))
+        assertEquals(2, till.check(), "this till's sale and the other device's: the Bell rings for both")
+        server.enqueue(order())
+        assertEquals(0, till.check(), "the sale whose order failed was found before")
+        assertEquals(0, till.check(), "nothing new")
+        source.sales = source.sales + sale.copy(id = "pay_3", deviceId = "dev_back")
+        assertEquals(1, till.check())
+        val down = Till(
+            object : SaleSource by source {
+                override suspend fun newSales(): List<FoundSale> = throw SquareException(503, "Square is down")
+            },
+            monokulo,
+            connection,
+        )
+        assertEquals(0, down.check(), "a POS that can't be read found nothing")
+    }
+
+    @Test
     fun `without a receipt the plain code is shown, and another device's sales are left alone`() = runBlocking {
         val other = sale.copy(id = "pay_2", deviceId = "dev_back")
         val source = FakeSource(listOf(sale, other))

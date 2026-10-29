@@ -11,7 +11,11 @@ import app.monokular.core.MonokuloException
 import app.monokular.core.Problems
 import app.monokular.core.Tor
 import app.monokular.notify.SaleNotifications
+import app.monokular.push.BellAddress
+import app.monokular.push.WakeUpChoice
+import app.monokular.push.WakeUpStatus
 import app.monokular.sales.Pkce
+import app.monokular.sales.SquareAuth
 import app.monokular.sales.SquareException
 import app.monokular.sales.SquareLocation
 import app.monokular.sales.TillSale
@@ -76,6 +80,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Where Settings was opened from, to go back to. */
     private var beforeSettings: Screen? = null
 
+    /** The Square sign-in under way went through a Bell's application, from Settings: back there once it's done. */
+    private var bellSignIn = false
+
     /** The sales that were live at the last look, to tell a sale paid on screen. */
     private var liveBefore = emptySet<String>()
     private var stepBack: Job? = null
@@ -87,6 +94,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The store as last read, this session only (decision 50). */
     val store get() = graph.store.now
+
+    /** Settings › Wake-ups: what the cashier chose, and where the chosen Bell stands. */
+    val wakeUpChoice get() = graph.wakeUps.choice
+    val wakeUpStatus get() = graph.wakeUps.status
+
+    /** The last "My own Bell" address used, kept through Timer only. */
+    val ownBell: BellAddress? get() = stores.wakeUps.ownBell
+
+    /** The project's Bell, as the graph parsed it from `BuildConfig.BELL_URL` (decision 98). */
+    val monokularBell: BellAddress get() = graph.monokularBell
 
     init {
         // On app start: the store's name and base currency, read live.
@@ -116,8 +133,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Settings, with the store read again as it opens. */
     fun openSettings() {
         readStore()
+        retryWakeUps()
         beforeSettings = screenState.value.takeIf { it is Screen.Till || it is Screen.Sale || it is Screen.Code || it is Screen.Order }
         go(Screen.Settings)
+    }
+
+    /**
+     * The app came forward, or Settings opened: a Bell that couldn't be reached is tried
+     * again now rather than at the end of its wait, since what was in the way (a UnifiedPush
+     * app just installed and not yet opened, say) may have been seen to (decision 123).
+     * Nothing else is retried here: a refusal keeps decision 95's rules.
+     */
+    fun retryWakeUps() {
+        if (graph.wakeUps.status.value is WakeUpStatus.Unreachable) graph.wakeUps.recheck()
     }
 
     /** Back from Settings: to the sale or the shift it was opened from. */
@@ -194,6 +222,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             val redeemed = graph.monokulo.connect(code)
             // Over Tor when the store has an onion address and Orbot is running (decision 55).
             val connection = redeemed.copy(tor = redeemed.onionApi != null && withContext(Dispatchers.IO) { Tor.running() })
+            // A registration left from an earlier store goes before the stores forget its id.
+            graph.wakeUps.unregister(forget = true)
             stores.forgetAll()
             stores.connection = connection
             graph.store.forget()
@@ -204,27 +234,55 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Square's sign-in page, for this attempt. */
-    fun squareSignInUrl(): String {
+    /**
+     * Square's sign-in page, for this attempt: through [applicationId]
+     * when that's a Bell's (Settings › Wake-ups' "Sign in to Square",
+     * decision 96), else through the application the till signs in
+     * through now. The application is kept with the attempt, and becomes
+     * the till's only once the sign-in finishes, so the working sign-in
+     * stands until then.
+     */
+    fun squareSignInUrl(applicationId: String? = null): String {
         val pkce = Pkce.create()
-        stores.pendingSignIn = pkce
-        return graph.squareAuth().authorizeUrl(pkce)
+        val through = applicationId?.takeIf { it != graph.squareConfig().applicationId }
+        stores.pendingSignIn = PendingSignIn(pkce, through)
+        return squareAuth(through).authorizeUrl(pkce)
     }
+
+    /** Square's sign-in through [applicationId], or through the till's own application when null. */
+    private fun squareAuth(applicationId: String?): SquareAuth =
+        if (applicationId == null) graph.squareAuth() else SquareAuth(graph.http, graph.squareConfig().copy(applicationId = applicationId), stores.tokens)
 
     /** Square's redirect back into the app. */
     fun onSquareRedirect(uri: Uri) = work {
-        val pkce = stores.pendingSignIn ?: run {
+        val pending = stores.pendingSignIn ?: run {
             problem.value = "That Square sign-in wasn't started here. Try again."
             return@work
         }
         try {
-            graph.squareAuth().finish(pkce, uri.getQueryParameter("state"), uri.getQueryParameter("code"), uri.getQueryParameter("error"))
+            squareAuth(pending.applicationId)
+                .finish(pending.pkce, uri.getQueryParameter("state"), uri.getQueryParameter("code"), uri.getQueryParameter("error"))
             stores.pendingSignIn = null
+            if (pending.applicationId != null) {
+                // Signed in through the Bell's application: the till's from now on (decision 96).
+                stores.squareApplicationId = pending.applicationId
+                bellSignIn = true
+            }
             val locations = graph.squareApi().locations()
-            if (locations.size == 1) chooseLocation(locations.single()) else go(Screen.Locations(locations))
+            when {
+                locations.size == 1 -> chooseLocation(locations.single())
+                else -> {
+                    // The running till still asks Square as the old application: it starts again as the new one.
+                    if (pending.applicationId != null) restart()
+                    go(Screen.Locations(locations))
+                }
+            }
         } catch (e: SquareException) {
+            // A failed sign-in after a good one (Square's locations) leaves no Bell sign-in pending.
+            bellSignIn = false
+            // go() clears the problem, so Square's words come after it.
+            go(if (pending.applicationId != null && stores.setupDone) Screen.Settings else Screen.Square)
             problem.value = e.message
-            go(Screen.Square)
         }
     }
 
@@ -240,9 +298,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun chooseLocation(location: SquareLocation) {
         stores.location = location
         stores.withoutSquare = false
+        // The Bell rings this till for the location it registers: registered again for this one.
+        graph.wakeUps.recheck()
         // The till starts watching now, so setup can show the test sale.
         restart()
-        go(if (stores.setupDone) Screen.Till else Screen.Square)
+        val forBell = bellSignIn
+        bellSignIn = false
+        go(
+            when {
+                forBell && stores.setupDone -> Screen.Settings
+                stores.setupDone -> Screen.Till
+                else -> Screen.Square
+            },
+        )
     }
 
     fun withoutSquare() {
@@ -303,7 +371,13 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Whether Orbot's proxy answers: Settings says so beside the Tor switch. */
     suspend fun torRunning(): Boolean = withContext(Dispatchers.IO) { Tor.running() }
 
-    fun signOutOfSquare() {
+    /**
+     * Signs out of Square. The Bell's registration is taken back first,
+     * awaited, while what it needs is still here; the Wake-ups choice
+     * stays, so signing in again registers again (acceptance A10.2).
+     */
+    fun signOutOfSquare() = work {
+        graph.wakeUps.unregister()
         graph.squareAuth().signOut()
         stores.location = null
         restart()
@@ -312,23 +386,44 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     fun disconnect() = work {
         val connection = stores.connection
+        // The Bell forgets this till before the store does (acceptance A10.3).
+        graph.wakeUps.unregister(forget = true)
         if (connection != null) {
             // The store may already have disconnected it: forget it either way.
             runCatching { graph.monokulo.disconnect(connection) }
         }
-        forget()
+        forgetHere()
     }
 
-    /** The store disconnected this device: forget it and start again. */
-    fun forget() {
+    /** The store disconnected this device: forget it and start again, the Bell's registration taken back first. */
+    fun forget() = work {
+        graph.wakeUps.unregister(forget = true)
+        forgetHere()
+    }
+
+    /** Forgets the store and everything about this till, once nothing outside it needs what's forgotten. */
+    private fun forgetHere() {
         TillService.stop(getApplication())
         graph.squareAuth().signOut()
         stores.forgetAll()
         graph.store.forget()
         left.value = emptySet()
         beforeSettings = null
+        bellSignIn = false
         go(Screen.Welcome)
     }
+
+    /** Settings › Wake-ups' choice. */
+    fun chooseWakeUps(choice: WakeUpChoice) = graph.wakeUps.choose(choice)
+
+    /** "Use this Bell": the address as typed, which Settings only offers once it parses. */
+    fun useOwnBell(text: String) {
+        val bell = BellAddress.parse(text, allowHttp = BuildConfig.DEBUG) ?: return
+        graph.wakeUps.choose(WakeUpChoice.OwnBell(bell))
+    }
+
+    /** The UnifiedPush app to deliver wake-ups through, picked from several. */
+    fun chooseDistributor(packageName: String) = graph.wakeUps.chooseDistributor(packageName)
 
     /** Refunds a sale's Square sale ([close] it first: the close sheet's "No"); its button waits for the POS's answer. */
     fun refund(orderId: String, close: Boolean = false) {

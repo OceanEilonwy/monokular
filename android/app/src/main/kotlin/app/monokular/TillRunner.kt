@@ -4,12 +4,14 @@ import app.monokular.core.Connection
 import app.monokular.core.MonokuloException
 import app.monokular.core.Problems
 import app.monokular.core.StreamEvent
+import app.monokular.push.interval
 import app.monokular.sales.FoundSale
 import app.monokular.sales.SaleSource
 import app.monokular.sales.Shift
 import app.monokular.sales.SquareSource
 import app.monokular.sales.Till
 import app.monokular.sales.TillState
+import app.monokular.sales.WakeCause
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -65,12 +67,23 @@ class TillRunner(private val graph: Graph) {
         // The first run, in setup (or after an update from before shifts were saved), starts the first shift.
         if (graph.stores.shiftStartedAt == null) graph.stores.shiftStartedAt = System.currentTimeMillis() / 1000
         val till = newTill(connection).also(::show)
-        val shift = Shift(till).also { shift = it }
+        val wakeUps = graph.wakeUps
+        val shift = Shift(
+            till,
+            // 30 s while the Bell is connected, else 2 s; read on every tick (decision 94).
+            interval = { wakeUps.status.value.interval },
+            // Only the timer's finds tell whether the Bell missed a sale: a ding's or the app's don't.
+            onChecked = { cause, found -> if (cause == WakeCause.Timer) wakeUps.timerFound(found) },
+        ).also { shift = it }
         mutable.update { it.copy(running = true, live = false, disconnected = false, streamProblem = null) }
         job = scope.launch {
             launch { shift.run() }
             launch { follow(till) }
+            // The Bell's dings, while this shift runs; outside one nothing collects them, so they go nowhere (decision 93).
+            launch { graph.push.dings.collect { shift.wake(WakeCause.Ding) } }
         }
+        // A shift starting registers again, so a registration the Bell dropped comes back (decision 95).
+        wakeUps.recheck()
     }
 
     /**
@@ -123,7 +136,7 @@ class TillRunner(private val graph: Graph) {
     }
 
     /** Check the POS now (the app came to the front). */
-    fun wake() = shift?.wake()
+    fun wake() = shift?.wake(WakeCause.Opened)
 
     /** Refunds the sale's POS sale; [close] it first (the close sheet's "No"). The job ends when the POS has answered. */
     fun refund(orderId: String, close: Boolean = false): Job? {

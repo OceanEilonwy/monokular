@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -20,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -28,11 +32,17 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.monokular.StoreNow
+import app.monokular.WakeUpsText
 import app.monokular.core.Connection
 import app.monokular.core.Tor
+import app.monokular.push.BellAddress
+import app.monokular.push.WakeUpChoice
+import app.monokular.push.WakeUpStatus
 import app.monokular.sales.SquareLocation
 
 /** Settings' state. */
@@ -52,6 +62,23 @@ data class SettingsState(
     val squareBaseUrl: String?,
     /** Orbot's proxy answers; null while that's being checked. */
     val torRunning: Boolean? = null,
+    val wakeUps: WakeUpsState,
+    /** What went wrong on the way back here, such as Square's words on a failed sign-in through a Bell (decision 105). */
+    val problem: String? = null,
+)
+
+/** Settings › Wake-ups' state (acceptance A1). */
+data class WakeUpsState(
+    val choice: WakeUpChoice,
+    val status: WakeUpStatus,
+    /** The project's Bell: the Monokular Bell row's detail is its address. */
+    val monokular: BellAddress,
+    /** The last "My own Bell" address entered, kept through Timer only. */
+    val ownBell: BellAddress?,
+    /** The installed UnifiedPush apps' names, by package, for [WakeUpStatus.ChooseDistributor]'s rows. */
+    val distributorNames: Map<String, String> = emptyMap(),
+    /** A debug build: an http Bell is taken (decision 98). */
+    val allowHttp: Boolean = false,
 )
 
 /** What settings can do. */
@@ -68,6 +95,16 @@ class SettingsActions(
     val onCopyAddress: (String) -> Unit,
     /** Reach the store over Tor, or not. */
     val onTor: (Boolean) -> Unit,
+    /** Settings › Wake-ups' choice: Timer only, the Monokular Bell, or a saved own Bell. */
+    val onWakeUps: (WakeUpChoice) -> Unit,
+    /** "Use this Bell": the address as typed. */
+    val onOwnBell: (String) -> Unit,
+    /** A UnifiedPush app picked, by package, from several. */
+    val onDistributor: (String) -> Unit,
+    /** "Get ntfy": a UnifiedPush app to install. */
+    val onGetDistributor: () -> Unit,
+    /** Sign in to Square through the Bell's application, by its application id. */
+    val onBellSignIn: (String) -> Unit,
     val onBack: () -> Unit,
 )
 
@@ -155,7 +192,7 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions) = Page(
 
     SectionLabel("Shift")
     Group(rows = listOf({ SwitchRow("Watch for sales", s.shiftOn, a.onShift) }))
-    Footnote("While it's on, Monokular checks Square every 2 seconds and keeps a notification. Turn it off at the end of the day.")
+    Footnote(WakeUpsText.shift(s.wakeUps.status))
 
     SectionLabel("Alerts")
     Group(rows = listOf({ SwitchRow("New sale alerts", s.alerts, { a.onAlerts() }) }))
@@ -177,9 +214,7 @@ fun SettingsScreen(s: SettingsState, a: SettingsActions) = Page(
         },
     )
 
-    SectionLabel("Wake-ups")
-    Group(rows = listOf({ FactRow("Checking Square", "Every 2 s") }, { FactRow("Monokular Bell", "Not available yet") }))
-    Footnote("The Bell will let Square wake the till, so it can check less often.")
+    WakeUpsSection(s.wakeUps, s.problem, a)
 
     if (s.debug) {
         SectionLabel("Developer (debug builds)")
@@ -219,6 +254,105 @@ private fun TorSection(connection: Connection, onionApi: String?, running: Boole
             else -> "The store has an onion address. Turn this on to reach it over Tor, through the Orbot app."
         },
     )
+}
+
+/**
+ * Settings › Wake-ups (acceptance A1, decision 99): the three choices as
+ * one radio group, "My own Bell" with its address field in the same card,
+ * then, with a Bell chosen, its status card, the status's footnote and
+ * what the Bell learns.
+ */
+@Composable
+private fun WakeUpsSection(w: WakeUpsState, problem: String?, a: SettingsActions) {
+    // My own Bell tapped with no address saved yet: its field opens, but the tick and the status
+    // card stay with the saved choice until "Use this Bell" is pressed (decisions 103, 124).
+    var ownPicked by rememberSaveable { mutableStateOf(false) }
+    val ownShown = ownPicked || w.choice is WakeUpChoice.OwnBell
+    fun pick(choice: WakeUpChoice) {
+        ownPicked = false
+        a.onWakeUps(choice)
+    }
+    SectionLabel("Wake-ups")
+    Notice(problem, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 8.dp))
+    Group(
+        Modifier.selectableGroup(),
+        rows = listOfNotNull(
+            { ChoiceRow("Timer only", w.choice == WakeUpChoice.TimerOnly, { pick(WakeUpChoice.TimerOnly) }, WakeUpsText.TIMER_DETAIL) },
+            { ChoiceRow("Monokular Bell", w.choice == WakeUpChoice.MonokularBell, { pick(WakeUpChoice.MonokularBell) }, WakeUpsText.bell(w.monokular)) },
+            {
+                ChoiceRow("My own Bell", w.choice is WakeUpChoice.OwnBell, {
+                    val saved = w.ownBell
+                    if (saved != null) pick(WakeUpChoice.OwnBell(saved)) else ownPicked = true
+                }, WakeUpsText.ownDetail(w.ownBell))
+            },
+            if (ownShown) {
+                {
+                    OwnBellField(w) { text ->
+                        // Chosen now: the status card shows this Bell's, as a pick does.
+                        ownPicked = false
+                        a.onOwnBell(text)
+                    }
+                }
+            } else {
+                null
+            },
+        ),
+    )
+    // The status is the saved choice's, and stays up while My own Bell waits for its address.
+    if (ownPicked) Footnote(WakeUpsText.NO_OWN_BELL_YET)
+    if (w.choice == WakeUpChoice.TimerOnly) {
+        if (!ownPicked) Footnote(WakeUpsText.TIMER_ONLY)
+        return
+    }
+    val status = w.status
+    Spacer(Modifier.height(12.dp))
+    Group(
+        rows = buildList<@Composable () -> Unit> {
+            add { FactRow("Checking Square", WakeUpsText.pace(status)) }
+            add { FactRow("Bell", WakeUpsText.word(status), valueColor = if (status is WakeUpStatus.Connected) mk.paid else mk.muted) }
+            WakeUpsText.lastWakeUp(status)?.let { at -> add { FactRow("Last wake-up", at) } }
+            when (status) {
+                WakeUpStatus.NoDistributor -> add { ActionRow("Get ntfy", a.onGetDistributor, mk.link) }
+                is WakeUpStatus.ChooseDistributor -> add {
+                    Column(Modifier.selectableGroup()) {
+                        status.packages.forEach { pkg ->
+                            ChoiceRow(w.distributorNames[pkg] ?: pkg, selected = false, onClick = { a.onDistributor(pkg) })
+                        }
+                    }
+                }
+                is WakeUpStatus.SignInNeeded -> add { ActionRow("Sign in to Square", { a.onBellSignIn(status.applicationId) }, mk.link) }
+                else -> Unit
+            }
+        },
+    )
+    Footnote(WakeUpsText.footnote(status))
+    Footnote(WakeUpsText.PRIVACY)
+}
+
+/**
+ * My own Bell's address, a fourth row in the choices' card: prefilled with
+ * the saved one, "Use this Bell" only for an address that differs and
+ * parses, and why one doesn't under the field (acceptance A1.4–A1.5).
+ */
+@Composable
+private fun OwnBellField(w: WakeUpsState, onUse: (String) -> Unit) {
+    var text by rememberSaveable(w.ownBell) { mutableStateOf(WakeUpsText.ownField(w.ownBell)) }
+    val parsed = BellAddress.parse(text, w.allowHttp)
+    val usable = parsed != null && parsed != w.ownBell
+    val problem = if (text.isBlank()) null else BellAddress.problem(text, w.allowHttp)
+    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedTextField(
+            text,
+            { text = it },
+            label = { Text("Bell address") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done, autoCorrectEnabled = false),
+            keyboardActions = KeyboardActions(onDone = { if (usable) onUse(text) }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        if (problem != null) Muted(problem)
+        OutlineButton("Use this Bell", { onUse(text) }, Modifier.fillMaxWidth(), enabled = usable)
+    }
 }
 
 /** A row that's a button: its label in [color]. */

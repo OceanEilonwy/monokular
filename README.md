@@ -21,10 +21,14 @@ mockups: setup in six steps (connect from a store's code, sign in to Square,
 alerts and the bubble), a floating bubble over Square that lights up with a
 sale and opens its code over it, a Live Update notification with the
 payment's progress, and the sale full screen in the app, with the receipt
-in the code, until it's paid or refunded. It hasn't met real Square yet
-(the Square spike, design doc §10), the app doesn't use push or the
-Monokular Bell yet (the Bell itself is built: [below](#running-a-bell)), and
-iOS hasn't started. Choices made along the way are in
+in the code, until it's paid or refunded. With a Monokular Bell
+([below](#running-a-bell)) chosen in Settings › Wake-ups, Square wakes the
+till through the Bell within a second or two of a sale and the till checks
+Square every 30 seconds instead of every 2; the dings come over UnifiedPush,
+so the phone needs a distributor such as [ntfy](https://ntfy.sh/) (FCM
+through the push relay isn't built). It hasn't met real Square yet (the
+Square spike, design doc §10), and iOS hasn't started. Choices made along
+the way are in
 [docs/decisions/android.md](docs/decisions/android.md); screenshots are in
 [docs/screenshots/android](docs/screenshots/android).
 
@@ -91,6 +95,7 @@ cargo run -p square-sandbox   # http://127.0.0.1:8739, then enter the token on t
 | `android/core` | Pure Kotlin, no Android: connect codes, the Monokulo client, sale events. |
 | `android/receipt` | ORF receipts in the payment code, through `crates/orf-codec-ffi` (UniFFI). |
 | `android/sales` | Square on the till (PKCE sign-in, Monero tenders, orders, refunds) and the till's sales. |
+| `android/push` | Wake-ups: the Bell's API, the till's registration with it, and its dings over UnifiedPush. |
 | `android/app` | The Compose app, the shift's foreground service, its notifications and the bubble over other apps. |
 
 ### Running it end to end on an emulator
@@ -109,6 +114,33 @@ curl -X POST localhost:8737/__dev/code    # a connect code: paste it in, or shar
 curl -X POST localhost:8738/fake/sale -d '{"items":[["Flat white",2,450]]}'   # ring up a sale
 curl -X POST localhost:8737/__dev/orders/<order id>/paid                       # and pay it
 ```
+
+#### Wake-ups
+
+To try a Bell too, run one as the last example in
+[Running a Bell](#running-a-bell) does (keep its `MONOKULAR_BELL_VAPID_KEY`
+between runs, as that section says), ring the sales up through it, give the
+emulator a UnifiedPush distributor, and point the build at the Bell:
+
+```sh
+# The stand-in Square, sending each sale to the Bell as a signed webhook
+FAKE_SQUARE_WEBHOOK_URL=http://127.0.0.1:8445/v1/square/webhook FAKE_SQUARE_WEBHOOK_KEY=dev \
+  python3 -I tools/fake-square/fake_square.py
+# ntfy's F-Droid build (no Google services) as the distributor, on the public ntfy.sh, from
+# github.com/binwiederhier/ntfy-android/releases; its certificate's SHA-256 must be the one ntfy publishes
+apksigner verify --print-certs ntfy-<version>-fdroid.apk | grep SHA-256
+adb -s emulator-5554 install ntfy-<version>-fdroid.apk      # then open it once
+# The app, for the Bell's application and the Bell
+cd android && ./gradlew :app:installDebug -Pmonokular.square.applicationId=sandbox-sq0idb-dev \
+  -Pmonokular.square.sandbox=true -Pmonokular.square.baseUrl=http://10.0.2.2:8738 \
+  -Pmonokular.bell.url=http://10.0.2.2:8445
+```
+
+Then Settings › Wake-ups › Monokular Bell. The ding goes Bell → ntfy.sh →
+ntfy on the emulator, so the emulator needs the internet; fake-square's log
+shows the till's pace (`GET /v2/payments` every 30 s once connected, and one
+within a second of each sale). `-Pmonokular.bell.url` takes what the
+Settings field takes: a release build only an https address.
 
 Versions live in `android/gradle/libs.versions.toml`; each was released at
 least two weeks before it was added.

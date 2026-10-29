@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -269,6 +270,30 @@ fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, enab
             uncheckedTrackColor = mk.switchOff, uncheckedThumbColor = Color.White, uncheckedBorderColor = Color.Transparent,
         ),
     )
+}
+
+/**
+ * One of a group's choices (Settings › Wake-ups): the whole row picks it,
+ * and the chosen one has a tick at its end. A radio button to TalkBack,
+ * read with its [detail]; put the rows in a `Group` with
+ * `Modifier.selectableGroup()`.
+ */
+@Composable
+fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit, detail: String? = null) = Row(
+    Modifier.fillMaxWidth().heightIn(min = 48.dp)
+        .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+        .padding(horizontal = 16.dp, vertical = 8.dp),
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+) {
+    Column(Modifier.weight(1f)) {
+        Text(label, fontSize = 17.sp)
+        if (detail != null) Muted(detail)
+    }
+    // The tick is decoration: "selected" is said by the row's semantics.
+    Box(Modifier.size(20.dp), contentAlignment = Alignment.Center) {
+        if (selected) Icon(MkIcons.Tick, contentDescription = null, tint = mk.ink, modifier = Modifier.size(20.dp))
+    }
 }
 
 /** A green circle with a white tick: paid. */
