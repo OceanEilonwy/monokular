@@ -89,6 +89,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntOffset
 import app.monokular.ui.Motion
+import app.monokular.ui.Fixed
 import app.monokular.ui.motion
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.currentCoroutineContext
@@ -1111,6 +1112,8 @@ private class WholeNode(var stage: Stage, var ground: GroundTrack, var during: M
 object Layers {
     const val GROUND = 0f
 
+    /** A paid or ended sale's hero, over the code card's white closing into it. */
+    const val HERO = 0.5f
     const val OVER_GROUND = 1f
     const val CODE = 2f
 }
@@ -1312,10 +1315,14 @@ val LocalFace = staticCompositionLocalOf<AnimatedVisibilityScope?> { null }
  * from [other] (its partner's, as a share of the side: a circle is 0.5)
  * to [corner] on the same spring: the code card closing into the hero's
  * circle. The clip is the content's own, so it is where the content is on
- * every frame (decision 139).
+ * every frame (decision 139). The [code]'s face (the live sale's card) is
+ * the one white surface of the paid fold (decision 168): leaving, its
+ * white stays whole under its fading code until the hero, drawn over it,
+ * has come in; arriving ("Show the code again") it is opaque from its
+ * first frame, the hero fading off it (decision 148).
  */
 @Composable
-fun Modifier.faceSurface(key: String, corner: Dp, other: Float): Modifier {
+fun Modifier.faceSurface(key: String, corner: Dp, other: Float, code: Boolean = false): Modifier {
     val stage = LocalStage.current ?: return this
     val face = LocalFace.current ?: return this
     val m = motion
@@ -1326,9 +1333,9 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float): Modifier {
     val shown = face.transition.animateFloat({ m.surface.fraction }, label = "face") { if (it == EnterExitState.Visible) 1f else 0f }
     val seen = face.transition.animateFloat(
         { if (targetState == EnterExitState.Visible) m.fade.fraction else m.fadeQuick.fraction }, label = "face seen",
-    ) { if (it == EnterExitState.Visible) 1f else 0f }
+    ) { if (it == EnterExitState.Visible || (code && face.transition.targetState == EnterExitState.Visible)) 1f else 0f }
     val clip = remember { RoundClip() }
-    val layer = Layers.GROUND
+    val layer = if (code) Layers.GROUND else Layers.HERO
     return with(shared) {
         // Over every clip for as long as its face is changing: a page's hero sits in a scroll, whose clip would cut
         // the circle on the frames the shared bounds hand drawing back before the change has landed.
@@ -1338,6 +1345,14 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float): Modifier {
             state, face, enter = EnterTransition.None, exit = keptOpaque(m.surface.fraction),
             boundsTransform = bounds, resizeMode = ScaledToFit, zIndexInOverlay = layer,
         )
+    }.drawBehind {
+        // The code's white, under the fading code and over nothing else, for as long as the fold runs: the hero comes in
+        // over a white surface closing into it, never over the screen's ground.
+        if (code && face.transition.isRunning) {
+            val side = size.minDimension
+            val r = lerp(other * side, corner.toPx(), shown.value).coerceAtMost(side / 2f)
+            drawPath(clip.around(size, r), Fixed.White)
+        }
     }.graphicsLayer {
         alpha = seen.value
         compositingStrategy = CompositingStrategy.ModulateAlpha
