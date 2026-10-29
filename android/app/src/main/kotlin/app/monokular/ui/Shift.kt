@@ -9,11 +9,14 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,6 +27,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
@@ -36,16 +40,19 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LongState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -58,6 +65,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.monokular.Ground
+import app.monokular.GroundLook
+import app.monokular.Layers
 import app.monokular.Move
 import app.monokular.RowEnds
 import app.monokular.RowOpens
@@ -65,15 +74,12 @@ import app.monokular.ShiftFilter
 import app.monokular.PosText
 import app.monokular.ShiftList
 import app.monokular.StateIcon
+import app.monokular.rememberGroundTrack
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
-import app.monokular.Layers
-import app.monokular.sharedSurface
 import app.monokular.sharedGround
-import app.monokular.rememberGroundTrack
-import app.monokular.GroundLook
+import app.monokular.sharedSurface
 import app.monokular.words
-import androidx.compose.ui.graphics.Color
 
 /**
  * The shift (the design's ShiftList; decisions 60, 64, 72): what this
@@ -239,7 +245,8 @@ private fun Idle(running: Boolean, actions: TillActions) = Column(
 /** All, Needs action with its count, Paid: one selected, as tabs to TalkBack. */
 @Composable
 private fun Chips(filter: ShiftFilter, needsAction: Int, onFilter: (ShiftFilter) -> Unit) = Row(
-    Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 6.dp).selectableGroup(),
+    // A large font can make the chips wider than the screen: they scroll rather than wrap a label into a blob.
+    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(start = 16.dp, end = 16.dp, bottom = 6.dp).selectableGroup(),
     horizontalArrangement = Arrangement.spacedBy(8.dp),
 ) {
     for (chip in ShiftFilter.entries) {
@@ -249,25 +256,59 @@ private fun Chips(filter: ShiftFilter, needsAction: Int, onFilter: (ShiftFilter)
             ShiftFilter.NeedsAction -> "Needs action"
             ShiftFilter.Paid -> "Paid"
         }
-        val count = needsAction.takeIf { chip == ShiftFilter.NeedsAction && it > 0 }
-        Row(
-            Modifier.minimumInteractiveComponentSize().height(36.dp).clip(RoundedCornerShape(18.dp))
-                .then(if (selected) Modifier.background(mk.ink) else Modifier.border(BorderStroke(1.5.dp, mk.edge), RoundedCornerShape(18.dp)))
-                .selectable(selected = selected, role = Role.Tab) { onFilter(chip) }
-                .semantics { contentDescription = listOfNotNull(label, count?.toString()).joinToString(", ") }
-                .padding(horizontal = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (selected) mk.ground else mk.ink)
-            if (count != null) {
-                Box(
-                    Modifier.heightIn(min = 20.dp).widthIn(min = 20.dp).clip(RoundedCornerShape(10.dp)).background(mk.warn).padding(horizontal = 5.dp),
-                    contentAlignment = Alignment.Center,
-                ) { Text("$count", fontSize = 12.sp, fontWeight = FontWeight.Bold, color = mk.ground) }
-            }
+        FilterChip(label, needsAction.takeIf { chip == ShiftFilter.NeedsAction && it > 0 }, selected) { onFilter(chip) }
+    }
+}
+
+/** A filter chip's height at rest, and its label's inset from its ends. */
+private val ChipHeight = 36.dp
+private val ChipInset = 14.dp
+
+/** The count badge's height at rest, and the inset that keeps it concentric with the chip's round end. */
+private val BadgeHeight = 20.dp
+private val BadgeInset = (ChipHeight - BadgeHeight) / 2
+
+/**
+ * One filter chip: a pill holding its [label] and, when there is one, its
+ * [count] badge. The badge is a pill too, inset from the chip's end by as
+ * much as from its top and bottom, so its curve follows the chip's at any
+ * count and any font scale: it fills the chip's height inside that inset.
+ */
+@Composable
+internal fun FilterChip(label: String, count: Int?, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(50)
+    Row(
+        Modifier.minimumInteractiveComponentSize().testTag(ChipTag)
+            .heightIn(min = ChipHeight).height(IntrinsicSize.Min).clip(shape)
+            .then(if (selected) Modifier.background(mk.ink) else Modifier.border(BorderStroke(1.5.dp, mk.edge), shape))
+            .selectable(selected = selected, role = Role.Tab, onClick = onClick)
+            .semantics { contentDescription = listOfNotNull(label, count?.toString()).joinToString(", ") }
+            .then(if (count == null) Modifier.padding(horizontal = ChipInset) else Modifier.padding(start = ChipInset, end = BadgeInset, top = BadgeInset, bottom = BadgeInset)),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = if (selected) mk.ground else mk.ink, maxLines = 1, softWrap = false)
+        if (count != null) {
+            Box(
+                // The tag sits where the ground is drawn, so a test measures the pill a cashier sees.
+                Modifier.fillMaxHeight().heightIn(min = BadgeHeight).atLeastAsWideAsTall().testTag(BadgeTag)
+                    .clip(shape).background(mk.warn).padding(horizontal = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) { Text("$count", style = tabular, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = mk.ground, maxLines = 1, softWrap = false) }
         }
     }
+}
+
+internal const val ChipTag = "filter chip"
+internal const val BadgeTag = "filter chip count"
+
+/**
+ * Holds what follows (the badge's ground included) at least as wide as the
+ * height it is given, so a one-digit badge is a circle and a longer one a pill.
+ */
+private fun Modifier.atLeastAsWideAsTall() = layout { measurable, constraints ->
+    val placeable = measurable.measure(constraints.copy(minWidth = maxOf(constraints.minWidth, constraints.minHeight).coerceAtMost(constraints.maxWidth)))
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
 }
 
 /** The ground of a row's badge, by its glyph. */
