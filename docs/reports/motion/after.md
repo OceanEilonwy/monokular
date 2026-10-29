@@ -395,3 +395,79 @@ stay under twice the cuts' p95 on the phone and the tablet, the round trip
 and the drag get smoother, and a panel at rest no longer draws. Memory
 does not: 10 to 19 MB over the baseline after a trim, with the cause
 named (decision 128) and owned by the screens track. Not signed off.
+
+## Round 3, screens track (dev2, on emulator-5556 with the host GPU)
+
+What changed: a moving surface is an empty ground, and its words fade
+through at their own size (decisions 138 and 139); a still stage has no
+move, which was the empty order page (140); one driver keeps the stage on
+the model's screen through Back and gestures (137). The method is the
+lead's: `mem-r2.sh` and `heap-r2.sh` with `heap-sites.py`, run from
+copies that take the serial and the APKs as arguments (`dev2-r3-mem.sh`
+and `dev2-r3-heap.sh` in the scratch folder; the rig itself is the lead's
+to commit, R2-O1 and R2-O2). Before is `f274ad7`'s debug build
+(`app-debug-fake.apk`), after is this branch at `416a67f`. They ran
+alternately, two pairs, on one onboarded till: fresh sales, ten shift ↔
+sale round trips, five order opens, 10 s of rest, then a
+`RUNNING_CRITICAL` trim. Host load was 50 to 73 throughout.
+
+### Memory at rest after a trim
+
+| Build | PSS fresh (MB) | PSS after trips and trim | Native heap after trim | Glyph cache | GPU caches |
+| --- | --- | --- | --- | --- | --- |
+| before | 95.5, 94.4 | 95.8, 96.9 | 14.2, 14.5 | 253, 220 KB | 2.17, 2.23 MB |
+| round 2 integrated (lead, 5558) | | +10.6 to +19 over before | +11 to +15 | 3.0 to 4.3 MB | up to 16.45 MB |
+| round 3 (this branch) | 98.1, 100.7 | 97.9, 100.2 | 14.1, 15.3 | 236, 239 KB | 2.21, 2.32 MB |
+
+**The trips' step is gone.** From fresh on the shift to after the trips
+and the trim, round 3 moves by −0.2 and −0.5 MB, the baseline by +0.3 and
++2.4. The glyph cache is the baseline's size, under the 1 MB acceptance,
+where round 2's was 3.0 to 4.3 MB, and the GPU caches are within 0.1 MB of
+the baseline's. What is left, +2.1 and +3.4 MB of PSS after the trim, is
+there at start-up before any move ("PSS fresh": Java heap +2.4 to
++4.6 MB, the larger app's classes and code), so it is not the screens'
+moves. It is just over the 2 MB rule on one pair and over it on the
+other, at a host load that moved the baseline itself by 2.1 MB between
+its own two runs.
+
+**Top native sites** (`heap-sites.py … after-start`, heapprofd at 32 KiB
+sampling, attached before the process, ten round trips): no
+`SkStrike::prepareImages` or `GrDrawOpAtlas::addToAtlas` site among the
+top 60, against 3.0 and 1.8 MB in round 2. The largest unreleased site
+after start-up is 0.07 MB (minikin's layout cache, the collector's mark
+stack, JIT code). Unreleased after start-up comes to −0.8 MB in all.
+
+### Frames (`dev2-ab.sh`, `MainActivity` window, ms)
+
+| Flow | Build | Frames | p50 | p90 | p99 | max | Limit (2 × before p95) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Code enlarge and shrink × 3 | before (cuts) | 22, 22 | 34.5, 34.4 | 217, 185 | 227, 242 | 227, 242 | about 370 to 400 |
+| | round 3 | 58, 61 | 61.0, 50.2 | 224, 243 | 321, 317 | 321, 317 | |
+| Shift ↔ sale × 10 | before (cuts) | 42, 44 | 173, 167 | 234, 235 | 335, 252 | 335, 252 | about 470 to 500 |
+| | round 3 | 120 of 286, 120 | 46.0, 50.1 | 193, 250 | 291, 340 | 303, 353 | |
+| Shift scroll | before | 13, 16 | 40.5, 101 | 53, 251 | 58, 2388 | 58, 2388 | not readable |
+| | round 3 | 13, 15 | 50.7, 84.2 | 118, 268 | 280, 503 | 280, 503 | |
+
+The grows are within twice the cuts' p95 in both pairs. Their median is
+not the display's 16.7 ms here: at a host load of 50 or more, the
+baseline's plain scroll drew a 2.4 s frame and medians of 40 to 101 ms,
+against 16.8 ms on this rig in round 2. So this table says nothing is
+wrong; it can't say how it feels. The R2-O3 re-run of the integrated
+tables at p50 ≤ 17 ms needs a quiet host, and that is the lead's
+integration pass.
+
+### Size
+
+Release (minified, unsigned): 8 068 850 B file, 4 594 058 B download.
+That is the same file size as round 2's integrated build, and +117 KB /
++76 KB over the baseline (over the 50 KB rule, as rounds 1 and 2 were).
+
+### Device tests
+
+113 then 114 instrumented tests green on emulator-5556:
+`MotionFramesTest` (18), `InterruptTest` (45 cells: three moves by five
+interruptions at 25, 50 and 75 %), `StageBackTest` (7), `StageTest`,
+`LateReceiptTest`, and the overlay track's suites unchanged. The seeked
+frames are in `frames/` (README, round 3 section), and
+`after/r3-row-grow-and-back.mp4` is a recording of a row growing into its
+sale and back on this build.
