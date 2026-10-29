@@ -54,6 +54,8 @@ class SquareSource(
         return SquareReceipts.of(api.order(orderId), location, sale)
     }
 
+    override val pointOfSale = PointOfSale.Square
+
     /** A full refund through Square's API, once whatever the retries ([SquareApi.refund]'s key). */
     override val refunds: Refunds.ByTill = Refunds.ByTill { sale ->
         api.refund(

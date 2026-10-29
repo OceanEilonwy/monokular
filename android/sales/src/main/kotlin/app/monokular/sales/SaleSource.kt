@@ -10,6 +10,13 @@ import kotlinx.serialization.Serializable
  */
 interface SaleSource {
     /**
+     * The point of sale this source watches: a sale another one took (the
+     * cashier changed the point of sale since) is never refunded or asked
+     * about through this one.
+     */
+    val pointOfSale: PointOfSale
+
+    /**
      * Sales tendered as Monero since the source started watching, oldest
      * first, that haven't been [handled]. Calling it again gives the same
      * ones until they are.

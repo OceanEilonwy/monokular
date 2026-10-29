@@ -120,6 +120,8 @@ class CloverSource(
         return CloverReceipts.of(api.order(merchant.id, orderId), merchant, sale)
     }
 
+    override val pointOfSale = PointOfSale.Clover
+
     override val refunds: Refunds.InPos = object : Refunds.InPos {
         override val posName = "Clover"
         override val where = "Clover's Orders app"

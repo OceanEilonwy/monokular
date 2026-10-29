@@ -203,11 +203,14 @@ class Till(
      * are refunded now, at most every [REFUND_LOOK_SECONDS]: a check runs
      * every 2 s without a Bell, and each pending sale costs a request. The
      * sheet's "I've refunded it" ([confirmRefund]) asks at once, so the
-     * cashier never waits on this. A failure waits for the next look.
+     * cashier never waits on this. A failure waits for the next look. Only
+     * the sales this source's point of sale took are asked about.
      */
     private suspend fun lookForRefunds() {
         val refunds = source.refunds as? Refunds.InPos ?: return
-        val pending = state.value.sales.filter { it.refundPendingAt != null && it.refundedAt == null && it.found != null }
+        val pending = state.value.sales.filter {
+            it.refundPendingAt != null && it.refundedAt == null && it.found?.pointOfSale == source.pointOfSale
+        }
         if (pending.isEmpty()) return
         val at = now()
         if (lastRefundLookAt?.let { at - it < REFUND_LOOK_SECONDS } == true) return
@@ -318,7 +321,9 @@ class Till(
     /**
      * Refunds the POS sale of an order that was never paid: through the POS
      * when the till can ([Refunds.ByTill]), else marks it for the cashier to
-     * refund there ([Refunds.InPos]), which sends nothing. A paid sale is
+     * refund there ([Refunds.InPos]), which sends nothing. A sale another
+     * point of sale took (the cashier changed it since) is only ever marked:
+     * its payment id means nothing to this source's POS. A paid sale is
      * never refunded from here, nor one already refunded: the payment may
      * land while the cashier's "No" is on its way.
      */
@@ -327,41 +332,41 @@ class Till(
         if (sale.phase == SalePhase.Paid || sale.refundedAt != null) return
         val found = sale.found ?: return
         change { it.copy(refundProblems = it.refundProblems - orderId) }
-        when (val refunds = source.refunds) {
-            is Refunds.ByTill -> try {
-                refunds.refund(found)
-                markRefunded(orderId)
-            } catch (e: Exception) {
-                change { it.copy(refundProblems = it.refundProblems + (orderId to "Couldn't refund it in the POS: ${e.message}. Refund it there instead.")) }
-            }
-            is Refunds.InPos -> {
-                val at = now()
-                change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(refundPendingAt = it.refundPendingAt ?: at) else it }) }
-            }
+        val byTill = source.refunds as? Refunds.ByTill
+        if (byTill == null || found.pointOfSale != source.pointOfSale) {
+            val at = now()
+            change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(refundPendingAt = it.refundPendingAt ?: at) else it }) }
+            return
+        }
+        try {
+            byTill.refund(found)
+            markRefunded(orderId)
+        } catch (e: Exception) {
+            change { it.copy(refundProblems = it.refundProblems + (orderId to "Couldn't refund it in the POS: ${e.message}. Refund it there instead.")) }
         }
     }
 
     /**
      * The refund sheet's "I've refunded it", for a sale the cashier was told
-     * to refund in the POS ([TillSale.refundPendingAt]): asks the POS now.
-     * True, and the sale is refunded, when it shows the refund; false, and
-     * the sale stays as it was, when it doesn't yet or couldn't be asked.
+     * to refund in the POS ([TillSale.refundPendingAt]).
      *
-     * When the till's source can no longer ask that POS (the cashier changed
-     * the point of sale, so the source refunds [Refunds.ByTill] and the timer
-     * never looks), nothing can check: the cashier's word marks the sale
-     * refunded, so it isn't left needing action for the rest of the shift.
+     * When the sale's point of sale is this source's and the source can ask
+     * it ([Refunds.InPos]), asks now: true, and the sale is refunded, when it
+     * shows the refund; false, and the sale stays as it was, when it doesn't
+     * yet or couldn't be asked.
+     *
+     * Otherwise nothing can check: the sale's point of sale isn't the till's
+     * any more (the cashier changed it), or the source can't ask its own
+     * ([Refunds.ByTill]). The cashier's word marks the sale refunded, so it
+     * isn't left needing action for the rest of the shift.
      */
     suspend fun confirmRefund(orderId: String): Boolean {
         val sale = state.value.sales.firstOrNull { it.orderId == orderId } ?: return false
         if (sale.refundedAt != null) return true
         if (sale.refundPendingAt == null) return false
-        val refunds = source.refunds as? Refunds.InPos ?: run {
-            markRefunded(orderId)
-            return true
-        }
         val found = sale.found ?: return false
-        if (!seenRefunded(refunds, found)) return false
+        val refunds = source.refunds as? Refunds.InPos
+        if (refunds != null && found.pointOfSale == source.pointOfSale && !seenRefunded(refunds, found)) return false
         markRefunded(orderId)
         return true
     }
