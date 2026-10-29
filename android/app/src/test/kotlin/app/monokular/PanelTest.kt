@@ -120,12 +120,12 @@ class PanelTest {
     }
 
     @Test
-    fun `a phone's panel grows about its docked bubble, a tablet's about its corner nearest the bubble`() {
+    fun `a phone's panel grows about its docked bubble, a tablet's from its side nearest the bubble, at the bubble's height`() {
         val card = Rect(100f, 200f, 500f, 1000f)
         assertEquals(TransformOrigin(0.875f, -0.05f), Panel.origin(Offset(450f, 160f), card, corner = false), "above the card's end: the dock")
-        assertEquals(TransformOrigin(1f, 0f), Panel.origin(Offset(1200f, 300f), card, corner = true), "bubble high on the right")
-        assertEquals(TransformOrigin(0f, 1f), Panel.origin(Offset(20f, 900f), card, corner = true), "bubble low on the left")
-        assertEquals(TransformOrigin(1f, 1f), Panel.origin(Offset(400f, 700f), card, corner = true), "behind the card: the nearest corner still")
+        assertEquals(TransformOrigin(1f, 0.125f), Panel.origin(Offset(1200f, 300f), card, corner = true), "bubble beside the card's right side")
+        assertEquals(TransformOrigin(0f, 1f), Panel.origin(Offset(20f, 1400f), card, corner = true), "bubble below the card on the left: its corner")
+        assertEquals(TransformOrigin(0f, 0f), Panel.origin(Offset(20f, 100f), card, corner = true), "above it: the top corner")
         assertEquals(TransformOrigin.Center, Panel.origin(Offset(20f, 900f), Rect(0f, 0f, 0f, 0f), corner = true), "not placed yet")
     }
 
@@ -185,6 +185,15 @@ class PanelTest {
         val up = Windows(usable = true, bubble = Life.Gone, panel = Life.Up, panelDrawn = true)
         val flung = Handoff.next(up, WindowEvent.Flung(-3f)).windows
         assertNull(want(flung, usable = true, open = true).windows.flung, "raised again before it lowered: spent")
+    }
+
+    @Test
+    fun `a tablet's panel sits beside a bubble on its edge, never over it`() {
+        val beside = Panel.floatingInsetDp(bubbleOnEnd = true)
+        // The card is drawn its shadow's width in from the window's edge.
+        assertTrue(beside + Panel.FLOATING_SHADOW_DP > Panel.BUBBLE_WINDOW_DP, "the card starts past the bubble's window")
+        assertTrue(beside + Panel.FLOATING_SHADOW_DP - Panel.BUBBLE_WINDOW_DP <= 16, "and close beside it, so it grows from the bubble")
+        assertTrue(Panel.floatingInsetDp(bubbleOnEnd = false) < beside, "with the bubble on the other edge the panel keeps to its own")
     }
 
     @Test
