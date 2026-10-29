@@ -84,6 +84,8 @@ class RunningMovesTest {
 
     @Test fun paidOnTheEnlargedCodeFoldsIntoTheHeroDark() = paidOnCode(dark = true)
 
+    @Test fun aRiseTakingOverABackAtItsStartIsComposedBeforeItMoves() = riseOverBack()
+
     /**
      * A sale that stops being live in the update that leaves its screen (closed from the sheet, expired, refunded)
      * leaves as an untouched one does (decision 185): the change's first frame is the frame before it, the leaving
@@ -155,6 +157,23 @@ class RunningMovesTest {
         failures += startsAtOnce(moving)
         if (dark) failures += flashes(frames)
         report("paid-on-code-${theme(dark)}", frames, failures)
+    }
+
+    /**
+     * A sale rising while a committed Back is still at 0 (decision 188): the takeover composes its first frame at 0
+     * before its spring starts, as a change from rest does, then moves at once, from 0 and not a quarter of the way.
+     */
+    private fun riseOverBack() {
+        moves.start(Screen.Sale("a1"), dark = false)
+        moves.model.go(Screen.Till)
+        compose.mainClock.advanceTimeByFrame()
+        val frames = moves.run(Screen.Sale("b2"), byItself = true)
+        val failures = mutableListOf<String>()
+        val atZero = frames.drop(1).takeWhile { it.p == 0f }.size
+        if (atZero > PRIMED + 1) failures += "the rise holds at 0 for $atZero frames: " + frames.joinToString { "%.2f".format(it.p) }
+        val first = frames.drop(1).firstOrNull { it.p > 0f }
+        if (first == null) failures += "the rise never moves" else if (first.p > FIRST_STEP) failures += "f${first.index}: the rise's first frame is at ${first.p}, past its first step"
+        report("rise-over-back", frames, failures)
     }
 
     private fun rowGrow(dark: Boolean) {
@@ -660,5 +679,8 @@ class RunningMovesTest {
 
         /** Above half shown: readable (decision 131). */
         const val HALF = 0.5f
+
+        /** Where the stage's spring is after one 16 ms frame from 0, with room: not a quarter of the way. */
+        const val FIRST_STEP = 0.15f
     }
 }
