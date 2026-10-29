@@ -1315,3 +1315,25 @@ design unchanged.
     has committed or sprung back, and the enlarged code keeps full
     brightness while it is held, so a cancelled gesture no longer drops
     the brightness and the bar colours for the length of the preview.
+116. **The code's white is a ground with nothing in it, and the code is
+    the top layer** (dev2, round 2; implements 113). The card's white and
+    the enlarged screen's white are one `sharedGround`: an empty rounded
+    rectangle, remeasured to its moving bounds each frame (nothing inside
+    to measure) rather than a scaled screen, its corner radius going from
+    32 dp to 0 on the stage's progress (`Stage.shown`, on the same track
+    as the bounds), so both sides draw the same shape and the corners
+    don't snap square. The bitmap is `code/<id>` at `Layers.CODE`, over
+    every ground; the enlarged code's own card has no white (it sits on
+    the screen's), because a second white card drawn at rest under the
+    moving one made the ground look like two rectangles. The heading and
+    the foot render over the ground while the move runs
+    (`overSurfaces`) and fade on the second half of the arrival, the first
+    half of the leaving, read in `graphicsLayer` with `ModulateAlpha`.
+    Because both bounds run linearly on one progress, a rectangle inside
+    one at both ends is inside it on every frame: `MotionFramesTest`
+    seeks the grow and the shrink to a quarter, a half and three
+    quarters and checks the code is square, no smaller than at rest and
+    has pure white on all four sides (its quiet zone, on its ground) on
+    every one. The same test writes every screen move's seeked frames for
+    review (the `additionalTestOutputDir` the runner pulls), so a cropped
+    code is caught in CI rather than in a recording.

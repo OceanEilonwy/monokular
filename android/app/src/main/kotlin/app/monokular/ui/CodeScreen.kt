@@ -37,7 +37,8 @@ import androidx.core.view.WindowCompat
 import app.monokular.Move
 import app.monokular.SaleText
 import app.monokular.up
-import app.monokular.sharedSurface
+import app.monokular.overSurfaces
+import app.monokular.sharedGround
 import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
@@ -73,40 +74,46 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
     val ink = LightTokens.ink
     val muted = LightTokens.muted
     CompositionLocalProvider(LocalContentColor provides ink) {
-        Column(
-            // The sale's white code card, grown to the screen (M8).
-            Modifier.fillMaxSize().sharedSurface("code-card/${sale.orderId}", Move.CodeGrow).background(Fixed.White)
-                .clickable(onClickLabel = "Shrink the code", indication = null, interactionSource = null, onClick = onBack)
-                .safeDrawingPadding()
-                .padding(start = 6.dp, end = 6.dp, top = 20.dp, bottom = 28.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
+        Box(
+            Modifier.fillMaxSize()
+                .clickable(onClickLabel = "Shrink the code", indication = null, interactionSource = null, onClick = onBack),
         ) {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text(SaleText.amount(sale), style = display(30, -0.5), color = ink)
-                    Countdown(now, sale.expiresAt, fontSize = 15.sp, color = muted) { CodeText.under(sale, it) }
+            // The sale's white code card, spread to the screen (M8): a ground with nothing in it, the code its own layer over it.
+            Box(Modifier.matchParentSize().sharedGround(codeGround(sale.orderId), Move.CodeGrow, Fixed.White, CodeScreenCorner, CodeCorner))
+            Column(
+                Modifier.fillMaxSize().safeDrawingPadding().padding(start = 6.dp, end = 6.dp, top = 20.dp, bottom = 28.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                // The heading and the foot come in over the white once it has spread past them.
+                Row(Modifier.fillMaxWidth().overSurfaces(Move.CodeGrow).padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(SaleText.amount(sale), style = display(30, -0.5), color = ink)
+                        Countdown(now, sale.expiresAt, fontSize = 15.sp, color = muted) { CodeText.under(sale, it) }
+                    }
+                    Box(
+                        Modifier.size(48.dp).clip(CircleShape).background(LightTokens.inset).clickable(role = Role.Button, onClick = onBack),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(MkIcons.Shrink, contentDescription = "Shrink the code", tint = ink, modifier = Modifier.size(20.dp)) }
                 }
-                Box(
-                    Modifier.size(48.dp).clip(CircleShape).background(LightTokens.inset).clickable(role = Role.Button, onClick = onBack),
-                    contentAlignment = Alignment.Center,
-                ) { Icon(MkIcons.Shrink, contentDescription = "Shrink the code", tint = ink, modifier = Modifier.size(20.dp)) }
+                BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    QrCode(
+                        sale.code.uri,
+                        "Payment code, tap to shrink",
+                        Modifier.size(min(maxWidth, maxHeight)),
+                        padding = 12.dp,
+                        radius = 0.dp,
+                        shared = sale.orderId,
+                        sharedCard = false,
+                    )
+                }
+                Column(Modifier.overSurfaces(Move.CodeGrow), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        PhaseRing(sale.phase, 26.dp, track = Fixed.Track, fill = Fixed.Accent)
+                        Text("Scan with any Monero wallet", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ink)
+                    }
+                    Text("Tap anywhere to shrink", fontSize = 13.sp, color = muted, modifier = Modifier.padding(top = 6.dp))
+                }
             }
-            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                QrCode(
-                    sale.code.uri,
-                    "Payment code, tap to shrink",
-                    Modifier.size(min(maxWidth, maxHeight)),
-                    padding = 12.dp,
-                    radius = 0.dp,
-                    shared = sale.orderId,
-                    sharedCard = false,
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PhaseRing(sale.phase, 26.dp, track = Fixed.Track, fill = Fixed.Accent)
-                Text("Scan with any Monero wallet", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ink)
-            }
-            Text("Tap anywhere to shrink", fontSize = 13.sp, color = muted, modifier = Modifier.padding(top = 6.dp))
         }
     }
 }
