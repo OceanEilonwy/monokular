@@ -155,5 +155,6 @@ class CloverSource(
         orderId = order?.id,
         createdAt = Instant.ofEpochMilli(createdTime).toString(),
         deviceId = device?.id,
+        title = order?.title?.takeIf { it.isNotBlank() },
     )
 }

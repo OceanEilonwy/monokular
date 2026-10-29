@@ -1,7 +1,7 @@
 {
   "elements": [
     {
-      "id": "PAY_MONERO_1", "order": { "id": "ORDER_CL_1" }, "device": { "id": "DEV_FRONT" },
+      "id": "PAY_MONERO_1", "order": { "id": "ORDER_CL_1", "title": "Table 4" }, "device": { "id": "DEV_FRONT" },
       "tender": { "id": "T_MONERO", "label": " MONERO ", "labelKey": "com.clover.tender.external_payment" },
       "amount": 2205, "tipAmount": 0, "taxAmount": 180, "result": "SUCCESS", "offline": false,
       "createdTime": 1793177760000, "clientCreatedTime": 1793177759000, "modifiedTime": 1793177760000,
