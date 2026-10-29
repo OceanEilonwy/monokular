@@ -28,6 +28,7 @@ import app.monokular.OneClockTest.Companion.noActions
 import app.monokular.OneClockTest.Companion.status
 import app.monokular.core.SalePhase
 import app.monokular.ui.CodeScreen
+import androidx.compose.runtime.CompositionLocalProvider
 import app.monokular.ui.HeroSize
 import app.monokular.ui.HeroTag
 import app.monokular.ui.Motion
@@ -64,11 +65,15 @@ class MotionFramesTest {
     private var still by mutableStateOf(false)
     private var shown by mutableStateOf(sale)
 
+    /** Every ground's tracks by key, in the order their screens composed them. */
+    private val tracks = mutableMapOf<String, MutableList<GroundTrack>>()
+
     private fun stage(from: Screen, byItself: Boolean = false): SeekableTransitionState<Screen> {
         val state = SeekableTransitionState(from)
         compose.setContent {
             scope = rememberCoroutineScope()
             Till(if (still) Motion.Still else Motion.Full) {
+                CompositionLocalProvider(LocalGroundTracks provides { key -> GroundTrack().also { tracks.getOrPut(key) { mutableListOf() } += it } }) {
                 TillStage(state, cameUpByItself = { byItself }) { s ->
                     when (s) {
                         is Screen.Code -> CodeScreen(shown, onBack = {})
@@ -76,6 +81,7 @@ class MotionFramesTest {
                         is Screen.Sale -> SaleScreen(shown, "Front", refunding = false, refundProblem = null, actions = noActions, now = now)
                         else -> ShiftScreen(status, sales, noActions, now)
                     }
+                }
                 }
             }
         }
@@ -167,6 +173,24 @@ class MotionFramesTest {
         assertTrue(least > 20, "the rest margins were measured: $least")
         val thin = margins.filter { it.second < least - 2 }
         assertTrue(thin.isEmpty(), "the code keeps at least its smaller rest margin ($least px) of white on every frame: $margins")
+    }
+
+    /**
+     * The row's ground, on the shift being left, is the side that draws a row's grow: three quarters through, it is
+     * still in the overlay with a shape (its exit holds alpha at 1; with ExitTransition.None it would be gone).
+     */
+    @Test
+    fun theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow() {
+        val state = stage(Screen.Till)
+        scope.launch { state.seekTo(0f, Screen.Sale("a1")) }
+        repeat(3) { compose.mainClock.advanceTimeByFrame() }
+        // Only a ground still in the overlay is told its shape as the move goes on: half way, then three quarters.
+        val row = tracks["sale/a1"]?.firstOrNull()
+        seekOnto(state, 0.5f, Screen.Sale("a1"))
+        val half = row?.bounds
+        seekOnto(state, 0.75f, Screen.Sale("a1"))
+        val threeQuarters = row?.bounds
+        assertTrue(threeQuarters != null && threeQuarters != half, "the row's ground is drawn through its clip at 75 % of its grow: $half, then $threeQuarters")
     }
 
     @Test

@@ -495,7 +495,11 @@ fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleSha
     val surface = with(shared) {
         sharedBounds(
             // The face going stays drawn, opaque, for the whole move (an exit that holds alpha at 1, so no layer of its
-            // own), and the crossfade below shows it fading.
+            // own), and the crossfade below shows it fading (An exit that changes nothing is there to tie the leaving side's life in the
+            // overlay to an animation of the transition, not to the screen's KeepUntilTransitionsFinished alone. On Compose
+            // animation 1.12.1 under this stage, ExitTransition.None here changed no frame RunningMovesTest or
+            // MotionFramesTest reads (decision 161); MotionFramesTest.theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow
+            // fails if the leaving ground ever stops being drawn mid-grow, whichever way it is kept.)
             state, stage.content, enter = EnterTransition.None, exit = if (fade) fadeOut(m.track.fraction, targetAlpha = 1f) else ExitTransition.None,
             boundsTransform = bounds, resizeMode = ScaledToWidth, zIndexInOverlay = layer, clipInOverlayDuringTransition = overlayClip,
         )
@@ -658,7 +662,11 @@ fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, other: Gro
     return with(shared) {
         sharedBounds(
             // Each side stays in the overlay while it leaves (an exit that holds alpha at 1, so no layer), so its track
-            // is told where it is on every frame of the move.
+            // is told where it is on every frame of the move (An exit that changes nothing is there to tie the leaving side's life in the
+            // overlay to an animation of the transition, not to the screen's KeepUntilTransitionsFinished alone. On Compose
+            // animation 1.12.1 under this stage, ExitTransition.None here changed no frame RunningMovesTest or
+            // MotionFramesTest reads (decision 161); MotionFramesTest.theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow
+            // fails if the leaving ground ever stops being drawn mid-grow, whichever way it is kept.)
             state, stage.content, enter = EnterTransition.None, exit = fadeOut(m.track.fraction, targetAlpha = 1f),
             boundsTransform = bounds, resizeMode = ScaledToFill, zIndexInOverlay = Layers.GROUND,
             clipInOverlayDuringTransition = clip,
@@ -908,7 +916,11 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float): Modifier {
         // the circle on the frames the shared bounds hand drawing back before the change has landed.
         renderInSharedTransitionScopeOverlay(Layers.GROUND) { face.transition.isRunning }.sharedBounds(
             // The going face stays drawn for the whole change (an exit holding alpha at 1, so no layer of its own);
-            // the crossfade is the per-draw alpha below.
+            // the crossfade is the per-draw alpha below (An exit that changes nothing is there to tie the leaving side's life in the
+            // overlay to an animation of the transition, not to the screen's KeepUntilTransitionsFinished alone. On Compose
+            // animation 1.12.1 under this stage, ExitTransition.None here changed no frame RunningMovesTest or
+            // MotionFramesTest reads (decision 161); MotionFramesTest.theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow
+            // fails if the leaving ground ever stops being drawn mid-grow, whichever way it is kept.)
             state, face, enter = EnterTransition.None, exit = fadeOut(m.surface.fraction, targetAlpha = 1f),
             boundsTransform = bounds, resizeMode = ScaledToFit, zIndexInOverlay = Layers.GROUND,
         )
