@@ -159,8 +159,13 @@ developer: dev1 is the overlay, dev2 the app's screens; the tech lead owns
   bubble was (the window hands the last `params` position across) and
   springs to its dock slot (`Motion.settle`); the panel card scales and
   fades up from the dock slot (`graphicsLayer { scaleX; scaleY; alpha;
-  transformOrigin }`, pivot at the docked bubble's centre, scale from 0.3,
-  alpha reaching 1 by a third of the way, `Motion.surface`). The free
+  transformOrigin }`, pivot at the docked bubble's centre, scale from
+  `Panel.SMALLEST` (0.3), alpha reaching 1 by a third of the way out of the
+  bubble, `Motion.surface`). The raise's first tenth (`Panel.IN_BUBBLE`) is
+  the card wholly in the bubble: `Panel.opened` measures the way out from
+  there, a collapse lands there, and the bubble's last twentieth home has
+  no card with it (decision 170). While the card moves, a tap on its place
+  lowers it and opens nothing (decision 173). The free
   bubble window is removed on the frame the panel window has drawn, never
   before, so there is no frame with no bubble.
 - Phone, lower: the reverse. The free bubble window is added back at the
