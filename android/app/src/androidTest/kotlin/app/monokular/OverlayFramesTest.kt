@@ -17,6 +17,8 @@ import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.click
 import androidx.compose.ui.geometry.Rect
 import app.monokular.overlay.CODE_SLOT_TAG
 import app.monokular.overlay.HERO_TAG
@@ -53,7 +55,12 @@ class OverlayFramesTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private val actions = PanelActions({}, {}, {}, {}, {}, {}, {}, {})
+    private var lowered = 0
+    private var opened = 0
+    private val actions = PanelActions(
+        onLower = { lowered++ }, onFlung = {}, onOpenShift = { opened++ }, onOrder = { opened++ }, onBackToCode = {},
+        onCopy = { opened++ }, onCopyXmr = { opened++ }, onFullScreen = { opened++ },
+    )
     /** Fifteen minutes from now, so the frames show a countdown a cashier would see. */
     private val expires = System.currentTimeMillis() / 1000 + 15 * 60
     private var sale by mutableStateOf(testSale("f1", expiresAt = expires))
@@ -387,5 +394,34 @@ class OverlayFramesTest {
                 "frame $frame: the last sale's amount (${o / oldFull}) and the next sale's header (${h / headerFull}) are both drawn",
             )
         }
+    }
+
+    /**
+     * A tap on the card's place while it grows out of the bubble lowers it
+     * again and opens nothing (M1), wherever the scaled card's buttons
+     * happen to be on that frame; at rest the same tap reaches the card.
+     */
+    @Test
+    fun aTapDuringTheRaiseRetargetsItAndOpensNothing() {
+        panel(raised = 1f)
+        val card = compose.onNodeWithTag(CARD_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        // Where the header ("Open the shift") and the grabber are at rest, and the middle of the card.
+        val dp = compose.density.density
+        val spots = listOf(Offset(card.center.x, card.top + 24 * dp), Offset(card.left + card.width / 3, card.top + 70 * dp), card.center)
+        spots.forEach { at ->
+            motion.raise.snap(0f)
+            compose.mainClock.advanceTimeByFrame()
+            motion.raise.enter()
+            compose.mainClock.advanceTimeBy(80)
+            assertTrue(motion.raise.value in 0.05f..0.9f, "mid-raise: ${motion.raise.value}")
+            compose.onNodeWithTag("window").performTouchInput { click(at) }
+            compose.mainClock.advanceTimeByFrame()
+        }
+        assertEquals(0, opened, "a tap mid-raise opened something")
+        assertEquals(spots.size, lowered, "each tap mid-raise lowers the panel")
+        compose.mainClock.advanceTimeBy(1_500)
+        compose.onNodeWithTag("window").performTouchInput { click(spots[1]) }
+        compose.mainClock.advanceTimeByFrame()
+        assertEquals(1, opened, "at rest the header's tap opens the shift")
     }
 }
