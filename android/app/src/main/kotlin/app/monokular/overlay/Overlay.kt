@@ -37,6 +37,7 @@ import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import app.monokular.Bubble
 import app.monokular.BubbleLook
 import app.monokular.Graph
+import app.monokular.PaidBuzz
 import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
@@ -303,7 +304,7 @@ class Overlay(
                     },
                 ) { BubbleFace(
                         s.look, phase = s.sale?.phase ?: SalePhase.Waiting, panelUp = open,
-                        confirms = Haptics.bubbleConfirms(s.appVisible),
+                        confirms = PaidBuzz.bubble(s.appVisible),
                     ) }
             }.apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS },
         )
@@ -369,7 +370,7 @@ class Overlay(
             motion.raise.Attach()
             val s by state.collectAsStateWithLifecycle()
             val sale = s.sale ?: return@compose
-            if (wide) FloatingPanel(sale, s.where, s.page, actions, motion) else PhonePanel(sale, s.where, s.look, s.page, actions, motion, Haptics.bubbleConfirms(s.appVisible))
+            if (wide) FloatingPanel(sale, s.where, s.page, actions, motion) else PhonePanel(sale, s.where, s.look, s.page, actions, motion, PaidBuzz.bubble(s.appVisible))
         }
         runCatching { wm.addView(view, params) }.onSuccess {
             panel = view

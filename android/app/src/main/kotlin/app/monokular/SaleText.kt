@@ -166,6 +166,9 @@ object PaidBuzz {
     enum class Surface { App, Bubble }
 
     fun by(appVisible: Boolean): Surface = if (appVisible) Surface.App else Surface.Bubble
+
+    /** The bubble's side of the rule: whether a payment landing on it buzzes. */
+    fun bubble(appVisible: Boolean): Boolean = by(appVisible) == Surface.Bubble
 }
 
 /** Which till screen the sales lead to, as they change (decision 70). */
