@@ -38,6 +38,9 @@ class Presence(initial: Float = 0f) {
     /** The progress; a state read, so only in a draw or layout lambda. */
     val value: Float get() = animatable.value
 
+    /** Whether it is on its way in or out, neither gone nor at rest; a state read, so only in a draw or layout lambda. */
+    val moving: Boolean get() = animatable.value > 0f && animatable.value < 1f
+
     /** Grows in from wherever it is. */
     fun enter() = go { animatable.animateTo(1f, motion.surface.fraction) }
 
