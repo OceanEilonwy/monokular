@@ -25,6 +25,8 @@ import app.monokular.Move
 import app.monokular.Layers
 import app.monokular.GroundLook
 import app.monokular.sharedGround
+import app.monokular.GroundTrack
+import app.monokular.rememberGroundTrack
 import app.monokular.sharedSurface
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
@@ -90,10 +92,11 @@ fun QrCode(
     radius: Dp = 36.dp,
     shared: String? = null,
     sharedCard: Boolean = true,
+    ground: GroundTrack? = null,
 ) {
     val bitmap = remember(text) { codeBitmap(text) }
     val shape = remember(radius) { RoundedCornerShape(radius) }
-    CodeCard(modifier.aspectRatio(1f), shape, radius, shared, sharedCard) {
+    CodeCard(modifier.aspectRatio(1f), shape, radius, shared, sharedCard, ground) {
         Box(Modifier.padding(padding)) { CodeImage(bitmap, description, shared) }
     }
 }
@@ -106,11 +109,11 @@ fun QrCode(
  * landing re-runs this and not [QrCode].
  */
 @Composable
-private fun CodeCard(modifier: Modifier, shape: Shape, radius: Dp, shared: String?, sharedCard: Boolean, content: @Composable () -> Unit) = Box(
+private fun CodeCard(modifier: Modifier, shape: Shape, radius: Dp, shared: String?, sharedCard: Boolean, ground: GroundTrack?, content: @Composable () -> Unit) = Box(
     modifier.clip(shape).then(if (shared == null) Modifier.background(Fixed.White) else Modifier),
 ) {
     if (shared != null && sharedCard) {
-        Box(Modifier.fillMaxSize().sharedGround(codeGround(shared), Move.CodeGrow, GroundLook(Fixed.White, radius), GroundLook(Fixed.White, CodeScreenCorner)))
+        Box(Modifier.fillMaxSize().sharedGround(codeGround(shared), Move.CodeGrow, GroundLook(Fixed.White, radius), GroundLook(Fixed.White, CodeScreenCorner), ground))
     }
     content()
 }
@@ -130,7 +133,7 @@ private fun CodeImage(bitmap: ImageBitmap, description: String, shared: String?)
     bitmap = bitmap,
     contentDescription = null,
     modifier = Modifier.fillMaxSize()
-        .then(if (shared != null) Modifier.sharedSurface("code/$shared", Move.CodeGrow, fade = false, layer = Layers.CODE) else Modifier)
+        .then(if (shared != null) Modifier.sharedSurface("code/$shared", Move.CodeGrow, fade = false, layer = Layers.CODE, track = rememberGroundTrack("code/$shared")) else Modifier)
         .semantics { contentDescription = description },
     contentScale = ContentScale.Fit,
     filterQuality = FilterQuality.None,

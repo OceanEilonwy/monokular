@@ -2703,3 +2703,85 @@ design unchanged.
     `heap-ov.sh` and `bin/heapdiff.py` in dev1's scratch folder). The
     code is in the layer during the move, scaled as part of it as it
     already was (§10 rule 6 unchanged: one bitmap, never re-laid out).
+154. **A running move is checked on the window drawn there and then,
+    and on its ground's travel, not on how alike its frames are**
+    (dev2, round 4; the harness of 146 and the review's R3-O1 to R3-O3).
+    `RunningMoves` drives the real stage (`ModelStage`) on the test
+    clock a frame at a time and keeps every frame of `RowGrow`,
+    `CodeGrow`, `OrderGrow`, the Rise, the paid fold and the paid
+    step-back, both ways, light and dark. Each frame is the window drawn
+    in software on the main thread from the state that frame left, not
+    `captureToImage`: a copy of the window's last buffer was a frame
+    behind the stage on one run and not on the next (the white at the
+    card's size with the words already fading), which would make the
+    test flaky in exactly the frames it is for. Per frame it asserts:
+    both screens' stages name one move; the moving ground has a shape on
+    every frame between its first and its last; the code's white is
+    painted where its track says, with no grey (a code below alpha 1) in
+    it; no arriving glyph is cut by a ground's edge; the ground's area
+    goes one way and never stands still two frames short of its place
+    (the "hold then jump" of round 3); in dark, no frame is lighter than
+    both ends and none steps by more than the whole move (the flash
+    detector); in the fold, the hero travels without standing still and
+    the page's heading shows only once the hero is past halfway (131).
+    A whole-picture "only goes toward the last frame" check was tried
+    and dropped: in light the pill and order card are white like the
+    code screen, and by 147 they fade out under the white and back in
+    once it has passed, so a correct shrink turns back toward its first
+    frame. A hard cut steps once by the whole difference, which the
+    detector allows: under Still that cut is the move (157); with motion
+    on, the cuts of f274ad7 are the jump the moves exist to replace.
+155. **Words leaving stay under a ground growing over them; only words
+    arriving are lifted above it** (dev2, round 4; 147's last line made
+    code). `words(lift = …)` lifted on the move alone, so on the enlarge
+    the sale's pill, fading out, was drawn over the growing white's
+    bottom edge. A lift now needs the screen to be the one arriving.
+156. **A change's move is decided once, and a screen left draws nothing
+    on the frame its change lands** (dev2, round 4; 149's rule). The
+    stage holds the move for the pair of screens (`HeldMove`): the first
+    to ask, the transform or a surface drawing, reads `cameUpByItself`,
+    and every reader gets that answer until the stage is at rest. The
+    landing frame still composes the screen left (its exit holds until
+    the transition finishes), and the shrink drew it whole over the
+    screen arrived for that one frame; `Stage.gone()` stops it drawing.
+    A ground whose move has no shape on a frame (the match a frame late
+    or a frame early) is drawn whole only by the screen that is the
+    picture on that frame (half shown or more), never by the arriving
+    one at its layout size (146), and the code's surface likewise.
+157. **Under Still, a change to or from a screen that may show a code is
+    a cut** (dev2, round 4; 148). A crossfade there put two codes of two
+    sizes through each other; the cut has the code and its white whole
+    on the first frame. Other Still changes keep their short crossfade.
+158. **The words' fade makes a layer only while one of its moves is
+    under way** (dev2, round 4; review R3-O5). `Modifier.words` was a
+    `graphicsLayer` at alpha 1 on every call site at rest, one per shift
+    row. It is now a `Modifier.Node` that reads the stage in placement
+    (so it places again as a move starts and lands, nothing per frame)
+    and places with a layer only during its move, the alpha read in that
+    layer's block per frame. Its moves are a set (`through`, `lift`), so
+    the API has no `alsoThrough`.
+160. **A moving ground's fill reaches past its layout by its last step,
+    not by four of its sizes** (dev2, round 4; the cause of 146 named).
+    The ground is an empty box scaled to its moving bounds, and the
+    overlay clips it to this frame's bounds while its scale is an update
+    behind; to cover the clip it filled four of its own sizes each way
+    (`FILL = 4f`). On the emulator with the host GPU, in the real app,
+    dark theme, the enlarge's first frames drew that fill with no clip:
+    the whole window white with the code small at its card's place, then
+    the sale, then the grow (`dev2-r4-flash.png`; 2 of 3 enlarges, every
+    process). The running-move harness never showed it: the test clock
+    composes, clips and draws the first frame in one pass. With the fill
+    at its own size the flash went in every recorded enlarge; with it
+    gated on `isTransitionActive`, or on the track having a shape, it
+    stayed, so the overlay draws the ground unclipped on a frame where the
+    track is already set. The fill now reaches past its own size by
+    twice the distance its bounds moved on the last frame, at the scale
+    it is drawn (`GroundTrack.reach`): enough to cover the update it
+    trails by, nothing on a first frame, and at worst a step's band if
+    the overlay ever draws it unclipped again. Checked by luminance over
+    every recorded enlarge (no frame lighter than its neighbours by more
+    than 40 of 255), not by a device test: the frame only exists with a
+    real Choreographer and render thread. The same fill is the likeliest
+    of the lead's first-enlarge suspects (a window-sized fill nine
+    windows large through a path clip); the frame table says whether it
+    was.

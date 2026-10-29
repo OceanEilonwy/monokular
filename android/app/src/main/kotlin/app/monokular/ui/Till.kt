@@ -80,6 +80,7 @@ import app.monokular.GroundLook
 import app.monokular.GroundTrack
 import app.monokular.sharedGround
 import app.monokular.words
+import app.monokular.rememberGroundTrack
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.Animatable
@@ -211,15 +212,17 @@ fun SaleScreen(
     // The sale is its row opened: tapped on the shift, the row's card grows into this ground (M7), which the row draws
     // since only it knows its own corners; the sale's words fade in over it at their own size.
     Box(Modifier.fillMaxSize()) {
-        val ground = remember { GroundTrack() }
-        Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, GroundLook(mk.ground, 0.dp), other = null, ground))
+        val ground = rememberGroundTrack("sale/${sale.orderId}")
+        Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, GroundLook(mk.ground, 0.dp), other = null, ground, fadesIn = Move.Rise))
         // Paid or ended on screen, the live sale turns into its page in place (M10): the code card closes into the
         // page's hero circle, and the live sale's words fade out before the page's fade in, never two receipts at once
         // (decision 131); the way back the same reversed ("Show the code again"). Per draw, never an offscreen layer.
         val m = motion
         AnimatedContent(
             targetState = sale.live,
-            modifier = Modifier.words(over = Move.RowGrow, through = Move.CodeGrow, alsoThrough = Move.OrderGrow, on = ground),
+            // Over the row's ground as it opens, clipped to it; the words inside fade one by one around the code, which
+            // never fades (decision 148): opening, it is drawn whole wherever the ground has reached.
+            modifier = Modifier.words(over = Move.RowGrow, on = ground, fades = false),
             transitionSpec = { (EnterTransition.None togetherWith ExitTransition.KeepUntilTransitionsFinished).using(null) },
             label = "sale face",
         ) { live ->
@@ -233,19 +236,37 @@ fun SaleScreen(
                         compositingStrategy = CompositingStrategy.ModulateAlpha
                     },
                 ) {
-                    if (live) LiveSale(sale, location, now, actions) else SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions)
+                    if (live) {
+                        LiveSale(sale, location, now, actions, ground)
+                    } else {
+                        Box(Modifier.words(through = SaleThrough, lift = SaleLift, on = ground)) { SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions) }
+                    }
                 }
             }
         }
     }
 }
 
+/** The moves a sale's words fade through: its row opening, its code or order growing, the sale rising by itself. */
+private val SaleThrough = setOf(Move.RowGrow, Move.CodeGrow, Move.OrderGrow, Move.Rise)
+
+/** The moves whose ground passes over a sale's words as they arrive: they are drawn over it (decision 147). */
+private val SaleLift = setOf(Move.CodeGrow, Move.OrderGrow)
+
+/** The order card's: not its own grow, whose ground it is (its lines fade on it). */
+private val OrderCardThrough = setOf(Move.RowGrow, Move.CodeGrow, Move.Rise)
+private val OrderCardLift = setOf(Move.CodeGrow)
+
 /** A circle's corners, as a share of its side. */
 private const val Circle = 0.5f
 
 /** A live sale full screen, for the customer to scan (SaleA); split in two on a wide window (decision 45). */
 @Composable
-private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions: TillActions) {
+private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions: TillActions, ground: GroundTrack) {
+    // The code card's white: words it still passes over as it shrinks back into the card wait for it to pass (decision 147).
+    val card = rememberGroundTrack(codeGround(sale.orderId))
+    val words = Modifier.words(through = SaleThrough, lift = SaleLift, on = ground, clear = card)
+    val orderWords = Modifier.words(through = OrderCardThrough, lift = OrderCardLift, on = ground, clear = card)
     var asking by rememberSaveable(sale.orderId) { mutableStateOf(false) }
     val header = SaleHeader.of(sale, LocalPointOfSale.current, location)
     // A receipt reaches the till about a second after its sale: its card fades in then, rather than popping (N3).
@@ -256,17 +277,19 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
             val wide = maxWidth >= 840.dp
             Column(Modifier.fillMaxSize()) {
-                SaleBar(
-                    sale, header.place, actions,
-                    onClose = { asking = true }.takeIf { Closing.choices(sale).isNotEmpty() },
-                )
+                Box(words) {
+                    SaleBar(
+                        sale, header.place, actions,
+                        onClose = { asking = true }.takeIf { Closing.choices(sale).isNotEmpty() },
+                    )
+                }
                 if (wide) {
                     Row(
                         Modifier.weight(1f).fillMaxWidth().padding(horizontal = 32.dp),
                         horizontalArrangement = Arrangement.spacedBy(48.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Code(sale, min(this@BoxWithConstraints.maxHeight - 120.dp, 440.dp)) { actions.onEnlarge(sale.orderId) }
+                        Code(sale, min(this@BoxWithConstraints.maxHeight - 120.dp, 440.dp), card) { actions.onEnlarge(sale.orderId) }
                         Column(
                             // Centred beside the code (which is not in it), it settles to the late card's height rather than jumping.
                             Modifier.widthIn(max = 420.dp).animateContentSize(motion.settle.spec(IntSize.VisibilityThreshold))
@@ -274,10 +297,10 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                             verticalArrangement = Arrangement.spacedBy(20.dp),
                             horizontalAlignment = Alignment.Start,
                         ) {
-                            Amount(sale, actions.onCopyXmr, start = true)
-                            StatusPill(sale, now)
-                            sale.receipt?.let { Late(late) { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } }
-                            Buttons(sale, header, actions)
+                            Box(words) { Amount(sale, actions.onCopyXmr, start = true) }
+                            Box(words) { StatusPill(sale, now) }
+                            sale.receipt?.let { Box(orderWords) { Late(late) { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } } }
+                            Box(words) { Buttons(sale, header, actions) }
                         }
                     }
                 } else {
@@ -290,14 +313,14 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
-                        Amount(sale, actions.onCopyXmr)
-                        Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide)) { actions.onEnlarge(sale.orderId) }
-                        StatusPill(sale, now)
-                        sale.receipt?.let { Late(late) { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } }
+                        Box(words) { Amount(sale, actions.onCopyXmr) }
+                        Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide), card) { actions.onEnlarge(sale.orderId) }
+                        Box(words) { StatusPill(sale, now) }
+                        sale.receipt?.let { Box(orderWords) { Late(late) { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } } }
                     }
                     Box(
                         Modifier.align(Alignment.CenterHorizontally).widthIn(max = PhoneMaxWidth)
-                            .padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
+                            .padding(start = 20.dp, end = 20.dp, bottom = 16.dp).then(words),
                     ) { Buttons(sale, header, actions) }
                 }
             }
@@ -384,7 +407,7 @@ private fun Amount(sale: TillSale, onCopyXmr: (TillSale) -> Unit, start: Boolean
 
 /** The code, which enlarges when tapped (CodeB), with the expand badge on its corner. */
 @Composable
-private fun Code(sale: TillSale, side: Dp, onEnlarge: () -> Unit) = Box(
+private fun Code(sale: TillSale, side: Dp, card: GroundTrack, onEnlarge: () -> Unit) = Box(
     // Paid or ended, the card closes into the page's hero (M10).
     Modifier.faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle)
         .clip(RoundedCornerShape(CodeCorner)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
@@ -396,6 +419,7 @@ private fun Code(sale: TillSale, side: Dp, onEnlarge: () -> Unit) = Box(
         padding = 18.dp,
         radius = CodeCorner,
         shared = sale.orderId,
+        ground = card,
     )
     Box(
         Modifier.align(Alignment.BottomEnd).padding(10.dp).size(32.dp).clip(CircleShape).background(Fixed.Ink),
@@ -461,7 +485,7 @@ fun OrderCard(receipt: Receipt, pos: PointOfSale?, withTime: Boolean, onOpen: ((
     // page's whole list fades in, each at its own size (decisions 128, 131).
     Box(Modifier.fillMaxWidth()) {
         val look = GroundLook(mk.card, CardCorner)
-        val ground = remember { GroundTrack() }
+        val ground = rememberGroundTrack(shared.orEmpty())
         Box(Modifier.matchParentSize().then(if (shared != null) Modifier.sharedGround(shared, Move.OrderGrow, look, look, ground) else Modifier.clip(CardShape).background(mk.card)))
         OrderLines(receipt, pos, withTime, lines, more, open, if (shared != null) Modifier.words(over = Move.OrderGrow, on = ground) else Modifier)
     }

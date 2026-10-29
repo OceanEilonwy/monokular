@@ -70,8 +70,8 @@ import app.monokular.sales.live
 import app.monokular.Layers
 import app.monokular.sharedSurface
 import app.monokular.sharedGround
+import app.monokular.rememberGroundTrack
 import app.monokular.GroundLook
-import app.monokular.GroundTrack
 import app.monokular.words
 import androidx.compose.ui.graphics.Color
 
@@ -140,7 +140,7 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                             Modifier.animateItem(fadeInSpec = arrive, placementSpec = placement, fadeOutSpec = leave)
                                 .padding(horizontal = 16.dp).fillMaxWidth(),
                         ) {
-                            val ground = remember { GroundTrack() }
+                            val ground = rememberGroundTrack("sale/${sale.orderId}")
                             Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, rowLook(ends, mk.card), GroundLook(mk.ground, 0.dp), ground))
                             Column(Modifier.fillMaxWidth().words(over = Move.RowGrow, on = ground).clip(shape)) {
                                 if (i > 0) Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(mk.divider))
