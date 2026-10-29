@@ -4,6 +4,9 @@ import android.os.Build
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Transition
+import androidx.compose.animation.core.updateTransition
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VisibilityThreshold
@@ -45,6 +48,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.LongState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -117,7 +121,8 @@ import app.monokular.ui.QrCode
 import app.monokular.ui.display
 import app.monokular.ui.mk
 import app.monokular.ui.motion
-import app.monokular.ui.secondsLeft
+import app.monokular.ui.Countdown
+import app.monokular.ui.rememberNowSeconds
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
@@ -364,6 +369,11 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
     var height by remember { mutableFloatStateOf(0f) }
     val fling = with(LocalDensity.current) { Panel.FLING_DP_PER_S.dp.toPx() }
     val springBack = motion.flick.px
+    // The panel's one clock (amendment 10), read only by the countdown.
+    val now = rememberNowSeconds()
+    // One transition for everything the face changes (M5): the fold, the words and the buttons start on one frame,
+    // and each side keeps the sale it showed, so the code's words never say "Paid" on their way out.
+    val faces = updateTransition(FaceShown(Panel.face(sale), sale), label = "face")
     Column(
         Modifier.then(if (wide) Modifier.width(360.dp) else Modifier.fillMaxWidth())
             .onSizeChanged { height = it.height.toFloat() }
@@ -407,7 +417,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                     grabber()
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Details(sale, where, actions, oneLine = true)
-                        Buttons(sale, actions)
+                        Buttons(faces, actions)
                     }
                 }
                 Column(
@@ -415,7 +425,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    Face(sale, wide)
+                    Face(faces, wide, now)
                 }
             }
         } else {
@@ -426,8 +436,8 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Details(sale, where, actions)
-                Face(sale, wide)
-                Buttons(sale, actions)
+                Face(faces, wide, now)
+                Buttons(faces, actions)
             }
         }
     }
@@ -450,6 +460,10 @@ private fun Details(sale: TillSale, where: String, actions: PanelActions, oneLin
     if (receipt != null && receipt.lineItems.isNotEmpty()) OrderLine(SaleText.items(receipt), SaleText.firstItems(receipt), oneLine, actions.onOrder)
 }
 
+/** A face of the panel and the sale it was shown for: the side of a change that's leaving keeps its own. */
+@Immutable
+private data class FaceShown(val face: PanelFace, val sale: TillSale)
+
 /**
  * The code and its status while live; the tick once paid; else where the
  * code was. One place for all three (`docs/motion.md` M5): paid or ended,
@@ -457,31 +471,37 @@ private fun Details(sale: TillSale, where: String, actions: PanelActions, oneLin
  * fades under it, the slot's height following; the next sale's code grows
  * back out of it. The code is laid out once at its full size and only its
  * layer scales, so it is never re-laid out; at rest it is exactly its
- * designed size. Everything that moves is read in layout or draw.
+ * designed size. Everything that moves is read in layout or draw, and all
+ * of it follows [faces], so the fold and the words start on one frame.
  */
 @Composable
-private fun Face(sale: TillSale, wide: Boolean) {
+private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState) {
     val m = motion
-    val face = Panel.face(sale)
-    val live = face == PanelFace.Code
+    val shown = faces.targetState
+    val sale = shown.sale
+    val live = shown.face == PanelFace.Code
     val codeSize = if (wide) 280.dp else 264.dp
-    val fold by animateFloatAsState(if (live) 0f else 1f, m.surface.fraction, label = "fold")
-    val codeAlpha by animateFloatAsState(if (live) 1f else 0f, (if (live) m.fade else m.fadeQuick).fraction, label = "code")
-    val heroAlpha by animateFloatAsState(if (live) 0f else 1f, (if (live) m.fadeQuick else m.fade).fraction, label = "hero")
-    // The last face the code folded into, kept while the next code grows out of it.
+    val fold = faces.animateFloat({ m.surface.fraction }, label = "fold") { if (it.face == PanelFace.Code) 0f else 1f }
+    val codeAlpha = faces.animateFloat(
+        { (if (targetState.face == PanelFace.Code) m.fade else m.fadeQuick).fraction }, label = "code",
+    ) { if (it.face == PanelFace.Code) 1f else 0f }
+    val heroAlpha = faces.animateFloat(
+        { (if (targetState.face == PanelFace.Code) m.fadeQuick else m.fade).fraction }, label = "hero",
+    ) { if (it.face == PanelFace.Code) 0f else 1f }
+    // The last face the code folded into, kept while the next code grows out of it and let go once it has.
     val folded = remember { arrayOfNulls<TillSale>(1) }
-    if (!live) folded[0] = sale
+    if (!live) folded[0] = sale else if (!faces.isRunning) folded[0] = null
     Box(
-        Modifier.layout { measurable, constraints ->
+        Modifier.testTag(CODE_SLOT_TAG).layout { measurable, constraints ->
             val full = codeSize.roundToPx()
             val placeable = measurable.measure(Constraints.fixed(full, full))
-            val height = lerp(full.toFloat(), HeroSize.toPx(), fold).roundToInt()
+            val height = lerp(full.toFloat(), HeroSize.toPx(), fold.value).roundToInt()
             layout(constraints.constrainWidth(full), height) { placeable.place((constraints.constrainWidth(full) - full) / 2, (height - full) / 2) }
         },
         contentAlignment = Alignment.Center,
     ) {
         folded[0]?.let { last ->
-            Box(Modifier.graphicsLayer { alpha = heroAlpha }, contentAlignment = Alignment.Center) {
+            Box(Modifier.graphicsLayer { alpha = heroAlpha.value }, contentAlignment = Alignment.Center) {
                 if (Panel.face(last) == PanelFace.Paid) PaidHero(HeroSize) else EndedHero(last)
             }
         }
@@ -490,10 +510,10 @@ private fun Face(sale: TillSale, wide: Boolean) {
             "Payment code for ${SaleText.amount(sale)}",
             Modifier.size(codeSize)
                 .graphicsLayer {
-                    val scale = lerp(1f, HeroSize / codeSize, fold)
+                    val scale = lerp(1f, HeroSize / codeSize, fold.value)
                     scaleX = scale
                     scaleY = scale
-                    alpha = codeAlpha
+                    alpha = codeAlpha.value
                     compositingStrategy = CompositingStrategy.ModulateAlpha
                 }
                 .testTag(CODE_TAG)
@@ -502,28 +522,32 @@ private fun Face(sale: TillSale, wide: Boolean) {
             radius = if (wide) 30.dp else 28.dp,
         )
     }
-    AnimatedContent(
-        face,
-        transitionSpec = { fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction) using SizeTransform { _, _ -> m.settle.spec(IntSize.VisibilityThreshold) } },
+    faces.AnimatedContent(
+        transitionSpec = {
+            // The new words wait for the old to go, and are never clipped to the old words' size while it settles.
+            fadeIn(m.fadeThrough.fraction) togetherWith fadeOut(m.fadeQuick.fraction) using
+                SizeTransform(clip = false) { _, _ -> m.settle.spec(IntSize.VisibilityThreshold) }
+        },
         contentAlignment = Alignment.TopCenter,
-        label = "words",
-    ) { shown ->
+        contentKey = { it.face },
+    ) { side ->
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            when (shown) {
-                PanelFace.Code -> StatusRow(sale)
+            val its = side.sale
+            when (side.face) {
+                PanelFace.Code -> StatusRow(its, now)
                 PanelFace.Paid -> {
                     Text(
-                        SaleText.status(sale, posOf(sale)), style = display(28), textAlign = TextAlign.Center,
+                        SaleText.status(its, posOf(its)), style = display(28), textAlign = TextAlign.Center,
                         modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
                     )
-                    Text("${SaleText.xmr(sale)} received", fontSize = 15.sp, color = mk.muted)
+                    Text("${SaleText.xmr(its)} received", fontSize = 15.sp, color = mk.muted)
                 }
                 PanelFace.Ended -> {
                     Text(
-                        Panel.endedHeading(sale, posOf(sale)), style = display(26), textAlign = TextAlign.Center,
+                        Panel.endedHeading(its, posOf(its)), style = display(26), textAlign = TextAlign.Center,
                         modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
                     )
-                    Text(Panel.endedLine(sale, posOf(sale)), fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center)
+                    Text(Panel.endedLine(its, posOf(its)), fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -533,21 +557,31 @@ private fun Face(sale: TillSale, wide: Boolean) {
 /** The panel's code, for the tests that hold it to its size. */
 const val CODE_TAG = "panel-code"
 
+/** The slot the code folds in, whose height follows the fold. */
+const val CODE_SLOT_TAG = "panel-code-slot"
+
+/** The status row under the live code. */
+const val STATUS_TAG = "panel-status"
+
 /** The paid tick's and the ended circle's size, which the code folds into. */
 private val HeroSize = 88.dp
 
-/** Two buttons while the code is up, one once it's paid or ended: the row crossfades, its height the same. */
+/**
+ * Two buttons while the code is up, one once it's paid or ended: the row
+ * fades through on [faces] (the old labels gone before the new arrive), its
+ * height the same.
+ */
 @Composable
-private fun Buttons(sale: TillSale, actions: PanelActions) {
+private fun Buttons(faces: Transition<FaceShown>, actions: PanelActions) {
     val m = motion
-    AnimatedContent(
-        Panel.face(sale),
+    faces.AnimatedContent(
         Modifier.fillMaxWidth().padding(top = 4.dp),
-        transitionSpec = { (fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
-        label = "buttons",
-    ) { shown ->
+        transitionSpec = { (fadeIn(m.fadeThrough.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
+        contentKey = { it.face },
+    ) { side ->
+        val sale = side.sale
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            when (shown) {
+            when (side.face) {
                 PanelFace.Paid -> PrimaryButton("Done", actions.onLower, Modifier.weight(1f), height = 48.dp, size = 15)
                 PanelFace.Code -> {
                     OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), size = 15)
@@ -628,18 +662,29 @@ private fun OrderLine(count: String, first: String, oneLine: Boolean, onOrder: (
     Icon(MkIcons.Chevron, contentDescription = null, tint = mk.muted, modifier = Modifier.size(16.dp))
 }
 
-/** The phase's ring, "Waiting for payment" and the time left. Only the words announce: the countdown ticks silently. */
+/**
+ * The phase's ring, "Waiting for payment" and the time left at [now]. The
+ * words crossfade and the row settles to their width (M12); only the words
+ * announce: the countdown ticks silently, in tabular figures.
+ */
 @Composable
-private fun StatusRow(sale: TillSale) = Row(
+private fun StatusRow(sale: TillSale, now: LongState) = Row(
+    Modifier.testTag(STATUS_TAG).animateContentSize(motion.settle.spec(IntSize.VisibilityThreshold)),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
 ) {
+    val m = motion
     PhaseRing(sale.phase, 26.dp)
-    Text(
-        SaleText.status(sale, posOf(sale)), fontSize = 15.sp, fontWeight = FontWeight.Bold,
-        modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-    )
-    CodeText.left(sale, secondsLeft(sale.expiresAt))?.let { Text("· $it", fontSize = 14.sp, color = mk.muted) }
+    AnimatedContent(
+        SaleText.status(sale, posOf(sale)),
+        transitionSpec = { (fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
+        label = "status words",
+    ) { words ->
+        Text(words, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
+    }
+    if (CodeText.left(sale, 0) != null) {
+        Countdown(now, sale.expiresAt, fontSize = 14.sp, color = mk.muted) { "· ${CodeText.left(sale, it)}" }
+    }
 }
 
 /**
