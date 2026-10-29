@@ -17,12 +17,21 @@ data class Windows(
     val panel: Life = Life.Gone,
     /** Whether the panel window has drawn a frame with its docked bubble in place, so the free one can go. */
     val panelDrawn: Boolean = false,
+    /**
+     * The grabber's speed for the panel's next collapse, progress a second,
+     * kept across whatever else happens until that collapse starts; null
+     * for none.
+     */
+    val flung: Float? = null,
 )
 
 /** What happened to the windows. */
 sealed interface WindowEvent {
     /** What the overlay wants up: the bubble when [usable], the panel too when [open]. */
     data class Want(val usable: Boolean, val open: Boolean, val wide: Boolean) : WindowEvent
+
+    /** The grabber let the panel go at [velocity] (progress a second): the collapse to come starts at it. */
+    data class Flung(val velocity: Float) : WindowEvent
 
     /** The panel window drew its first frame with the docked bubble where the free one is. */
     data object PanelDrawn : WindowEvent
@@ -62,7 +71,8 @@ enum class WindowAct {
     RemovePanel,
 }
 
-data class WindowStep(val windows: Windows, val acts: List<WindowAct>)
+/** The windows after an event and what to do to them; [closeVelocity] is the speed a [WindowAct.ClosePanel] starts at. */
+data class WindowStep(val windows: Windows, val acts: List<WindowAct>, val closeVelocity: Float? = null)
 
 /**
  * The order the overlay's windows come and go in, so there is never a
@@ -82,6 +92,8 @@ object Handoff {
         var bubble = w.bubble
         var panel = w.panel
         var drawn = w.panelDrawn
+        var flung = w.flung
+        var closeVelocity: Float? = null
         fun ensureBubble() {
             when (bubble) {
                 Life.Gone -> acts += WindowAct.AddBubble
@@ -113,12 +125,17 @@ object Handoff {
                         Life.Up -> Unit
                     }
                     panel = Life.Up
+                    // Raised again: a fling from before is spent.
+                    flung = null
                     // A tablet keeps its bubble; a phone's goes once the panel has drawn its docked one.
                     if (wide) ensureBubble() else if (drawn) removeBubble()
                 } else {
                     if (panel == Life.Up) {
                         acts += WindowAct.ClosePanel
                         panel = Life.Leaving
+                        // The collapse takes the grabber's speed, however many frames came between the fling and now.
+                        closeVelocity = flung
+                        flung = null
                     }
                     if (!event.usable) {
                         if (bubble == Life.Up) {
@@ -130,8 +147,9 @@ object Handoff {
                         ensureBubble()
                     }
                 }
-                WindowStep(Windows(event.usable, wide, bubble, panel, drawn), acts)
+                WindowStep(Windows(event.usable, wide, bubble, panel, drawn, flung), acts, closeVelocity)
             }
+            is WindowEvent.Flung -> WindowStep(w.copy(flung = if (w.panel == Life.Up) event.velocity else null), acts)
             WindowEvent.PanelDrawn -> {
                 drawn = true
                 // The grow starts from the handoff, so the docked bubble leaves from exactly where the free one was.

@@ -24,6 +24,7 @@ import app.monokular.sales.TillSale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
 class PanelTest {
@@ -159,6 +160,31 @@ class PanelTest {
         // Reopened in the frame the free bubble came back: it goes again at once, the panel being drawn.
         val landed = Windows(usable = true, bubble = Life.Up, panel = Life.Landed, panelDrawn = true)
         assertEquals(listOf(WindowAct.OpenPanel, WindowAct.RemoveBubble), want(landed, usable = true, open = true).acts)
+    }
+
+    @Test
+    fun `a fling's speed reaches the collapse whatever lands between the fling and the lower`() {
+        // A phone's panel up with its docked bubble; the free bubble is gone.
+        var w = Windows(usable = true, bubble = Life.Gone, panel = Life.Up, panelDrawn = true)
+        w = Handoff.next(w, WindowEvent.Flung(-2.5f)).windows
+        // The panel's pre-draw and a bubble's exit land before the overlay's flow asks for the panel down.
+        w = Handoff.next(w, WindowEvent.PanelDrawn).windows
+        w = Handoff.next(w, WindowEvent.BubbleLeft).windows
+        val lowered = want(w, usable = true, open = false)
+        assertEquals(listOf(WindowAct.ClosePanel), lowered.acts)
+        assertEquals(-2.5f, lowered.closeVelocity, "the collapse starts at the grabber's speed")
+        assertNull(lowered.windows.flung, "and spends it")
+        // A collapse that isn't a fling keeps its own velocity.
+        val tapped = want(want(lowered.windows, usable = true, open = true).windows, usable = true, open = false)
+        assertNull(tapped.closeVelocity)
+    }
+
+    @Test
+    fun `a fling with no panel up, or before the panel is raised again, carries nothing`() {
+        assertNull(Handoff.next(Windows(usable = true, bubble = Life.Up), WindowEvent.Flung(-3f)).windows.flung)
+        val up = Windows(usable = true, bubble = Life.Gone, panel = Life.Up, panelDrawn = true)
+        val flung = Handoff.next(up, WindowEvent.Flung(-3f)).windows
+        assertNull(want(flung, usable = true, open = true).windows.flung, "raised again before it lowered: spent")
     }
 
     @Test
