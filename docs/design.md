@@ -1184,8 +1184,5 @@ relay and Bell, and the Square spike (1) are open.
 - Publishing `push` to crates.io so the Bell needn't use a git dependency.
   Until then the Bell pins one monokulo commit; after the push PRs merge
   the pin moves to `main`'s commit.
-- `crypto-bigint` 0.7.5 (under `p256`) is yanked (RUSTSEC-2026-0387); both
-  repositories move to 0.7.10 or later together on 2026-11-09, when it is
-  two weeks old, or sooner if the owner says the fix wins over the rule.
 - App Store review of a crypto-payments companion; Google Play's "display
   over other apps" declaration and its foreground service type for a shift.
