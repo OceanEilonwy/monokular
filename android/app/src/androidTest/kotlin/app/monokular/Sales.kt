@@ -1,5 +1,6 @@
 package app.monokular
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import app.monokular.core.SalePhase
@@ -34,10 +35,11 @@ fun testSale(
 
 /**
  * [content] in the till's theme with [motion] whatever the emulator's
- * animator scale is, so a timing test runs the presets it names.
+ * animator scale is, so a timing test runs the presets it names; [dark]
+ * picks the theme, else the emulator's.
  */
 @Composable
-fun Till(motion: Motion = Motion.Full, content: @Composable () -> Unit) = MonokularTheme {
+fun Till(motion: Motion = Motion.Full, dark: Boolean? = null, content: @Composable () -> Unit) = MonokularTheme(dark ?: isSystemInDarkTheme()) {
     CompositionLocalProvider(LocalMotion provides motion, content = content)
 }
 
