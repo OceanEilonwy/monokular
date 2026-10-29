@@ -7,8 +7,6 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
-import androidx.activity.compose.BackHandler
-import androidx.activity.compose.PredictiveBackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
@@ -25,7 +23,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.core.net.toUri
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.monokular.core.PointOfSale
@@ -59,8 +56,6 @@ import app.monokular.ui.TillStatus
 import app.monokular.ui.WakeUpsState
 import app.monokular.ui.WelcomeScreen
 import app.monokular.ui.motion
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     private val model: AppViewModel by viewModels()
@@ -105,48 +100,25 @@ class MainActivity : ComponentActivity() {
                 val source by remember { derivedStateOf { runnerState.value.source } }
                 val actions = remember(multiWindow, pos, source) { tillActions(multiWindow, pos, source) }
                 val stage = remember { SeekableTransitionState(screen) }
-                LaunchedEffect(screen) { stage.animateTo(screen) }
-                Back(screen, stage)
+                val m = motion
+                LaunchedEffect(screen) { stage.animateTo(screen, m.stage) }
+                // Android's back (decision 77: everywhere but the first step, the shift and Square's sign-in). From a
+                // sale's screens and Settings the gesture previews the way back; nothing changes before it commits.
+                val scrub = remember { BackScrub() }
+                // Step 4 has no Back in setup (as Square's had none), but goes back to Settings when opened from there.
+                val stepFour = screen == Screen.PointOfSale && !model.setupDone
+                StageBack(
+                    enabled = screen != Screen.Welcome && screen != Screen.Till && !stepFour,
+                    state = stage, scrub = scrub, target = model::backTarget, onBack = model::back, onLanded = model::back,
+                )
                 CompositionLocalProvider(LocalPointOfSale provides pos) {
-                    TillStage(stage, cameUpByItself = { model.cameUpByItself }) { s ->
+                    TillStage(stage, cameUpByItself = { model.cameUpByItself }, scrub) { s ->
                         when (s) {
                             Screen.Till, is Screen.Sale, is Screen.Code, is Screen.Order -> TillScreens(s, flows, actions)
                             else -> SetupScreens(s, flows, tick)
                         }
                     }
                 }
-            }
-        }
-    }
-
-    /**
-     * Android's back (decision 77: everywhere but the first step, the shift
-     * and Square's sign-in). From a sale's screens and Settings the gesture
-     * scrubs the way back ([stage] seeking toward the screen back would
-     * show), springs back if cancelled and goes back only once it has
-     * landed; nothing changes before it commits. Under Still there is no
-     * preview.
-     */
-    @Composable
-    private fun Back(screen: Screen, stage: SeekableTransitionState<Screen>) {
-        // Step 4 has no Back in setup (as Square's had none), but goes back to Settings when opened from there.
-        val stepFour = screen == Screen.PointOfSale && !model.setupDone
-        val enabled = screen != Screen.Welcome && screen != Screen.Till && !stepFour
-        val target = if (motion.still) null else model.backTarget()
-        if (target == null) {
-            BackHandler(enabled) { model.back() }
-            return
-        }
-        val scope = rememberCoroutineScope()
-        PredictiveBackHandler(enabled) { progress ->
-            try {
-                progress.collect { stage.seekTo(it.progress, target) }
-                stage.animateTo(target)
-                model.back(screen)
-            } catch (e: CancellationException) {
-                // Cancelled: the screen that was up springs back from wherever the gesture left it.
-                scope.launch { stage.animateTo(screen) }
-                throw e
             }
         }
     }

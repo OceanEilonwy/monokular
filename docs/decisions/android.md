@@ -2061,3 +2061,22 @@ design unchanged.
      device test counts the haptics a payment performs on the bubble with
      the app away (one) and in front (none); the test with the sale screen
      composed beside it waits for S6.
+120. **The stage's progress springs, and every part of a screen change
+    rides it on a straight line** (dev2, round 2; implements 112).
+    `Motion.track` (a linear 450 ms, about as long as `surface` takes to
+    settle) is what the shared surfaces' bounds, the rises and the slides
+    are timed on, and `Motion.stage` (`surface.fraction`, null under
+    Still) is what moves the stage's progress: `animateTo(screen,
+    motion.stage)` for a change the till or a tap makes, `seekTo` under
+    the finger, and the same `animateTo` for the release either way. Two
+    presets were added to `Motion.kt` for this, the only way a seek and a
+    spring can share one physics. The gesture first seeks to 0 and waits
+    two frames, so the screen back goes to is composed and laid out
+    before the finger moves anything: a shared surface's track starts on
+    the frame its target bounds are known, and a first seek at 5 % left
+    every later point 5 % short (the device test caught it). Where back
+    goes is read from the model as the gesture starts, not in
+    composition. A `BackScrub` is held from the gesture's start until it
+    has committed or sprung back, and the enlarged code keeps full
+    brightness while it is held, so a cancelled gesture no longer drops
+    the brightness and the bar colours for the length of the preview.
