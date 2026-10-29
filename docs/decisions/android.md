@@ -2638,3 +2638,26 @@ design unchanged.
     changes goes in with it, and `OverlayStateTest` raises, flips a
     single poll timeout, and asserts the panel's `raise` is never
     retargeted below 1.
+151. **No poll lowers the overlay; decision 150's dip is not a lower**
+    (dev1, round 4; answers 150 and the lead's `usable` item). `usable`
+    reads `runner.running`, `runner.disconnected`, `appVisible`, the
+    cashier's switch and the overlay permission, and a failed poll or a
+    dropped stream changes none of them: `TillRunner.follow` sets
+    `disconnected` only on the store's 401, which ends the till, and
+    `running` changes only on start and stop. A lower for `usable`
+    also clears `panelOpen`, so it could not grow again by itself as
+    the review describes. Reproduced on 5554 with the floating panel
+    (`wm density 240`, smallest width 853 dp) at load 47 to 90: one
+    `Want` per tap and one monotonic grow, three cycles, logged; the
+    review strip's f56 to f61 are one held frame of the grow (the
+    renderer gave no new frame at load 50), then f62 at rest. So
+    there is no retry budget or one-second guard to add: either would
+    be a rule for a case the code cannot reach, and a 401 should
+    still lower at once. What went in: the rule as one pure function
+    (`Handoff.usable`), a JVM test that a failed poll leaves the
+    overlay usable and a raised panel's next `Want` asks for nothing
+    (no close, no reopen) on a phone and a tablet, and the debug
+    build's log line on each change of `usable` with every input
+    (tag `MonokularOverlay`), so the next unexplained lower names its
+    cause. On a quiet host the wide raise and lower measured 119
+    frames, p50 16.9 ms, max 19.2 ms.
