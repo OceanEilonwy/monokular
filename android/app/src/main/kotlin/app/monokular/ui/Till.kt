@@ -1,5 +1,11 @@
 package app.monokular.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,11 +27,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.LongState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,6 +53,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import androidx.compose.ui.unit.sp
@@ -73,7 +83,11 @@ val LocalPointOfSale = compositionLocalOf<PointOfSale?> { null }
 @Composable
 fun posOf(sale: TillSale): PointOfSale? = PosText.of(sale, LocalPointOfSale.current)
 
-/** Seconds left until [expiresAt], ticking. */
+/**
+ * Seconds left until [expiresAt], ticking. Starts a timer per text: only
+ * the overlay's status row still calls it, until it reads its window's
+ * [rememberNowSeconds] instead (amendment 10).
+ */
 @Composable
 fun secondsLeft(expiresAt: Long): Long {
     var now by remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
@@ -85,6 +99,50 @@ fun secondsLeft(expiresAt: Long): Long {
     }
     return (expiresAt - now).coerceAtLeast(0)
 }
+
+/** Seconds from [now] until [expiresAt], Unix seconds both; 0 once it's passed. */
+fun secondsLeft(expiresAt: Long, now: Long): Long = (expiresAt - now).coerceAtLeast(0)
+
+/**
+ * The time now, Unix seconds, ticking on each second's boundary: one clock
+ * for a whole screen (`docs/motion.md` amendment 10), made at its root and
+ * handed down, and read only by the [Countdown]s that show it, so a tick
+ * recomposes those texts and nothing above them. A [LongState], so reading
+ * it doesn't box.
+ */
+@Composable
+fun rememberNowSeconds(): LongState {
+    val now = remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
+    LaunchedEffect(now) {
+        while (true) {
+            val ms = System.currentTimeMillis()
+            now.longValue = ms / 1000
+            delay(1000 - ms % 1000)
+        }
+    }
+    return now
+}
+
+/**
+ * A line with a countdown in it: [words] for the seconds left until
+ * [expiresAt] at [now], in [tabular] figures so the digits tick without
+ * the words moving. The clock is read here, so a tick recomposes this text
+ * alone.
+ */
+@Composable
+fun Countdown(
+    now: LongState,
+    expiresAt: Long,
+    modifier: Modifier = Modifier,
+    fontSize: TextUnit = TextUnit.Unspecified,
+    color: Color = Color.Unspecified,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    words: (secondsLeft: Long) -> String,
+) = Text(
+    words(secondsLeft(expiresAt, now.longValue)), modifier, color = color, fontSize = fontSize,
+    overflow = overflow, maxLines = maxLines, style = LocalTextStyle.current.merge(tabular),
+)
 
 /** What the till's screens need to know about the shift. */
 data class TillStatus(
@@ -134,7 +192,8 @@ class TillActions(
 /**
  * One sale (decision 70): its code for the customer while it's live
  * (SaleA), else the page its standing calls for (row 2b), so a sale that's
- * paid or ends while on screen turns into its page in place.
+ * paid or ends while on screen turns into its page in place. [now] is
+ * the screen's clock, read only by its countdowns.
  */
 @Composable
 fun SaleScreen(
@@ -144,13 +203,14 @@ fun SaleScreen(
     refundProblem: String?,
     refundSheet: RefundSheet?,
     actions: TillActions,
+    now: LongState = rememberNowSeconds(),
 ) {
-    if (sale.live) LiveSale(sale, location, actions) else SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions)
+    if (sale.live) LiveSale(sale, location, now, actions) else SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions)
 }
 
 /** A live sale full screen, for the customer to scan (SaleA); split in two on a wide window (decision 45). */
 @Composable
-private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
+private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions: TillActions) {
     var asking by rememberSaveable(sale.orderId) { mutableStateOf(false) }
     val header = SaleHeader.of(sale, LocalPointOfSale.current, location)
     KeepScreenOn()
@@ -175,7 +235,7 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
                             horizontalAlignment = Alignment.Start,
                         ) {
                             Amount(sale, actions.onCopyXmr, start = true)
-                            StatusPill(sale)
+                            StatusPill(sale, now)
                             sale.receipt?.let { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
                             Buttons(sale, header, actions)
                         }
@@ -192,7 +252,7 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
                     ) {
                         Amount(sale, actions.onCopyXmr)
                         Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide)) { actions.onEnlarge(sale.orderId) }
-                        StatusPill(sale)
+                        StatusPill(sale, now)
                         sale.receipt?.let { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
                     }
                     Box(
@@ -204,7 +264,7 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
         }
     }
     if (asking) {
-        CloseSheet(sale, actions.source, onChoice = { actions.onClose(sale.orderId, it) }, onDismiss = { asking = false })
+        CloseSheet(sale, actions.source, now, onChoice = { actions.onClose(sale.orderId, it) }, onDismiss = { asking = false })
     }
 }
 
@@ -269,21 +329,37 @@ private fun Code(sale: TillSale, side: Dp, onEnlarge: () -> Unit) = Box(
     ) { Icon(MkIcons.Expand, contentDescription = null, tint = Fixed.White, modifier = Modifier.size(16.dp)) }
 }
 
-/** "Waiting for payment" with the phase ring, on its pill; the words, not the countdown, are announced. */
+/**
+ * "Waiting for payment" with the phase ring, on its pill; the words, not
+ * the countdown, are announced. New words crossfade over the old and the
+ * pill settles to their width (M12): a two-text subtree, never anything
+ * with the code in it.
+ */
 @Composable
-private fun StatusPill(sale: TillSale) = Row(
-    Modifier.clip(RoundedCornerShape(28.dp)).background(mk.card).padding(start = 12.dp, end = 18.dp, top = 10.dp, bottom = 10.dp)
+internal fun StatusPill(sale: TillSale, now: LongState) = Row(
+    Modifier.clip(RoundedCornerShape(28.dp)).background(mk.card)
+        .animateContentSize(motion.settle.spec(IntSize.VisibilityThreshold))
+        .padding(start = 12.dp, end = 18.dp, top = 10.dp, bottom = 10.dp)
         .semantics(mergeDescendants = true) {},
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
 ) {
     PhaseRing(sale.phase, 30.dp)
     Column {
-        Text(
-            SaleText.status(sale, posOf(sale)), fontSize = 16.sp, fontWeight = FontWeight.Bold,
-            modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
-        )
-        Text(SaleText.hint(sale, secondsLeft(sale.expiresAt)), fontSize = 13.sp, color = mk.muted)
+        val fade = motion.fade.fraction
+        val fadeQuick = motion.fadeQuick.fraction
+        AnimatedContent(
+            targetState = SaleText.status(sale, posOf(sale)),
+            // The pill's own size animates; the words' box takes the wider of the two while they cross.
+            transitionSpec = { (fadeIn(fade) togetherWith fadeOut(fadeQuick)).using(null) },
+            label = "status words",
+        ) { words ->
+            Text(
+                words, fontSize = 16.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
+            )
+        }
+        Countdown(now, sale.expiresAt, fontSize = 13.sp, color = mk.muted) { SaleText.hint(sale, it) }
     }
 }
 

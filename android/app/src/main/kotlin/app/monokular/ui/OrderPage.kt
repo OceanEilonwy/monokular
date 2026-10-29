@@ -23,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LongState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -113,10 +114,11 @@ object OrderText {
 @Composable
 fun OrderPage(sale: TillSale, backLabel: String, onBack: () -> Unit, onShowCode: () -> Unit) {
     BackHandler(onBack = onBack)
+    val now = rememberNowSeconds()
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
             // As wide as the app's other pages ([Page]), centred on a tablet or a wide window.
-            OrderContent(sale, backLabel, onBack, onShowCode, Modifier.widthIn(max = 560.dp).fillMaxSize())
+            OrderContent(sale, backLabel, onBack, onShowCode, Modifier.widthIn(max = 560.dp).fillMaxSize(), now)
         }
     }
 }
@@ -125,10 +127,17 @@ fun OrderPage(sale: TillSale, backLabel: String, onBack: () -> Unit, onShowCode:
  * The order's content, wherever it's shown: the app's [OrderPage], or the
  * overlay's panel (which has no back gesture, so its two ways back are on
  * screen). The top bar, the count and the bottom bar stay; the lines
- * scroll. Everything comes from the sale's receipt, on this device.
+ * scroll. The bar's countdown ticks on [now], the screen's clock. Everything comes from the sale's receipt, on this device.
  */
 @Composable
-fun OrderContent(sale: TillSale, backLabel: String, onBack: () -> Unit, onShowCode: () -> Unit, modifier: Modifier = Modifier) = Column(modifier) {
+fun OrderContent(
+    sale: TillSale,
+    backLabel: String,
+    onBack: () -> Unit,
+    onShowCode: () -> Unit,
+    modifier: Modifier = Modifier,
+    now: LongState = rememberNowSeconds(),
+) = Column(modifier) {
     val receipt = sale.receipt
     Row(
         Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 16.dp),
@@ -170,7 +179,7 @@ fun OrderContent(sale: TillSale, backLabel: String, onBack: () -> Unit, onShowCo
             }
         }
     }
-    ShowCodeBar(sale, onShowCode)
+    ShowCodeBar(sale, now, onShowCode)
 }
 
 /** One line of the order: "2 ×", what it is (two lines at most), and its total, which never wraps. */
@@ -199,7 +208,7 @@ private fun Total(name: String, value: String, modifier: Modifier) = Row(modifie
 
 /** The orange bar at the foot: "Show the code", the amount and the time left, and the code's glyph. */
 @Composable
-private fun ShowCodeBar(sale: TillSale, onShowCode: () -> Unit) = Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 20.dp)) {
+private fun ShowCodeBar(sale: TillSale, now: LongState, onShowCode: () -> Unit) = Box(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 20.dp)) {
     Row(
         Modifier.fillMaxWidth().heightIn(min = 64.dp).clip(RoundedCornerShape(32.dp)).background(mk.accent)
             .clickable(onClick = onShowCode)
@@ -214,10 +223,10 @@ private fun ShowCodeBar(sale: TillSale, onShowCode: () -> Unit) = Box(Modifier.f
     ) {
         Column(Modifier.weight(1f).padding(vertical = 8.dp)) {
             Text("Show the code", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = mk.onAccent)
-            Text(
-                "${SaleText.amount(sale)} · ${CodeText.under(sale, posOf(sale), secondsLeft(sale.expiresAt))}",
-                fontSize = 13.sp, color = mk.onAccent, maxLines = 1, overflow = TextOverflow.Ellipsis,
-            )
+            val pos = posOf(sale)
+            Countdown(now, sale.expiresAt, fontSize = 13.sp, color = mk.onAccent, maxLines = 1, overflow = TextOverflow.Ellipsis) {
+                "${SaleText.amount(sale)} · ${CodeText.under(sale, pos, it)}"
+            }
         }
         Box(Modifier.size(48.dp).clip(CircleShape).background(mk.onAccent), contentAlignment = Alignment.Center) {
             Icon(MkIcons.Code, contentDescription = null, tint = Fixed.White, modifier = Modifier.size(22.dp))

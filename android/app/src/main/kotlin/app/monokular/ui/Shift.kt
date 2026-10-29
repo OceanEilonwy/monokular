@@ -28,7 +28,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LongState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -59,10 +62,11 @@ import app.monokular.sales.live
  * The shift (the design's ShiftList; decisions 60, 64, 72): what this
  * till is doing, this shift's summary, the filter chips and one row per
  * sale, newest first. Rows have no buttons: a live sale's row opens its
- * code, any other its page.
+ * code, any other its page. [now] is the screen's clock: only the live
+ * rows read it.
  */
 @Composable
-fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions) {
+fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions, now: LongState = rememberNowSeconds()) {
     var filter by rememberSaveable { mutableStateOf(ShiftFilter.All) }
     val rows = ShiftList.rows(sales, filter)
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
@@ -112,7 +116,7 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions)
                         )
                         Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(shape).background(mk.card)) {
                             if (i > 0) Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(mk.divider))
-                            SaleRow(sale) { actions.onOpen(sale.orderId) }
+                            SaleRow(sale, now) { actions.onOpen(sale.orderId) }
                         }
                     }
                     item { Spacer(Modifier.height(24.dp)) }
@@ -211,8 +215,11 @@ private fun Chips(filter: ShiftFilter, needsAction: Int, onFilter: (ShiftFilter)
 
 /** One sale: its state's icon, "Sale #m2Qe · $8.40", how it stands, and where a tap goes. */
 @Composable
-private fun SaleRow(sale: TillSale, onOpen: () -> Unit) {
-    val row = ShiftList.row(sale, posOf(sale), if (sale.live) secondsLeft(sale.expiresAt) else 0)
+private fun SaleRow(sale: TillSale, now: LongState, onOpen: () -> Unit) {
+    // Only a live row reads the clock, and only its own second: the shift above it doesn't tick.
+    val seconds by remember(sale) { derivedStateOf { if (sale.live) secondsLeft(sale.expiresAt, now.longValue) else 0L } }
+    val pos = posOf(sale)
+    val row = remember(sale, pos, seconds) { ShiftList.row(sale, pos, seconds) }
     val ground = when (row.icon) {
         StateIcon.Clock -> Ground.Warn
         StateIcon.Warning -> Ground.Danger

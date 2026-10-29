@@ -18,6 +18,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LongState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -39,13 +40,13 @@ import kotlinx.coroutines.launch
 
 /**
  * "Is the customer paying?" (the design's CloseAsk; decisions 62, 70): the
- * tinted X's sheet over the sale. Each answer slides the sheet away, then
+ * tinted X's sheet over the sale, on the sale screen's clock [now]. Each answer slides the sheet away, then
  * goes up as [onChoice]; the scrim, Back and a drag down dismiss it
  * unchanged.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun CloseSheet(sale: TillSale, source: PointOfSale, onChoice: (CloseChoice) -> Unit, onDismiss: () -> Unit) {
+fun CloseSheet(sale: TillSale, source: PointOfSale, now: LongState, onChoice: (CloseChoice) -> Unit, onDismiss: () -> Unit) {
     val pos = posOf(sale)
     val state = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
@@ -70,9 +71,8 @@ fun CloseSheet(sale: TillSale, source: PointOfSale, onChoice: (CloseChoice) -> U
                 Text(title, style = display(22), modifier = Modifier.semantics { heading() })
                 Text(Closing.subtitle(sale, pos), fontSize = 14.sp, color = mk.muted)
             }
-            val left = secondsLeft(sale.expiresAt)
             for (choice in Closing.choices(sale, elsewhere = PosText.elsewhere(sale, LocalPointOfSale.current))) {
-                Answer(choice, sale, pos, source, left) {
+                Answer(choice, sale, pos, source, now) {
                     // Only once the sheet is down: a sale paid meanwhile swaps
                     // the screen out, cancels the hide and drops the answer.
                     scope.launch { state.hide() }.invokeOnCompletion { cause ->
@@ -94,7 +94,7 @@ private fun Answer(
     sale: TillSale,
     pos: PointOfSale?,
     source: PointOfSale,
-    secondsLeft: Long,
+    now: LongState,
     onClick: () -> Unit,
 ) = Row(
     Modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(18.dp)).background(mk.ground)
@@ -109,7 +109,7 @@ private fun Answer(
     }
     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(Closing.title(choice, sale, pos), fontSize = 16.sp, fontWeight = FontWeight.Bold)
-        Text(Closing.detail(choice, sale, pos, source, secondsLeft), fontSize = 13.sp, color = mk.muted)
+        Countdown(now, sale.expiresAt, fontSize = 13.sp, color = mk.muted) { Closing.detail(choice, sale, pos, source, it) }
     }
 }
 
