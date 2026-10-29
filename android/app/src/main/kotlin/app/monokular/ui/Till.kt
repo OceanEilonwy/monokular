@@ -214,7 +214,12 @@ fun SaleScreen(
                     if (live) {
                         LiveSale(sale, location, now, actions, ground)
                     } else {
-                        SaleDetail(sale, location, refunding, refundProblem, actions, Modifier.words(through = SaleThrough, lift = SaleLift, on = ground))
+                        // The enlarged code's white, when the sale was paid or ended on it: the page's words wait for it to pass.
+                        val card = rememberGroundTrack(codeGround(sale.orderId))
+                        SaleDetail(
+                            sale, location, refunding, refundProblem, actions,
+                            Modifier.words(through = SaleThrough, lift = SaleLift, on = ground, clear = card), card,
+                        )
                     }
                 }
             }

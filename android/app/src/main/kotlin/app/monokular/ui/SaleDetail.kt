@@ -39,6 +39,10 @@ import app.monokular.sales.TillSale
 import app.monokular.Layers
 import app.monokular.Move
 import app.monokular.faceSurface
+import app.monokular.GroundLook
+import app.monokular.GroundTrack
+import app.monokular.groundEnd
+import app.monokular.words
 import app.monokular.sharedSurface
 
 /**
@@ -48,12 +52,22 @@ import app.monokular.sharedSurface
  * Refunded page in place, or shows [refundProblem] above its buttons.
  * [words] goes on each of its own parts (everything but the hero), so
  * each fades through a screen change by its own place under a moving
- * ground, never the page as one block (decision 176).
+ * ground, never the page as one block (decision 176). [card] is the
+ * enlarged code's white, which closes into the hero when the sale is paid
+ * or ends while its code is enlarged, the hero coming in over it (184).
  */
 // [words] is not this page's modifier but its words' (each of its parts takes it), so it is not named or placed as one.
 @Suppress("ModifierParameter")
 @Composable
-fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProblem: String?, actions: TillActions, words: Modifier = Modifier) {
+fun SaleDetail(
+    sale: TillSale,
+    location: String?,
+    refunding: Boolean,
+    refundProblem: String?,
+    actions: TillActions,
+    words: Modifier = Modifier,
+    card: GroundTrack? = null,
+) {
     val page = SalePage.of(sale, now = System.currentTimeMillis() / 1000)
     val subtitle = SaleText.place(sale, location) + sale.createdAt.takeIf { it > 0 }?.let { " · " + SaleText.time(it) }.orEmpty()
     // Its ground is the screen's (SaleScreen), so the live sale it turns from fades over one ground.
@@ -68,8 +82,11 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
                 ) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         // The code card closed into this (M10); stepping back to the shift, this becomes the row's badge.
-                        Box(Modifier.sharedSurface(badgeKey(sale.orderId), Move.RowGrow, CircleShape, layer = Layers.OVER_GROUND)) {
-                            Box(Modifier.faceSurface(heroKey(sale.orderId), HeroSize / 2, other = CodeCornerShare).testTag(HeroTag)) {
+                        // Paid on the enlarged code, the code's white closes into the hero and the hero fades in over it.
+                        val overWhite = if (card == null) Modifier else Modifier.words(through = HeroThrough, lift = HeroThrough, on = card)
+                        val whiteEnd = if (card == null) Modifier else Modifier.groundEnd(card, Move.CodeGrow, HeroWhite)
+                        Box(overWhite.sharedSurface(badgeKey(sale.orderId), Move.RowGrow, CircleShape, layer = Layers.OVER_GROUND)) {
+                            Box(whiteEnd.faceSurface(heroKey(sale.orderId), HeroSize / 2, other = CodeCornerShare).testTag(HeroTag)) {
                                 StateBadge(sale, page.icon, page.ground, HeroSize, 38.dp)
                             }
                         }
@@ -112,6 +129,12 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
         }
     }
 }
+
+/** The move the hero fades in over the code's white by: the code shrinking into it. */
+private val HeroThrough = setOf(Move.CodeGrow)
+
+/** The enlarged code's white as it lands on the hero: a white circle the hero's own covers. */
+private val HeroWhite = GroundLook(Fixed.White, HeroSize / 2)
 
 /** The hero's tag, for the device tests that look at it mid-move; it has nothing to say to a screen reader (the heading does). */
 const val HeroTag = "hero"

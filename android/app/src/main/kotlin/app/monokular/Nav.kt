@@ -479,7 +479,7 @@ fun TillStage(
     val transition = rememberTransition(state, label = "screen")
     val root = remember { StageRoot() }
     val held = remember(m) { HeldMove(cameUpByItself, m.still) }
-    val geometry = remember(transition, held) { StageGeometry(transition, held, { state.fraction }, root) }
+    val geometry = remember(transition, held) { StageGeometry(transition, held, { state.fraction }, root, m.fadeOutOnTrack) }
     // The frame being drawn while a change runs, so each surface is placed once a frame however many parts ask.
     LaunchedEffect(transition, geometry) {
         snapshotFlow { transition.currentState != transition.targetState }.collect { changing ->
@@ -539,6 +539,7 @@ internal class StageGeometry(
     private val held: HeldMove,
     private val progress: () -> Float,
     private val root: StageRoot,
+    private val fadeOut: Float,
 ) {
     private val courses = Courses()
 
@@ -554,17 +555,44 @@ internal class StageGeometry(
     /** Whether a change is under way: the stage's overlay layers draw only then. */
     fun moving(): Boolean = held.during(transition.currentState, transition.targetState) != null
 
-    /** Every moving code's bitmap, scaled as one image to its course on this frame (principle 3: never re-laid out). */
+    /**
+     * Every moving code's bitmap, scaled as one image to its course on this frame (principle 3: never re-laid out).
+     * A code whose sale is no longer live where the stage is going (paid or ended on the enlarged code) has no
+     * partner: it stays where it was, fading out by [fadeOut] inside its white as that closes into the page's hero,
+     * never outside it (decision 184).
+     */
     fun paintCodes(scope: DrawScope) {
         for (i in 0 until courses.size()) {
             val c = courses.at(i)
             val during = c.during ?: continue
-            if (!locate(c, during)) continue
-            val image = c.to?.bitmap ?: continue
-            val l = c.left.roundToInt()
-            val t = c.top.roundToInt()
-            scope.drawImage(
-                image, dstOffset = IntOffset(l, t), dstSize = IntSize(c.right.roundToInt() - l, c.bottom.roundToInt() - t),
+            if (locate(c, during)) {
+                val image = c.to?.bitmap ?: continue
+                val l = c.left.roundToInt()
+                val t = c.top.roundToInt()
+                scope.drawImage(
+                    image, dstOffset = IntOffset(l, t), dstSize = IntSize(c.right.roundToInt() - l, c.bottom.roundToInt() - t),
+                    filterQuality = FilterQuality.None,
+                )
+            } else {
+                fading(scope, c, during)
+            }
+        }
+    }
+
+    /** [code]'s leaving end with no partner, drawn at its own place clipped to its [End.white]'s course on this frame. */
+    private fun fading(scope: DrawScope, code: Course, during: Move) {
+        val leaving = code.endOn(transition.currentState) ?: return
+        val image = leaving.bitmap ?: return
+        val white = find(leaving.white ?: return) ?: return
+        if (!locate(white, during)) return
+        val alpha = Nav.through(progress(), isArriving = false, leaving = fadeOut, arriving = 1f)
+        if (alpha <= 0f) return
+        val r = root.coordinates ?: return
+        val c = leaving.coordinates ?: return
+        val at = r.localPositionOf(c, Offset.Zero)
+        scope.clipRect(white.left, white.top, white.right, white.bottom) {
+            drawImage(
+                image, dstOffset = IntOffset(at.x.roundToInt(), at.y.roundToInt()), dstSize = c.size, alpha = alpha,
                 filterQuality = FilterQuality.None,
             )
         }
@@ -645,6 +673,9 @@ internal class End(val key: String, val screen: Screen, val during: Move) {
     var coordinates: LayoutCoordinates? = null
     var look: GroundLook? = null
     var bitmap: ImageBitmap? = null
+
+    /** A code's white: the ground key it fades out inside when it has no partner ([StageGeometry.paintCodes]). */
+    var white: String? = null
 }
 
 /**
@@ -952,11 +983,26 @@ fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, track: Gro
     if (stage == null || motion.still) return drawBehind { with(painter) { paint(own.color, own.top.toPx(), own.bottom.toPx()) } }
     val ground = track ?: remember(key) { GroundTrack(key) }
     ground.bind(stage, during)
-    return this.then(GroundElement(stage, ground, own, fadesIn))
+    return this.then(GroundElement(stage, ground, own, fadesIn, paints = true))
 }
 
-private class GroundElement(val stage: Stage, val track: GroundTrack, val own: GroundLook, val fadesIn: Move?) : ModifierNodeElement<GroundNode>() {
-    override fun create() = GroundNode(stage.geometry, End(track.key, stage.screen, track.during).also { it.look = own }, stage, track, own, fadesIn)
+/**
+ * Where [track]'s ground lands on this screen, looking like [look] as it
+ * gets there, with nothing drawn of it here at rest: what is laid out on
+ * this node draws itself (a paid page's hero, which the enlarged code's
+ * white closes into when the payment lands on it: decision 184).
+ */
+@Composable
+fun Modifier.groundEnd(track: GroundTrack, during: Move, look: GroundLook): Modifier {
+    val stage = LocalStage.current ?: return this
+    if (motion.still) return this
+    track.bind(stage, during)
+    return this.then(GroundElement(stage, track, look, fadesIn = null, paints = false))
+}
+
+private class GroundElement(val stage: Stage, val track: GroundTrack, val own: GroundLook, val fadesIn: Move?, val paints: Boolean) :
+    ModifierNodeElement<GroundNode>() {
+    override fun create() = GroundNode(stage.geometry, End(track.key, stage.screen, track.during).also { it.look = own }, stage, track, own, fadesIn, paints)
 
     override fun update(node: GroundNode) {
         node.rebind(stage.geometry, track.key, stage.screen, track.during)
@@ -965,6 +1011,7 @@ private class GroundElement(val stage: Stage, val track: GroundTrack, val own: G
         node.track = track
         node.own = own
         node.fadesIn = fadesIn
+        node.paints = paints
         node.invalidateDraw()
     }
 
@@ -974,10 +1021,11 @@ private class GroundElement(val stage: Stage, val track: GroundTrack, val own: G
         properties["during"] = track.during
         properties["own"] = own
         properties["fadesIn"] = fadesIn
+        properties["paints"] = paints
     }
 
     override fun equals(other: Any?): Boolean = other is GroundElement && other.stage === stage && other.track === track &&
-        other.own === own && other.fadesIn == fadesIn
+        other.own === own && other.fadesIn == fadesIn && other.paints == paints
 
     override fun hashCode(): Int = System.identityHashCode(track) * 31 + System.identityHashCode(own)
 }
@@ -989,10 +1037,12 @@ private class GroundNode(
     var track: GroundTrack,
     var own: GroundLook,
     var fadesIn: Move?,
+    var paints: Boolean,
 ) : EndNode(geometry, end), DrawModifierNode {
     private val painter = GroundPainter()
 
     override fun ContentDrawScope.draw() {
+        if (!paints) return drawContent()
         val stage = stage
         val track = track
         val own = own
@@ -1074,19 +1124,26 @@ private class GroundPainter {
  * then (decision 146).
  */
 @Composable
-fun Modifier.sharedCode(key: String, during: Move, track: GroundTrack, bitmap: ImageBitmap): Modifier {
+fun Modifier.sharedCode(key: String, during: Move, track: GroundTrack, bitmap: ImageBitmap, white: String): Modifier {
     val stage = LocalStage.current ?: return this
     if (motion.still) return this
     track.bind(stage, during)
-    return this.then(CodeElement(stage, track, key, bitmap))
+    return this.then(CodeElement(stage, track, key, bitmap, white))
 }
 
-private class CodeElement(val stage: Stage, val track: GroundTrack, val key: String, val bitmap: ImageBitmap) : ModifierNodeElement<CodeNode>() {
-    override fun create() = CodeNode(stage.geometry, End(key, stage.screen, track.during).also { it.bitmap = bitmap }, stage, track)
+private class CodeElement(val stage: Stage, val track: GroundTrack, val key: String, val bitmap: ImageBitmap, val white: String) :
+    ModifierNodeElement<CodeNode>() {
+    override fun create() = CodeNode(stage.geometry, newEnd(), stage, track)
+
+    private fun newEnd() = End(key, stage.screen, track.during).also {
+        it.bitmap = bitmap
+        it.white = white
+    }
 
     override fun update(node: CodeNode) {
         node.rebind(stage.geometry, key, stage.screen, track.during)
         node.end.bitmap = bitmap
+        node.end.white = white
         node.stage = stage
         node.track = track
         node.invalidateDraw()
@@ -1096,9 +1153,11 @@ private class CodeElement(val stage: Stage, val track: GroundTrack, val key: Str
         name = "sharedCode"
         properties["key"] = key
         properties["during"] = track.during
+        properties["white"] = white
     }
 
-    override fun equals(other: Any?): Boolean = other is CodeElement && other.stage === stage && other.track === track && other.key == key && other.bitmap === bitmap
+    override fun equals(other: Any?): Boolean = other is CodeElement && other.stage === stage && other.track === track && other.key == key &&
+        other.bitmap === bitmap && other.white == white
 
     override fun hashCode(): Int = key.hashCode() * 31 + System.identityHashCode(track)
 }
@@ -1111,8 +1170,15 @@ private class CodeNode(geometry: StageGeometry, end: End, var stage: Stage, var 
             !stage.isMoving(track.during) -> drawContent()
             // Moving: the stage draws the code over everything, on its white's line (decision 175).
             track.locate() -> Unit
+            // No partner but its white is moving (paid on the enlarged code): the stage fades it inside that white.
+            whiteMoving(track.during) -> Unit
             stage.shown() >= Nav.HALF_WAY -> drawContent()
         }
+    }
+
+    private fun whiteMoving(during: Move): Boolean {
+        val white = geometry.find(end.white ?: return false) ?: return false
+        return geometry.locate(white, during)
     }
 }
 

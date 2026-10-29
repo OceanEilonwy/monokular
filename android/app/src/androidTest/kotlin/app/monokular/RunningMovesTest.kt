@@ -80,6 +80,10 @@ class RunningMovesTest {
 
     @Test fun aSaleRefundedAsItIsLeftLeavesWithItsCode() = leavesWithItsCode("refunded-left", dark = true) { it.copy(refundedAt = 1_100, closedAt = 1_100) }
 
+    @Test fun paidOnTheEnlargedCodeFoldsIntoTheHeroLight() = paidOnCode(dark = false)
+
+    @Test fun paidOnTheEnlargedCodeFoldsIntoTheHeroDark() = paidOnCode(dark = true)
+
     /**
      * A sale that stops being live in the update that leaves its screen (closed from the sheet, expired, refunded)
      * leaves as an untouched one does (decision 185): the change's first frame is the frame before it, the leaving
@@ -108,6 +112,49 @@ class RunningMovesTest {
             }
         }
         check(name, dark, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures)
+    }
+
+    /**
+     * A payment landing on the enlarged code (decision 184): one white surface from the whole screen to the paid
+     * page's hero on every frame of the move, never smaller than the hero; the code never drawn outside its white;
+     * the code screen's words ("Scan with any Monero wallet") and the page's ("Paid") never both readable.
+     */
+    private fun paidOnCode(dark: Boolean) {
+        moves.start(Screen.Code("a1"), dark)
+        val frames = moves.run(Screen.Sale("a1"), groundKey = codeGround("a1"), change = { moves.shown = moves.sale.copy(phase = SalePhase.Paid, paidAt = 1_100) })
+        val failures = mutableListOf<String>()
+        val moving = frames.drop(1).dropLast(RunningMoves.SETTLE_FRAMES).filter { it.p < 1f }
+        for (f in moving) {
+            val g = f.ground
+            if (g == null) {
+                failures += "f${f.index}: no white surface (p ${f.p})"
+                continue
+            }
+            val b = f.bitmap
+            val inset = 3f
+            // White just inside each edge, unless the hero (drawn over it as it lands) is there.
+            for ((x, y) in listOf(g.left + inset to g.center.y, g.right - inset to g.center.y, g.center.x to g.top + inset, g.center.x to g.bottom - inset)) {
+                if (x.toInt() !in 0 until b.width || y.toInt() !in 0 until b.height) continue
+                if (f.hero?.contains(androidx.compose.ui.geometry.Offset(x, y)) == true && g.width < (f.hero?.width ?: 0f) * 1.5f) continue
+                if (lum(b.getPixel(x.toInt(), y.toInt())) < WHITE) failures += "f${f.index}: the white at $g is not drawn at ($x, $y)"
+            }
+            val h = f.hero
+            if (h != null && (g.width < h.width - 1f || g.height < h.height - 1f)) failures += "f${f.index}: the white at $g is smaller than the hero at $h"
+            // Outside the white is the page's ground: in the dark theme no module and white of a code are drawn there.
+            if (dark) for (c in f.leavingCodes.filter { it.width > 20f }) {
+                for (r in listOf(Rect(c.left, c.top, c.right, min(c.bottom, g.top - EDGE)), Rect(c.left, maxOf(c.top, g.bottom + EDGE), c.right, c.bottom))) {
+                    if (r.height <= 2f) continue
+                    val (ink, white) = inkAndWhite(b, r)
+                    if (ink > CODE_SHARE && white > CODE_SHARE) failures += "f${f.index}: the code is drawn outside its white at $r"
+                }
+            }
+        }
+        if (moving.size < 3) failures += "the fold drew ${moving.size} frames"
+        failures += wordsTogether(frames)
+        failures += groundTravels(frames)
+        failures += startsAtOnce(moving)
+        if (dark) failures += flashes(frames)
+        report("paid-on-code-${theme(dark)}", frames, failures)
     }
 
     private fun rowGrow(dark: Boolean) {
