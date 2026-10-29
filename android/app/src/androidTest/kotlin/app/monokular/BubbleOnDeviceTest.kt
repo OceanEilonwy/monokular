@@ -23,12 +23,12 @@ class BubbleOnDeviceTest {
     @get:Rule
     val compose = createComposeRule()
 
-    private fun bubble(motion: Motion, look: BubbleLook, phase: SalePhase, pulse: Boolean = true) {
+    private fun bubble(motion: Motion, look: BubbleLook, phase: SalePhase, pulse: Boolean = true, panelUp: Boolean = false) {
         compose.mainClock.autoAdvance = false
         compose.setContent {
             MonokularTheme {
                 CompositionLocalProvider(LocalMotion provides motion) {
-                    Box(Modifier.testTag("bubble")) { BubbleFace(look, pulse, phase) }
+                    Box(Modifier.testTag("bubble")) { BubbleFace(look, pulse, phase, panelUp) }
                 }
             }
         }
@@ -60,6 +60,13 @@ class BubbleOnDeviceTest {
     fun underStillMotionNothingPulses() {
         bubble(Motion.Still, BubbleLook.Lit, SalePhase.Waiting)
         assertFalse(haloWithinATurn())
+    }
+
+    @Test
+    fun aPanelUpBesideItStopsThePulse() {
+        // A tablet's free bubble stays up beside the open panel: it has called the cashier already.
+        bubble(Motion.Full, BubbleLook.Lit, SalePhase.Waiting, panelUp = true)
+        assertFalse(haloWithinATurn(), "the panel is up: nothing to call for")
     }
 
     @Test
