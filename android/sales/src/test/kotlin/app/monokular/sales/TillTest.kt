@@ -608,6 +608,28 @@ class TillTest {
     }
 
     @Test
+    fun `a code whose time ran out is expired by the clock, and a payment still pays it`() = runBlocking {
+        var clock = 1761311999L
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection, now = { clock })
+        server.enqueue(order())
+        till.check()
+        assertEquals(1761312000L, till.nextLapse(till.sales.value))
+        till.lapse()
+        assertTrue(till.sales.value.sales.single().live, "not before its time")
+        clock = 1761312000
+        till.lapse()
+        val lapsed = till.sales.value.sales.single()
+        assertEquals(Standing.Expired, lapsed.standing)
+        assertFalse(lapsed.live, "so it never pulses, takes the panel or waits")
+        assertEquals(1761312000L, lapsed.endedAt)
+        assertEquals(null, till.nextLapse(till.sales.value))
+        till.onStatus("ord_1", SalePhase.Waiting)
+        assertEquals(Standing.Expired, till.sales.value.sales.single().standing, "a server late to expire it doesn't bring it back")
+        till.onStatus("ord_1", SalePhase.Paid)
+        assertEquals(SalePhase.Paid, till.sales.value.sales.single().phase)
+    }
+
+    @Test
     fun `stopping watching closes every live sale, which a late payment still pays`() = runBlocking {
         val till = Till(FakeSource(listOf(sale)), monokulo, connection, now = { 30 })
         server.enqueue(order())

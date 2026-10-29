@@ -253,6 +253,20 @@ class Till(
         change { s -> s.copy(sales = s.sales.map { if (it.live) it.copy(closedAt = at) else it }) }
     }
 
+    /**
+     * The clock passed a live sale's `expiresAt`: its code is ended by the
+     * clock (expired, as Monokulo will say), so it no longer waits, pulses or
+     * takes the panel, even when Monokulo is late to say so. Only a payment
+     * moves it on from there, as for any sale that ended unpaid.
+     */
+    fun lapse() {
+        val at = now()
+        change { s -> s.copy(sales = s.sales.map { if (it.live && it.expiresAt in 1..at) it.moved(SalePhase.Expired, at) else it }) }
+    }
+
+    /** When the next live code runs out, Unix seconds; null with none live. */
+    fun nextLapse(state: TillState): Long? = state.sales.filter { it.live && it.expiresAt > 0 }.minOfOrNull { it.expiresAt }
+
     /** "Show the code again" on a closed sale: its code is back up. */
     fun reopen(orderId: String) {
         change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(closedAt = null) else it }) }
