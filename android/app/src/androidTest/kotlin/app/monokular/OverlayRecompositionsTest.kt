@@ -37,6 +37,7 @@ class OverlayRecompositionsTest {
     private val named = listOf(
         "app.monokular.overlay.PanelCard", "app.monokular.overlay.Details", "app.monokular.ui.QrCode",
         "app.monokular.ui.PhaseRing", "app.monokular.overlay.BubbleFace", "app.monokular.ui.OrderContent",
+        "app.monokular.overlay.StatusRow",
     )
 
     @After
@@ -86,5 +87,11 @@ class OverlayRecompositionsTest {
     fun theOrdersGrow() {
         panel(raised = 1f)
         assertNothingRecomposesMidMove("order grow") { page = PanelPage.Order }
+    }
+
+    @Test
+    fun theLateOrderLine() {
+        panel(raised = 1f)
+        assertNothingRecomposesMidMove("late order line") { sale = sale.copy(receipt = sampleReceipt()) }
     }
 }

@@ -2369,3 +2369,24 @@ design unchanged.
     growing out of the bubble, and the spec chose it. `OverlayFramesTest`
     reads the code's darkest module on each seeked frame of those three
     moves and fails on a grey one; the old build read 0.62 at q1.
+136. **The panel's order line opens its room as it fades in** (dev1,
+    round 3; N3, the panel's half: the sale screen's order card and header
+    line are the screens track's). A sale's receipt reaches the till about
+    a second after the sale, so the panel's order line popped in, and
+    because the line sits above the code on a phone's panel, which hangs
+    from the top, the code jumped down a line's height (about 62 dp) in
+    one frame, under a camera that may already be on it. N3 asked for a
+    fade alone, without a layout per frame; on the panel that would keep
+    the jump, so the line's room opens with `expandVertically` on
+    `motion.settle` while its words fade in on `motion.fade`
+    (`AnimatedVisibility`, nothing on screen at all when there's no
+    receipt). That is a layout per frame for about 250 ms of the card's
+    few rows: the code inside is placed lower each frame, never measured
+    or laid out again (its slot's constraints don't change), so principle 3
+    holds and the code slides rather than jumps. The 14 dp above the line
+    is inside its room, so nothing steps on the first frame. A panel that
+    comes up with its receipt already there shows the line at once.
+    `OverlayRecompositionsTest.theLateOrderLine` counts zero recompositions
+    of the card, its code, rings, status row and bubble across the move;
+    `OverlayFramesTest` saves `phone-late-order-q*.png` and holds the code
+    square and opaque on each.

@@ -22,6 +22,7 @@ seeked frame. Regenerate with:
 | A tablet's code coming back from the order: whole under the order fading off it | `tablet-back-to-code-q*.png` |
 | A phone's code coming back from the order under Still (Remove animations) | `phone-still-back-to-code-q*.png` |
 | The order growing out of the card to the window | `phone-order-grow-q*.png` |
+| The order line arriving a second after its sale: room opening, words fading (decision 136) | `phone-late-order-q*.png` |
 
 The screens track's moves (RowGrow, CodeGrow, OrderGrow, Rise) are theirs
 to add beside these.

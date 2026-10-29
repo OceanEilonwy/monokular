@@ -209,6 +209,12 @@ class OverlayFramesTest {
     }
 
     @Test
+    fun theOrderLineArrivingAfterTheSale() {
+        panel(raised = 1f)
+        seek("late-order", opaqueFrom = 1) { sale = sale.copy(receipt = sampleReceipt()) }
+    }
+
+    @Test
     fun theOrderGrowingOutOfTheCard() {
         panel(raised = 1f)
         seek("order-grow") { page = PanelPage.Order }

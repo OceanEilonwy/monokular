@@ -1,6 +1,9 @@
 package app.monokular.overlay
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.SizeTransform
@@ -107,6 +110,7 @@ import app.monokular.PaidBuzz
 import app.monokular.SaleText
 import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
+import app.monokular.receipt.Receipt
 import app.monokular.sales.Standing
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
@@ -486,7 +490,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     grabber()
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Details(sale, where, actions, wordsLayer, oneLine = true)
+                        Details(sale, where, actions, wordsLayer, spacing = 10.dp, oneLine = true)
                         Buttons(faces, actions, wordsLayer)
                     }
                 }
@@ -505,7 +509,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                Details(sale, where, actions, wordsLayer)
+                Details(sale, where, actions, wordsLayer, spacing = 14.dp)
                 Face(faces, wide, now, wordsLayer)
                 Buttons(faces, actions, wordsLayer)
             }
@@ -515,19 +519,47 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
 
 /** The header, the amount and what was bought. */
 @Composable
-private fun Details(sale: TillSale, where: String, actions: PanelActions, words: Modifier, oneLine: Boolean = false) {
+private fun Details(sale: TillSale, where: String, actions: PanelActions, words: Modifier, spacing: Dp, oneLine: Boolean = false) {
     Header(sale, where, actions.onOpenShift, words)
-    Column(words.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(SaleText.amount(sale), style = display(44, -0.8))
-        Text(
-            SaleText.xmr(sale), fontSize = 15.sp, color = mk.muted,
-            modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                .clickable(onClickLabel = "Copy the XMR amount") { actions.onCopyXmr(sale) }
-                .padding(horizontal = 6.dp, vertical = 2.dp),
-        )
+    Column(Modifier.fillMaxWidth()) {
+        Column(words.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(SaleText.amount(sale), style = display(44, -0.8))
+            Text(
+                SaleText.xmr(sale), fontSize = 15.sp, color = mk.muted,
+                modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                    .clickable(onClickLabel = "Copy the XMR amount") { actions.onCopyXmr(sale) }
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
+        LateOrderLine(sale, actions, words, spacing, oneLine)
     }
-    val receipt = sale.receipt
-    if (receipt != null && receipt.lineItems.isNotEmpty()) OrderLine(SaleText.items(receipt), SaleText.firstItems(receipt), oneLine, actions.onOrder, words)
+}
+
+/**
+ * The order line, which comes about a second after its sale (the receipt
+ * reaches the till after the POS's sale; N3): it opens its room under the
+ * amount and fades in, rather than pushing the code down a line's height in
+ * one frame under a camera that may be on it. The room settles
+ * (`motion.settle`, a layout per frame of the card's few rows; the code is
+ * placed, never measured again) and the words fade (`motion.fade`); the
+ * spacing above it is inside the room, so nothing steps. A panel that comes
+ * up with its receipt shows the line at once.
+ */
+@Composable
+private fun LateOrderLine(sale: TillSale, actions: PanelActions, words: Modifier, spacing: Dp, oneLine: Boolean) {
+    val m = motion
+    val receipt = sale.receipt?.takeIf { it.lineItems.isNotEmpty() }
+    // The last receipt shown, kept while its line closes.
+    val last = remember { arrayOfNulls<Receipt>(1) }
+    if (receipt != null) last[0] = receipt
+    AnimatedVisibility(
+        receipt != null,
+        enter = fadeIn(m.fade.fraction) + expandVertically(m.settle.spec(IntSize.VisibilityThreshold), Alignment.Top),
+        exit = fadeOut(m.fadeQuick.fraction) + shrinkVertically(m.settle.spec(IntSize.VisibilityThreshold), Alignment.Top),
+    ) {
+        val shown = last[0] ?: return@AnimatedVisibility
+        OrderLine(SaleText.items(shown), SaleText.firstItems(shown), oneLine, actions.onOrder, words.padding(top = spacing))
+    }
 }
 
 /** A face of the panel and the sale it was shown for: the side of a change that's leaving keeps its own. */
