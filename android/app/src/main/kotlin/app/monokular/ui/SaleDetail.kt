@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
@@ -35,6 +36,10 @@ import app.monokular.SaleHeader
 import app.monokular.SalePage
 import app.monokular.SaleText
 import app.monokular.sales.TillSale
+import app.monokular.Layers
+import app.monokular.Move
+import app.monokular.faceSurface
+import app.monokular.sharedSurface
 
 /**
  * A sale's page when its code isn't up (the design's row 2b): paid, paid
@@ -60,7 +65,12 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
                     Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        StateBadge(sale, page.icon, page.ground, 72.dp, 38.dp)
+                        // The code card closed into this (M10); stepping back to the shift, this becomes the row's badge.
+                        Box(Modifier.sharedSurface(badgeKey(sale.orderId), Move.RowGrow, CircleShape, layer = Layers.OVER_GROUND)) {
+                            Box(Modifier.faceSurface(heroKey(sale.orderId), HeroSize / 2, CodeCorner)) {
+                                StateBadge(sale, page.icon, page.ground, HeroSize, 38.dp)
+                            }
+                        }
                         Text(
                             page.heading, style = display(26, 0.0), textAlign = TextAlign.Center,
                             color = if (page.headingWarn) mk.warn else mk.ink,

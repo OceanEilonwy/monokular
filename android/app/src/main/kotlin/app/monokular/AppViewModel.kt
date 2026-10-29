@@ -32,6 +32,7 @@ import app.monokular.ui.Motion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -129,6 +130,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private var liveBefore = emptySet<String>()
     private var stepBack: Job? = null
 
+    /** A payment landed while the app is on screen: the app gives the one confirming buzz ([PaidBuzz]). */
+    val paidBuzz = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+
     val runner get() = graph.runner.state
     val bubbleWanted get() = graph.bubbleWanted
 
@@ -178,6 +182,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
             cameUpByItself = true
             screenState.value = next
         }
+        if (TillNav.paymentLanded(sales, liveBefore) && PaidBuzz.by(graph.appVisible.value) == PaidBuzz.Surface.App) paidBuzz.tryEmit(Unit)
         TillNav.paidOnScreen(next, sales, liveBefore)?.let { paid ->
             stepBack?.cancel()
             stepBack = viewModelScope.launch {
@@ -735,6 +740,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      * comes up in its place.
      */
     fun leave(orderId: String) {
+        // Left by the cashier during a paid moment, the step back has nothing left to do.
+        stepBack?.cancel()
         left.update { it + orderId }
         val screen = screenState.value
         if (screen.orderIdOrNull() == orderId) {

@@ -385,4 +385,24 @@ class ShiftListTest {
         assertEquals(RowEnds.Last, ShiftList.ends(2, 2))
         assertEquals(RowEnds.Last, ShiftList.ends(1, 1), "of two, the second is the bottom")
     }
+
+    @Test
+    fun aPaymentBuzzesOnceOnTheSurfaceTheCashierIsLookingAt() {
+        assertEquals(PaidBuzz.Surface.App, PaidBuzz.by(appVisible = true), "the app on screen: the sale turning paid, or its row")
+        assertEquals(PaidBuzz.Surface.Bubble, PaidBuzz.by(appVisible = false), "over Square: the bubble")
+        // One surface for any answer, so a payment shown by the sale screen and a bubble still leaving buzzes once.
+        for (visible in listOf(true, false)) assertEquals(1, PaidBuzz.Surface.entries.count { it == PaidBuzz.by(visible) })
+    }
+
+    @Test
+    fun aPaymentLandsWhenASaleThatWasLiveIsPaid() {
+        val paid = sale("w", phase = SalePhase.Paid, paidAt = at)
+        assertTrue(TillNav.paymentLanded(listOf(paid), liveBefore = setOf("w")))
+        assertFalse(TillNav.paymentLanded(listOf(paid), liveBefore = emptySet()), "a sale already paid at the last look: nothing new")
+        assertFalse(TillNav.paymentLanded(listOf(sale("w")), liveBefore = setOf("w")), "still waiting")
+        assertFalse(
+            TillNav.paymentLanded(listOf(sale("w", phase = SalePhase.Expired, endedAt = at)), liveBefore = setOf("w")),
+            "ended unpaid is no payment",
+        )
+    }
 }

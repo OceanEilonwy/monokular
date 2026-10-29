@@ -67,6 +67,7 @@ import app.monokular.ShiftList
 import app.monokular.StateIcon
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
+import app.monokular.Layers
 import app.monokular.sharedSurface
 
 /**
@@ -271,8 +272,11 @@ private fun SaleRow(sale: TillSale, now: LongState, onOpen: () -> Unit) {
         Box(Modifier.clearAndSetSemantics {}) {
             // Ring to tick, ring to clock: one face of the badge fading into the next; the ring's own arc sweeps (M6).
             val fade = motion.fade.fraction
+            // Opening a sale that isn't live, the badge grows into its page's hero; a paid sale stepping back, the hero shrinks into it.
             AnimatedContent(targetState = row.icon, transitionSpec = { (fadeIn(fade) togetherWith fadeOut(fade)).using(null) }, label = "row badge") { icon ->
-                StateBadge(sale, icon, badgeGround(icon), RingRowSize, 18.dp, quiet = true)
+                Box(Modifier.sharedSurface(badgeKey(sale.orderId), Move.RowGrow, CircleShape, layer = Layers.OVER_GROUND)) {
+                    StateBadge(sale, icon, badgeGround(icon), RingRowSize, 18.dp, quiet = true)
+                }
             }
         }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {

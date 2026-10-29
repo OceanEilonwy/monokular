@@ -1,6 +1,7 @@
 package app.monokular.ui
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.fadeIn
@@ -31,6 +32,7 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
@@ -72,6 +74,8 @@ import app.monokular.Tone
 import app.monokular.receipt.Receipt
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
+import app.monokular.LocalFace
+import app.monokular.faceSurface
 import app.monokular.sharedSurface
 import kotlinx.coroutines.delay
 
@@ -197,9 +201,27 @@ fun SaleScreen(
 ) {
     // The sale is its row opened: tapped on the shift, this grows out of the row's card (M7).
     Box(Modifier.fillMaxSize().sharedSurface("sale/${sale.orderId}", Move.RowGrow)) {
-        if (sale.live) LiveSale(sale, location, now, actions) else SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions)
+        // Paid or ended on screen, the live sale turns into its page in place (M10): the code card closes into the
+        // page's hero circle and the page fades in over the code, the way back the same reversed ("Show the code again").
+        val m = motion
+        AnimatedContent(
+            targetState = sale.live,
+            transitionSpec = {
+                val change = if (m.still) fadeIn(m.fadeQuick.fraction) togetherWith fadeOut(m.fadeQuick.fraction)
+                else fadeIn(m.fade.fraction) togetherWith ExitTransition.KeepUntilTransitionsFinished
+                change.using(null)
+            },
+            label = "sale face",
+        ) { live ->
+            CompositionLocalProvider(LocalFace provides this) {
+                if (live) LiveSale(sale, location, now, actions) else SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions)
+            }
+        }
     }
 }
+
+/** The hero's corners: a circle of [HeroSize]. */
+private val HeroCorner get() = HeroSize / 2
 
 /** A live sale full screen, for the customer to scan (SaleA); split in two on a wide window (decision 45). */
 @Composable
@@ -310,7 +332,9 @@ private fun Amount(sale: TillSale, onCopyXmr: (TillSale) -> Unit, start: Boolean
 /** The code, which enlarges when tapped (CodeB), with the expand badge on its corner. */
 @Composable
 private fun Code(sale: TillSale, side: Dp, onEnlarge: () -> Unit) = Box(
-    Modifier.clip(RoundedCornerShape(CodeCorner)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
+    // Paid or ended, the card closes into the page's hero (M10).
+    Modifier.faceSurface(heroKey(sale.orderId), CodeCorner, HeroCorner)
+        .clip(RoundedCornerShape(CodeCorner)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
 ) {
     QrCode(
         sale.code.uri,
@@ -410,7 +434,16 @@ fun OrderCard(receipt: Receipt, pos: PointOfSale?, withTime: Boolean, onOpen: ((
     }
 }
 
-/** A state's glyph on its ground: a shift row's 36 dp circle, a page's 72 dp hero. */
+/** The key of the surface a sale's code card closes into: its page's hero. */
+fun heroKey(orderId: String) = "hero/$orderId"
+
+/** The key of a sale's state glyph between its page's hero and its shift row's badge. */
+fun badgeKey(orderId: String) = "badge/$orderId"
+
+/** A page's hero: the state's glyph at the top of a sale's page. */
+val HeroSize = 72.dp
+
+/** A state's glyph on its ground: a shift row's 36 dp circle, a page's [HeroSize] hero. */
 @Composable
 fun StateBadge(sale: TillSale, icon: StateIcon, ground: Ground, size: Dp, glyph: Dp, quiet: Boolean = false) {
     if (icon == StateIcon.Ring) {
