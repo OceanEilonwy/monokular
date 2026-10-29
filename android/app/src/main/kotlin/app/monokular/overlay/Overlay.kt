@@ -62,6 +62,8 @@ data class OverlayState(
     /** The header's "Front Counter" (or "From Back till"), before "Open the shift". */
     val where: String = "",
     val page: PanelPage = PanelPage.Code,
+    /** Whether Monokular is on screen, where the payment's buzz is the sale screen's. */
+    val appVisible: Boolean = false,
 )
 
 /**
@@ -127,7 +129,7 @@ class Overlay(
                 // The whole order is about the sale whose code is up: another sale, or this one ending, brings the code back.
                 if (focus != previous || sale?.live != true || sale.receipt == null) page.value = PanelPage.Code
                 val where = sale?.let { Panel.where(it, graph.stores.placeName(it)) }.orEmpty()
-                state.value = OverlayState(Bubble.look(sales, paid || landed), sale, where, if (sale?.live == true) shown else PanelPage.Code)
+                state.value = OverlayState(Bubble.look(sales, paid || landed), sale, where, if (sale?.live == true) shown else PanelPage.Code, visible)
                 val usable = wanted && runner.running && !runner.disconnected && !visible && allowed()
                 usable to (open && sale != null)
             }.collect { (usable, open) -> show(usable, open) }
@@ -303,7 +305,10 @@ class Overlay(
                         scaleX = 0.6f + 0.4f * p
                         scaleY = scaleX
                     },
-                ) { BubbleFace(s.look, phase = s.sale?.phase ?: SalePhase.Waiting, panelUp = open) }
+                ) { BubbleFace(
+                        s.look, phase = s.sale?.phase ?: SalePhase.Waiting, panelUp = open,
+                        confirms = Haptics.bubbleConfirms(s.appVisible),
+                    ) }
             }.apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS },
         )
         runCatching { wm.addView(frame, params) }.onSuccess {
@@ -368,7 +373,7 @@ class Overlay(
             motion.raise.Attach()
             val s by state.collectAsStateWithLifecycle()
             val sale = s.sale ?: return@compose
-            if (wide) FloatingPanel(sale, s.where, s.page, actions, motion) else PhonePanel(sale, s.where, s.look, s.page, actions, motion)
+            if (wide) FloatingPanel(sale, s.where, s.page, actions, motion) else PhonePanel(sale, s.where, s.look, s.page, actions, motion, Haptics.bubbleConfirms(s.appVisible))
         }
         runCatching { wm.addView(view, params) }.onSuccess {
             panel = view
