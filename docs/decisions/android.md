@@ -2052,9 +2052,14 @@ design unchanged.
      while the panel is up moves the panel's window once, on the snap's
      landing.
 119. **A payment buzzes once, from the surface in front** (dev1, round 2,
-     P2; §6). `Haptics.bubbleConfirms(appVisible)` is the overlay's half of
-     the rule: the free and the docked bubble buzz for a payment only while
-     Monokular isn't on screen. With the app in front its sale screen is
+     P2; §6). `PaidBuzz.bubble(appVisible)` is the overlay's half of
+     the rule (the overlay reads it from the screens track's `PaidBuzz`,
+     which names the one surface for either answer; the track's own
+     `Haptics.bubbleConfirms` went in integration, two spellings of one
+     rule): the free and the docked bubble buzz for a payment only while
+     Monokular isn't on screen, and the answer reaches `BubbleFace` as a
+     parameter from the overlay's state, so no composable under a window
+     reads the app's graph. With the app in front its sale screen is
      the one the cashier is looking at and buzzes (S6, the screens track,
      reads the same rule from the other side), and a bubble still on its
      way out, or a tablet bubble the app came up beside, stays quiet. A
@@ -2080,7 +2085,7 @@ design unchanged.
     has committed or sprung back, and the enlarged code keeps full
     brightness while it is held, so a cancelled gesture no longer drops
     the brightness and the bar colours for the length of the preview.
-116. **The code's white is a ground with nothing in it, and the code is
+121. **The code's white is a ground with nothing in it, and the code is
     the top layer** (dev2, round 2; implements 113). The card's white and
     the enlarged screen's white are one `sharedGround`: an empty rounded
     rectangle, remeasured to its moving bounds each frame (nothing inside
@@ -2102,7 +2107,7 @@ design unchanged.
     every one. The same test writes every screen move's seeked frames for
     review (the `additionalTestOutputDir` the runner pulls), so a cropped
     code is caught in CI rather than in a recording.
-117. **The order page fades in over the sale while its card grows**
+122. **The order page fades in over the sale while its card grows**
     (dev2, round 2; the designer's review of M7's OrderGrow). Only the
     list is the order's surface; the page's own ground, bar, heading and
     "Show the code" bar were drawn at full opacity on the first frame,
@@ -2114,7 +2119,7 @@ design unchanged.
     within the frame; the RowGrow and CodeGrow pairs keep their
     no-fade rule (105). A device test checks the frame at progress 0 is
     the sale itself.
-118. **A sale paid on screen closes its code into the page's hero, and a
+123. **A sale paid on screen closes its code into the page's hero, and a
     payment is one buzz from the surface the cashier is looking at**
     (dev2, round 2; M10, M9's app half, §6). `SaleScreen` is one
     `AnimatedContent` over `sale.live`: the page fades in over the live
@@ -2135,10 +2140,11 @@ design unchanged.
     (a sale live at the last look is paid now) and the activity buzzes
     only while started, and the bubble's `Confirm` buzzes only when the
     rule says bubble, so a bubble still leaving as the app comes up
-    doesn't buzz a second time (a two-line change in dev1's `Faces.kt`).
+    doesn't buzz a second time (in integration this became the
+    `confirms` parameter of 119, not a read inside `Confirm`).
     `leave()` cancels the paid step-back, so Back during the dwell is
     the only step back.
-119. **The window's background is the theme's ground** (dev2, round 2;
+124. **The window's background is the theme's ground** (dev2, round 2;
     review finding on the dark-mode recreation). The app ran on
     `Theme.Material.Light.NoActionBar`, so the frame between a light/dark
     change recreating the activity and Compose's first draw was the
@@ -2147,7 +2153,7 @@ design unchanged.
     `@color/ground`, which a JVM test holds equal to `LightTokens.ground`
     and `DarkTokens.ground`, so the colour role stays defined once in
     `Theme.kt` and the resource follows it.
-120. **A surface's two faces crossfade per draw, on the stage's progress,
+125. **A surface's two faces crossfade per draw, on the stage's progress,
     never through an offscreen layer each** (dev2, round 2; the review's
     native-heap blocker). On the host-GPU emulator the GPU's resource cache
     after ten shift-to-sale round trips held 86 MB (84 MB of it purgeable
@@ -2166,9 +2172,9 @@ design unchanged.
     one at full opacity costs no layer. After: 5.1 MB and 0.2 MB of GPU
     cache in two runs. `Motion.crossfadeOnTrack` (fade's share of track)
     is the third preset this round adds to `Motion.kt`.
-121. **The shared surfaces cost 6–14 MB of native heap once, and that is
+126. **The shared surfaces cost 6–14 MB of native heap once, and that is
     recorded rather than fixed this round** (dev2, round 2). Measured on a
-    host-GPU emulator after decision 120 took the GPU cache back to the
+    host-GPU emulator after decision 125 took the GPU cache back to the
     baseline's: 2.6 MB is Skia's glyph cache (text in a scaled surface
     rasterised at each size it passes through, bounded by Skia's own
     budget), the rest a step on the first transitions that holds flat

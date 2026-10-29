@@ -11,7 +11,6 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.test.platform.app.InstrumentationRegistry
 import app.monokular.core.SalePhase
 import app.monokular.overlay.BubbleFace
-import app.monokular.overlay.Haptics
 import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
@@ -36,7 +35,7 @@ class HapticOnDeviceTest {
         compose.setContent {
             Till {
                 CompositionLocalProvider(LocalView provides view) {
-                    BubbleFace(look, phase = SalePhase.Confirming, confirms = Haptics.bubbleConfirms(appVisible))
+                    BubbleFace(look, phase = SalePhase.Confirming, confirms = PaidBuzz.bubble(appVisible))
                 }
             }
         }

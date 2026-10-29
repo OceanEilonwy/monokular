@@ -234,19 +234,19 @@ from `dumpsys gfxinfo` ("Total GPU memory usage").
 | Build | TOTAL PSS at rest (MB) | after trim | Native heap | GPU cache |
 | --- | --- | --- | --- | --- |
 | before, three runs | 92.6–94.6 | 91.7–92.3 | 12.4–12.8 | 2.2–2.3 MB |
-| round 2 before decision 120 | 104.5–106.4 | 105.0–105.2 | 21.2–21.6 | **85.5–86.8 MB** (84 purgeable) |
+| round 2 before decision 125 | 104.5–106.4 | 105.0–105.2 | 21.2–21.6 | **85.5–86.8 MB** (84 purgeable) |
 | round 2, final (`f3346d6`), two runs | 98.6–109.4 | 98.5–106.8 | 17.6–24.9 | **0.2–5.1 MB** |
 
 The GPU cache was the shared surfaces' crossfade: each face of a
 full-screen surface went through its own offscreen texture every frame,
-and the cache kept them. Decision 120 draws the faces with
+and the cache kept them. Decision 125 draws the faces with
 `ModulateAlpha` instead, and the cache is back at the baseline's size.
 **PSS at rest is still 6–14 MB over the baseline**, nearly all native
 heap, and a trim doesn't return it. 2.6 MB of it is Skia's glyph cache
 (253 glyphs against 18: the text inside a scaled surface is rasterised at
 each size it passes through), the rest a one-time step on the first
 transitions that holds flat after (round 1's ten further round trips
-added 1.3 MB). It fails the 2 MB rule; decision 121 says what is known and
+added 1.3 MB). It fails the 2 MB rule; decision 126 says what is known and
 what isn't.
 
 ### Size
