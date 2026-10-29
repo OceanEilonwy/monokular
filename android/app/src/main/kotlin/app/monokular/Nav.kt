@@ -1458,6 +1458,41 @@ fun Modifier.groundExcept(unless: Move, color: Color): Modifier {
     return drawBehind { if (!stage.isMoving(unless)) drawRect(color) }
 }
 
+/**
+ * [value] as [screen] showed it while it was the model's ([current]): from
+ * the moment the model moves on, a screen being left keeps the picture it
+ * had as its change began until the move lands and it goes, whatever the
+ * model does to what it shows meanwhile (decision 185). A sale closed from
+ * the sheet, expired or refunded as its screen is left still leaves with
+ * its code on its card; the stage carries away what was on screen, never
+ * the model's next state of it. Recomposes nothing while held: the value
+ * it hands back doesn't change.
+ */
+@Composable
+fun <T> keptWhileLeaving(screen: Screen, current: State<Screen>, value: () -> T): State<T> = remember(screen, current) {
+    val kept = Kept<T>()
+    derivedStateOf {
+        val now = value()
+        if (current.value == screen || !kept.set) kept.keep(now)
+        kept.value
+    }
+}
+
+/** The last value a screen showed as the model's; [set] once there is one. */
+private class Kept<T> {
+    var set = false
+        private set
+    private var held: Any? = null
+
+    @Suppress("UNCHECKED_CAST")
+    val value: T get() = held as T
+
+    fun keep(v: T) {
+        held = v
+        set = true
+    }
+}
+
 /** A sale's face (its live code, or its page) for the surfaces that morph between the two (M10). */
 val LocalFace = staticCompositionLocalOf<AnimatedVisibilityScope?> { null }
 

@@ -72,6 +72,44 @@ class RunningMovesTest {
 
     @Test fun theCodeGrowsUnderStillDark() = stillEnlarge(dark = true)
 
+    @Test fun closeForNowLeavesWithItsCodeLight() = leavesWithItsCode("close-for-now", dark = false) { it.copy(closedAt = 1_100) }
+
+    @Test fun closeForNowLeavesWithItsCodeDark() = leavesWithItsCode("close-for-now", dark = true) { it.copy(closedAt = 1_100) }
+
+    @Test fun aSaleExpiringAsItIsLeftLeavesWithItsCode() = leavesWithItsCode("expired-left", dark = false) { it.copy(phase = SalePhase.Expired, endedAt = 1_100) }
+
+    @Test fun aSaleRefundedAsItIsLeftLeavesWithItsCode() = leavesWithItsCode("refunded-left", dark = true) { it.copy(refundedAt = 1_100, closedAt = 1_100) }
+
+    /**
+     * A sale that stops being live in the update that leaves its screen (closed from the sheet, expired, refunded)
+     * leaves as an untouched one does (decision 185): the change's first frame is the frame before it, the leaving
+     * screen keeps its code card on the live layout, and on every frame the row's ground still holds the card's place
+     * the code is drawn there, whole; then the row's shrink takes it.
+     */
+    private fun leavesWithItsCode(name: String, dark: Boolean, change: (app.monokular.sales.TillSale) -> app.monokular.sales.TillSale) {
+        moves.start(Screen.Sale("a1"), dark)
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1", change = { moves.shown = change(moves.sale) })
+        val failures = mutableListOf<String>()
+        val card = frames.first().leavingCodes.firstOrNull { it.width > 20f }
+        if (card == null) {
+            failures += "the sale shows no code before the change"
+        } else {
+            val whole = Rect(0f, 0f, frames.first().bitmap.width.toFloat(), frames.first().bitmap.height.toFloat())
+            if (changed(frames[1].bitmap, frames.first().bitmap, whole) || changed(frames[1].bitmap, frames.first().bitmap, card)) {
+                failures += "f1: the change's first frame is not the frame before it"
+            }
+            for (f in frames.drop(1).dropLast(RunningMoves.SETTLE_FRAMES)) {
+                if (f.p >= 1f) continue
+                if (f.leavingCodes.none { it.width > 20f }) failures += "f${f.index}: the leaving sale's code card is gone before the move landed (p ${f.p})"
+                val g = f.ground ?: continue
+                val holds = g.left <= card.left + 1f && g.top <= card.top + 1f && g.right >= card.right - 1f && g.bottom >= card.bottom - 1f
+                val (ink, white) = inkAndWhite(f.bitmap, card)
+                if (holds && (ink < CODE_SHARE || white < CODE_SHARE)) failures += "f${f.index}: the row's ground at $g holds the card at $card, but no code is drawn there"
+            }
+        }
+        check(name, dark, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures)
+    }
+
     private fun rowGrow(dark: Boolean) {
         moves.start(Screen.Till, dark)
         check("row-grow", dark, moves.run(Screen.Sale("a1"), groundKey = "sale/a1"), Move.RowGrow, glyphs = true, grows = true)
