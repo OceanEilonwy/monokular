@@ -716,7 +716,7 @@ private fun StatusRow(sale: TillSale, now: LongState) = Row(
     ) { words ->
         Text(words, fontSize = 15.sp, fontWeight = FontWeight.Bold, modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite })
     }
-    if (CodeText.left(sale, 0) != null) {
+    if (sale.phase.countsDown) {
         Countdown(now, sale.expiresAt, fontSize = 14.sp, color = mk.muted) { "· ${CodeText.left(sale, it)}" }
     }
 }
@@ -842,7 +842,6 @@ private fun Modifier.container(motion: PanelMotion, opened: State<Float>, ground
 
 @Composable
 private fun PhoneCode(sale: TillSale, where: String, look: BubbleLook, actions: PanelActions, motion: PanelMotion, confirms: Boolean) {
-    SideEffect { motion.undocked = false }
     val lower by rememberUpdatedState(actions.onLower)
     val bubble = @Composable {
         Box(
