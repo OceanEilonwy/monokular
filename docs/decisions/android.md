@@ -2974,3 +2974,29 @@ design unchanged.
     code (2,000 card pixels at 4 % alpha on the frame the bubble is
     within 4 dp of home) and passes now; `after-lower.png` on 5554 has no
     card from the frame the bubble lands.
+171. **The panel's paid fold is one surface, and its status words fade
+    through** (dev1, round 5; 168's panel half). `Face` draws the code's
+    white card as a surface of its own under the code: one rounded
+    rectangle at the code's size, scaled with the code's layer from 264
+    (280) dp to the 88 dp hero, its corner growing from the card's 28 (30)
+    dp to half its side, its colour going from white to the hero's ground
+    (`paidGround`, or `warnGround`, `dangerGround` or `chip` for an ended
+    sale) on the hero's own fade, and the hero's icon fading in at its
+    rest size inside it. The code fades off that surface under `fadeQuick`
+    as before, clipped to the surface's rounding corners while it folds
+    (one path per size, rewound per frame), so the code's own white square
+    never pokes out of the circle; growing back into the next sale's code
+    it is not clipped and is opaque from its first frame (§10 rule 6). So
+    there is a white or hero ground under the tick on every frame, and the
+    hero travels: `thePaidFoldShrinksOneSurfaceIntoTheHero` steps the test
+    clock frame by frame and finds the surface never under the hero's
+    size, never growing, and at three or more sizes between the card and
+    the circle. `PaidHero` and `EndedHero` went into one `heroLook`. The
+    panel's status words ("Waiting for payment" to "Payment seen") now
+    fade through (`fadeThrough` in, `fadeQuick` out) instead of across,
+    as 168 asks of the pill; the app's own status pill is the screens
+    track's and is not changed here. On emulator-5554 (SwiftShader, load
+    9 to 19) the fold is still one or two drawn frames between the code
+    and the hero (`dev1-r5-paid-fold.mp4`, f15 to f16, 8 ms apart, with a
+    heads-up notification arriving on the same frames), so the recorded
+    acceptance 168 asks for still needs the phone or a GPU host.
