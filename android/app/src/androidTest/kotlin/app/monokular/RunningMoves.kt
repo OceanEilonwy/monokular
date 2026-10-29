@@ -71,7 +71,7 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         }
         compose.setContent {
             Till(motion, dark) {
-                CompositionLocalProvider(LocalGroundTracks provides { key -> GroundTrack().also { tracks.getOrPut(key) { mutableListOf() } += it } }) {
+                CompositionLocalProvider(LocalGroundTracks provides { key -> GroundTrack(key).also { tracks.getOrPut(key) { mutableListOf() } += it } }) {
                 // The activity's window is the theme's ground (decision 124); a test's is white.
                 Box(Modifier.fillMaxSize().background(mk.ground)) {
                 ModelStage(model) { s ->
@@ -101,7 +101,22 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
      * paid page's hero and heading (the one spoken as it changes: no live sale has it), how far each screen is shown,
      * and whether the status bar's icons are dark.
      */
-    class Frame(val index: Int, val bitmap: Bitmap, val moves: List<Move?>, val codes: List<Rect>, val texts: List<Pair<String, Rect>>, val ground: Rect?, val hero: Rect?, val heading: Rect?, val shown: Map<Screen, Float>, val lightBars: Boolean)
+    class Frame(
+        val index: Int,
+        val bitmap: Bitmap,
+        val moves: List<Move?>,
+        val codes: List<Rect>,
+        val texts: List<Pair<String, Rect>>,
+        val ground: Rect?,
+        val hero: Rect?,
+        val heading: Rect?,
+        val shown: Map<Screen, Float>,
+        val lightBars: Boolean,
+        /** Where the moving code is drawn on this frame (its track), null when it is not moving. */
+        val code: Rect?,
+        /** Every screen's words on this frame where they are laid out, by screen. */
+        val words: Map<Screen, List<Pair<String, Rect>>>,
+    )
 
     /** The model sent to [to] (as the till does, or the cashier), and every frame until the stage has landed and settled. */
     fun run(to: Screen, byItself: Boolean = false, groundKey: String? = null): List<Frame> {
@@ -151,9 +166,16 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         val texts = compose.onAllNodes(mine and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text), useUnmergedTree = true).fetchSemanticsNodes()
             .map { (it.config.getOrNull(SemanticsProperties.Text)?.joinToString().orEmpty()) to it.drawn().half() }
         val ground = groundKey?.let { k -> tracks[k]?.firstNotNullOfOrNull { it.bounds } }?.half()
+        val code = tracks["code/${sale.orderId}"]?.firstNotNullOfOrNull { it.bounds }?.half()
+        val words = stages.keys.associateWith { s ->
+            compose.onAllNodes(hasAnyAncestor(hasTestTag(tag(s))) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text), useUnmergedTree = true).fetchSemanticsNodes()
+                .map { (it.config.getOrNull(SemanticsProperties.Text)?.joinToString().orEmpty()) to it.drawn().half() }
+        }
         val hero = drawnOf(SemanticsMatcher.expectValue(SemanticsProperties.TestTag, HeroTag)).firstOrNull()
         val heading = drawnOf(mine and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading) and SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).firstOrNull()
-        return Frame(index, bitmap, moves, codes, texts, ground, hero, heading, stages.mapValues { it.value.shown() }, lightBars)
+        // A moving code is drawn where its track says, not where either screen laid it out.
+        val drawn = if (code != null) listOf(code) else codes
+        return Frame(index, bitmap, moves, drawn, texts, ground, hero, heading, stages.mapValues { it.value.shown() }, lightBars, code, words)
     }
 
     private fun tag(s: Screen) = "screen:$s"

@@ -50,9 +50,20 @@ import app.monokular.sharedSurface
  * Refunded page in place, or shows [refundProblem] above its buttons. At a
  * point of sale the till can't refund through, Refund opens [refundSheet]
  * (decision 130) until the sale shows refunded.
+ * [words] goes on each of its own parts (everything but the hero), so
+ * each fades through a screen change by its own place under a moving
+ * ground, never the page as one block (decision 176).
  */
 @Composable
-fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProblem: String?, refundSheet: RefundSheet?, actions: TillActions) {
+fun SaleDetail(
+    sale: TillSale,
+    location: String?,
+    refunding: Boolean,
+    refundProblem: String?,
+    refundSheet: RefundSheet?,
+    actions: TillActions,
+    words: Modifier = Modifier,
+) {
     val header = SaleHeader.of(sale, LocalPointOfSale.current, location)
     val pos = header.pos
     val page = SalePage.of(sale, pos, now = System.currentTimeMillis() / 1000, elsewhere = header.elsewhere)
@@ -61,7 +72,7 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
     Surface(Modifier.fillMaxSize(), color = Color.Transparent, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
             Column(Modifier.widthIn(max = 560.dp).fillMaxSize()) {
-                SaleBar(sale, subtitle, actions)
+                Box(words) { SaleBar(sale, subtitle, actions) }
                 Column(
                     Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
                         .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 12.dp),
@@ -77,24 +88,24 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
                         Text(
                             page.heading, style = display(26, 0.0), textAlign = TextAlign.Center,
                             color = if (page.headingWarn) mk.warn else mk.ink,
-                            modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
+                            modifier = words.semantics { heading(); liveRegion = LiveRegionMode.Polite },
                         )
-                        Text(SaleText.amount(sale), style = display(40, -0.8), color = if (page.amountMuted) mk.muted else mk.ink)
-                        Text(page.line, fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center, modifier = Modifier.offset(y = (-8).dp))
+                        Text(SaleText.amount(sale), style = display(40, -0.8), color = if (page.amountMuted) mk.muted else mk.ink, modifier = words)
+                        Text(page.line, fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center, modifier = words.offset(y = (-8).dp))
                     }
                     page.note?.let { note ->
                         val danger = note.ground == Ground.Danger
                         Text(
                             note.text, fontSize = 14.sp, lineHeight = 21.sp, color = if (danger) mk.onDangerGround else mk.ink,
-                            modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(groundColor(note.ground))
+                            modifier = words.fillMaxWidth().clip(RoundedCornerShape(16.dp)).background(groundColor(note.ground))
                                 .padding(horizontal = 14.dp, vertical = 12.dp),
                         )
                     }
-                    if (page.order) sale.receipt?.let { OrderCard(it, pos, withTime = false) }
-                    if (page.facts.isNotEmpty()) Facts(page.facts)
+                    if (page.order) sale.receipt?.let { Box(words) { OrderCard(it, pos, withTime = false) } }
+                    if (page.facts.isNotEmpty()) Box(words) { Facts(page.facts) }
                 }
                 if (page.actions.isNotEmpty()) {
-                    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Column(words.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Notice(refundProblem)
                         for (action in page.actions) {
                             when (action) {

@@ -177,7 +177,7 @@ fun OrderContent(
         Box(Modifier.weight(1f).padding(horizontal = 16.dp).fillMaxWidth()) {
             val look = GroundLook(mk.card, CardCorner)
             val ground = rememberGroundTrack("order/${sale.orderId}")
-            Box(Modifier.matchParentSize().sharedGround("order/${sale.orderId}", Move.OrderGrow, look, look, ground))
+            Box(Modifier.matchParentSize().sharedGround("order/${sale.orderId}", Move.OrderGrow, look, ground))
             OrderList(receipt, Modifier.matchParentSize().words(over = Move.OrderGrow, on = ground).clip(CardShape))
         }
     }

@@ -76,6 +76,7 @@ import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import app.monokular.LocalFace
 import app.monokular.faceSurface
+import app.monokular.wholeOn
 import app.monokular.GroundLook
 import app.monokular.GroundTrack
 import app.monokular.sharedGround
@@ -213,7 +214,7 @@ fun SaleScreen(
     // since only it knows its own corners; the sale's words fade in over it at their own size.
     Box(Modifier.fillMaxSize()) {
         val ground = rememberGroundTrack("sale/${sale.orderId}")
-        Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, GroundLook(mk.ground, 0.dp), other = null, ground, fadesIn = Move.Rise))
+        Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, GroundLook(mk.ground, 0.dp), ground, fadesIn = Move.Rise))
         // Paid or ended on screen, the live sale turns into its page in place (M10): the code card closes into the
         // page's hero circle, and the live sale's words fade out before the page's fade in, never two receipts at once
         // (decision 131); the way back the same reversed ("Show the code again"). Per draw, never an offscreen layer.
@@ -239,7 +240,7 @@ fun SaleScreen(
                     if (live) {
                         LiveSale(sale, location, now, actions, ground)
                     } else {
-                        Box(Modifier.words(through = SaleThrough, lift = SaleLift, on = ground)) { SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions) }
+                        SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions, Modifier.words(through = SaleThrough, lift = SaleLift, on = ground))
                     }
                 }
             }
@@ -289,7 +290,7 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                         horizontalArrangement = Arrangement.spacedBy(48.dp, Alignment.CenterHorizontally),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Code(sale, min(this@BoxWithConstraints.maxHeight - 120.dp, 440.dp), card) { actions.onEnlarge(sale.orderId) }
+                        Code(sale, min(this@BoxWithConstraints.maxHeight - 120.dp, 440.dp), card, ground) { actions.onEnlarge(sale.orderId) }
                         Column(
                             // Centred beside the code (which is not in it), it settles to the late card's height rather than jumping.
                             Modifier.widthIn(max = 420.dp).animateContentSize(motion.settle.spec(IntSize.VisibilityThreshold))
@@ -314,7 +315,7 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         Box(words) { Amount(sale, actions.onCopyXmr) }
-                        Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide), card) { actions.onEnlarge(sale.orderId) }
+                        Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide), card, ground) { actions.onEnlarge(sale.orderId) }
                         Box(words) { StatusPill(sale, now) }
                         sale.receipt?.let { Box(orderWords) { Late(late) { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } } }
                     }
@@ -407,9 +408,11 @@ private fun Amount(sale: TillSale, onCopyXmr: (TillSale) -> Unit, start: Boolean
 
 /** The code, which enlarges when tapped (CodeB), with the expand badge on its corner. */
 @Composable
-private fun Code(sale: TillSale, side: Dp, card: GroundTrack, onEnlarge: () -> Unit) = Box(
-    // Paid or ended, the card closes into the page's hero (M10).
-    Modifier.faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle)
+private fun Code(sale: TillSale, side: Dp, card: GroundTrack, ground: GroundTrack, onEnlarge: () -> Unit) = Box(
+    // Opening from its row or shrinking back into it, the code and its white are drawn whole or not at all: only on
+    // the frames the row's ground holds all of the card (decision 177). Paid or ended, the card closes into the page's
+    // hero (M10).
+    Modifier.wholeOn(ground, Move.RowGrow).faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle)
         .clip(RoundedCornerShape(CodeCorner)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
 ) {
     QrCode(
@@ -484,10 +487,14 @@ fun OrderCard(receipt: Receipt, pos: PointOfSale?, withTime: Boolean, onOpen: ((
     // On the sale, the card's ground grows into the order page's list (M7) while its three lines fade out and the
     // page's whole list fades in, each at its own size (decisions 128, 131).
     Box(Modifier.fillMaxWidth()) {
-        val look = GroundLook(mk.card, CardCorner)
-        val ground = rememberGroundTrack(shared.orEmpty())
-        Box(Modifier.matchParentSize().then(if (shared != null) Modifier.sharedGround(shared, Move.OrderGrow, look, look, ground) else Modifier.clip(CardShape).background(mk.card)))
-        OrderLines(receipt, pos, withTime, lines, more, open, if (shared != null) Modifier.words(over = Move.OrderGrow, on = ground) else Modifier)
+        if (shared != null) {
+            val ground = rememberGroundTrack(shared)
+            Box(Modifier.matchParentSize().sharedGround(shared, Move.OrderGrow, GroundLook(mk.card, CardCorner), ground))
+            OrderLines(receipt, pos, withTime, lines, more, open, Modifier.words(over = Move.OrderGrow, on = ground))
+        } else {
+            Box(Modifier.matchParentSize().clip(CardShape).background(mk.card))
+            OrderLines(receipt, pos, withTime, lines, more, open, Modifier)
+        }
     }
 }
 

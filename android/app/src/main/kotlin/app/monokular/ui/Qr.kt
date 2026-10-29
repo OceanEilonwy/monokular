@@ -22,12 +22,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.monokular.Move
-import app.monokular.Layers
 import app.monokular.GroundLook
 import app.monokular.sharedGround
 import app.monokular.GroundTrack
 import app.monokular.rememberGroundTrack
-import app.monokular.sharedSurface
+import app.monokular.sharedCode
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.EncodeHintType
 import com.google.zxing.qrcode.QRCodeWriter
@@ -113,7 +112,7 @@ private fun CodeCard(modifier: Modifier, shape: Shape, radius: Dp, shared: Strin
     modifier.clip(shape).then(if (shared == null) Modifier.background(Fixed.White) else Modifier),
 ) {
     if (shared != null && sharedCard) {
-        Box(Modifier.fillMaxSize().sharedGround(codeGround(shared), Move.CodeGrow, GroundLook(Fixed.White, radius), GroundLook(Fixed.White, CodeScreenCorner), ground))
+        Box(Modifier.fillMaxSize().sharedGround(codeGround(shared), Move.CodeGrow, GroundLook(Fixed.White, radius), ground))
     }
     content()
 }
@@ -133,7 +132,7 @@ private fun CodeImage(bitmap: ImageBitmap, description: String, shared: String?)
     bitmap = bitmap,
     contentDescription = null,
     modifier = Modifier.fillMaxSize()
-        .then(if (shared != null) Modifier.sharedSurface("code/$shared", Move.CodeGrow, fade = false, layer = Layers.CODE, track = rememberGroundTrack("code/$shared")) else Modifier)
+        .then(if (shared != null) Modifier.sharedCode("code/$shared", Move.CodeGrow, rememberGroundTrack("code/$shared"), bitmap) else Modifier)
         .semantics { contentDescription = description },
     contentScale = ContentScale.Fit,
     filterQuality = FilterQuality.None,

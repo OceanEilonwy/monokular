@@ -6,6 +6,9 @@ import androidx.activity.compose.LocalOnBackPressedDispatcherOwner
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.test.onNodeWithText
 import app.monokular.core.PointOfSale
 import app.monokular.OneClockTest.Companion.noActions
@@ -39,15 +42,20 @@ class StageBackTest {
     private val now = mutableLongStateOf(1_000)
     private lateinit var dispatcher: OnBackPressedDispatcher
 
+    /** Every surface's tracks by key, to read where the code is drawn under the finger. */
+    private val tracks = mutableMapOf<String, MutableList<GroundTrack>>()
+
     private fun stage(model: TestModel) = compose.setContent {
         dispatcher = LocalOnBackPressedDispatcherOwner.current!!.onBackPressedDispatcher
         Till {
+            CompositionLocalProvider(LocalGroundTracks provides { key -> GroundTrack(key).also { tracks.getOrPut(key) { mutableListOf() } += it } }) {
             ModelStage(model) { s ->
                 when (s) {
                     is Screen.Code -> CodeScreen(sale, onBack = { model.back(s) })
                     is Screen.Sale -> SaleScreen(sales.first { it.orderId == s.orderId }, "Front", refunding = false, refundProblem = null, refundSheet = null, actions = noActions, now = now)
                     else -> ShiftScreen(status, sales, noActions, now)
                 }
+            }
             }
         }
     }
@@ -218,5 +226,38 @@ class StageBackTest {
         compose.mainClock.advanceTimeBy(1_500)
         assertEquals(Screen.Till, model.screen.value, "a second Back reaches the shift")
         assertAgree(model, "after the second Back")
+    }
+
+    /**
+     * A back gesture on the enlarged code shrinks the code toward its card as the finger moves, not only the words
+     * (decision 166): half across, the code is drawn half way between its two rest places; released, it lands on the
+     * card from there.
+     */
+    @Test
+    fun theCodeShrinksTowardItsCardAsFarAsTheFingerIsAcross() {
+        val model = TestModel(Screen.Sale("a1"))
+        stage(model)
+        compose.waitForIdle()
+        val card = compose.onNodeWithContentDescription("Payment code for", substring = true, useUnmergedTree = true).fetchSemanticsNode().drawn()
+        model.go(Screen.Code("a1"))
+        compose.mainClock.advanceTimeBy(1_500)
+        compose.waitForIdle()
+        val big = compose.onNodeWithContentDescription("Payment code, tap to shrink", useUnmergedTree = true).fetchSemanticsNode().drawn()
+        compose.mainClock.autoAdvance = false
+
+        started()
+        gesture(0.05f)
+        for (p in listOf(0.25f, 0.5f, 0.75f)) {
+            gesture(p)
+            val drawn = tracks["code/a1"]?.firstNotNullOfOrNull { it.bounds }
+            assertTrue(drawn != null, "at $p the code is moving under the finger")
+            val want = lerp(big.width, card.width, model.stage.fraction)
+            assertTrue(abs(drawn.width - want) <= 2f, "at $p (the stage at ${model.stage.fraction}) the code is ${drawn.width} px wide, not $want: between ${big.width} and ${card.width}")
+            assertTrue(drawn.width < big.width - 10f, "at $p the code has shrunk from ${big.width}: ${drawn.width}")
+        }
+        compose.runOnUiThread { dispatcher.onBackPressed() }
+        compose.mainClock.advanceTimeBy(1_500)
+        assertEquals(Screen.Sale("a1"), model.screen.value)
+        assertAgree(model, "after the release")
     }
 }
