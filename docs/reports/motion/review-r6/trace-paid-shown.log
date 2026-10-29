@@ -1,0 +1,7 @@
+MonokularStage: f0 t=78966134 RowGrow Sale(70eb158c) -> Till p=0.000 seek=false out=1.00 in=0.00
+MonokularStage: f1 t=78966234 RowGrow Sale(70eb158c) -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.000 [0,0,2560,1600]
+MonokularStage: f2 t=78966250 RowGrow Sale(70eb158c) -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.000 [0,0,2560,1600]
+MonokularStage: f3 t=78966267 RowGrow Sale(70eb158c) -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.000 [0,0,2560,1600]
+MonokularStage: f4 t=78966334 RowGrow Sale(70eb158c) -> Till p=0.041 seek=false out=0.85 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.041 [27,25,2533,1565]
+MonokularStage: f5 t=78966550 RowGrow Sale(70eb158c) -> Till p=0.523 seek=false out=0.00 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.523 [352,316,2208,1156]
+MonokularStage: f6 t=78966584 null Till -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @1.000 [672,603,1888,751]

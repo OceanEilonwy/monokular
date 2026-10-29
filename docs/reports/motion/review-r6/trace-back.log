@@ -1,0 +1,31 @@
+MonokularStage: f0 t=77816237 RowGrow Sale(8149982a) -> Till p=0.000 seek=true out=1.00 in=0.00
+MonokularStage: f1 t=77816304 RowGrow Sale(8149982a) -> Till p=0.000 seek=true out=1.00 in=0.00 | sale/order_8149982ae44d43be8ec838aa39dd88aa @0.000 [0,0,1280,2856]
+MonokularStage: f2 t=77816321 RowGrow Sale(8149982a) -> Till p=0.000 seek=true out=1.00 in=0.00 | sale/order_8149982ae44d43be8ec838aa39dd88aa @0.000 [0,0,1280,2856]
+MonokularStage: f3 t=77816337 Rise Till -> Sale(c0b57bd1) p=0.000 seek=false out=1.00 in=0.00
+MonokularStage: f4 t=77816387 Rise Till -> Sale(c0b57bd1) p=0.000 seek=false out=1.00 in=0.00
+MonokularStage: f5 t=77816404 Rise Till -> Sale(c0b57bd1) p=0.264 seek=false out=0.01 in=0.00
+MonokularStage: f6 t=77816421 Rise Till -> Sale(c0b57bd1) p=0.398 seek=false out=0.00 in=0.00
+MonokularStage: f7 t=77816437 Rise Till -> Sale(c0b57bd1) p=0.523 seek=false out=0.00 in=0.00
+MonokularStage: f8 t=77816454 Rise Till -> Sale(c0b57bd1) p=0.628 seek=false out=0.00 in=0.16
+MonokularStage: f9 t=77816471 Rise Till -> Sale(c0b57bd1) p=0.722 seek=false out=0.00 in=0.37
+MonokularStage: f10 t=77816487 Rise Till -> Sale(c0b57bd1) p=0.798 seek=false out=0.00 in=0.55
+MonokularStage: f11 t=77816504 Rise Till -> Sale(c0b57bd1) p=0.855 seek=false out=0.00 in=0.67
+MonokularStage: f12 t=77816521 Rise Till -> Sale(c0b57bd1) p=0.901 seek=false out=0.00 in=0.78
+MonokularStage: f13 t=77816537 Rise Till -> Sale(c0b57bd1) p=0.936 seek=false out=0.00 in=0.85
+MonokularStage: f14 t=77816554 Rise Till -> Sale(c0b57bd1) p=0.959 seek=false out=0.00 in=0.91
+MonokularStage: f15 t=77816571 Rise Till -> Sale(c0b57bd1) p=0.977 seek=false out=0.00 in=0.95
+MonokularStage: f16 t=77816587 Rise Till -> Sale(c0b57bd1) p=0.989 seek=false out=0.00 in=0.97
+MonokularStage: f17 t=77816604 Rise Till -> Sale(c0b57bd1) p=0.996 seek=false out=0.00 in=0.99
+MonokularStage: f18 t=77816621 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f19 t=77816637 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f20 t=77816654 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f21 t=77816671 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f22 t=77816687 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f23 t=77816704 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f24 t=77816721 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f25 t=77816737 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f26 t=77816754 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f27 t=77816771 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f28 t=77816787 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f29 t=77816804 Rise Till -> Sale(c0b57bd1) p=1.000 seek=false out=0.00 in=1.00
+MonokularStage: f30 t=77816821 null Sale(c0b57bd1) -> Sale(c0b57bd1) p=0.000 seek=false out=1.00 in=0.00
