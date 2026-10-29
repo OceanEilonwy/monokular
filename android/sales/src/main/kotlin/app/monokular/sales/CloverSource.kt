@@ -1,5 +1,6 @@
 package app.monokular.sales
 
+import app.monokular.core.PointOfSale
 import app.monokular.receipt.Receipt
 import java.time.Duration
 import java.time.Instant
@@ -156,5 +157,6 @@ class CloverSource(
         createdAt = Instant.ofEpochMilli(createdTime).toString(),
         deviceId = device?.id,
         title = order?.title?.takeIf { it.isNotBlank() },
+        pointOfSale = PointOfSale.Clover,
     )
 }

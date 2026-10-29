@@ -1,5 +1,6 @@
 package app.monokular.sales
 
+import app.monokular.core.PointOfSale
 import app.monokular.receipt.Receipt
 import kotlinx.serialization.Serializable
 
@@ -70,4 +71,10 @@ data class FoundSale(
     val deviceId: String?,
     /** The name the cashier gave the order ("Table 4"), when the POS has one: Clover's title; Square leaves it null. */
     val title: String? = null,
+    /**
+     * The point of sale that took it, so a shift's saved sales keep naming it
+     * after the till changes point of sale; a sale saved before Clover joined
+     * reads as Square's.
+     */
+    val pointOfSale: PointOfSale = PointOfSale.Square,
 )

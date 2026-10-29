@@ -1,5 +1,6 @@
 package app.monokular.sales
 
+import app.monokular.core.PointOfSale
 import app.monokular.receipt.Receipt
 import java.time.Instant
 
@@ -77,6 +78,7 @@ class SquareSource(
             orderId = orderId,
             createdAt = createdAt,
             deviceId = deviceDetails?.deviceId,
+            pointOfSale = PointOfSale.Square,
         )
     }
 }

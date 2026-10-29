@@ -4,6 +4,7 @@ import app.monokular.core.AppIdentity
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloApi
 import app.monokular.core.Order
+import app.monokular.core.PointOfSale
 import app.monokular.core.SaleEvent
 import app.monokular.core.SalePhase
 import app.monokular.receipt.Receipt
@@ -654,6 +655,20 @@ class TillTest {
         assertEquals(saves, shift.saves)
         again.onStatus("ord_1", SalePhase.Expired, settled = true)
         assertEquals(Standing.Expired, MemoryShift(shift.saved).load().single().standing)
+    }
+
+    @Test
+    fun `a saved sale keeps the point of sale that took it, and one saved before Clover joined reads as Square's`() = runBlocking {
+        val shift = MemoryShift()
+        val clover = sale.copy(id = "PAY_MONERO_1", pointOfSale = PointOfSale.Clover)
+        val till = Till(FakeSource(listOf(clover), receipt), monokulo, connection, store = shift)
+        server.enqueue(order())
+        till.check()
+        assertEquals(PointOfSale.Clover, MemoryShift(shift.saved).load().single().found?.pointOfSale)
+        // A shift saved by a Square-only build has no pointOfSale in its found sale.
+        val before = shift.saved!!.replace(Regex(""","pointOfSale":"Clover""""), "")
+        assertFalse(before.contains("pointOfSale"))
+        assertEquals(PointOfSale.Square, MemoryShift(before).load().single().found?.pointOfSale)
     }
 
     @Test
