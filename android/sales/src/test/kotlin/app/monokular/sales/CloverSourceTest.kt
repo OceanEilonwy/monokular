@@ -265,8 +265,6 @@ class CloverSourceTest {
     @Test
     fun `a sale is refunded when its refunds reach its amount, it was voided, or its order reads refunded`() = runBlocking {
         val refunds = source().refunds
-        assertEquals("Clover", refunds.posName)
-        assertEquals("Clover's Orders app", refunds.where)
         val sale = FoundSale("PAY_MONERO_1", 2205, "USD", null, "ORDER_CL_1", "2026-10-28T08:56:00Z", "DEV_FRONT")
 
         server.enqueue(json(cloverResource("payment-refunded.json")))

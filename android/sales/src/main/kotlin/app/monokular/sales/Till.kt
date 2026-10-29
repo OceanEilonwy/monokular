@@ -74,7 +74,9 @@ data class TillSale(
     val refundedAt: Long? = null,
     /**
      * When the cashier was told to refund it in the POS themselves
-     * ([Refunds.InPos]): until [refundedAt], the till looks for the refund.
+     * ([Refunds.InPos]): until [refundedAt], and only while the sale's point
+     * of sale ([FoundSale.pointOfSale]) is the till's, the till looks for
+     * the refund.
      */
     val refundPendingAt: Long? = null,
 ) {

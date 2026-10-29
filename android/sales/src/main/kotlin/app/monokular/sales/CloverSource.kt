@@ -123,9 +123,6 @@ class CloverSource(
     override val pointOfSale = PointOfSale.Clover
 
     override val refunds: Refunds.InPos = object : Refunds.InPos {
-        override val posName = "Clover"
-        override val where = "Clover's Orders app"
-
         /**
          * The payment's refunds that weren't voided reach its amount, or the
          * payment was voided, or its order reads `REFUNDED`. A part refund

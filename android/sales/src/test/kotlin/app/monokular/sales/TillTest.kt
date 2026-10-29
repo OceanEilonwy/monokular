@@ -58,8 +58,6 @@ class InPosSource(var sales: List<FoundSale>) : SaleSource {
     override suspend fun newSales() = sales.filter { it.id !in handledIds }
     override suspend fun receipt(sale: FoundSale) = null
     override val refunds = object : Refunds.InPos {
-        override val posName = "Clover"
-        override val where = "Clover's Orders app"
         override suspend fun refunded(sale: FoundSale): Boolean {
             looks++
             if (down) throw PosException(503, "Clover is down.")

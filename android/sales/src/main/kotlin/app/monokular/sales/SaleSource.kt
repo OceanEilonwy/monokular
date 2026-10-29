@@ -46,15 +46,11 @@ sealed interface Refunds {
 
     /**
      * The cashier does, in the point of sale, and the till watches for it
-     * (Clover: no API refunds an external-tender payment).
+     * (Clover: no API refunds an external-tender payment). It carries no
+     * words: what the cashier is told names the sale's own point of sale
+     * ([FoundSale.pointOfSale]), worded in the app (decision A136).
      */
-    interface InPos : Refunds {
-        /** The point of sale's name: "Clover". */
-        val posName: String
-
-        /** Where, in the cashier's words: "Clover's Orders app". */
-        val where: String
-
+    fun interface InPos : Refunds {
         /** Whether the point of sale now shows [sale] refunded. */
         suspend fun refunded(sale: FoundSale): Boolean
     }
