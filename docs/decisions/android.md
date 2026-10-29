@@ -3014,3 +3014,21 @@ design unchanged.
     rest strength; it fails on the old code from the first frame. The
     "where" line ("Front Counter") is the overlay's, one value for both
     sides; it only differs between sales from different tills.
+173. **A tap during the raise lowers the panel and opens nothing; the
+    docked bubble raises a collapsing one** (dev1, round 5; the review's
+    inconclusive adb interrupt checks). Compose hit-tests through the
+    grow's scale, so a tap where the grabber will be could land on the
+    scaled card's header ("Open the shift") mid-raise. A pointer filter
+    (`heldWhileMoving`) sits before the grow's layer, so it covers the
+    card's place at rest: while the raise is short of 1 it takes every
+    touch in the initial pass, gives none to the card, and on release
+    calls `onLower`, which retargets the raise (M1); at rest it passes
+    everything through. The progress is read when the finger comes
+    down, never in composition. The phone's docked bubble called
+    `onLower` whatever the panel was doing, so a tap on it during the
+    collapse did nothing; it now has `onBubble`, the free bubble's toggle,
+    so it raises a collapsing panel again from where it is. The tablet's
+    floating panel has the same filter. `aTapDuringTheRaiseRetargetsItAndOpensNothing`
+    taps the grabber's, the header's and the card's middle place
+    mid-raise (each lowers, nothing opens) and the header at rest (it
+    opens the shift).

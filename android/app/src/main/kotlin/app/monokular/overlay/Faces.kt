@@ -22,6 +22,8 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -79,6 +81,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -316,6 +319,8 @@ class PanelActions(
     val onCopy: (TillSale) -> Unit,
     val onCopyXmr: (TillSale) -> Unit,
     val onFullScreen: (TillSale) -> Unit,
+    /** The docked bubble tapped: lowers a panel that is up or rising, raises one that is collapsing (M1). */
+    val onBubble: () -> Unit = onLower,
 )
 
 /**
@@ -1073,13 +1078,13 @@ private fun PhoneCode(
                 // Not drawn until it knows where the free bubble is, so its first frame isn't a second bubble elsewhere.
                 .graphicsLayer { alpha = if (motion.dock == null) 0f else 1f }
                 .clip(CircleShape)
-                .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = actions.onLower)
+                .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = actions.onBubble)
                 .semantics { contentDescription = "Lower to the bubble" },
         ) { BubbleFace(look, pulse = false, phase = sale.phase, confirms = confirms) }
     }
     // Taps on the panel itself stay there.
     val panel = @Composable { sideBySide: Boolean ->
-        Box(Modifier.grows(motion, wide = false).pointerInput(Unit) { detectTapGestures { } }) {
+        Box(Modifier.heldWhileMoving(motion.raise, actions.onLower).grows(motion, wide = false).pointerInput(Unit) { detectTapGestures { } }) {
             SalePanel(sale, where, wide = false, actions, motion.raise, sideBySide, words)
         }
     }
@@ -1105,7 +1110,7 @@ private fun PhoneCode(
 /** The floating panel's window on a tablet: the panel, or the whole order in its place. */
 @Composable
 fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: PanelActions, motion: PanelMotion) = Box(
-    Modifier.padding(Panel.FLOATING_SHADOW_DP.dp).grows(motion, wide = true),
+    Modifier.padding(Panel.FLOATING_SHADOW_DP.dp).heldWhileMoving(motion.raise, actions.onLower).grows(motion, wide = true),
 ) {
     // The order takes the card's place (M5) and the card's height settles to the new one. The order's words fade
     // through the panel's; back to the code, the code is under the order at once, opaque (§10 rule 6), while the
@@ -1164,6 +1169,28 @@ private fun Modifier.grows(motion: PanelMotion, wide: Boolean, order: Boolean = 
         // Faded per draw, not through a window-sized offscreen buffer: the fade is a third of the grow.
         compositingStrategy = CompositingStrategy.ModulateAlpha
     }
+
+/**
+ * While [raise] is between rest and gone, the card takes no touch of its
+ * own: a tap anywhere on its place at rest (the grabber's, the header's)
+ * calls [onTap], which retargets the move (M1), and opens nothing, since
+ * the scaled card's buttons are somewhere else than where the finger aimed.
+ * Placed before the grow's layer, so it covers the card's place at rest,
+ * not the scaled card; at rest it lets every touch through. The progress is
+ * read when a finger comes down, never in composition.
+ */
+private fun Modifier.heldWhileMoving(raise: Presence, onTap: () -> Unit): Modifier = pointerInput(raise) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        if (raise.value >= 1f) return@awaitEachGesture
+        down.consume()
+        do {
+            val event = awaitPointerEvent(PointerEventPass.Initial)
+            event.changes.forEach { it.consume() }
+        } while (event.changes.any { it.pressed })
+        onTap()
+    }
+}
 
 /**
  * The card's content drawn into one layer at its own size while [raise]
