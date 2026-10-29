@@ -76,7 +76,15 @@ import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import app.monokular.LocalFace
 import app.monokular.faceSurface
-import app.monokular.sharedSurface
+import app.monokular.GroundLook
+import app.monokular.GroundTrack
+import app.monokular.sharedGround
+import app.monokular.words
+import androidx.compose.animation.EnterExitState
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
 
 /**
@@ -199,29 +207,40 @@ fun SaleScreen(
     actions: TillActions,
     now: LongState = rememberNowSeconds(),
 ) {
-    // The sale is its row opened: tapped on the shift, this grows out of the row's card (M7).
-    Box(Modifier.fillMaxSize().sharedSurface("sale/${sale.orderId}", Move.RowGrow)) {
+    // The sale is its row opened: tapped on the shift, the row's card grows into this ground (M7), which the row draws
+    // since only it knows its own corners; the sale's words fade in over it at their own size.
+    Box(Modifier.fillMaxSize()) {
+        val ground = remember { GroundTrack() }
+        Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, GroundLook(mk.ground, 0.dp), other = null, ground))
         // Paid or ended on screen, the live sale turns into its page in place (M10): the code card closes into the
-        // page's hero circle and the page fades in over the code, the way back the same reversed ("Show the code again").
+        // page's hero circle, and the live sale's words fade out before the page's fade in, never two receipts at once
+        // (decision 131); the way back the same reversed ("Show the code again"). Per draw, never an offscreen layer.
         val m = motion
         AnimatedContent(
             targetState = sale.live,
-            transitionSpec = {
-                val change = if (m.still) fadeIn(m.fadeQuick.fraction) togetherWith fadeOut(m.fadeQuick.fraction)
-                else fadeIn(m.fade.fraction) togetherWith ExitTransition.KeepUntilTransitionsFinished
-                change.using(null)
-            },
+            modifier = Modifier.words(over = Move.RowGrow, through = Move.CodeGrow, alsoThrough = Move.OrderGrow, on = ground),
+            transitionSpec = { (EnterTransition.None togetherWith ExitTransition.KeepUntilTransitionsFinished).using(null) },
             label = "sale face",
         ) { live ->
+            val seen = transition.animateFloat(
+                { if (targetState == EnterExitState.Visible) m.fadeThrough.fraction else m.fadeQuick.fraction }, label = "sale face seen",
+            ) { if (it == EnterExitState.Visible) 1f else 0f }
             CompositionLocalProvider(LocalFace provides this) {
-                if (live) LiveSale(sale, location, now, actions) else SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions)
+                Box(
+                    Modifier.graphicsLayer {
+                        alpha = seen.value
+                        compositingStrategy = CompositingStrategy.ModulateAlpha
+                    },
+                ) {
+                    if (live) LiveSale(sale, location, now, actions) else SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions)
+                }
             }
         }
     }
 }
 
-/** The hero's corners: a circle of [HeroSize]. */
-private val HeroCorner get() = HeroSize / 2
+/** A circle's corners, as a share of its side. */
+private const val Circle = 0.5f
 
 /** A live sale full screen, for the customer to scan (SaleA); split in two on a wide window (decision 45). */
 @Composable
@@ -229,7 +248,8 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
     var asking by rememberSaveable(sale.orderId) { mutableStateOf(false) }
     val header = SaleHeader.of(sale, LocalPointOfSale.current, location)
     KeepScreenOn()
-    Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
+    // Its ground is the screen's (SaleScreen), so the page it turns into fades over one ground, not a second.
+    Surface(Modifier.fillMaxSize(), color = Color.Transparent, contentColor = mk.ink) {
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
             val wide = maxWidth >= 840.dp
             Column(Modifier.fillMaxSize()) {
@@ -284,10 +304,14 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
 }
 
 /** A card's corners: the order card, the order page's list. */
-internal val CardShape = RoundedCornerShape(20.dp)
+internal val CardCorner = 20.dp
+internal val CardShape = RoundedCornerShape(CardCorner)
 
 /** The sale's code on a phone: the design's 264 dp, whatever the order beside it. */
 private val CodeSide = 264.dp
+
+/** The code card's corners as a share of its side: what the hero's circle opens from, and closes back into. */
+internal val CodeCornerShare: Float get() = CodeCorner / CodeSide
 
 /** The phone layout's widest, the detail pages' (SaleDetail). */
 private val PhoneMaxWidth = 560.dp
@@ -333,7 +357,7 @@ private fun Amount(sale: TillSale, onCopyXmr: (TillSale) -> Unit, start: Boolean
 @Composable
 private fun Code(sale: TillSale, side: Dp, onEnlarge: () -> Unit) = Box(
     // Paid or ended, the card closes into the page's hero (M10).
-    Modifier.faceSurface(heroKey(sale.orderId), CodeCorner, HeroCorner)
+    Modifier.faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle)
         .clip(RoundedCornerShape(CodeCorner)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
 ) {
     QrCode(
@@ -404,10 +428,29 @@ private fun Buttons(sale: TillSale, header: SaleHeader, actions: TillActions) = 
 fun OrderCard(receipt: Receipt, pos: PointOfSale?, withTime: Boolean, onOpen: (() -> Unit)? = null, shared: String? = null) {
     val (lines, more) = if (onOpen != null) SaleText.shownLines(receipt) else receipt.lineItems to 0
     val open = onOpen.takeIf { more > 0 }
+    // On the sale, the card's ground grows into the order page's list (M7) while its three lines fade out and the
+    // page's whole list fades in, each at its own size (decisions 128, 131).
+    Box(Modifier.fillMaxWidth()) {
+        val look = GroundLook(mk.card, CardCorner)
+        val ground = remember { GroundTrack() }
+        Box(Modifier.matchParentSize().then(if (shared != null) Modifier.sharedGround(shared, Move.OrderGrow, look, look, ground) else Modifier.clip(CardShape).background(mk.card)))
+        OrderLines(receipt, pos, withTime, lines, more, open, if (shared != null) Modifier.words(over = Move.OrderGrow, on = ground) else Modifier)
+    }
+}
+
+@Composable
+private fun OrderLines(
+    receipt: Receipt,
+    pos: PointOfSale?,
+    withTime: Boolean,
+    lines: List<Receipt.LineItem>,
+    more: Int,
+    open: (() -> Unit)?,
+    modifier: Modifier,
+) {
     Column(
-        Modifier.fillMaxWidth()
-            .then(if (shared != null) Modifier.sharedSurface(shared, Move.OrderGrow, CardShape) else Modifier)
-            .clip(CardShape).background(mk.card)
+        Modifier.fillMaxWidth().then(modifier)
+            .clip(CardShape)
             .then(if (open != null) Modifier.clickable(onClickLabel = "See the whole order", onClick = open) else Modifier)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),

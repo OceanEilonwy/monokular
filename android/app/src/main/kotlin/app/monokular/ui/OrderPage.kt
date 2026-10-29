@@ -41,7 +41,13 @@ import app.monokular.PosText
 import app.monokular.SaleText
 import app.monokular.core.PointOfSale
 import app.monokular.Move
-import app.monokular.sharedSurface
+import app.monokular.GroundLook
+import app.monokular.GroundTrack
+import androidx.compose.runtime.remember
+import app.monokular.groundExcept
+import app.monokular.sharedGround
+import app.monokular.words
+import androidx.compose.ui.graphics.Color
 import app.monokular.receipt.Receipt
 import app.monokular.sales.TillSale
 import kotlinx.serialization.json.JsonObject
@@ -116,7 +122,8 @@ object OrderText {
 @Composable
 fun OrderPage(sale: TillSale, backLabel: String, onBack: () -> Unit, onShowCode: () -> Unit) {
     val now = rememberNowSeconds()
-    Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
+    // No ground of its own while it grows out of the sale's card: the sale's is under it, the same colour (decision 128).
+    Surface(Modifier.fillMaxSize().groundExcept(Move.OrderGrow, mk.ground), color = Color.Transparent, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
             // As wide as the app's other pages ([Page]), centred on a tablet or a wide window.
             OrderContent(sale, backLabel, onBack, onShowCode, Modifier.widthIn(max = 560.dp).fillMaxSize(), now)
@@ -140,8 +147,9 @@ fun OrderContent(
     now: LongState = rememberNowSeconds(),
 ) = Column(modifier) {
     val receipt = sale.receipt
+    // In the app the page's own parts fade in once the sale's have gone, at their own size, while the card grows.
     Row(
-        Modifier.fillMaxWidth().height(64.dp).padding(start = 4.dp, end = 16.dp),
+        Modifier.fillMaxWidth().words(through = Move.OrderGrow).height(64.dp).padding(start = 4.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -158,32 +166,39 @@ fun OrderContent(
         Muted("What was bought stays on the till that rang it up.", Modifier.padding(24.dp).weight(1f), size = 15)
     } else {
         Row(
-            Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
+            Modifier.fillMaxWidth().words(through = Move.OrderGrow).padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
             Text(SaleText.items(receipt), style = display(34, -0.6), modifier = Modifier.weight(1f).alignByBaseline())
             Text(OrderText.lines(receipt), fontSize = 15.sp, color = mk.muted, modifier = Modifier.alignByBaseline())
         }
-        Column(
-            // In the app, the sale's order card grows into this (M7); in the panel there's no stage and it's a card.
-            Modifier.weight(1f).padding(horizontal = 16.dp).fillMaxWidth()
-                .sharedSurface("order/${sale.orderId}", Move.OrderGrow, CardShape)
-                .clip(CardShape).background(mk.card)
-                .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
-        ) {
-            receipt.lineItems.forEach { item -> Line(item, receipt.currency) }
-            Total("Subtotal", SaleText.plain(OrderText.subtotal(receipt), receipt.currency), Modifier.padding(top = 12.dp, bottom = 4.dp))
-            OrderText.extras(receipt).forEach { (name, value) -> Total(name, value, Modifier.padding(vertical = 4.dp)) }
-            receipt.tax?.taxLines.orEmpty().forEach { tax ->
-                Total("Tax ${OrderText.rate(tax.rate)}", SaleText.plain(tax.taxAmount, receipt.currency), Modifier.padding(vertical = 4.dp))
-            }
-            Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 12.dp).semantics(mergeDescendants = true) {}) {
-                Text("Total", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-                Text(OrderText.total(receipt), fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            }
+        // In the app, the sale's order card's ground grows into this one (M7) and its lines fade in over it; in the panel
+        // there's no stage and it's a card.
+        Box(Modifier.weight(1f).padding(horizontal = 16.dp).fillMaxWidth()) {
+            val look = GroundLook(mk.card, CardCorner)
+            val ground = remember { GroundTrack() }
+            Box(Modifier.matchParentSize().sharedGround("order/${sale.orderId}", Move.OrderGrow, look, look, ground))
+            OrderList(receipt, Modifier.matchParentSize().words(over = Move.OrderGrow, on = ground).clip(CardShape))
         }
     }
-    ShowCodeBar(sale, now, onShowCode)
+    Box(Modifier.words(through = Move.OrderGrow)) { ShowCodeBar(sale, now, onShowCode) }
+}
+
+/** Every line of the order, its subtotal, extras, tax and total; they scroll. */
+@Composable
+private fun OrderList(receipt: Receipt, modifier: Modifier) {
+    Column(modifier.verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp)) {
+        receipt.lineItems.forEach { item -> Line(item, receipt.currency) }
+        Total("Subtotal", SaleText.plain(OrderText.subtotal(receipt), receipt.currency), Modifier.padding(top = 12.dp, bottom = 4.dp))
+        OrderText.extras(receipt).forEach { (name, value) -> Total(name, value, Modifier.padding(vertical = 4.dp)) }
+        receipt.tax?.taxLines.orEmpty().forEach { tax ->
+            Total("Tax ${OrderText.rate(tax.rate)}", SaleText.plain(tax.taxAmount, receipt.currency), Modifier.padding(vertical = 4.dp))
+        }
+        Row(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 12.dp).semantics(mergeDescendants = true) {}) {
+            Text("Total", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+            Text(OrderText.total(receipt), fontSize = 18.sp, fontWeight = FontWeight.Bold)
+        }
+    }
 }
 
 /** One line of the order: "2 ×", what it is (two lines at most), and its total, which never wraps. */
