@@ -3,8 +3,10 @@ package app.monokular.overlay
 import android.os.Build
 import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -61,11 +63,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -77,11 +81,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.constrainWidth
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import app.monokular.BubbleLook
 import app.monokular.PosText
@@ -117,6 +125,9 @@ sealed interface PanelPage {
     data object Code : PanelPage
     data object Order : PanelPage
 }
+
+/** What the panel's middle shows: the code, the paid tick, or where an ended sale's code was. */
+enum class PanelFace { Code, Paid, Ended }
 
 /** The panel's words and its grabber's rule: pure, so they're tested on the JVM. */
 object Panel {
@@ -178,6 +189,13 @@ object Panel {
         val x = if (!corner) from.x else if (from.x < card.center.x) card.left else card.right
         val y = if (!corner) from.y else if (from.y < card.center.y) card.top else card.bottom
         return TransformOrigin((x - card.left) / card.width, (y - card.top) / card.height)
+    }
+
+    /** What the panel shows for [sale]: its code while live, the tick once paid, else where the code was. */
+    fun face(sale: TillSale): PanelFace = when (sale.standing) {
+        is Standing.Live -> PanelFace.Code
+        is Standing.Paid -> PanelFace.Paid
+        else -> PanelFace.Ended
     }
 
     /** The header's second line before "Open the shift": the till's location for its own sale, else who took it. */
@@ -430,43 +448,113 @@ private fun Details(sale: TillSale, where: String, actions: PanelActions, oneLin
     if (receipt != null && receipt.lineItems.isNotEmpty()) OrderLine(SaleText.items(receipt), SaleText.firstItems(receipt), oneLine, actions.onOrder)
 }
 
-/** The code and its status while live; the tick once paid; else where the code was. */
+/**
+ * The code and its status while live; the tick once paid; else where the
+ * code was. One place for all three (`docs/motion.md` M5): paid or ended,
+ * the white card scales down into the 88 dp circle at the same centre and
+ * fades under it, the slot's height following; the next sale's code grows
+ * back out of it. The code is laid out once at its full size and only its
+ * layer scales, so it is never re-laid out; at rest it is exactly its
+ * designed size. Everything that moves is read in layout or draw.
+ */
 @Composable
-private fun Face(sale: TillSale, wide: Boolean) = when (sale.standing) {
-    is Standing.Live -> {
-        // The same size whatever else the panel shows: the cashier's eye and the customer's camera find it where it was.
+private fun Face(sale: TillSale, wide: Boolean) {
+    val m = motion
+    val face = Panel.face(sale)
+    val live = face == PanelFace.Code
+    val codeSize = if (wide) 280.dp else 264.dp
+    val fold by animateFloatAsState(if (live) 0f else 1f, m.surface.fraction, label = "fold")
+    val codeAlpha by animateFloatAsState(if (live) 1f else 0f, (if (live) m.fade else m.fadeQuick).fraction, label = "code")
+    val heroAlpha by animateFloatAsState(if (live) 0f else 1f, (if (live) m.fadeQuick else m.fade).fraction, label = "hero")
+    // The last face the code folded into, kept while the next code grows out of it.
+    val folded = remember { arrayOfNulls<TillSale>(1) }
+    if (!live) folded[0] = sale
+    Box(
+        Modifier.layout { measurable, constraints ->
+            val full = codeSize.roundToPx()
+            val placeable = measurable.measure(Constraints.fixed(full, full))
+            val height = lerp(full.toFloat(), HeroSize.toPx(), fold).roundToInt()
+            layout(constraints.constrainWidth(full), height) { placeable.place((constraints.constrainWidth(full) - full) / 2, (height - full) / 2) }
+        },
+        contentAlignment = Alignment.Center,
+    ) {
+        folded[0]?.let { last ->
+            Box(Modifier.graphicsLayer { alpha = heroAlpha }, contentAlignment = Alignment.Center) {
+                if (Panel.face(last) == PanelFace.Paid) PaidHero(HeroSize) else EndedHero(last)
+            }
+        }
         QrCode(
             sale.code.uri,
             "Payment code for ${SaleText.amount(sale)}",
-            Modifier.size(if (wide) 280.dp else 264.dp),
+            Modifier.size(codeSize)
+                .graphicsLayer {
+                    val scale = lerp(1f, HeroSize / codeSize, fold)
+                    scaleX = scale
+                    scaleY = scale
+                    alpha = codeAlpha
+                }
+                .testTag(CODE_TAG)
+                .then(if (live) Modifier else Modifier.clearAndSetSemantics {}),
             padding = 16.dp,
             radius = if (wide) 30.dp else 28.dp,
         )
-        StatusRow(sale)
     }
-    is Standing.Paid -> {
-        PaidHero(88.dp)
-        Text(
-            SaleText.status(sale, posOf(sale)), style = display(28), textAlign = TextAlign.Center,
-            modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
-        )
-        Text("${SaleText.xmr(sale)} received", fontSize = 15.sp, color = mk.muted)
-    }
-    else -> Ended(sale)
-}
-
-@Composable
-private fun Buttons(sale: TillSale, actions: PanelActions) =
-    Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        when {
-            sale.phase == SalePhase.Paid -> PrimaryButton("Done", actions.onLower, Modifier.weight(1f), height = 48.dp, size = 15)
-            sale.live -> {
-                OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), size = 15)
-                PrimaryButton("Full screen", { actions.onFullScreen(sale) }, Modifier.weight(1f), height = 48.dp, size = 15)
+    AnimatedContent(
+        face,
+        transitionSpec = { fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction) using SizeTransform { _, _ -> m.settle.spec(IntSize.VisibilityThreshold) } },
+        contentAlignment = Alignment.TopCenter,
+        label = "words",
+    ) { shown ->
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            when (shown) {
+                PanelFace.Code -> StatusRow(sale)
+                PanelFace.Paid -> {
+                    Text(
+                        SaleText.status(sale, posOf(sale)), style = display(28), textAlign = TextAlign.Center,
+                        modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
+                    )
+                    Text("${SaleText.xmr(sale)} received", fontSize = 15.sp, color = mk.muted)
+                }
+                PanelFace.Ended -> {
+                    Text(
+                        Panel.endedHeading(sale, posOf(sale)), style = display(26), textAlign = TextAlign.Center,
+                        modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
+                    )
+                    Text(Panel.endedLine(sale, posOf(sale)), fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center)
+                }
             }
-            else -> PrimaryButton("Open the shift", actions.onOpenShift, Modifier.weight(1f), height = 48.dp, size = 15)
         }
     }
+}
+
+/** The panel's code, for the tests that hold it to its size. */
+const val CODE_TAG = "panel-code"
+
+/** The paid tick's and the ended circle's size, which the code folds into. */
+private val HeroSize = 88.dp
+
+/** Two buttons while the code is up, one once it's paid or ended: the row crossfades, its height the same. */
+@Composable
+private fun Buttons(sale: TillSale, actions: PanelActions) {
+    val m = motion
+    AnimatedContent(
+        Panel.face(sale),
+        Modifier.fillMaxWidth().padding(top = 4.dp),
+        transitionSpec = { (fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
+        label = "buttons",
+    ) { shown ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            when (shown) {
+                PanelFace.Paid -> PrimaryButton("Done", actions.onLower, Modifier.weight(1f), height = 48.dp, size = 15)
+                PanelFace.Code -> {
+                    OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), size = 15)
+                    PrimaryButton("Full screen", { actions.onFullScreen(sale) }, Modifier.weight(1f), height = 48.dp, size = 15)
+                }
+                PanelFace.Ended -> PrimaryButton("Open the shift", actions.onOpenShift, Modifier.weight(1f), height = 48.dp, size = 15)
+            }
+        }
+    }
+}
 
 /**
  * The pill at the panel's top: drag it down to lower the panel, or tap it.
@@ -563,20 +651,15 @@ private fun PaidHero(size: Dp, ground: Color = mk.paidGround, tint: Color = mk.p
 
 /** Where the code was, for a sale that stopped being live while the panel was up. */
 @Composable
-private fun Ended(sale: TillSale) {
+private fun EndedHero(sale: TillSale) {
     val (ground, tint, icon) = when {
         sale.refunded -> Triple(mk.chip, mk.ink, MkIcons.Refund)
         sale.phase == SalePhase.DoubleSpend -> Triple(mk.dangerGround, mk.danger, MkIcons.Warning)
         else -> Triple(mk.warnGround, mk.warn, MkIcons.Clock)
     }
-    Box(Modifier.size(88.dp).clip(CircleShape).background(ground), contentAlignment = Alignment.Center) {
+    Box(Modifier.size(HeroSize).clip(CircleShape).background(ground), contentAlignment = Alignment.Center) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(44.dp))
     }
-    Text(
-        Panel.endedHeading(sale, posOf(sale)), style = display(26), textAlign = TextAlign.Center,
-        modifier = Modifier.semantics { heading(); liveRegion = LiveRegionMode.Polite },
-    )
-    Text(Panel.endedLine(sale, posOf(sale)), fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center)
 }
 
 /**
@@ -587,16 +670,30 @@ private fun Ended(sale: TillSale) {
  */
 @Composable
 fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage, actions: PanelActions, motion: PanelMotion) {
-    if (page == PanelPage.Order) {
-        SideEffect { motion.undocked = true }
-        CompositionLocalProvider(LocalContentColor provides mk.ink) {
-            OrderContent(
-                sale, "Back to the code", actions.onBackToCode, actions.onBackToCode,
-                Modifier.fillMaxSize().grows(motion, wide = false).background(mk.ground).safeDrawingPadding().semantics { paneTitle = "The order" },
-            )
+    // The order and the code crossfade (M5): the docked bubble goes with the code, as the order fills the window.
+    val m = app.monokular.ui.motion
+    AnimatedContent(
+        page,
+        transitionSpec = { (fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
+        label = "page",
+    ) { shown ->
+        if (shown == PanelPage.Order) {
+            SideEffect { motion.undocked = true }
+            CompositionLocalProvider(LocalContentColor provides mk.ink) {
+                OrderContent(
+                    sale, "Back to the code", actions.onBackToCode, actions.onBackToCode,
+                    Modifier.fillMaxSize().grows(motion, wide = false).background(mk.ground).safeDrawingPadding()
+                        .semantics { paneTitle = "The order" },
+                )
+            }
+        } else {
+            PhoneCode(sale, where, look, actions, motion)
         }
-        return
     }
+}
+
+@Composable
+private fun PhoneCode(sale: TillSale, where: String, look: BubbleLook, actions: PanelActions, motion: PanelMotion) {
     SideEffect { motion.undocked = false }
     val lower by rememberUpdatedState(actions.onLower)
     val bubble = @Composable {
@@ -653,17 +750,28 @@ fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage,
 fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: PanelActions, motion: PanelMotion) = Box(
     Modifier.padding(24.dp).grows(motion, wide = true),
 ) {
-    if (page == PanelPage.Order) {
-        CompositionLocalProvider(LocalContentColor provides mk.ink) {
-            OrderContent(
-                sale, "Back to the code", actions.onBackToCode, actions.onBackToCode,
-                Modifier.width(360.dp).heightIn(max = 640.dp)
-                    .shadow(16.dp, RoundedCornerShape(32.dp)).clip(RoundedCornerShape(32.dp)).background(mk.ground)
-                    .semantics { paneTitle = "The order" },
-            )
+    // The order takes the card's place (M5): the content crossfades and the card's height settles to the new one.
+    val m = app.monokular.ui.motion
+    AnimatedContent(
+        page,
+        transitionSpec = {
+            fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction) using
+                SizeTransform(clip = false) { _, _ -> m.surface.spec(IntSize.VisibilityThreshold) }
+        },
+        label = "page",
+    ) { shown ->
+        if (shown == PanelPage.Order) {
+            CompositionLocalProvider(LocalContentColor provides mk.ink) {
+                OrderContent(
+                    sale, "Back to the code", actions.onBackToCode, actions.onBackToCode,
+                    Modifier.width(360.dp).heightIn(max = 640.dp)
+                        .shadow(16.dp, RoundedCornerShape(32.dp)).clip(RoundedCornerShape(32.dp)).background(mk.ground)
+                        .semantics { paneTitle = "The order" },
+                )
+            }
+        } else {
+            SalePanel(sale, where, wide = true, actions, motion.raise)
         }
-    } else {
-        SalePanel(sale, where, wide = true, actions, motion.raise)
     }
 }
 

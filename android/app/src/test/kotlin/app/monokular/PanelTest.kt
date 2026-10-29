@@ -14,6 +14,7 @@ import app.monokular.overlay.PaidMoment
 import app.monokular.overlay.PaidMoments
 import app.monokular.overlay.PaidStep
 import app.monokular.overlay.Panel
+import app.monokular.overlay.PanelFace
 import app.monokular.overlay.WindowAct
 import app.monokular.overlay.WindowEvent
 import app.monokular.overlay.Windows
@@ -226,5 +227,15 @@ class PanelTest {
         assertEquals(PaidStep(PaidMoment.Held), PaidMoments.next(PaidMoment.Lowering, PaidEvent.Paid, panelUp = false, nextWaiting = false), "another payment mid-collapse: green again")
         assertEquals(PaidStep(PaidMoment.None), PaidMoments.next(PaidMoment.None, PaidEvent.ExitLanded, panelUp = false, nextWaiting = false), "a collapse with nothing paid")
         assertEquals(PaidStep(PaidMoment.None), PaidMoments.next(PaidMoment.None, PaidEvent.Lowered, panelUp = true, nextWaiting = false))
+    }
+
+    @Test
+    fun `the panel shows the code while live, the tick once paid, and where the code was once it ended`() {
+        assertEquals(PanelFace.Code, Panel.face(sale(SalePhase.Waiting)))
+        assertEquals(PanelFace.Code, Panel.face(sale(SalePhase.Confirming)))
+        assertEquals(PanelFace.Paid, Panel.face(sale(SalePhase.Paid)))
+        assertEquals(PanelFace.Ended, Panel.face(sale(SalePhase.Expired)))
+        assertEquals(PanelFace.Ended, Panel.face(sale(SalePhase.DoubleSpend)))
+        assertEquals(PanelFace.Ended, Panel.face(sale(SalePhase.Expired, refundedAt = 9)))
     }
 }
