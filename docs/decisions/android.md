@@ -1349,3 +1349,27 @@ design unchanged.
     within the frame; the RowGrow and CodeGrow pairs keep their
     no-fade rule (105). A device test checks the frame at progress 0 is
     the sale itself.
+118. **A sale paid on screen closes its code into the page's hero, and a
+    payment is one buzz from the surface the cashier is looking at**
+    (dev2, round 2; M10, M9's app half, §6). `SaleScreen` is one
+    `AnimatedContent` over `sale.live`: the page fades in over the live
+    sale (which stays under it, no second alpha layer), and the code
+    card is a `faceSurface` with the page's 72 dp hero: its bounds close
+    on `Motion.surface`, scaled as one layer, the QR fading under
+    `fadeQuick` while the tick fades in, the clip's corners going from
+    the card's 32 dp to the circle's on the same spring (one reused
+    path, nothing allocated a frame). "Show the code again" is the same
+    move reversed, and a change mid-morph retargets. The hero is also
+    `badge/<id>`, a surface during `RowGrow`, so the paid page stepping
+    back after the dwell shrinks its hero into the row's badge, and a
+    paid row opened from the shift grows its badge into the hero. The
+    amount crossfades rather than moving as its own element: one more
+    shared element for a number the cashier has already read. The buzz:
+    `PaidBuzz.by(appVisible)` names one surface, the app when it is on
+    screen, else the bubble; the view model emits when a payment lands
+    (a sale live at the last look is paid now) and the activity buzzes
+    only while started, and the bubble's `Confirm` buzzes only when the
+    rule says bubble, so a bubble still leaving as the app comes up
+    doesn't buzz a second time (a two-line change in dev1's `Faces.kt`).
+    `leave()` cancels the paid step-back, so Back during the dwell is
+    the only step back.

@@ -3,7 +3,14 @@ package app.monokular
 import android.graphics.Bitmap
 import android.os.Environment
 import androidx.compose.animation.core.SeekableTransitionState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithText
+import app.monokular.core.SalePhase
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
@@ -122,6 +129,36 @@ class MotionFramesTest {
         for (y in 0 until sale.height step 4) for (x in 0 until sale.width step 4) if (sale.getPixel(x, y) != start.getPixel(x, y)) differ++
         val total = (sale.height / 4) * (sale.width / 4)
         assertTrue(differ * 200 < total, "at 0 the page's bar, heading and foot are unseen and the card is the sale's own: $differ of $total differ")
+    }
+
+    @Test
+    fun aSalePaidOnScreenClosesItsCodeIntoTheHero() {
+        var shown by mutableStateOf(sale)
+        compose.setContent {
+            Till {
+                TillStage(SeekableTransitionState(Screen.Sale("a1")), cameUpByItself = { false }) {
+                    SaleScreen(shown, "Front", refunding = false, refundProblem = null, actions = noActions, now = now)
+                }
+            }
+        }
+        compose.waitForIdle()
+        val card = bounds("Payment code for")
+        compose.mainClock.autoAdvance = false
+        shown = sale.copy(phase = SalePhase.Paid, paidAt = 1_100)
+        compose.mainClock.advanceTimeByFrame()
+        val widths = mutableListOf<Float>()
+        var at = 0L
+        for (ms in listOf(60L, 120L, 240L, 300L, 360L)) {
+            compose.mainClock.advanceTimeBy(ms - at)
+            at = ms
+            save(compose.onRoot().captureToImage(), "paid-fold-$ms")
+            widths += bounds("Payment code for").width
+        }
+        assertTrue(widths[0] < card.width && widths[2] < widths[0], "the code closes with its card toward the hero: ${card.width} -> $widths")
+        compose.mainClock.advanceTimeBy(1_000)
+        save(compose.onRoot().captureToImage(), "paid-fold-rest")
+        compose.onAllNodesWithContentDescription("Payment code for", substring = true, useUnmergedTree = true).assertCountEquals(0)
+        assertTrue(compose.onAllNodesWithText("Paid", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty(), "the page says Paid")
     }
 
     /** The code drawn whole: a ring of pure white just outside its edges on every side, so nothing overlaps or crops it. */

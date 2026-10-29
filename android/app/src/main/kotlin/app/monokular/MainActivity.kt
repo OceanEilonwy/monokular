@@ -22,7 +22,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalView
 import androidx.core.net.toUri
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
+import app.monokular.ui.confirm
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.monokular.notify.SaleNotifications
 import app.monokular.sales.TillSale
@@ -84,6 +89,7 @@ class MainActivity : ComponentActivity() {
                 // Re-read on every bump of `resumed`, which onMultiWindowModeChanged makes, so the till's actions follow it.
                 val multiWindow = isInMultiWindowMode
                 val actions = remember(multiWindow) { tillActions(multiWindow) }
+                PaidBuzz()
                 val stage = remember { SeekableTransitionState(screen) }
                 val m = motion
                 LaunchedEffect(screen) { stage.animateTo(screen, m.stage) }
@@ -101,6 +107,16 @@ class MainActivity : ComponentActivity() {
                     }
                 }
             }
+        }
+    }
+
+    /** One confirming buzz when a payment lands with the app on screen (`docs/motion.md` §6); collected only while it is. */
+    @Composable
+    private fun PaidBuzz() {
+        val view = LocalView.current
+        val lifecycle = LocalLifecycleOwner.current.lifecycle
+        LaunchedEffect(view, lifecycle) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) { model.paidBuzz.collect { view.confirm() } }
         }
     }
 

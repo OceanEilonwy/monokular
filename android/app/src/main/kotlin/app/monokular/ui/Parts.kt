@@ -294,3 +294,8 @@ fun Notice(text: String?, modifier: Modifier = Modifier) {
 /** Splits [content] across two panes when the window is wide (a tablet, or a wide free-form window). */
 @Composable
 fun Adaptive(wide: @Composable (Boolean) -> Unit) = BoxWithConstraints { wide(maxWidth >= 840.dp) }
+
+/** The one confirming buzz a payment gets (`docs/motion.md` §6); the system's haptic settings apply. */
+fun android.view.View.confirm() {
+    performHapticFeedback(if (android.os.Build.VERSION.SDK_INT >= 30) android.view.HapticFeedbackConstants.CONFIRM else android.view.HapticFeedbackConstants.CONTEXT_CLICK)
+}
