@@ -2792,3 +2792,20 @@ design unchanged.
     of the lead's first-enlarge suspects (a window-sized fill nine
     windows large through a path clip); the frame table says whether it
     was.
+161. **The leaving surfaces' alpha-1 exits stay, with what is known of
+    them written down** (dev2, round 4; review minor). `sharedGround`,
+    `sharedSurface` and `faceSurface` exit with `fadeOut(targetAlpha =
+    1f)`, which changes nothing a frame shows; the review asked for the
+    Compose behaviour it works around to be named. It could not be
+    shown: on Compose animation 1.12.1 under `TillStage`, with
+    `ExitTransition.None` in `sharedGround`, every one of
+    `RunningMovesTest`'s 20 checks and `MotionFramesTest`'s 19 still
+    passed on 5556, the row's ground still given a shape at 50 % and 75 %
+    of its grow. The screens' own `KeepUntilTransitionsFinished` appears
+    to be what keeps the leaving side. The exits stay (removing them is a
+    change to every shared surface for no frame gained, and the real
+    app's first frames have already behaved unlike the test clock's:
+    157); the comments say what is and is not known, and
+    `theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow` guards the
+    result, not the mechanism: it fails if the leaving ground stops being
+    drawn mid-grow, however that comes about.
