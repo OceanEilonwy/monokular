@@ -101,7 +101,9 @@ class Overlay(
     /** The last usable and open shown, shown again when the configuration changes. */
     private var showing: Pair<Boolean, Boolean>? = null
     private var job: Job? = null
-    private var paidTimer: Job? = null
+    /** Where the last payment's moment is (M9): one dwell, ended early by Done, its end the panel's collapse landing. */
+    private var moment = PaidMoment.None
+    private var dwell: Job? = null
     private var focus: String? = null
     /** Whether [focus] was live at the last look, to see it turn paid. */
     private var focusLive = false
@@ -135,7 +137,8 @@ class Overlay(
 
     fun stop() {
         job?.cancel()
-        paidTimer?.cancel()
+        dwell?.cancel()
+        moment = PaidMoment.None
         // The service is going: no exits to wait for.
         bubble?.let { runCatching { wm.removeViewImmediate(it) } }
         panel?.let { runCatching { wm.removeViewImmediate(it) } }
@@ -147,14 +150,34 @@ class Overlay(
         owner.stop()
     }
 
-    /** A sale was just paid: the bubble is green, and the panel shows it paid, for a few seconds. */
-    fun paid() {
-        paidTimer?.cancel()
-        justPaid.value = true
-        paidTimer = scope.launch {
-            delay(Motion.Dwell.PAID_MS)
-            justPaid.value = false
+    /**
+     * A sale was just paid: the bubble is green and the panel shows it paid
+     * for [Motion.Dwell.PAID_MS], then the panel collapses into the green
+     * bubble, which goes back to lit or idle once the collapse has landed;
+     * with another sale waiting, the panel moves on to it instead.
+     */
+    fun paid() = moment(PaidEvent.Paid)
+
+    /** Moves the paid moment on by [event]: the one dwell, the bubble's green, and the collapse at its end. */
+    private fun moment(event: PaidEvent) {
+        val step = PaidMoments.next(
+            moment, event,
+            panelUp = windows.panel == Life.Up,
+            nextWaiting = graph.runner.state.value.till.sales.any { it.live },
+        )
+        moment = step.moment
+        if (event == PaidEvent.Paid) {
+            dwell?.cancel()
+            // The overlay's one timer: the panel's own went with it.
+            dwell = scope.launch {
+                delay(Motion.Dwell.PAID_MS)
+                moment(PaidEvent.DwellEnded)
+            }
+        } else if (moment != PaidMoment.Held) {
+            dwell?.cancel()
         }
+        justPaid.value = moment.paid
+        if (step.lower) lower()
     }
 
     /** The notification's "Show code": opens the panel; false when the overlay can't be shown. */
@@ -194,8 +217,15 @@ class Overlay(
                 WindowAct.AddPanel -> addPanel(windows.wide, open = false)
                 WindowAct.AddPanelOpen -> addPanel(windows.wide, open = true)
                 WindowAct.OpenPanel -> panelMotion?.raise?.enter()
-                WindowAct.ClosePanel -> panelMotion?.raise?.exit(flung) { on(WindowEvent.PanelLanded) }
-                WindowAct.RemovePanel -> removePanel()
+                WindowAct.ClosePanel -> panelMotion?.raise?.exit(flung) {
+                    on(WindowEvent.PanelLanded)
+                    // The paid moment ends where the collapse lands: the green bubble fades from here.
+                    moment(PaidEvent.ExitLanded)
+                }
+                WindowAct.RemovePanel -> {
+                    removePanel()
+                    moment(PaidEvent.ExitLanded)
+                }
             }
         }
         flung = null
@@ -209,6 +239,8 @@ class Overlay(
 
     /** Lowers the panel to the bubble, its code face up for next time. */
     private fun lower() {
+        // Done, the grabber or a tap beside the panel during the dwell ends it with the same collapse.
+        if (windows.panel == Life.Up) moment(PaidEvent.Lowered)
         panelOpen.value = false
         page.value = PanelPage.Code
     }
