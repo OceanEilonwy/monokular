@@ -1907,3 +1907,38 @@ design unchanged.
      (+1.3 MB over ten more round trips): on SwiftShader the transition's
      layers are native memory. Both are to be measured on a device before
      anything is changed for them.
+108. **Round 1 is integrated by rebase, dev1 first, and the screens track's
+    decisions are renumbered 103–107** (lead). Both tracks wrote decisions
+    from 100 in their own worktrees; the integration branch keeps dev1's
+    100–102 as written (its code comments cite them) and carries dev2's
+    five after them, so dev2's "100" is 103, its "104" is 107. Nothing
+    else conflicted: the two tracks touched no file in common.
+109. **The tablet's free bubble stops pulsing while the panel is up beside
+    it** (lead, review of O3; refines 92's pulse rule). `Panel.pulses`
+    already said "not with the panel up", but every free bubble was handed
+    `panelUp = false`: on a phone that bubble is gone while the panel is up,
+    on a tablet it stays beside the floating panel and redrew its window
+    every frame for as long as the cashier read the panel. The bubble's
+    window now collects the overlay's `panelOpen` and passes it to
+    `BubbleFace(panelUp)`; the docked bubble's `pulse = false` is the same
+    rule from the other side. A device test holds a Lit, Waiting bubble with
+    the panel up to no halo.
+110. **An overlay window's coroutines end with the window** (lead, review
+    of O6). `BubbleFrame`'s edge snap runs in the overlay's scope (it moves
+    the window's own layout params, which the window's composition can't
+    outlive), so a bubble removed mid-snap kept animating a detached view,
+    one caught exception a frame, until the spring landed. The frame
+    cancels its snap and recycles its velocity tracker in
+    `onDetachedFromWindow`. The rule for the rest of `overlay/`: a job that
+    moves a window is cancelled where the window goes, and anything in a
+    `Presence` already dies with its composition.
+111. **After numbers come from before and after run alternately on one
+    emulator in one session** (lead, measurement). The host's load ran
+    from 20 to 170 during the round (three other emulators, Gradle, a Rust
+    build), so a number taken at one hour against the baseline's taken at
+    another says nothing. `ab.sh` installs the baseline's debug build and
+    the integrated one in turn over the same data and runs the same flow
+    twice each; the pair under the same load is what the verdict rests on,
+    and the baseline's files are left as they were. A flow that draws more
+    frames because it now animates (a grow where there was a cut) is read
+    by its per-frame cost and its longest frame, not by its frame count.
