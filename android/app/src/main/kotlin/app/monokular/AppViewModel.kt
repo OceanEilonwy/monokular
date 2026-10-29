@@ -135,14 +135,16 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         if (!stores.shiftOn) graph.runner.showSaved()
         // Signed in to Clover: what its card and Settings say about the payment type. An app start
         // re-finds the Monero tender in Clover, or adds it if it's missing; a refusal is shown and
-        // only Look again asks once more, never a timer (decision 129).
+        // only Look again asks once more, never a timer (decision 129). A look that fails (Clover
+        // refusing, unreachable or answering something unreadable) leaves the card as it was until
+        // Look again; cancellation still ends it.
         if (stores.pointOfSale == PointOfSale.Clover) stores.cloverMerchant?.let { merchant ->
             viewModelScope.launch {
                 tenderState.value = try {
                     graph.cloverSource(merchant).ensureTender()
                 } catch (e: CancellationException) {
                     throw e
-                } catch (_: PosException) {
+                } catch (_: Exception) {
                     null
                 }
             }
@@ -314,8 +316,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * A point of sale tapped, in step 4 or Settings: saved at once; choosing the one chosen
-     * changes nothing; choosing another while signed in to the first takes the Bell's
-     * registration back and signs out of it first ([PosSwitch], acceptance D6).
+     * changes nothing; choosing another keeps the shift's sales named by the old point of sale,
+     * takes the Bell's registration back when the old one is still signed in, and signs out of
+     * the old one whether or not its sign-in had already ended, before the new one's sign-in
+     * ([PosSwitch], acceptance D6, decision 138).
      */
     fun choosePointOfSale(pos: PointOfSale) = work {
         val from = stores.pointOfSale
