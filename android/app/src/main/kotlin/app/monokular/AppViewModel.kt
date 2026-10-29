@@ -342,17 +342,20 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Forgets the sign-in to [pos] on this device: its tokens, its location or merchant, and the
-     * remembered tender id (acceptance T1.4); a change of point of sale forgets its cursor too.
+     * Forgets the sign-in to [pos] on this device: its tokens, the application they came through
+     * when it was a Bell's (decision 146), its location or merchant, and the remembered tender id
+     * (acceptance T1.4); a change of point of sale forgets its cursor too.
      */
     private fun signOutHere(pos: PointOfSale) {
         when (pos) {
             PointOfSale.Square -> {
                 graph.squareAuth().signOut()
+                stores.squareApplicationId = null
                 stores.location = null
             }
             PointOfSale.Clover -> {
                 graph.cloverAuth().signOut()
+                stores.cloverApplicationId = null
                 stores.cloverMerchant?.let { stores.tenders.save(it.id, null) }
                 stores.cloverMerchant = null
                 tenderState.value = null

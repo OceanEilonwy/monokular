@@ -1559,3 +1559,29 @@ says otherwise.
      [clover-refunded](../screenshots/android/clover-refunded.png)) and
      Settings after changing to Square
      ([settings-pos-square](../screenshots/android/settings-pos-square.png)).
+145. **An item sold by measure counts as one item.** The heads-up
+     notification, the sale's order card and the order page count what was
+     bought from the receipt (decision 63: "15 items"). The count added
+     every line's quantity and rounded, which Square's whole quantities
+     never showed; Clover's measured lines did, and "2 × Flat white,
+     2.5 × Granola" read "5 items". A whole quantity now counts as that many
+     items and a quantity that isn't whole as one, whatever it measures, so
+     the same order reads "3 items": what the customer takes away. A
+     measured quantity that happens to be whole (2.000 kg) counts as two,
+     since a receipt line carries no unit; recorded rather than worth a
+     field. `OrderText.lines` ("8 lines") is unchanged. (QA round 2.)
+146. **A sign-out forgets the application the sign-in went through.**
+     `Stores.squareApplicationId` and `cloverApplicationId` (decisions 96,
+     132) exist for the tokens: a refresh goes to the application that
+     issued them, so the id must live exactly as long as they do. Only
+     `forgetAll` cleared them, so after signing in through another Bell's
+     application, changing Wake-ups back to the project's Bell and signing
+     out of the point of sale, the plain "Sign in to Clover" went through
+     the other Bell's application again and the project's Bell asked for a
+     sign-in a second time. `signOutHere` now forgets the id with the tokens
+     (a change of point of sale and Settings' "Sign out of …" both go
+     through it), so the next plain sign-in is through the build's own
+     application, or the one the chosen Bell's row asks for. Changing the
+     Bell choice alone leaves the id, as the tokens it refreshes are still
+     in use; that Bell's status says "Sign in needed" until the sign-in
+     through its row. (QA round 2.)

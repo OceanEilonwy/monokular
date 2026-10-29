@@ -17,7 +17,6 @@ import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
 import java.util.Currency
 import java.util.Locale
-import kotlin.math.roundToInt
 
 /** How a sale is named and described everywhere it's shown: the app, the bubble and the notification. */
 object SaleText {
@@ -94,13 +93,17 @@ object SaleText {
     /** "1:05" from seconds. */
     fun clock(seconds: Long): String = "${seconds / 60}:${"%02d".format(seconds % 60)}"
 
-    /** "15 items" or "1 item": the receipt's quantities added up. */
+    /**
+     * "15 items" or "1 item": the receipt's whole quantities added up, and a line sold by measure
+     * (2.5 × Granola) one item however much of it, so "2 × Flat white, 2.5 × Granola" is "3 items",
+     * what the customer takes away (decision 145).
+     */
     fun items(receipt: Receipt): String {
         val n = itemCount(receipt)
         return if (n == 1) "1 item" else "$n items"
     }
 
-    fun itemCount(receipt: Receipt): Int = receipt.lineItems.sumOf { it.quantity }.roundToInt()
+    fun itemCount(receipt: Receipt): Int = receipt.lineItems.sumOf { if (it.quantity % 1.0 == 0.0) it.quantity.toInt() else 1 }
 
     /** "2 × Flat white, Oat latte, 3 × Almond croissant, +5 more": the first [show] lines, and how many more there are. */
     fun firstItems(receipt: Receipt, show: Int = 3): String {

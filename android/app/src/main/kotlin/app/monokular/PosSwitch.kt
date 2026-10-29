@@ -10,7 +10,7 @@ interface PosSwitchSide {
     /** The Bell's registration taken back, awaited, while the old sign-in is still here (acceptance T5.5). */
     suspend fun takeBellRegistrationBack()
 
-    /** Signed out of [pos]: its tokens, its location or merchant and its remembered tender id forgotten. */
+    /** Signed out of [pos]: its tokens, the application they came through, its location or merchant and its remembered tender id forgotten. */
     fun signOut(pos: PointOfSale)
 
     /** Where [pos]'s search for sales had got to forgotten, so a sign-in to it later starts from then. */

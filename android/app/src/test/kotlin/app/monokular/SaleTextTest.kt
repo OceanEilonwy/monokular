@@ -105,7 +105,8 @@ class SaleTextTest {
 
     @Test
     fun `what was bought is counted and listed from the on-device receipt`() {
-        assertEquals("9 items", SaleText.items(receipt), "quantities add up, by weight rounded")
+        assertEquals("8 items", SaleText.items(receipt), "whole quantities add up; the 1.5 of beans by weight is one item")
+        assertEquals("3 items", SaleText.items(receipt.copy(lineItems = listOf(receipt.lineItems[0], Receipt.LineItem("Granola", 2.5, 2.0, 5.0)))), "2 × Flat white and 2.5 × Granola: never '5 items'")
         assertEquals("1 item", SaleText.items(receipt.copy(lineItems = receipt.lineItems.take(1).map { it.copy(quantity = 1.0) })))
         assertEquals("2 × Flat white, Oat latte, 3 × Almond croissant, +2 more", SaleText.firstItems(receipt))
         assertEquals("2 × Flat white, Oat latte", SaleText.firstItems(receipt.copy(lineItems = receipt.lineItems.take(2))), "no '+0 more'")
