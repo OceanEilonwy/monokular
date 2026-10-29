@@ -211,7 +211,33 @@ class RunningMovesTest {
             r != null && f.hero?.overlaps(r) != true && ink(f.bitmap, r) && changed(f.bitmap, before, r)
         }?.index
         if (halfway != null && firstWords != null && firstWords < halfway) failures += "the page's words show at f$firstWords, before the hero is halfway at f$halfway"
+        failures += foldKeepsItsSurface(path.map { it.first }, rest, dark)
         report("paid-fold-${theme(dark)}", frames, failures)
+    }
+
+    /**
+     * The fold is one surface closing from the card into the hero (decision 168): the hero is drawn at three or more
+     * sizes on its way, and in the dark theme, where the card's white, the hero's ground and the screen's are three
+     * different lights, inside the hero's bounds there is never the screen's ground showing through on any frame
+     * (the card's white gone before the hero came in).
+     */
+    private fun foldKeepsItsSurface(frames: List<RunningMoves.Frame>, rest: androidx.compose.ui.geometry.Offset, dark: Boolean): List<String> {
+        val moving = frames.filter { f -> f.hero!!.center.let { hypot(it.x - rest.x, it.y - rest.y) } > NEAR }
+        val sizes = moving.map { it.hero!!.width.toInt() }.distinct()
+        val out = mutableListOf<String>()
+        if (sizes.size < 3) out += "the hero is drawn at ${sizes.size} sizes between the card and its place: $sizes"
+        if (!dark) return out
+        for (f in moving) {
+            val h = f.hero!!
+            // Just inside each side's middle: the card's quiet zone (white, never a module) and inside the hero's circle.
+            val i = maxOf(2f, h.width * 0.03f)
+            val points = listOf(h.left + i to h.center.y, h.right - i to h.center.y, h.center.x to h.top + i, h.center.x to h.bottom - i)
+            for ((x, y) in points) {
+                if (x.toInt() !in 0 until f.bitmap.width || y.toInt() !in 0 until f.bitmap.height) continue
+                if (lum(f.bitmap.getPixel(x.toInt(), y.toInt())) < SCREEN_GROUND_DARK) out += "f${f.index}: the screen's ground shows inside the folding card at ($x, $y)"
+            }
+        }
+        return out
     }
 
     /** Every check a running [move] keeps, on each of its [frames]. */
@@ -528,6 +554,9 @@ class RunningMovesTest {
 
         /** How far off a ground's edge a glyph's ink is looked for: the ground's own edge is a contrast too. */
         const val EDGE = 3f
+
+        /** Darker than the dark theme's paid ground (51) over the card's white or alone: the screen's ground (27) showing through. */
+        const val SCREEN_GROUND_DARK = 48f
 
         /** Frames a change is drawn at 0 before its spring starts: the arriving screen's first composition (decision 178). */
         const val PRIMED = 2
