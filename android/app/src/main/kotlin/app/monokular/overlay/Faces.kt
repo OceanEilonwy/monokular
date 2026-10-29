@@ -53,6 +53,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.LongState
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -490,6 +491,13 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
     var height by remember { mutableFloatStateOf(0f) }
     val fling = with(LocalDensity.current) { Panel.FLING_DP_PER_S.dp.toPx() }
     val springBack = motion.flick.px
+    val thrown = motion.thrown
+    // Raised again before it was gone (the docked bubble tapped mid-collapse), the throw comes back to the panel's
+    // place with it instead of the card rising a throw's length down. Waits on the raise's target, so no frame of
+    // the throw or the raise runs this.
+    LaunchedEffect(raise, drag) {
+        snapshotFlow { raise.heading }.collect { if (it == 1f && drag.value != 0f) drag.animateTo(0f, springBack) }
+    }
     // The panel's one clock (amendment 10), read only by the countdown.
     val now = rememberNowSeconds()
     // One transition for everything the face changes (M5): the fold, the words and the buttons start on one frame,
@@ -503,8 +511,9 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 if (wide) {
                     Modifier.graphicsLayer { alpha = 1f - (drag.value / height.coerceAtLeast(1f)).coerceIn(0f, 0.8f) }
                 } else {
-                    // Let go past the rule, the drag shrinks with the panel into the dock.
-                    Modifier.offset { IntOffset(0, (drag.value * raise.value).roundToInt()) }
+                    // Inside the grow's layer, so the drag (and a throw's run past the release) shrinks with the card
+                    // into the bubble: on screen it is the drag times the card's scale, done when the card is.
+                    Modifier.offset { IntOffset(0, drag.value.roundToInt()) }
                 },
             )
             .card(raise)
@@ -524,6 +533,11 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                     scope.launch {
                         if (Panel.lowers(drag.value, height, velocity, fling)) {
                             actions.onFlung(Panel.collapseVelocity(velocity, height))
+                            // Thrown, the card keeps the finger's way (M2, decision 190): the drag runs on at the
+                            // release speed under `thrown` while the raise collapses under surface, and the card's
+                            // scale takes the offset with it, so the first frames carry on down before the collapse
+                            // takes the card into the bubble.
+                            thrown?.let { drag.animateDecay(velocity, it) }
                         } else {
                             drag.animateTo(0f, springBack, initialVelocity = velocity)
                         }

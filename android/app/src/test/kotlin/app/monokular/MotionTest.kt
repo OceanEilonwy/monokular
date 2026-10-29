@@ -15,6 +15,7 @@ import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -106,6 +107,8 @@ class MotionTest {
         assertEquals(120, assertIs<TweenSpec<Float>>(still.fadeQuick.fraction).durationMillis)
         assertNull(still.pulse)
         assertNull(still.glints)
+        assertNull(still.thrown, "nothing is carried past a release")
+        assertNotNull(full.thrown)
         assertSame(Motion.Full, full, "one instance each, so a window reads the same presets as the next")
     }
 

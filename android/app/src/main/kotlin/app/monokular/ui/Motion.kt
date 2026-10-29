@@ -5,12 +5,14 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.InfiniteRepeatableSpec
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -46,6 +48,13 @@ class Motion private constructor(
 
     /** What the finger let go of, seeded with its velocity: the bubble snapping to its edge, the grabber springing back. */
     val flick: Preset = spatial(stiffness = 600f, dampingRatio = 0.8f)
+
+    /**
+     * What the finger threw, running on at its speed and slowing by itself while something else brings it home:
+     * the panel flung down its grabber keeps going down as it collapses into the bubble (decision 190). The
+     * platform's plain friction, no tuning of its own; null under [Still], where nothing is carried past the release.
+     */
+    val thrown: DecayAnimationSpec<Float>? = if (still) null else exponentialDecay()
 
     /**
      * The straight line every spatial part of a screen change follows (decision 112): the shared surfaces' bounds,
