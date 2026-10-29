@@ -109,6 +109,17 @@ class MotionTest {
     }
 
     @Test
+    fun `a fade-through starts once the quick exit under it is done`() {
+        val through = assertIs<TweenSpec<Float>>(full.fadeThrough.fraction)
+        val quick = assertIs<TweenSpec<Float>>(full.fadeQuick.fraction)
+        assertEquals(quick.durationMillis, through.delay, "the entrance waits for the exit, no longer")
+        assertEquals(200, through.durationMillis)
+        val stillThrough = assertIs<TweenSpec<Float>>(still.fadeThrough.fraction)
+        assertEquals(120, stillThrough.durationMillis, "under Still every crossfade is the quick one")
+        assertEquals(quick.durationMillis, stillThrough.delay)
+    }
+
+    @Test
     fun `one paid dwell, five seconds, which reduced motion leaves alone`() {
         assertEquals(5_000L, Motion.Dwell.PAID_MS)
     }

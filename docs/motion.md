@@ -83,6 +83,7 @@ is no position to carry. `Spring.StiffnessMedium` is 1500 and
 | `Motion.sweep` | `spring(stiffness = 170f, dampingRatio = 1f)` | 600 ms | The phase ring's arc growing a quarter: slow enough to be a sweep, overdamped so it never overshoots a quarter mark, and a second step arriving mid-sweep just retargets |
 | `Motion.fade` | `tween(200, LinearEasing)` | 200 ms | Crossfades between two faces of the same thing: the bubble's content, the status words, a row's badge, the paid hero's icon |
 | `Motion.fadeQuick` | `tween(120, LinearEasing)` | 120 ms | Exits under something that is arriving, and every crossfade under reduced motion |
+| `Motion.fadeThrough` | `tween(200, delayMillis = 120, LinearEasing)` (120 ms under Still) | 320 ms | An entrance in the place of a different thing leaving under `fadeQuick`: the panel's buttons and words when its face changes ("Copy address" to "Done"), so two labels are never drawn over each other (added in round 2, decision 115) |
 | `Motion.pulse` | `tween(1600, LinearOutSlowInEasing)`, repeating | loop | The lit bubble's pulse, only while a code waits and the panel is down |
 | `Motion.glints` | `tween(GLINT_MS, LinearEasing)`, repeating | loop | The loading mark (unchanged) |
 | `Motion.Dwell.paid` | `5_000 ms` | — | How long a paid moment is held before the till moves on: the sale screen stepping back to the shift (`TillNav.PAID_STEP_BACK_MS`), the panel lowering, the bubble staying green and the chip its tick (`Bubble.PAID_MS`, today 4 s; see M9) |

@@ -55,6 +55,13 @@ class Motion private constructor(
     /** An exit under something arriving; every crossfade under [Still]. */
     val fadeQuick: Preset = Timed(QUICK_MS)
 
+    /**
+     * An entrance in the place of something leaving under [fadeQuick] that
+     * isn't the same thing: it starts once the exit is done, so two labels
+     * ("Copy address" and "Done") are never drawn over each other.
+     */
+    val fadeThrough: Preset = Timed(if (still) QUICK_MS else FADE_MS, delayMs = QUICK_MS)
+
     /** The lit bubble's pulse, one turn at a time; null when loops don't run. */
     val pulse: InfiniteRepeatableSpec<Float>? = loop(PULSE_MS, LinearOutSlowInEasing)
 
@@ -109,8 +116,8 @@ private class Sprung(private val stiffness: Float, private val dampingRatio: Flo
     override fun <T> spec(visibilityThreshold: T?): FiniteAnimationSpec<T> = spring(dampingRatio, stiffness, visibilityThreshold)
 }
 
-private class Timed(private val durationMs: Int) : Preset {
-    override fun <T> spec(visibilityThreshold: T?): FiniteAnimationSpec<T> = tween(durationMs, easing = LinearEasing)
+private class Timed(private val durationMs: Int, private val delayMs: Int = 0) : Preset {
+    override fun <T> spec(visibilityThreshold: T?): FiniteAnimationSpec<T> = tween(durationMs, delayMs, LinearEasing)
 }
 
 private object Snapped : Preset {

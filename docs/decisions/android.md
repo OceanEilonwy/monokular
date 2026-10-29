@@ -1220,3 +1220,21 @@ design unchanged.
     layers by up to a second and the in-app layers by less, so a
     recording can order events but not time them; it is used for what
     moves, and `framestats` for when.
+115. **The panel's face is one `Transition`, and each side of it keeps
+     the sale it showed** (dev1, round 2 review of M5). The fold, the
+     code's and the hero's fades, the words and the buttons all follow one
+     `updateTransition` of the face and its sale, keyed by the face, so
+     they start on one frame; the side that is leaving keeps the sale it
+     was shown for, so the code's status row fades out still saying
+     "Confirming" with its ring in its own colour, never "Paid" (it said
+     Paid for the length of its fade before: the old content read the new
+     sale). The words fade through rather than across, with a new preset,
+     `Motion.fadeThrough` (`fade`'s length, starting once `fadeQuick` is
+     done): two different labels in one place ("Copy address" and "Done")
+     drawn over each other at half alpha read as a smudge, and a
+     crossfade is for two faces of the same thing. The words' size
+     settles with `clip = false`, so the next sale's "Waiting for payment"
+     is never cut to the width of the "Paid" before it. The panel ticks
+     one clock (`rememberNowSeconds` at its card), so the last caller of
+     the per-text `secondsLeft(expiresAt)` timer went, and the timer with
+     it.

@@ -71,23 +71,6 @@ import app.monokular.sales.live
 import app.monokular.sharedSurface
 import kotlinx.coroutines.delay
 
-/**
- * Seconds left until [expiresAt], ticking. Starts a timer per text: only
- * the overlay's status row still calls it, until it reads its window's
- * [rememberNowSeconds] instead (amendment 10).
- */
-@Composable
-fun secondsLeft(expiresAt: Long): Long {
-    var now by remember { mutableLongStateOf(System.currentTimeMillis() / 1000) }
-    LaunchedEffect(expiresAt) {
-        while (true) {
-            now = System.currentTimeMillis() / 1000
-            delay(1000)
-        }
-    }
-    return (expiresAt - now).coerceAtLeast(0)
-}
-
 /** Seconds from [now] until [expiresAt], Unix seconds both; 0 once it's passed. */
 fun secondsLeft(expiresAt: Long, now: Long): Long = (expiresAt - now).coerceAtLeast(0)
 
