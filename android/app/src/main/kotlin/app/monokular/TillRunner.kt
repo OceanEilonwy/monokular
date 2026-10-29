@@ -23,9 +23,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -103,7 +100,7 @@ class TillRunner(private val graph: Graph) {
             launch { follow(till) }
             // The Bell's dings, while this shift runs; outside one nothing collects them, so they go nowhere (decision 93).
             launch { graph.push.dings.collect { shift.wake(WakeCause.Ding) } }
-            launch { lapse(till) }
+            launch { till.lapseOnTime() }
         }
         // A shift starting registers again, so a registration the Bell dropped comes back (decision 95).
         wakeUps.recheck()
@@ -195,19 +192,6 @@ class TillRunner(private val graph: Graph) {
     fun reopen(orderId: String) {
         val till = till ?: return
         scope.launch { till.reopen(orderId) }
-    }
-
-    /**
-     * Ends each live code when its time runs out ([Till.lapse]), whether or
-     * not Monokulo has said so yet: one wait for the next code to run out,
-     * started again whenever that changes.
-     */
-    private suspend fun lapse(till: Till) {
-        till.sales.map(till::nextLapse).distinctUntilChanged().collectLatest { next ->
-            if (next == null) return@collectLatest
-            delay((next * 1000 - System.currentTimeMillis()).coerceAtLeast(0))
-            till.lapse()
-        }
     }
 
     private suspend fun follow(till: Till) {

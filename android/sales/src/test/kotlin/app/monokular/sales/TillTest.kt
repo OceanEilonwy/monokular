@@ -8,7 +8,10 @@ import app.monokular.core.PointOfSale
 import app.monokular.core.SaleEvent
 import app.monokular.core.SalePhase
 import app.monokular.receipt.Receipt
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.test.advanceTimeBy
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -916,6 +919,25 @@ class TillTest {
         assertEquals(Standing.Expired, till.sales.value.sales.single().standing, "a server late to expire it doesn't bring it back")
         till.onStatus("ord_1", SalePhase.Paid)
         assertEquals(SalePhase.Paid, till.sales.value.sales.single().phase)
+    }
+
+    @Test
+    fun `a code is ended on time even when the till's clock reads a second behind the wait's`() = runTest {
+        // The wait runs on the test's clock in milliseconds; the till stamps a second behind it, as two clocks may.
+        val start = 1761311990_000L
+        val wall = { start + testScheduler.currentTime }
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection, now = { (wall() - 1_000) / 1000 })
+        server.enqueue(order())
+        till.check()
+        val before = till.sales.value.sales.single()
+        backgroundScope.launch { till.lapseOnTime(nowMs = wall) }
+        advanceTimeBy(10_000 + 1)
+        assertTrue(till.sales.value.sales.single().live, "at its end by the wait's clock, the till's own says a second to go")
+        advanceTimeBy(Till.LAPSE_RETRY_MS + 1)
+        val lapsed = till.sales.value.sales.single()
+        assertEquals(Standing.Expired, lapsed.standing, "ended within two seconds, with nothing else changing")
+        assertEquals(before.copy(phase = SalePhase.Expired, endedAt = lapsed.endedAt), lapsed, "only the clock ended it")
+        assertEquals(1761312000L, lapsed.endedAt)
     }
 
     @Test

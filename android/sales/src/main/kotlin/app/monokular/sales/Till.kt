@@ -12,9 +12,13 @@ import app.monokular.receipt.PaymentCode
 import app.monokular.receipt.Receipt
 import app.monokular.receipt.ReceiptCode
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -338,6 +342,27 @@ class Till(
     /** When the next live code runs out, Unix seconds; null with none live. */
     fun nextLapse(state: TillState): Long? = state.sales.filter { it.live && it.expiresAt > 0 }.minOfOrNull { it.expiresAt }
 
+    /**
+     * Ends each live code when its time runs out ([lapse]), whether or not
+     * Monokulo has said so yet: one wait, on [nowMs], for the next code to
+     * run out, started again whenever that changes. A [lapse] that ends
+     * nothing (the wall clock stepped back during the wait, or [now] reads a
+     * second behind [nowMs]) tries again a second later until the code is
+     * ended, so a dead code never stays up waiting for some other change.
+     */
+    suspend fun lapseOnTime(nowMs: () -> Long = System::currentTimeMillis) {
+        sales.map(::nextLapse).distinctUntilChanged().collectLatest { next ->
+            if (next == null) return@collectLatest
+            delay((next * 1000 - nowMs()).coerceAtLeast(0))
+            while (true) {
+                lapse()
+                // Ended, the sales change and this wait is replaced by the next one.
+                if (nextLapse(sales.value) != next) break
+                delay(LAPSE_RETRY_MS)
+            }
+        }
+    }
+
     /** "Show the code again" on a closed sale: its code is back up. */
     fun reopen(orderId: String) {
         change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.copy(closedAt = null) else it }) }
@@ -450,6 +475,9 @@ class Till(
 
         /** The timer asks the POS about pending refunds at most this often, in seconds (decision 130). */
         const val REFUND_LOOK_SECONDS = 30L
+
+        /** How long [lapseOnTime] waits to try again when the clock it lapsed by hadn't reached a code's end yet. */
+        const val LAPSE_RETRY_MS = 1_000L
 
         /** `sq:` and the start of SHA-256 of the POS's payment id: the same for every till, and opaque. */
         fun idempotencyKey(sale: FoundSale): String {
