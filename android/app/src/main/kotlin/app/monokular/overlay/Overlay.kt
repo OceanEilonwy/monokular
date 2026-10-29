@@ -270,8 +270,11 @@ class Overlay(
         // On a tablet the bubble stays up beside the floating panel: a second tap lowers it.
         lateinit var frame: BubbleFrame
         frame = BubbleFrame(context, wm, params, scope, onTap = { if (panelOpen.value) lower() else panelOpen.value = true }) { left, y ->
+            val moved = prefs.bubbleOnLeft != left
             prefs.bubbleOnLeft = left
             prefs.bubbleY = y
+            // Dragged to the other edge with a tablet's panel up: the panel steps aside for it, or back.
+            if (moved && windows.wide) panel?.let(::placeFloating)
             frame.doOnPreDraw { locate(frame) }
         }
         frame.setViewTreeLifecycleOwner(owner)
@@ -329,8 +332,8 @@ class Overlay(
         val params = if (wide) {
             overlayParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, touchThrough = true).apply {
                 gravity = Gravity.TOP or Gravity.END
-                // The panel draws 24 dp in from its window's edge, room for its shadow.
-                x = (4 * density).toInt()
+                // Beside the bubble when it's on this edge, so the panel grows from the corner next to it, never over it.
+                x = (Panel.floatingInsetDp(bubbleOnEnd = !graph.stores.bubbleOnLeft) * density).toInt()
                 y = (8 * density).toInt()
             }
         } else {
@@ -369,6 +372,13 @@ class Overlay(
             // The free bubble goes once a frame shows the docked one where it is, never before (amendment 6).
             view.afterPlaced({ wide || motion.placed }) { if (panel === view) on(WindowEvent.PanelDrawn) }
         }
+    }
+
+    /** Puts a floating panel window beside the bubble's edge, or off it. */
+    private fun placeFloating(view: View) {
+        val params = view.layoutParams as? WindowManager.LayoutParams ?: return
+        params.x = (Panel.floatingInsetDp(bubbleOnEnd = !graph.stores.bubbleOnLeft) * context.resources.displayMetrics.density).toInt()
+        runCatching { wm.updateViewLayout(view, params) }
     }
 
     private fun removePanel() {

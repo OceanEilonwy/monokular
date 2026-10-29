@@ -189,14 +189,38 @@ object Panel {
      * The point a growing panel scales about, as fractions of its [card]
      * (both on screen): [from] itself on a phone, the docked bubble above
      * the card; on a tablet, whose window ends at the card, the card's
-     * corner nearest the bubble at [from] (`docs/motion.md` §5).
+     * side nearest the bubble at [from], at the bubble's height held to
+     * the card: the panel sits beside the bubble (decision 118), so it
+     * grows out of the bubble's side of it (`docs/motion.md` §5).
      */
     fun origin(from: Offset, card: Rect, corner: Boolean): TransformOrigin {
         if (card.width <= 0f || card.height <= 0f) return TransformOrigin.Center
         val x = if (!corner) from.x else if (from.x < card.center.x) card.left else card.right
-        val y = if (!corner) from.y else if (from.y < card.center.y) card.top else card.bottom
+        val y = if (!corner) from.y else from.y.coerceIn(card.top, card.bottom)
         return TransformOrigin((x - card.left) / card.width, (y - card.top) / card.height)
     }
+
+    /**
+     * How far in from the screen's end edge a tablet's floating panel window
+     * sits, in dp: beside the bubble when the bubble is on that edge, so the
+     * card's corner nearest the bubble is next to it and never over it
+     * (the window draws its card [FLOATING_SHADOW_DP] in from its edge, room
+     * for the shadow); else just off the edge.
+     */
+    fun floatingInsetDp(bubbleOnEnd: Boolean): Int =
+        if (bubbleOnEnd) BUBBLE_WINDOW_DP - FLOATING_SHADOW_DP + FLOATING_GAP_DP else FLOATING_EDGE_DP
+
+    /** The free bubble's window: its 56 dp circle and the pulse's 16 dp each side. */
+    const val BUBBLE_WINDOW_DP = 88
+
+    /** How far in from its window's edge the floating card is drawn. */
+    const val FLOATING_SHADOW_DP = 24
+
+    /** Between the free bubble's window and the floating card beside it. */
+    private const val FLOATING_GAP_DP = 8
+
+    /** The floating window off the end edge when the bubble isn't there. */
+    private const val FLOATING_EDGE_DP = 4
 
     /** What the panel shows for [sale]: its code while live, the tick once paid, else where the code was. */
     fun face(sale: TillSale): PanelFace = when (sale.standing) {
@@ -265,7 +289,7 @@ val BubblePadding = 16.dp
 /** Round the docked bubble, which doesn't pulse: the design's spacing above the panel. */
 private val DockedPadding = 12.dp
 
-/** The bubble's circle. */
+/** The bubble's circle: its window, with [BubblePadding] each side, is [Panel.BUBBLE_WINDOW_DP]. */
 private val BubbleSize = 56.dp
 
 /**
@@ -854,7 +878,7 @@ private fun PhoneCode(sale: TillSale, where: String, look: BubbleLook, actions: 
 /** The floating panel's window on a tablet: the panel, or the whole order in its place. */
 @Composable
 fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: PanelActions, motion: PanelMotion) = Box(
-    Modifier.padding(24.dp).grows(motion, wide = true),
+    Modifier.padding(Panel.FLOATING_SHADOW_DP.dp).grows(motion, wide = true),
 ) {
     // The order takes the card's place (M5): the content crossfades and the card's height settles to the new one.
     val m = app.monokular.ui.motion
