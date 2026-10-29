@@ -84,6 +84,7 @@ import app.monokular.sales.standing
 import app.monokular.ui.CodeText
 import app.monokular.ui.Fixed
 import app.monokular.ui.LightTokens
+import app.monokular.ui.LoadingMark
 import app.monokular.ui.posOf
 import app.monokular.ui.Logo
 import app.monokular.ui.MkIcons
@@ -172,18 +173,18 @@ class PanelActions(
 
 /**
  * The bubble (the design's Bubble part), in each [look]: faded and grey
- * with nothing to do, white with the [phase]'s ring (and a pulse) for a
+ * with nothing to do, white with the loading mark (and a pulse) for a
  * sale, the paid tick on its pale ground once it's paid. Its colours are
  * the design's whatever the theme: it sits over another app.
  */
 @Composable
-fun BubbleFace(look: BubbleLook, pulse: Boolean = true, phase: SalePhase = SalePhase.Waiting) = Box(
+fun BubbleFace(look: BubbleLook, pulse: Boolean = true) = Box(
     Modifier.padding(12.dp).clearAndSetSemantics {},
     contentAlignment = Alignment.Center,
-) { Circle(look, pulse, phase) }
+) { Circle(look, pulse) }
 
 @Composable
-private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
+private fun Circle(look: BubbleLook, pulse: Boolean) {
     when (look) {
         BubbleLook.Idle -> Box(
             Modifier.alpha(0.55f).shadow(4.dp, CircleShape).size(56.dp).clip(CircleShape).background(Color.White.copy(alpha = 0.9f)),
@@ -203,10 +204,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase) {
                     drawCircle(Fixed.Accent.copy(alpha = 0.55f * (1f - p)), radius = size.minDimension / 2 + 16.dp.toPx() * p)
                 }.shadow(6.dp, CircleShape).clip(CircleShape).background(Color.White),
                 contentAlignment = Alignment.Center,
-            ) {
-                PhaseRing(phase, 40.dp, track = Fixed.Track, fill = Fixed.Accent)
-                Box(Modifier.size(12.dp).clip(CircleShape).background(Fixed.Ink))
-            }
+            ) { LoadingMark(40.dp, label = "New sale", ring = Fixed.Ink) }
         }
         BubbleLook.Paid -> Box(Modifier.shadow(6.dp, CircleShape)) {
             PaidHero(56.dp, ground = LightTokens.paidGround, tint = LightTokens.paid)
@@ -493,7 +491,7 @@ fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage,
             Modifier.clip(CircleShape)
                 .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = actions.onLower)
                 .semantics { contentDescription = "Lower to the bubble" },
-        ) { BubbleFace(look, phase = sale.phase) }
+        ) { BubbleFace(look) }
     }
     // Taps on the panel itself stay there.
     val panel = @Composable { sideBySide: Boolean ->

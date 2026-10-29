@@ -605,10 +605,10 @@ detail pages), recorded by the developers and folded in by the lead.
     ("Refunded in Square", "Nothing more to do."), the line "Open the shift
     to refund it in Square." or "Refund it in Square on Back till." (or "on
     the till that took it" with no device name), and one button, "Open the
-    shift". The lit bubble draws the sale's phase ring (track, the orange
-    arc a quarter a step, the ink pupil) in place of the loading mark, in
-    its own window and docked above the panel; setup's previews keep the
-    Waiting look. The panel's XMR line copies the amount when tapped, like
+    shift". The lit bubble keeps the loading mark, its glints running while
+    a sale is live (the owner asked for it back over the phase ring this
+    decision first drew there), in its own window and docked above the
+    panel; the phase shows in the panel's ring row. The panel's XMR line copies the amount when tapped, like
     the sale screen's; the enlarged code's doesn't, since a tap anywhere
     there shrinks it.
 75. **The grabber's rule and its size** (adds to 65). `Panel.lowers(drag,
