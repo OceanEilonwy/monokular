@@ -2,7 +2,6 @@
 
 package app.monokular
 
-import androidx.activity.compose.BackHandler
 import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -29,13 +28,14 @@ import androidx.compose.animation.scaleIn
 import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
@@ -60,7 +60,9 @@ import androidx.compose.ui.unit.IntOffset
 import app.monokular.ui.Motion
 import app.monokular.ui.motion
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.flow.collectLatest
 
 /** How one screen reaches another (`docs/motion.md` M7), and back the same way reversed. */
 sealed interface Move {
@@ -235,39 +237,63 @@ class BackScrub {
 }
 
 /**
- * Android's back over the stage. Where it goes is asked of [target] as the
- * gesture starts (the model as it is then, not as the last composition
- * saw it); the gesture seeks [state] toward it, so each part of the move
- * is as far along as the finger (decision 112), and the release runs the
- * rest on [Motion.stage]: committed, [onLanded] is told which screen was
- * left once the move has landed; cancelled, the screen springs back. With
- * no target, or under Still, there's no preview and [onBack] runs on
- * release. [scrub] is held from the gesture's start until it has
- * committed or sprung back.
+ * The one thing that moves [state] to the model's [screen]: every change
+ * the till or a tap makes runs on [Motion.stage], and none while a back
+ * gesture holds the stage. When a gesture lets go, committed or cancelled,
+ * the stage goes to wherever the model is by then, so a sale coming up or
+ * a payment landing under the finger is followed rather than lost
+ * (decision 129): at rest the stage and the model always agree.
+ */
+@Composable
+fun FollowScreen(state: SeekableTransitionState<Screen>, scrub: BackScrub, screen: State<Screen>) {
+    val m = motion
+    LaunchedEffect(state, scrub, m) {
+        snapshotFlow { if (scrub.active) null else screen.value }.collectLatest { s ->
+            if (s == null || (state.currentState == s && state.targetState == s)) return@collectLatest
+            try {
+                state.animateTo(s, m.stage)
+            } catch (e: CancellationException) {
+                // A gesture's seek took the stage (its mutex cancels this run, not this driver): the gesture's
+                // end emits again and the stage is put back on the model's screen then.
+                currentCoroutineContext().ensureActive()
+            }
+        }
+    }
+}
+
+/**
+ * Android's back over the stage. What it goes back from is the model's
+ * screen as the gesture starts ([current]), and where to is asked of
+ * [target] then too (the model as it is, not as the last composition saw
+ * it); never the stage's own current state, which mid-move is still the
+ * screen before. On a settled stage the gesture seeks [state] toward the
+ * target, so each part of the move is as far along as the finger (decision
+ * 112); during a move, or with no target, or under Still, there's no
+ * preview. Released, [onCommit] is told the screen it left and the stage
+ * follows the model from where the finger left it ([FollowScreen]);
+ * cancelled, the stage springs back to the model's screen. [scrub] is held
+ * from the gesture's start until it has committed or been cancelled.
  */
 @Composable
 fun StageBack(
     enabled: Boolean,
     state: SeekableTransitionState<Screen>,
     scrub: BackScrub,
+    current: () -> Screen,
     target: () -> Screen?,
-    onBack: () -> Unit,
-    onLanded: (from: Screen) -> Unit,
+    onCommit: (from: Screen) -> Unit,
 ) {
     val m = motion
-    if (m.still) {
-        BackHandler(enabled, onBack)
-        return
-    }
-    val scope = rememberCoroutineScope()
     PredictiveBackHandler(enabled) { progress ->
+        val from = current()
         val to = target()
-        if (to == null) {
+        val settled = state.currentState == from && state.targetState == from
+        if (to == null || m.still || !settled) {
+            // No preview: a move is running (Back retargets it, from wherever it is), or there's nowhere to scrub to.
             progress.collect {}
-            onBack()
+            onCommit(from)
             return@PredictiveBackHandler
         }
-        val from = state.currentState
         scrub.active = true
         try {
             // The screen back goes to is composed and laid out at 0 before the finger moves anything, so every part's
@@ -276,20 +302,11 @@ fun StageBack(
             withFrameNanos {}
             withFrameNanos {}
             progress.collect { state.seekTo(it.progress, to) }
-        } catch (e: CancellationException) {
-            // Cancelled: the screen that was up springs back from wherever the finger left it, still held.
-            scope.launch {
-                try {
-                    state.animateTo(from, m.stage)
-                } finally {
-                    scrub.active = false
-                }
-            }
-            throw e
+            onCommit(from)
+        } finally {
+            // Committed or cancelled, the stage is the driver's again: it goes on to the model's screen from here.
+            scrub.active = false
         }
-        scrub.active = false
-        state.animateTo(to, m.stage)
-        onLanded(from)
     }
 }
 

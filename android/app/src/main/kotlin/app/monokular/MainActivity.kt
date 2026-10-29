@@ -50,7 +50,6 @@ import app.monokular.ui.ShiftScreen
 import app.monokular.ui.TillActions
 import app.monokular.ui.TillStatus
 import app.monokular.ui.WelcomeScreen
-import app.monokular.ui.motion
 
 class MainActivity : ComponentActivity() {
     private val model: AppViewModel by viewModels()
@@ -73,7 +72,8 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null && intent.flags and Intent.FLAG_ACTIVITY_LAUNCHED_FROM_HISTORY == 0) handle(intent)
         setContent {
             MonokularTheme {
-                val screen by model.screen.collectAsStateWithLifecycle()
+                val screenState = model.screen.collectAsStateWithLifecycle()
+                val screen by screenState
                 // Held as states and read only by the screens that need them (behind derivedStateOf), so a runner
                 // update that changes nothing a screen shows recomposes nothing here (performance rule 10).
                 val flows = Flows(
@@ -91,14 +91,13 @@ class MainActivity : ComponentActivity() {
                 val actions = remember(multiWindow) { tillActions(multiWindow) }
                 PaidBuzz()
                 val stage = remember { SeekableTransitionState(screen) }
-                val m = motion
-                LaunchedEffect(screen) { stage.animateTo(screen, m.stage) }
                 // Android's back (decision 77: everywhere but the first step, the shift and Square's sign-in). From a
                 // sale's screens and Settings the gesture previews the way back; nothing changes before it commits.
                 val scrub = remember { BackScrub() }
+                FollowScreen(stage, scrub, screenState)
                 StageBack(
                     enabled = screen != Screen.Welcome && screen != Screen.Till && screen != Screen.Square,
-                    state = stage, scrub = scrub, target = model::backTarget, onBack = model::back, onLanded = model::back,
+                    state = stage, scrub = scrub, current = { model.screen.value }, target = model::backTarget, onCommit = model::back,
                 )
                 TillStage(stage, cameUpByItself = { model.cameUpByItself }, scrub) { s ->
                     when (s) {
