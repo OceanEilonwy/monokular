@@ -557,11 +557,11 @@ internal class StageGeometry(
     internal fun at(i: Int): Course = list[i]
 
     fun add(end: End) {
-        course(end.key).ends += end
+        course(end.key).add(end)
     }
 
     fun remove(end: End) {
-        courses[end.key]?.ends?.remove(end)
+        courses[end.key]?.remove(end)
     }
 
     /**
@@ -576,7 +576,14 @@ internal class StageGeometry(
         val r = root.coordinates ?: return course.lost()
         val a = course.endOn(from) ?: return course.lost()
         val b = course.endOn(to) ?: return course.lost()
-        course.place(r, a, b, progress(), held.generation, held.interrupted)
+        val ca = a.coordinates!!
+        val cb = b.coordinates!!
+        val o = r.localPositionOf(ca, Offset.Zero)
+        val e = r.localPositionOf(cb, Offset.Zero)
+        course.place(
+            a, b, o.x, o.y, o.x + ca.size.width, o.y + ca.size.height, e.x, e.y, e.x + cb.size.width, e.y + cb.size.height,
+            progress(), held.generation, held.interrupted,
+        )
         return true
     }
 }
@@ -643,6 +650,25 @@ internal class Course(val key: String) {
     /** The change this course was last drawn in, -1 if it was not drawn on the last frame of one. */
     val drawnIn: Long get() = if (valid) generation else -1L
 
+    fun add(end: End) {
+        ends += end
+    }
+
+    /**
+     * [end] has left its screen. With no end left, the course forgets the
+     * ends it last drew between: an end keeps its code's bitmap, and a key
+     * is a sale's, so a course kept whole for every sale ever opened would
+     * hold a code for each of them for the life of the stage.
+     */
+    fun remove(end: End) {
+        ends.remove(end)
+        if (ends.isEmpty()) {
+            from = null
+            to = null
+            valid = false
+        }
+    }
+
     fun endOn(screen: Screen): End? {
         for (i in ends.indices) {
             val e = ends[i]
@@ -656,9 +682,14 @@ internal class Course(val key: String) {
         return false
     }
 
-    fun place(root: LayoutCoordinates, a: End, b: End, p: Float, generation: Long, interrupted: Boolean) {
-        val ca = a.coordinates!!
-        val cb = b.coordinates!!
+    /**
+     * Where the surface is at [p] of [generation]'s change from end [a], laid
+     * out at [ol]..[ob] in the stage, to end [b] at [el]..[eb].
+     */
+    fun place(
+        a: End, b: End, ol: Float, ot: Float, or: Float, ob: Float, el: Float, et: Float, er: Float, eb: Float,
+        p: Float, generation: Long, interrupted: Boolean,
+    ) {
         if (generation != this.generation) {
             // A change that took over another mid-move starts from where this surface was drawn last, not from the
             // leaving end's rest place, so nothing jumps (the progress starts again from 0 toward the new screen).
@@ -671,13 +702,7 @@ internal class Course(val key: String) {
             }
             this.generation = generation
         }
-        val e = root.localPositionOf(cb, Offset.Zero)
-        if (snapped) {
-            line(kl, kt, kr, kb, e.x, e.y, e.x + cb.size.width, e.y + cb.size.height, p)
-        } else {
-            val o = root.localPositionOf(ca, Offset.Zero)
-            line(o.x, o.y, o.x + ca.size.width, o.y + ca.size.height, e.x, e.y, e.x + cb.size.width, e.y + cb.size.height, p)
-        }
+        if (snapped) line(kl, kt, kr, kb, el, et, er, eb, p) else line(ol, ot, or, ob, el, et, er, eb, p)
         from = a
         to = b
         valid = true

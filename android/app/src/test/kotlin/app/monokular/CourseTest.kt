@@ -71,4 +71,28 @@ class CourseTest {
         assertTrue(c.holds(0.4f, 0f, 100f, 200.4f))
         assertTrue(!c.holds(-1f, 0f, 100f, 200f))
     }
+
+    /**
+     * A course keeps the ends it last drew between (the code's bitmap among
+     * them) only while one of them is on a screen: a key is a sale's, so
+     * the stage would otherwise hold a code for every sale ever opened.
+     */
+    @Test
+    fun itForgetsTheEndsItDrewBetweenOnceBothHaveLeft() {
+        val c = Course("code/a1")
+        val a = End("code/a1", Screen.Sale("a1"), Move.CodeGrow)
+        val b = End("code/a1", Screen.Code("a1"), Move.CodeGrow)
+        c.add(a)
+        c.add(b)
+        c.place(a, b, row[0], row[1], row[2], row[3], screen[0], screen[1], screen[2], screen[3], 0.5f, 1L, false)
+        assertEquals(a, c.from)
+        assertEquals(b, c.to)
+        assertEquals(1L, c.drawnIn)
+        c.remove(a)
+        assertEquals(b, c.to, "one end still on its screen: the course keeps what it drew")
+        c.remove(b)
+        assertEquals(null, c.from)
+        assertEquals(null, c.to)
+        assertEquals(-1L, c.drawnIn)
+    }
 }
