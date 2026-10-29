@@ -2020,3 +2020,18 @@ design unchanged.
      whose own shadow fades with the code under it. Under Still the
      progress snaps and the two crossfade (`fadeQuick`). The tablet keeps
      102's card whose height settles to the order's.
+117. **A code whose time ran out is ended by the clock** (dev1, round 2
+     review; both tracks' surfaces). Monokulo expires an order at its
+     `expires_at`, but the till only heard so from the stream, so a stack
+     that never sent it (the dev server's fake orders) or a stream that was
+     down left a sale "Waiting · 0:00 left" for as long as the shift ran:
+     the bubble pulsed for it, the panel's focus moved to it after every
+     payment, and its dead code was offered as the next thing to scan. The
+     runner now waits for the next live code's `expiresAt` and calls
+     `Till.lapse()`, which moves every live sale past its time to Expired
+     as Monokulo's own word would; the rule that only a payment moves an
+     ended sale (87) means a server late to agree can't bring it back, and
+     a late payment still pays it. One wait at a time (`collectLatest` on
+     the next expiry), no polling. The dev server's fake orders still
+     don't expire on their own; that is the other repository's, and the
+     till no longer depends on it.
