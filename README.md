@@ -198,7 +198,11 @@ within a second of each sale). `-Pmonokular.bell.url` takes what the
 Settings field takes: a release build only an https address.
 
 Versions live in `android/gradle/libs.versions.toml`; each was released at
-least two weeks before it was added.
+least two weeks before it was added. The same two-week rule holds for the
+Rust crates, with one exception: when a version in use is yanked or has a
+RUSTSEC (or, for Android libraries, a published security) advisory, it moves
+at once to the fixed release, after its changelog is read, and anything that
+release pulls in is held at the oldest version it accepts.
 
 ## Running a Bell
 
