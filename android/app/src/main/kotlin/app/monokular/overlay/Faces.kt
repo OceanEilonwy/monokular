@@ -462,6 +462,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
             )
             .card(raise)
             .background(mk.ground)
+            .flatWhile(raise)
             .testTag(CARD_TAG)
             .semantics { paneTitle = "Monokular payment code" }
             .verticalScroll(rememberScrollState())
@@ -876,7 +877,11 @@ fun PhonePanel(
                         // way back goes with its words, a crossfade off the code rather than an empty ground over it.
                         .container(motion, opened, if (stillLeaving) Color.Transparent else mk.ground)
                         .ridesTop(motion, opened)
-                        .graphicsLayer { alpha = orderAlpha.value; compositingStrategy = CompositingStrategy.ModulateAlpha }
+                        .graphicsLayer {
+                            alpha = orderAlpha.value
+                            // Drawn once at its own size while the window's raise scales it (see flatWhile).
+                            compositingStrategy = if (motion.raise.moving) CompositingStrategy.Offscreen else CompositingStrategy.ModulateAlpha
+                        }
                         .then(if (stillLeaving) Modifier.background(mk.ground) else Modifier)
                         .safeDrawingPadding()
                         .semantics { paneTitle = "The order" },
@@ -1063,6 +1068,22 @@ private fun Modifier.grows(motion: PanelMotion, wide: Boolean, order: Boolean = 
         // Faded per draw, not through a window-sized offscreen buffer: the fade is a third of the grow.
         compositingStrategy = CompositingStrategy.ModulateAlpha
     }
+
+/**
+ * The card's content drawn into one layer at its own size while [raise]
+ * scales the panel in or out, and the layer scaled as a whole; at rest,
+ * no offscreen buffer (the node draws straight through). Text drawn
+ * through a scale is rasterised again at every scale the grow passes
+ * through (a new glyph strike each frame, decision 128),
+ * which with the panel raised and lowered five times held 3.5 MB more
+ * native heap than the baseline; through the layer every glyph is drawn
+ * at one size, the layer is redrawn only when its content changes, and
+ * its texture goes when the panel lands. Inside the card's clip and under
+ * its shadow, so neither is cut by the layer's bounds (decision 153).
+ */
+private fun Modifier.flatWhile(raise: Presence): Modifier = graphicsLayer {
+    compositingStrategy = if (raise.moving) CompositingStrategy.Offscreen else CompositingStrategy.Auto
+}
 
 /** The panel card's shape and the height its shadow is cast from at rest. */
 private val CardShape = RoundedCornerShape(32.dp)
