@@ -393,7 +393,8 @@ fun FollowScreen(state: SeekableTransitionState<Screen>, scrub: BackScrub, scree
                 // From rest, the screen arriving is composed and drawn once at 0 before the spring's clock starts, as
                 // a back gesture's is: its first frame is the change's heaviest (a whole screen composed), and counted
                 // on the clock it put the stage half way there on the first frame drawn (decision 178). Mid-move the
-                // new target is just retargeted, from where the move got to.
+                // new target is just retargeted, from where the move got to, a move still at 0 too: a seek there
+                // would hold the stage at 0 until the move it took over had run its course (decision 192).
                 if (m.stage != null && state.currentState == state.targetState) {
                     state.seekTo(0f, s)
                     // The next frame composes it; the spring's first frame, after it, starts the clock.
