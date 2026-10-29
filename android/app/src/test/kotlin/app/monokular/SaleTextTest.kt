@@ -7,6 +7,7 @@ import app.monokular.sales.FoundSale
 import app.monokular.sales.TillSale
 import app.monokular.ui.coreAlpha
 import app.monokular.ui.glintAlpha
+import app.monokular.ui.secondsLeft
 import java.time.Instant
 import java.time.ZoneId
 import java.util.Locale
@@ -158,5 +159,12 @@ class SaleTextTest {
         assertEquals(0f, coreAlpha(0.2f))
         assertEquals(0.95f, coreAlpha(0.6f))
         assertEquals(0f, coreAlpha(0.99f))
+    }
+
+    @Test
+    fun `a countdown is the seconds from now to the code's end, and never below none`() {
+        assertEquals(552, secondsLeft(expiresAt = 1_000_552, now = 1_000_000))
+        assertEquals(0, secondsLeft(expiresAt = 1_000_000, now = 1_000_000))
+        assertEquals(0, secondsLeft(expiresAt = 1_000_000, now = 1_000_009), "a code past its end shows 0:00, not a negative time")
     }
 }

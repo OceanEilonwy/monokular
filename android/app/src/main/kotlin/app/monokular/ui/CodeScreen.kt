@@ -65,6 +65,7 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
     if (!sale.live) LaunchedEffect(sale.orderId) { onBack() }
     KeepScreenOn()
     FullBrightness()
+    val now = rememberNowSeconds()
     // The design's light roles, fixed: this screen is white in both themes.
     val ink = LightTokens.ink
     val muted = LightTokens.muted
@@ -79,7 +80,7 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
             Row(Modifier.fillMaxWidth().padding(horizontal = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f)) {
                     Text(SaleText.amount(sale), style = display(30, -0.5), color = ink)
-                    Text(CodeText.under(sale, secondsLeft(sale.expiresAt)), fontSize = 15.sp, color = muted)
+                    Countdown(now, sale.expiresAt, fontSize = 15.sp, color = muted) { CodeText.under(sale, it) }
                 }
                 Box(
                     Modifier.size(48.dp).clip(CircleShape).background(LightTokens.inset).clickable(role = Role.Button, onClick = onBack),
