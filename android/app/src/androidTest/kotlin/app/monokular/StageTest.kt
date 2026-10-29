@@ -155,7 +155,7 @@ class StageTest {
         val small = code().fetchSemanticsNode().size
         compose.mainClock.autoAdvance = false
         fun big() = compose.onNodeWithContentDescription("Payment code, tap to shrink", useUnmergedTree = true).fetchSemanticsNode()
-        fun drawnWidth(): Float = tracks.firstNotNullOfOrNull { it.bounds }?.width ?: big().drawn().width
+        fun drawnWidth(): Float = tracks.firstNotNullOfOrNull { it.drawn() }?.width ?: big().drawn().width
 
         screen = Screen.Code("a1")
         compose.mainClock.advanceTimeByFrame()
