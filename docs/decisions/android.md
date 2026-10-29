@@ -1995,6 +1995,13 @@ design unchanged.
     and places with a layer only during its move, the alpha read in that
     layer's block per frame. Its moves are a set (`through`, `lift`), so
     the API has no `alsoThrough`.
+159. **The bars' icons turn at the code screen's half, the brightness on
+    its landing** (dev2, round 4; review minor, M8). They were one effect
+    on `up()`. The icons now follow a `derivedStateOf` on the code
+    screen's shown fraction crossing one half (two recompositions a
+    move), so in dark they turn as the white passes the middle, not on
+    the first frame or the last; the brightness still waits for the
+    white to cover the screen.
 160. **A moving ground's fill reaches past its layout by its last step,
     not by four of its sizes** (dev2, round 4; the cause of 146 named).
     The ground is an empty box scaled to its moving bounds, and the

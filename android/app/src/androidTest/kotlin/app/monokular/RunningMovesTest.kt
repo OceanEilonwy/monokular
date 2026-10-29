@@ -81,13 +81,28 @@ class RunningMovesTest {
     private fun codeGrow(dark: Boolean) {
         moves.start(Screen.Sale("a1"), dark)
         val frames = moves.run(Screen.Code("a1"), groundKey = codeGround("a1"))
-        check("code-grow", dark, frames, Move.CodeGrow, glyphs = true, grows = true)
+        check("code-grow", dark, frames, Move.CodeGrow, glyphs = true, grows = true, bars = if (dark) barsTurnAtHalf(frames) else emptyList())
     }
 
     private fun codeShrink(dark: Boolean) {
         moves.start(Screen.Code("a1"), dark)
         val frames = moves.run(Screen.Sale("a1"), groundKey = codeGround("a1"))
-        check("code-shrink", dark, frames, Move.CodeGrow, glyphs = true, grows = true)
+        check("code-shrink", dark, frames, Move.CodeGrow, glyphs = true, grows = true, bars = if (dark) barsTurnAtHalf(frames) else emptyList())
+    }
+
+    /**
+     * In the dark theme the bars' icons turn dark for the code's white, and back, on the frame the code screen passes
+     * half shown (M8), not on the change's first or last frame.
+     */
+    private fun barsTurnAtHalf(frames: List<RunningMoves.Frame>): List<String> {
+        val code = Screen.Code("a1")
+        val turn = frames.indexOfFirst { it.lightBars != frames.first().lightBars }
+        if (turn < 0) return listOf("the bars' icons never turn")
+        val at = frames[turn].shown[code] ?: return listOf("f${frames[turn].index}: no code screen as the bars turn")
+        val before = frames[turn - 1].shown[code] ?: 0f
+        val half = 0.5f
+        val crossed = if (frames.last().lightBars) at >= half && before < half else at < half && before >= half
+        return if (crossed) emptyList() else listOf("f${frames[turn].index}: the bars' icons turn with the code screen ${"%.2f".format(at)} shown (${"%.2f".format(before)} the frame before), not as it passes half")
     }
 
     private fun orderGrow(dark: Boolean) {
@@ -162,8 +177,8 @@ class RunningMovesTest {
     }
 
     /** Every check a running [move] keeps, on each of its [frames]. */
-    private fun check(name: String, dark: Boolean, frames: List<RunningMoves.Frame>, move: Move?, glyphs: Boolean, grows: Boolean = false) {
-        val failures = mutableListOf<String>()
+    private fun check(name: String, dark: Boolean, frames: List<RunningMoves.Frame>, move: Move?, glyphs: Boolean, grows: Boolean = false, bars: List<String> = emptyList()) {
+        val failures = bars.toMutableList()
         val moving = frames.drop(1).dropLast(RunningMoves.SETTLE_FRAMES)
         if (move != null) {
             for (f in moving) {
