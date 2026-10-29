@@ -374,6 +374,7 @@ class Overlay(
             onCopy = onCopy,
             onCopyXmr = onCopyXmr,
             onFullScreen = { lower(); onFullScreen(it) },
+            onBubble = { if (panelOpen.value) lower() else panelOpen.value = true },
         )
         val motion = PanelMotion(if (open) 1f else 0f, bubbleAt)
         val view = compose {
