@@ -38,10 +38,10 @@ import app.monokular.Move
 import app.monokular.SaleText
 import app.monokular.up
 import app.monokular.GroundLook
-import app.monokular.GroundTrack
 import androidx.compose.runtime.remember
 import app.monokular.words
 import app.monokular.sharedGround
+import app.monokular.rememberGroundTrack
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
 
@@ -79,7 +79,7 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
                 .clickable(onClickLabel = "Shrink the code", indication = null, interactionSource = null, onClick = onBack),
         ) {
             // The sale's white code card, spread to the screen (M8): a ground with nothing in it, the code its own layer over it.
-            val ground = remember { GroundTrack() }
+            val ground = rememberGroundTrack(codeGround(sale.orderId))
             Box(
                 Modifier.fillMaxSize()
                     .sharedGround(codeGround(sale.orderId), Move.CodeGrow, GroundLook(Fixed.White, CodeScreenCorner), GroundLook(Fixed.White, CodeCorner), ground),

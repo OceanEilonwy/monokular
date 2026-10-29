@@ -40,10 +40,10 @@ import androidx.compose.ui.unit.sp
 import app.monokular.Move
 import app.monokular.SaleText
 import app.monokular.GroundLook
-import app.monokular.GroundTrack
 import androidx.compose.runtime.remember
 import app.monokular.groundExcept
 import app.monokular.sharedGround
+import app.monokular.rememberGroundTrack
 import app.monokular.words
 import androidx.compose.ui.graphics.Color
 import app.monokular.receipt.Receipt
@@ -141,7 +141,7 @@ fun OrderContent(
     val receipt = sale.receipt
     // In the app the page's own parts fade in once the sale's have gone, at their own size, while the card grows.
     Row(
-        Modifier.fillMaxWidth().words(through = Move.OrderGrow).height(64.dp).padding(start = 4.dp, end = 16.dp),
+        Modifier.fillMaxWidth().words(through = OrderGrowOnly).height(64.dp).padding(start = 4.dp, end = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
@@ -158,7 +158,7 @@ fun OrderContent(
         Muted("What was bought stays on the till that rang it up.", Modifier.padding(24.dp).weight(1f), size = 15)
     } else {
         Row(
-            Modifier.fillMaxWidth().words(through = Move.OrderGrow).padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
+            Modifier.fillMaxWidth().words(through = OrderGrowOnly).padding(start = 24.dp, end = 24.dp, top = 8.dp, bottom = 16.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
             Text(SaleText.items(receipt), style = display(34, -0.6), modifier = Modifier.weight(1f).alignByBaseline())
@@ -168,12 +168,12 @@ fun OrderContent(
         // there's no stage and it's a card.
         Box(Modifier.weight(1f).padding(horizontal = 16.dp).fillMaxWidth()) {
             val look = GroundLook(mk.card, CardCorner)
-            val ground = remember { GroundTrack() }
+            val ground = rememberGroundTrack("order/${sale.orderId}")
             Box(Modifier.matchParentSize().sharedGround("order/${sale.orderId}", Move.OrderGrow, look, look, ground))
             OrderList(receipt, Modifier.matchParentSize().words(over = Move.OrderGrow, on = ground).clip(CardShape))
         }
     }
-    Box(Modifier.words(through = Move.OrderGrow)) { ShowCodeBar(sale, now, onShowCode) }
+    Box(Modifier.words(through = OrderGrowOnly)) { ShowCodeBar(sale, now, onShowCode) }
 }
 
 /** Every line of the order, its subtotal, extras, tax and total; they scroll. */
@@ -243,3 +243,6 @@ private fun ShowCodeBar(sale: TillSale, now: LongState, onShowCode: () -> Unit) 
         }
     }
 }
+
+/** The page's own words fade through its grow, and nothing else. */
+private val OrderGrowOnly = setOf(Move.OrderGrow)
