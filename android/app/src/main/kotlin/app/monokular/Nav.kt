@@ -2,6 +2,8 @@
 
 package app.monokular
 
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -28,8 +30,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
@@ -39,6 +46,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntOffset
 import app.monokular.ui.Motion
 import app.monokular.ui.motion
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 /** How one screen reaches another (`docs/motion.md` M7), and back the same way reversed. */
 sealed interface Move {
@@ -129,7 +138,10 @@ object Nav {
     }
 }
 
-/** [move] as the screens' enter and exit, with [motion]'s presets; going back puts the screen arriving underneath. */
+/**
+ * [move] as the screens' enter and exit, with [motion]'s presets; going back puts the screen arriving underneath.
+ * Everything spatial is on [Motion.track], a straight line: the stage's progress is what springs (decision 112).
+ */
 fun AnimatedContentTransitionScope<Screen>.transform(move: Move, motion: Motion, back: Boolean): ContentTransform {
     val fade = motion.fade.fraction
     val quick = motion.fadeQuick.fraction
@@ -138,11 +150,11 @@ fun AnimatedContentTransitionScope<Screen>.transform(move: Move, motion: Motion,
         // screens themselves don't fade: the one going stays as it is under the surface until the surface lands
         // (it covers it by then, or it is the one shown), so no frame composites a whole screen through an alpha layer.
         Move.RowGrow, Move.OrderGrow, Move.CodeGrow -> EnterTransition.None togetherWith ExitTransition.KeepUntilTransitionsFinished
-        Move.Rise -> (fadeIn(fade) + scaleIn(motion.surface.fraction, initialScale = Nav.RISE_FROM)) togetherWith fadeOut(quick)
-        Move.FadeThrough -> (fadeIn(fade) + scaleIn(motion.surface.fraction, initialScale = Nav.SETTINGS_FROM)) togetherWith fadeOut(quick)
+        Move.Rise -> (fadeIn(fade) + scaleIn(motion.track.fraction, initialScale = Nav.RISE_FROM)) togetherWith fadeOut(quick)
+        Move.FadeThrough -> (fadeIn(fade) + scaleIn(motion.track.fraction, initialScale = Nav.SETTINGS_FROM)) togetherWith fadeOut(quick)
         is Move.Slide -> {
             val towards = if (move.forward) AnimatedContentTransitionScope.SlideDirection.Start else AnimatedContentTransitionScope.SlideDirection.End
-            val slide = motion.surface.spec(IntOffset.VisibilityThreshold)
+            val slide = motion.track.spec(IntOffset.VisibilityThreshold)
             (slideIntoContainer(towards, slide) { (it * Nav.STEP_IN).toInt() } + fadeIn(fade)) togetherWith
                 (slideOutOfContainer(towards, slide) { (it * Nav.STEP_OUT).toInt() } + fadeOut(quick))
         }
@@ -160,9 +172,79 @@ class Stage internal constructor(
     private val transition: Transition<Screen>,
     private val cameUpByItself: () -> Boolean,
     private val still: Boolean,
+    private val scrub: BackScrub,
 ) {
     /** The move under way between the two screens of the transition, read when a surface asks, not in composition. */
     fun moving(): Move = Nav.move(transition.currentState, transition.targetState, cameUpByItself(), still)
+
+    /** Whether a back gesture holds the stage: it may yet spring back, so the screen it would leave is still the one up. */
+    val scrubbing: Boolean get() = scrub.active
+}
+
+/** A back gesture over the stage, from its start until it has committed or sprung back. */
+@Stable
+class BackScrub {
+    var active by mutableStateOf(false)
+        internal set
+}
+
+/**
+ * Android's back over the stage. Where it goes is asked of [target] as the
+ * gesture starts (the model as it is then, not as the last composition
+ * saw it); the gesture seeks [state] toward it, so each part of the move
+ * is as far along as the finger (decision 112), and the release runs the
+ * rest on [Motion.stage]: committed, [onLanded] is told which screen was
+ * left once the move has landed; cancelled, the screen springs back. With
+ * no target, or under Still, there's no preview and [onBack] runs on
+ * release. [scrub] is held from the gesture's start until it has
+ * committed or sprung back.
+ */
+@Composable
+fun StageBack(
+    enabled: Boolean,
+    state: SeekableTransitionState<Screen>,
+    scrub: BackScrub,
+    target: () -> Screen?,
+    onBack: () -> Unit,
+    onLanded: (from: Screen) -> Unit,
+) {
+    val m = motion
+    if (m.still) {
+        BackHandler(enabled, onBack)
+        return
+    }
+    val scope = rememberCoroutineScope()
+    PredictiveBackHandler(enabled) { progress ->
+        val to = target()
+        if (to == null) {
+            progress.collect {}
+            onBack()
+            return@PredictiveBackHandler
+        }
+        val from = state.currentState
+        scrub.active = true
+        try {
+            // The screen back goes to is composed and laid out at 0 before the finger moves anything, so every part's
+            // track starts at the same 0 and a progress of p is p of the way for all of them.
+            state.seekTo(0f, to)
+            withFrameNanos {}
+            withFrameNanos {}
+            progress.collect { state.seekTo(it.progress, to) }
+        } catch (e: CancellationException) {
+            // Cancelled: the screen that was up springs back from wherever the finger left it, still held.
+            scope.launch {
+                try {
+                    state.animateTo(from, m.stage)
+                } finally {
+                    scrub.active = false
+                }
+            }
+            throw e
+        }
+        scrub.active = false
+        state.animateTo(to, m.stage)
+        onLanded(from)
+    }
 }
 
 val LocalStage = staticCompositionLocalOf<Stage?> { null }
@@ -170,11 +252,18 @@ val LocalStage = staticCompositionLocalOf<Stage?> { null }
 /**
  * The till's screens, one at a time, each reaching the next by its [Move]
  * (M7). [state] is seekable, so a back gesture can scrub the transition
- * before it commits. [cameUpByItself] says the screen was changed by the
+ * before it commits; run it with [Motion.stage] (`state.animateTo(screen,
+ * motion.stage)`), so a seek and a spring move every part along the same
+ * line. [cameUpByItself] says the screen was changed by the
  * till (a new sale coming up), not the cashier.
  */
 @Composable
-fun TillStage(state: SeekableTransitionState<Screen>, cameUpByItself: () -> Boolean, content: @Composable (Screen) -> Unit) {
+fun TillStage(
+    state: SeekableTransitionState<Screen>,
+    cameUpByItself: () -> Boolean,
+    scrub: BackScrub = remember { BackScrub() },
+    content: @Composable (Screen) -> Unit,
+) {
     val m = motion
     val transition = rememberTransition(state, label = "screen")
     SharedTransitionLayout {
@@ -184,7 +273,7 @@ fun TillStage(state: SeekableTransitionState<Screen>, cameUpByItself: () -> Bool
                 transform(Nav.move(initialState, targetState, cameUpByItself(), m.still), m, Nav.isBack(initialState, targetState))
             },
         ) { screen ->
-            val stage = remember(m) { Stage(shared, this, transition, cameUpByItself, m.still) }
+            val stage = remember(m) { Stage(shared, this, transition, cameUpByItself, m.still, scrub) }
             CompositionLocalProvider(LocalStage provides stage) { content(screen) }
         }
     }
@@ -196,7 +285,8 @@ private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Ali
 /**
  * This node is [key]'s surface on whichever screen shows it: while the
  * screens change by [during], its bounds move from one screen's node to
- * the other's with [Motion.surface] and its content, scaled as a layer,
+ * the other's on [Motion.track], in step with the stage's progress (which
+ * springs, or follows a back gesture), and its content, scaled as a layer,
  * crossfades. Any other move, or Still, leaves it alone, so a sale that
  * came up by itself doesn't grow out of a row the cashier didn't tap.
  * Without [fade] both sides draw fully throughout: for the code, the same
@@ -214,7 +304,7 @@ fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleSha
         }
     }
     val state = shared.rememberSharedContentState(key, config)
-    val bounds = remember(m) { BoundsTransform { _, _ -> m.surface.spec(Rect.VisibilityThreshold) } }
+    val bounds = remember(m) { BoundsTransform { _, _ -> m.track.spec(Rect.VisibilityThreshold) } }
     val overlayClip = remember(shared, clip) { shared.OverlayClip(clip) }
     return with(shared) {
         sharedBounds(
@@ -227,13 +317,19 @@ fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleSha
 }
 
 /**
- * Whether the screen this is on has finished arriving: true at once with
- * no stage or when it was already there, else once its transition lands.
- * Read where it's needed, so only that recomposes, once.
+ * Whether the screen this is on is the one up: true at once with no stage,
+ * else once its arrival has landed, and through a back gesture that may yet
+ * spring back to it; false from the moment it is being left for good (the
+ * gesture committed, or the till moved on). Read where it's needed, so only
+ * that recomposes, at those moments.
  */
 @Composable
-fun landed(): Boolean {
+fun up(): Boolean {
     val stage = LocalStage.current ?: return true
     val transition = stage.content.transition
-    return remember(transition) { derivedStateOf { !transition.isRunning && transition.currentState == EnterExitState.Visible } }.value
+    return remember(transition) {
+        derivedStateOf {
+            transition.currentState == EnterExitState.Visible && (transition.targetState == EnterExitState.Visible || stage.scrubbing)
+        }
+    }.value
 }

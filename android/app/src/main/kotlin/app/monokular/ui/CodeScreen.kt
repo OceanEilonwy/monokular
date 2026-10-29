@@ -36,7 +36,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import app.monokular.Move
 import app.monokular.SaleText
-import app.monokular.landed
+import app.monokular.up
 import app.monokular.sharedSurface
 import app.monokular.core.SalePhase
 import app.monokular.sales.TillSale
@@ -65,8 +65,9 @@ object CodeText {
 fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
     if (!sale.live) LaunchedEffect(sale.orderId) { onBack() }
     KeepScreenOn()
-    // Once the white has spread to the screen: a brightness jump mid-grow would flash the whole display (M8).
-    if (landed()) FullBrightness()
+    // Once the white has spread to the screen (a brightness jump mid-grow would flash the whole display, M8), and
+    // through a back gesture until it commits: a cancelled one springs back to the code at the brightness it had.
+    if (up()) FullBrightness()
     val now = rememberNowSeconds()
     // The design's light roles, fixed: this screen is white in both themes.
     val ink = LightTokens.ink

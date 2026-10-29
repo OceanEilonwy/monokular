@@ -28,7 +28,8 @@ import androidx.compose.ui.platform.LocalContext
  * named for its purpose, so two things of the same kind move the same way
  * and a timing is changed here and nowhere else. Springs for anything with
  * a position (they retarget from where they are, at the speed they're
- * going); tweens only for opacity. [Full] is the design; [Still] is what
+ * going); tweens only for opacity, and [track], the straight line a
+ * screen change's parts follow while a spring moves the stage. [Full] is the design; [Still] is what
  * "Remove animations" gets: spatial presets snap, crossfades are quick,
  * loops don't run, and the dwells, which are reading time, stay.
  */
@@ -45,6 +46,17 @@ class Motion private constructor(
 
     /** What the finger let go of, seeded with its velocity: the bubble snapping to its edge, the grabber springing back. */
     val flick: Preset = spatial(stiffness = 600f, dampingRatio = 0.8f)
+
+    /**
+     * The straight line every spatial part of a screen change follows (decision 112): the shared surfaces' bounds,
+     * the rises and the slides, one [surface]'s length long, so the stage at progress p has every one of them p
+     * of the way. The stage's progress itself moves on [surface] ([stage]), or under the finger while a back
+     * gesture seeks it, so the physics is in one place and a scrub is a preview.
+     */
+    val track: Preset = if (still) Snapped else Timed(TRACK_MS)
+
+    /** How the stage's progress runs to a screen, the till's or the cashier's release: [surface] on [track]; under [Still], each part's own spec. */
+    val stage: FiniteAnimationSpec<Float>? = if (still) null else surface.fraction
 
     /** The phase ring's arc growing a quarter: slow enough to read as a sweep, overdamped so it never passes a quarter mark. */
     val sweep: Preset = spatial(stiffness = 170f, dampingRatio = 1f)
@@ -86,6 +98,9 @@ class Motion private constructor(
         private const val FADE_MS = 200
         private const val QUICK_MS = 120
         private const val PULSE_MS = 1600
+
+        /** About as long as [surface] takes to settle, so a screen change takes as long whether seeked or not. */
+        private const val TRACK_MS = 450
     }
 }
 

@@ -7,7 +7,9 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithContentDescription
@@ -18,6 +20,7 @@ import androidx.compose.ui.unit.IntSize
 import app.monokular.OneClockTest.Companion.noActions
 import app.monokular.OneClockTest.Companion.status
 import app.monokular.ui.CodeScreen
+import app.monokular.ui.Motion
 import app.monokular.ui.SaleScreen
 import app.monokular.ui.ShiftScreen
 import kotlinx.coroutines.CoroutineScope
@@ -65,7 +68,7 @@ class StageTest {
         val state = SeekableTransitionState<Screen>(Screen.Till)
         compose.setContent {
             Till {
-                LaunchedEffect(screen) { state.animateTo(screen) }
+                LaunchedEffect(screen) { state.animateTo(screen, Motion.Full.stage) }
                 TillStage(state, cameUpByItself = { false }) { s ->
                     when (s) {
                         is Screen.Sale -> SaleScreen(sale, "Front", refunding = false, refundProblem = null, actions = noActions, now = now)
@@ -108,7 +111,7 @@ class StageTest {
         compose.waitForIdle()
         fun back() = compose.onNodeWithContentDescription("Back to the shift", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         val full = back()
-        val codeWidth = code().fetchSemanticsNode().boundsInRoot.width
+        val codeWidth = code().fetchSemanticsNode().drawn().width
         val codeSize = code().fetchSemanticsNode().size
         compose.mainClock.autoAdvance = false
 
@@ -118,7 +121,7 @@ class StageTest {
         }
         seek(0.08f)
         val early = back()
-        val drawn = code().fetchSemanticsNode().boundsInRoot.width
+        val drawn = code().fetchSemanticsNode().drawn().width
         val laidOut = code().fetchSemanticsNode().size
         seek(0.99f)
         val late = back()
@@ -138,7 +141,7 @@ class StageTest {
         val state = SeekableTransitionState<Screen>(Screen.Sale("a1"))
         compose.setContent {
             Till {
-                LaunchedEffect(screen) { state.animateTo(screen) }
+                LaunchedEffect(screen) { state.animateTo(screen, Motion.Full.stage) }
                 TillStage(state, cameUpByItself = { false }) { s ->
                     when (s) {
                         is Screen.Code -> CodeScreen(sale, onBack = {})
@@ -162,7 +165,7 @@ class StageTest {
             compose.mainClock.advanceTimeBy(t)
             assertEquals(bigSize, big().size, "the enlarged code keeps its laid-out size at every frame")
             assertEquals(small, code().fetchSemanticsNode().size, "and so does the sale's")
-            drawn += big().boundsInRoot.width
+            drawn += big().drawn().width
         }
         assertEquals(0, recompositions.count("app.monokular.ui.QrCode"), "the code isn't recomposed by the grow")
         assertTrue(drawn[0] < drawn[2] && drawn[2] < bigSize.width, "mid-grow it is drawn between the card and the screen: $drawn of ${bigSize.width}")
@@ -170,12 +173,49 @@ class StageTest {
         screen = Screen.Sale("a1")
         compose.mainClock.advanceTimeByFrame()
         compose.mainClock.advanceTimeBy(50)
-        val shrinking = big().boundsInRoot.width
+        val shrinking = big().drawn().width
         compose.mainClock.advanceTimeBy(50)
-        assertTrue(big().boundsInRoot.width < shrinking && shrinking <= drawn[2] + 1f, "Back mid-grow shrinks from where it got to: ${drawn[2]} -> $shrinking -> ${big().boundsInRoot.width}")
+        assertTrue(big().drawn().width < shrinking && shrinking <= drawn[2] + 1f, "Back mid-grow shrinks from where it got to: ${drawn[2]} -> $shrinking -> ${big().drawn().width}")
 
         compose.mainClock.advanceTimeBy(1_500)
         compose.onAllNodesWithContentDescription("Payment code, tap to shrink", useUnmergedTree = true).assertCountEquals(0)
         assertEquals(small, code().fetchSemanticsNode().size, "and lands at its 264 dp card")
     }
+
+    @Test
+    fun backFromTheThirdRowsSaleLandsOnThatRowWithTheRowsAroundItAtRest() {
+        val rows = listOf(testSale("r1", expiresAt = 1_600), testSale("r2", expiresAt = 1_600), testSale("r3", expiresAt = 1_600), testSale("r4", expiresAt = 1_600))
+        var screen by mutableStateOf<Screen>(Screen.Till)
+        val state = SeekableTransitionState<Screen>(Screen.Till)
+        compose.setContent {
+            Till {
+                LaunchedEffect(screen) { state.animateTo(screen, Motion.Full.stage) }
+                TillStage(state, cameUpByItself = { false }) { s ->
+                    when (s) {
+                        is Screen.Sale -> SaleScreen(rows.first { it.orderId == s.orderId }, "Front", refunding = false, refundProblem = null, actions = noActions, now = now)
+                        else -> ShiftScreen(status, rows, noActions, now)
+                    }
+                }
+            }
+        }
+        compose.waitForIdle()
+        fun top(sale: app.monokular.sales.TillSale) =
+            compose.onNodeWithText(ShiftList.row(sale, 0).title, substring = true, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.top
+        val rest = rows.map(::top)
+
+        screen = Screen.Sale("r3")
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        screen = Screen.Till
+        compose.mainClock.advanceTimeBy(1_500)
+        assertEquals(rest, rows.map(::top), "landed, every row is where it was before the sale opened")
+        compose.mainClock.advanceTimeBy(100)
+        assertEquals(rest, rows.map(::top), "and stays there")
+    }
+}
+
+/** Where this node is drawn, moved and scaled with its layers, not clipped to where its parents sit at rest. */
+fun SemanticsNode.drawn(): Rect {
+    val c = layoutInfo.coordinates
+    return Rect(c.localToRoot(Offset.Zero), c.localToRoot(Offset(c.size.width.toFloat(), c.size.height.toFloat())))
 }
