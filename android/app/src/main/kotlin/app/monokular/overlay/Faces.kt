@@ -74,6 +74,7 @@ import androidx.compose.runtime.State
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.lerp
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.DefaultShadowColor
@@ -227,6 +228,16 @@ object Panel {
 
     /** The share of the docked bubble's way, nearest the free bubble, it travels with no card (decision 170). */
     const val BUBBLE_ALONE = 0.05f
+
+    /**
+     * Where the docked bubble's centre is at [raise]: at the free bubble
+     * ([from]) in the bubble, at its slot ([dock]) once the panel is open,
+     * [opened] of the way between. The bubble is drawn there, and a phone's
+     * card scales about it, so the card grows out of the circle on every
+     * frame wherever the free bubble was, and collapses into it on its way
+     * home (decision 189). [Offset] is a value, so a frame allocates nothing.
+     */
+    fun docked(dock: Offset, from: Offset, raise: Float): Offset = lerp(from, dock, opened(raise))
 
     /** The card's scale at [raise]: from [SMALLEST] in the bubble to whole. */
     fun scale(raise: Float): Float = SMALLEST + (1f - SMALLEST) * opened(raise)
@@ -1064,8 +1075,8 @@ private fun PhoneCode(
                     if (dock == null || from == null) {
                         IntOffset.Zero
                     } else {
-                        val away = 1f - Panel.opened(motion.raise.value)
-                        IntOffset(((from.x - dock.x) * away).roundToInt(), ((from.y - dock.y) * away).roundToInt())
+                        val at = Panel.docked(dock, from, motion.raise.value)
+                        IntOffset((at.x - dock.x).roundToInt(), (at.y - dock.y).roundToInt())
                     }
                 }
                 // Over the card, which grows out of it and collapses into it.
@@ -1144,7 +1155,9 @@ fun FloatingPanel(sale: TillSale, where: String, page: PanelPage, actions: Panel
 /**
  * The panel growing out of the bubble and collapsing back into it
  * (`docs/motion.md` M1): scaled from [Panel.SMALLEST] and faded in over the
- * first third of [Panel.opened], about the docked bubble on a phone and the
+ * first third of [Panel.opened], about the docked bubble where it is on
+ * this frame on a phone ([Panel.docked]: the card is the bubble opened on
+ * its way to the dock, and folds back into it on its way home), and the
  * card's corner nearest the bubble on a tablet. Everything is read in the
  * layer, so a frame of the grow recomposes and relays out nothing.
  */
@@ -1156,7 +1169,7 @@ private fun Modifier.grows(motion: PanelMotion, wide: Boolean, order: Boolean = 
     .graphicsLayer {
         val raise = motion.raise.value
         val card = if (order) motion.window else motion.card
-        val from = if (wide) motion.bubbleAt else motion.dock ?: motion.bubbleAt
+        val from = if (wide) motion.bubbleAt else motion.bubbleNow(raise)
         if (card != null && from != null) transformOrigin = Panel.origin(from, card, corner = wide)
         scaleX = Panel.scale(raise)
         scaleY = scaleX

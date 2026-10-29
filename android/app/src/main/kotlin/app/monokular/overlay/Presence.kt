@@ -118,6 +118,18 @@ class PanelMotion(initial: Float, private val bubble: State<Offset?>) {
     /** Whether the panel shows no docked bubble (the order fills a phone's window), so the free one can go at once. */
     var undocked = false
 
+    /**
+     * The docked bubble's centre on screen at [raise], sliding from the free
+     * bubble to the dock ([Panel.docked]); the dock alone (or the free bubble
+     * alone) while only one is known, null before either is. Read in the
+     * layer only.
+     */
+    fun bubbleNow(raise: Float): Offset? {
+        val dock = dock
+        val from = bubbleAt
+        return if (dock != null && from != null) Panel.docked(dock, from, raise) else dock ?: from
+    }
+
     /** Whether the panel has placed what the free bubble hands over to. */
     val placed: Boolean get() = undocked || dock != null
 }
