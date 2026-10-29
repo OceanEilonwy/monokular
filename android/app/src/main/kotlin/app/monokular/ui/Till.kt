@@ -64,6 +64,7 @@ import app.monokular.Closing
 import app.monokular.Ground
 import app.monokular.PosText
 import app.monokular.SaleHeader
+import app.monokular.Move
 import app.monokular.SaleText
 import app.monokular.core.PointOfSale
 import app.monokular.StateIcon
@@ -71,6 +72,7 @@ import app.monokular.Tone
 import app.monokular.receipt.Receipt
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
+import app.monokular.sharedSurface
 import kotlinx.coroutines.delay
 
 /**
@@ -210,7 +212,10 @@ fun SaleScreen(
     actions: TillActions,
     now: LongState = rememberNowSeconds(),
 ) {
-    if (sale.live) LiveSale(sale, location, now, actions) else SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions)
+    // The sale is its row opened: tapped on the shift, this grows out of the row's card (M7).
+    Box(Modifier.fillMaxSize().sharedSurface("sale/${sale.orderId}", Move.RowGrow)) {
+        if (sale.live) LiveSale(sale, location, now, actions) else SaleDetail(sale, location, refunding, refundProblem, refundSheet, actions)
+    }
 }
 
 /** A live sale full screen, for the customer to scan (SaleA); split in two on a wide window (decision 45). */
@@ -241,7 +246,7 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                         ) {
                             Amount(sale, actions.onCopyXmr, start = true)
                             StatusPill(sale, now)
-                            sale.receipt?.let { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
+                            sale.receipt?.let { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") }
                             Buttons(sale, header, actions)
                         }
                     }
@@ -258,7 +263,7 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                         Amount(sale, actions.onCopyXmr)
                         Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide)) { actions.onEnlarge(sale.orderId) }
                         StatusPill(sale, now)
-                        sale.receipt?.let { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
+                        sale.receipt?.let { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") }
                     }
                     Box(
                         Modifier.align(Alignment.CenterHorizontally).widthIn(max = PhoneMaxWidth)
@@ -272,6 +277,9 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
         CloseSheet(sale, actions.source, now, onChoice = { actions.onClose(sale.orderId, it) }, onDismiss = { asking = false })
     }
 }
+
+/** A card's corners: the order card, the order page's list. */
+internal val CardShape = RoundedCornerShape(20.dp)
 
 /** The sale's code on a phone: the design's 264 dp, whatever the order beside it. */
 private val CodeSide = 264.dp
@@ -381,14 +389,17 @@ private fun Buttons(sale: TillSale, header: SaleHeader, actions: TillActions) = 
  * and its price, the tax and the total. On the sale ([onOpen] set) a long
  * order shows three lines and "+N more", and the card opens the whole order
  * (decision 66); a detail page lists every line. [pos] names the receipt
- * ("Clover order …").
+ * ("Clover order …"). On the sale, [shared] is the key it grows into the
+ * order page by (M7).
  */
 @Composable
-fun OrderCard(receipt: Receipt, pos: PointOfSale?, withTime: Boolean, onOpen: (() -> Unit)? = null) {
+fun OrderCard(receipt: Receipt, pos: PointOfSale?, withTime: Boolean, onOpen: (() -> Unit)? = null, shared: String? = null) {
     val (lines, more) = if (onOpen != null) SaleText.shownLines(receipt) else receipt.lineItems to 0
     val open = onOpen.takeIf { more > 0 }
     Column(
-        Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(mk.card)
+        Modifier.fillMaxWidth()
+            .then(if (shared != null) Modifier.sharedSurface(shared, Move.OrderGrow, CardShape) else Modifier)
+            .clip(CardShape).background(mk.card)
             .then(if (open != null) Modifier.clickable(onClickLabel = "See the whole order", onClick = open) else Modifier)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(6.dp),

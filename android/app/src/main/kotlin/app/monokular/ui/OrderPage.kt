@@ -1,6 +1,5 @@
 package app.monokular.ui
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -41,6 +40,8 @@ import androidx.compose.ui.unit.sp
 import app.monokular.PosText
 import app.monokular.SaleText
 import app.monokular.core.PointOfSale
+import app.monokular.Move
+import app.monokular.sharedSurface
 import app.monokular.receipt.Receipt
 import app.monokular.sales.TillSale
 import kotlinx.serialization.json.JsonObject
@@ -109,11 +110,11 @@ object OrderText {
 /**
  * The whole order, full screen (the design's PanelE), in the app: opened
  * from the sale's order card. [backLabel] says where back goes; "Show the
- * code" ([onShowCode]) goes there too. Android's back goes to [onBack].
+ * code" ([onShowCode]) goes there too. Android's back is the activity's,
+ * which previews the way back to the sale.
  */
 @Composable
 fun OrderPage(sale: TillSale, backLabel: String, onBack: () -> Unit, onShowCode: () -> Unit) {
-    BackHandler(onBack = onBack)
     val now = rememberNowSeconds()
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
@@ -164,7 +165,10 @@ fun OrderContent(
             Text(OrderText.lines(receipt), fontSize = 15.sp, color = mk.muted, modifier = Modifier.alignByBaseline())
         }
         Column(
-            Modifier.weight(1f).padding(horizontal = 16.dp).fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(mk.card)
+            // In the app, the sale's order card grows into this (M7); in the panel there's no stage and it's a card.
+            Modifier.weight(1f).padding(horizontal = 16.dp).fillMaxWidth()
+                .sharedSurface("order/${sale.orderId}", Move.OrderGrow, CardShape)
+                .clip(CardShape).background(mk.card)
                 .verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 4.dp),
         ) {
             receipt.lineItems.forEach { item -> Line(item, receipt.currency) }
