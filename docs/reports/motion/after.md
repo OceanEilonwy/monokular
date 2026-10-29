@@ -1001,3 +1001,240 @@ keeps a frame only when the picture changes enough, so the in-between
 frames of the shrink are not in either; the GPU recordings the reviews
 ask for are still to be made (197). Clips: `tmp/dev2-r6-M15.mp4`,
 `tmp/dev2-r6-M16.mp4`.
+
+## Round 6, integrated build (motion at b03c864, the lead's change on top of c638f12), by the lead
+
+The integrated branch is round 5's `a63b39a`, the overlay track's three
+round-6 commits (`motion-dev1` at `4f1dc5c`, a fast-forward), then the
+screens track's five replayed over them with their decisions renumbered
+192 to 198, and one commit of the lead's (decision 199: `keptWhileLeaving`
+as the `rememberUpdatedState` idiom). `./gradlew build` (compile, lint,
+unit tests) is green at the head. Measured as rounds 3 to 5 were
+(`ab-r6.sh`, a copy of `ab-r5.sh` with this build's APK; raw dumps under
+`measure-r6/<serial>/<before|after><n>/` in the lead's scratch folder):
+before is `f274ad7`'s debug build, after is this branch, on the shared dev
+stack with sales rung up on the fake Square for each pass, on the phone
+(emulator-5558, Pixel 9 Pro AVD, SwiftShader) and the tablet
+(emulator-5560). The owner's phone was not used (decision 199), so the
+phone numbers the brief asks to decide by are still not there.
+
+Two things about the rig this round, so the pairs are read right. The
+first two rounds on each emulator ran at the same time to save the hour,
+and the two emulators share one store: each pass rings two sales, the
+other emulator's till raised them by itself, and the flows' way back to
+the shift (one Back per sale that came up on its own) ran out of Backs in
+the phone's `after2` pass and the tablet's `after2` code flow, which is
+why the phone's `before1` shift scroll is 52 frames (the till was on a
+sale, not the shift) and those two passes are cut short below; a third
+pair was then run on each emulator one after the other, as round 5 did,
+with nothing else driving the store. Host load was 7 to 20 through the
+concurrent pairs and 2 to 11 through the sequential ones, so as before the
+numbers are read against each other, not against 16.7 ms.
+
+### Phone (emulator-5558, SwiftShader), before and after; pairs 1 and 2 concurrent with the tablet's, pair 3 alone
+
+| Flow | before 1 / 2 / 3 | after 1 / 2 / 3 | verdict |
+| --- | --- | --- | --- |
+| Shift scroll, window p50 / p90 / p99 / max | (52 frames, the till on a sale: not a scroll), 19.2 / 33.4 / 50.2 / 50.4, 9.7 / 16.8 / 20.1 / 33.4 | 36.8 / 55.7 / 69.0 / 73.4, 26.6 / 50.2 / 83.9 / 85.0, 11.7 / 19.0 / 31.0 / 33.5 | level pair by pair; alone, no frame over 33.5 ms on either |
+| Code open and close ×3, process janky / p50 / p90 / p95 / p99 | 18 frames (cuts): 33.3 % / 10 / 73 / 73 / 73, 18: 33.3 % / 9 / 69 / 81 / 81, 20: 45.0 % / 16 / 65 / 69 / 69 | 131 frames: 14.5 % / 19 / 32 / 48 / 150, (cut short), 131: 10.7 % / 19 / 30 / 53 / 81 | the grows render 110 more frames than the cuts under the cuts' p90; the worst frame is the first enlarge, below |
+| First code enlarge after launch (framestats, ms) | 69.9, 64.7 and 64.3 alone: layout 46 to 50 (the code screen laid out on the cut) | 55.0 and 59.0 alone: animation 12.2, layout 31 to 36, record 5.5, swap 4.6, then one frame of 55 to 57 waiting on the swap (wait 35 to 39); 150 under load (pair 1) | on a quiet host the first enlarge is under the baseline's cut for the first time: the app's part is 50 ms where the cut's was 60; what is left is the screen's composition, which only a real GPU's swap can put under 33 |
+| Shift to sale and back ×10, process janky / p50 / p90 / p95 / p99 | 62 frames (cuts): 41.9 % / 13 / 73 / 81 / 89, 61: 72.1 % / 17 / 65 / 65 / 73, 61: 47.5 % / 15 / 65 / 69 / 81 | 429 frames: 11.9 % / 15 / 29 / 53 / 101, (cut short), 426: 15.3 % / 12 / 27 / 53 / 89 | seven times the cuts' frames at a third of the janky share; the p99 is the composing frame each way, as round 5 |
+| Same, window p50 / p90 / p99 / max | 13.2 / 74.5 / 90.3 / 90.3, 17.2 / 66.7 / 72.7 / 72.7, 16.0 / 66.8 / 83.4 / 83.4 | 15.7 / 33.4 / 83.4 / 83.4, -, 11.9 / 33.4 / 80.7 / 90.0 | |
+| Order open and Back ×5, process janky / p50 / p90 / p99 | 0.38 % / 5 / 16 / 17, 0.61 % / 5 / 16 / 18, 0.54 % / 5 / 16 / 16 | 0.61 % / 5 / 16 / 18, -, 0.84 % / 5 / 16 / 16 | level; no frame over 18 ms |
+| Cold start, debug, median of 3 (ms) | 1848, 1857, 1677 | 1963, -, 1704 | +6 % under load, +1.6 % alone: within the host's noise, as rounds 3 to 5 |
+
+### Overlay on the phone (the bubble found by its window; process-wide `gfxinfo`)
+
+| Flow | before 1 / 2 / 3 | after 1 / 2 / 3 | verdict |
+| --- | --- | --- | --- |
+| Lit bubble alone, 5 s: frames, janky, p50 / p90 | 302, 0 %, 17 / 20; 302, 0 %, 17 / 19; 301, 0 %, 5 / 16 | 302, 0 %, 17 / 19; -; 302, 0 %, 5 / 16 | the pulse's loop on both, level |
+| Panel up and still, 5 s: frames, janky, p50 / p90 | 209, 41.1 %, 46 / 61; 234, 28.2 %, 38 / 48; 304, 0 %, 17 / 28 | 5, 40 %, 14 / 32; -; 5, 60 %, 16 / 16 | the baseline redraws the still panel at 40 to 60 fps; this build draws the countdown's tick, once a second |
+| Raise and lower ×5: frames, janky, p50 / p90 / p95 / p99 | 1305, 13.9 %, 16 / 46 / 48 / 65; 1310, 13.5 %, 16 / 46 / 48 / 65; 1493, 1.1 %, 12 / 17 / 17 / 28 | 844, 5.9 %, 16 / 22 / 32 / 65; -; 853, 2.9 %, 16 / 16 / 16 / 42 | under load half the janky share; alone, level to the p95 and a p99 of 42 against 28 (the collapse's last frames under the free bubble's add, as round 5); the new pivot and throw cost nothing the gfxinfo can see (dev1's host-GPU A/B says the same) |
+| Drag and snap ×2: frames, janky, p90 / p99 | 231, 2.6 %, 21 / 81; 238, 0.4 %, 20 / 25; 238, 0 %, 16 / 16 | 239, 0.4 %, 16 / 17; -; 239, 0 %, 16 / 16 | level or better |
+| Memory with the bubble up, PSS (Java / native heap) | 105 285 (16 352 / 15 228), 105 984 (16 468 / 16 012), 106 058 (17 036 / 15 856) | 110 273 (18 036 / 16 672), -, 110 539 (17 532 / 16 804) | +4.5 to +5.0 MB, untrimmed: see memory below |
+
+### Tablet (emulator-5560), before and after; pairs 1 and 2 concurrent with the phone's, pair 3 alone but under the device tests' host load
+
+| Flow | before 1 / 2 / 3 | after 1 / 2 / 3 | verdict |
+| --- | --- | --- | --- |
+| Shift scroll, window p50 / p90 / p99 / max | 21.7 / 46.8 / 98.4 / 139.1, 48.0 / 59.8 / 153.7 / 167.2, 10.1 / 16.8 / 16.8 / 16.8 | 16.8 / 25.1 / 29.5 / 33.4, 29.2 / 50.3 / 66.9 / 67.8, 10.7 / 19.1 / 30.2 / 30.3 | level or better in each pair; alone, no frame over 30.3 ms |
+| Code open and close ×3, process janky / p50 / p90 / p95 / p99 | 18 frames (cuts): 44.4 % / 10 / 65 / 69 / 69, 18: 33.3 % / 11 / 61 / 61 / 61, 18: 38.9 % / 9 / 65 / 81 / 81 | 126 frames: 23.8 % / 25 / 46 / 53 / 113, (cut short), 127: 17.3 % / 20 / 40 / 46 / 97 | the grows under the cuts' p90; the first enlarge's frames below |
+| First code enlarge after launch (framestats, ms) | 66.8, 81.1, 57.6 and 56.2 alone: layout 41 to 43 on the cut | 57.2, 59.1 and 66.1 alone: layout 0, wait 9 to 25 and swap 17 to 26 (SwiftShader's swap chain, as round 5) | the app's own work is off the frame; what is left is the emulator's GPU |
+| Shift to sale and back ×10, process janky / p50 / p90 / p95 / p99 | 61 frames (cuts): 42.6 % / 12 / 65 / 65 / 81, 60: 40.0 % / 15 / 57 / 65 / 65, 60: 48.3 % / 16 / 65 / 65 / 117 | 427 frames: 11.2 % / 13 / 26 / 48 / 81, 426: 17.1 % / 23 / 42 / 65 / 97, 425: 11.8 % / 11 / 22 / 48 / 77 | better than the cuts at every percentile alone; pair 2 under load 20 |
+| Same, window p50 / p90 / p99 / max | 12.9 / 66.1 / 83.4 / 83.4, 15.7 / 59.8 / 66.5 / 66.5, 16.7 / 64.7 / 118.6 / 118.6 | 13.3 / 29.1 / 90.2 / 100.1, 26.8 / 47.9 / 83.5 / 93.1, 11.6 / 20.8 / 71.0 / 78.6 | |
+| Order open and Back ×5 (the tablet's crossfade), process janky / p50 / p99 | 0.83 % / 16 / 17, 0.93 % / 19 / 30, 0.94 % / 17 / 32 | 0.71 % / 16 / 17, -, 1.33 % / 17 / 30 | level |
+| Cold start, debug, median of 3 (ms) | 1928, 1687, 1412 | 1940, -, 1944 | pair 1 level under the same load; pair 3's after ran under the device tests' Gradle (load 2.9 against 11.2), so its +38 % is the host's: the phone's quiet pair (+1.6 %) is the reading |
+
+### Overlay on the tablet (the floating panel)
+
+| Flow | before 1 / 2 / 3 | after 1 / 2 / 3 | verdict |
+| --- | --- | --- | --- |
+| Lit bubble alone, 5 s: frames, janky | 302, 0.66 %; 301, 0 %; 302, 0 % | 300, 0.33 %; -; 301, 0 % | the pulse's loop, level |
+| Panel up and still, 5 s: frames, janky, p50 | 308, 1.6 %, 20; 309, 0.3 %, 16; 307, 1.6 %, 17 | 5, 0 %, 8; -; 6, 0 %, 8 | the baseline redraws the still panel at 60 fps; this build once a second |
+| Raise and lower ×5: frames, janky, p50 / p90 / p95 / p99 | 1114, 34.1 %, 34 / 53 / 57 / 73; 1083, 34.8 %, 36 / 53 / 57 / 73; 1490, 4.8 %, 18 / 31 / 36 / 48 | 844, 16.8 %, 23 / 40 / 46 / 61; -; 905, 8.2 %, 18 / 34 / 42 / 65 | half the janky share under load; alone, the same p50 and a p99 of 65 against 48 under the test run's load |
+| Drag and snap ×2: frames, janky, p90 / p99 | 207, 24.6 %, 48 / 150; 159, 40.3 %, 57 / 77; 265, 6.0 %, 32 / 101 | 216, 11.1 %, 36 / 53; -; 207, 15.0 %, 46 / 61 | level within the load's band (the bubble's snap is unchanged code) |
+| Memory with the bubble up, PSS (Java / native heap) | 106 149 (18 124 / 15 220), 107 345 (19 076 / 15 192), 108 380 (19 588 / 15 376) | 111 603 (19 232 / 16 720), -, 111 022 (18 828 / 16 708) | +2.6 to +5.5 MB, untrimmed |
+
+### Memory at rest, after a trim (`mem-r6.sh`, the phone emulator)
+
+Fresh on the shift, then ten shift to sale round trips and five order
+opens, 10 s at rest, then a `RUNNING_CRITICAL` trim; PSS in kB, Java
+heap / native heap in brackets, and HWUI's caches from `gfxinfo`. Before
+and after alternately, on a host at load 2 to 3 with nothing else driving
+the store. The second pair's `after` ran into the device tests the lead
+started on the same emulator (the run reinstalls the till and its
+screenshots fill the native heap), so it is discarded and the pair was run again after the tests, the till re-onboarded (the second pair below)
+
+| | before 1 | after 1 | before 2 (discarded) | pair 2 run again, before and after |
+| --- | --- | --- | --- | --- |
+| Fresh on the shift | 98 560 (17 584 / 13 896) | 104 123 (19 436 / 16 220) | 98 162 (17 564 / 13 992) | 96 485 (15 776 / 13 332) before, 103 107 (18 892 / 15 184) after |
+| After the flow, 10 s at rest | 109 639 (21 292 / 15 080) | 110 387 (17 940 / 17 148) | 105 428 (17 156 / 15 248) | 103 454 (16 604 / 14 108), 110 982 (19 584 / 16 252) |
+| After the trim | 105 070 (17 092 / 14 840) | 111 010 (18 252 / 17 264) | 105 035 (17 188 / 14 888) | 103 073 (16 060 / 14 096), 107 945 (17 028 / 15 588) |
+| HWUI caches after the trim: glyph, GPU (purgeable) | 0.23 MB, 2.27 MB (0.16) | 0.23 MB, 16.39 MB (14.24) | 0.23 MB, 2.26 MB (0.15) | 0.25 MB, 2.18 MB (0.12); 0.22 MB, 30.39 MB (28.28) |
+| Step over before, trimmed | | +5.9 MB (Java +1.2, native +2.4) | | +4.9 MB (Java +1.0, native +1.5) |
+
+So the step is +4.9 to +5.9 MB after a trim, what rounds 4 and 5 read
+and what the screens track's heap dumps name (decision 196: the shift's
+standing motion machinery, composed at launch, with a session adding
+half a megabyte more than the base). What the trim does not take back, and PSS on this emulator cannot see
+(`Graphics` is 0 under SwiftShader), is HWUI's GPU cache: 16.4 and 30.4 MB
+against the baseline's 2.2 to 2.3, of it 14.2 and 28.3 MB purgeable, one
+and two phone screens in RGBA (1280 × 2856 × 4 = 14.6 MB); round 5's
+runs read 17 to 30 MB and round 3 noticed one too. Read one step at a
+time on both builds (`gpu-loc.sh`): on this build the texture is there as
+soon as the till is on the shift after its launch (the till comes up on
+a sale that arrived by itself and is left once, a rise and a leave, 16.3
+MB), it is still there after a shift to sale round trip (16.3), it is
+gone after one code enlarge and shrink (2.27 MB: Skia evicted it for the
+code screen's own) and after the order (2.27), and on both builds the
+whole cache is down to 0.2 MB about fifteen seconds after the last draw,
+`RUNNING_CRITICAL` or not (HWUI's own idle purge); the baseline never
+makes it (2.23 MB fresh, 2.27 throughout). So it is a screen change's
+offscreen layer (the fade a whole screen is drawn through) left in Skia's
+resource cache as purgeable until the next big allocation or the render
+thread's idle, not a standing allocation: on a device it is `Graphics`
+PSS for the seconds after a change, which the 2 MB rule, read at rest
+after a trim, does not count, but the memory-pressure reading on the
+phone should be taken knowing it is there. The screens track can take
+the layer away where it is the whole screen (the words already fade per
+part through `ModulateAlpha`; the rising sale page's or the shift's fade
+is the first suspect) if the phone shows it mattering (minor).
+
+### Size
+
+Release, unsigned (`apkanalyzer`): 8 085 234 B file, 4 610 863 B
+download, against round 5's 8 085 234 / 4 609 471 (the same file size,
++1.4 KB download: the overlay's decay preset and pivot, the stage's
+courses, hero end and kept sale, less the derived state and `Kept`) and
+the baseline's 7 951 910 / 4 517 799 (+133 KB / +93 KB, over the 50 KB
+rule as every round has been; no dependency was added).
+
+### Review findings (the integrated diff, every line)
+
+Both tracks' round-6 code keeps to the rules. The overlay's new pivot is
+one `lerp` of two `Offset`s in the card's `graphicsLayer`
+(`Panel.docked`, `PanelMotion.bubbleNow`), the drag offset moved inside
+the grow's layer is the same `offset {}` lambda, and the throw is
+`Animatable.animateDecay` under a preset declared once (`Motion.thrown`,
+null under Still); the re-raise's spring home waits on `snapshotFlow {
+raise.heading }` (the `Animatable`'s target, a state) in a
+`LaunchedEffect` scoped to the card, so it dies with the window. The
+stage's courses are made on attach and dropped on detach, a track finds
+its course by a `HashMap` get on a cached-hash key, the once-a-frame
+placement is a `Long` frame stamp from a `withFrameNanos` loop that runs
+only while a change does and is 0 otherwise (so nothing is cached off a
+frame), `Course.holding` returns a packed `Long`, and the paid-on-code
+fade is one `clipRect` (an inline scope function) and one `drawImage` of
+the bitmap whole with `FilterQuality.None`. The tests fail on the code
+they replace (each track ran them against round 5's head; the lead ran
+the stage's classes again on 5558 at the head, below). What the lead
+changed, and what is left:
+
+- Fixed here (decision 199): `keptWhileLeaving` held a leaving screen's
+  sale in a plain object written from inside a `derivedStateOf`
+  calculation and read the sale on every change while held; it is now a
+  `MutableState` written in composition while the model's screen is this
+  one, as `rememberUpdatedState` is, and read no more once it is not.
+  `Kept` is gone with it. Same frames under `RunningMovesTest`.
+- `TillStage` now runs two `snapshotFlow`s on the same predicate
+  (`currentState != targetState` for the frame stamp, `==` to forget the
+  held move); one collector with both branches would do (screens track,
+  minor).
+- A `Back` pressed while the stage is still on its way to the shift goes
+  to the launcher: the model is on the shift already, so `StageBack` is
+  off (decision 77) and the activity takes it. Checked on 5558 with two
+  Backs 250 ms apart from a sale, and the baseline does the same (the
+  second Back lands on the cut's shift and leaves as 77 says), so it is
+  not a regression; if the designer would rather the move swallowed it,
+  `enabled` is `… || (screen == Till && stage.currentState !=
+  stage.targetState)` and `model.back(Till)` is already a no-op
+  (designer to call; screens track, minor).
+- The paid page's hero registers as the `code-card/<id>` end on every
+  paid or ended page, not only when the page is reached from the
+  enlarged code, so a `RowGrow` into a paid page carries one course with
+  a single end that `locate` refuses each frame (`held.during` is not
+  `CodeGrow`); correct and cheap, noted so no one reads it as a leak
+  (screens track, no action).
+- `Panel.lowers` fires on `velocity >= fling` and the decay is seeded
+  with that velocity, so a throw is always downward; on a tablet the
+  drag is an alpha and the decay runs it on under the fading panel,
+  harmless and invisible (overlay track, no action).
+- Lint: the `ModifierParameter` warnings left are the overlay's
+  (`Faces.kt`), as before (overlay track, minor).
+- Carried: the owner's phone (199); the paid fold's and first enlarge's
+  acceptance on a real GPU (168, 191's host-GPU recordings stand in);
+  `fadeThrough` under Still (141); the stash `r4-flat` for a person to
+  drop; the rebase onto `origin/main` past #16 to #22 and the rigs under
+  `tools/motion-rig` (lead; the devs' `ab.sh`, `heap.sh`, `hprof_*.py`
+  and `smaps_diff.py` are in the scratch folder ready to move); the
+  S1 `secondsLeft` deletion (overlay track).
+
+### Device tests
+
+On emulator-5558 at the head (`b03c864`), one class per run:
+`RunningMovesTest` 29 (the screens track's seven new ones among them),
+`OverlayFramesTest` 16 (the overlay track's three new ones among them),
+`MotionFramesTest` 19, `StageBackTest` 8, `StageTest` 4, all green, with
+`CourseTest`, `PanelTest` and `MotionTest` on the JVM under `./gradlew
+build`. One flake to know about: in the first run, started while the
+tablet's A/B and a Gradle build shared the host (load 13 to 16),
+`RunningMovesTest.aSaleRisesDark` failed from frame 11 with both screens
+reading the move as `RowGrow` where `Rise` was asked, then the stage not
+landing; run alone twice afterwards (light and dark) it passes in 10 s.
+The symptom is the held move being read afresh mid-change (a new
+generation while the first still ran), which a frame of 100 ms or more
+under the test clock could do to the harness; the screens track should
+read `aSaleRises*` under a slow frame before it is called the host's
+(minor). Both tracks ran their full suites on their own emulators at the
+heads integrated here (45 overlay tests on 5554, 161 on 5556). The runs
+uninstall the till from 5558, which is re-onboarded with `onboard.sh`
+and the round-6 build afterwards.
+
+### Verdict
+
+Frames: on a quiet host (pair 3 on each emulator) the shift scroll and
+the order page are level with the baseline and no frame of either is
+over 34 ms; the shift to sale round trip renders seven times the cuts'
+frames at a third of the janky share with a lower or equal p99 (phone 89
+against 81 to 89, tablet 77 against 65 to 117); the first code enlarge
+after launch is, for the first time, under the baseline's own cut on
+the phone (55 to 59 ms against 64 to 70: the app's part 50 ms where the
+cut's was 60) and on the tablet is the emulator's swap alone (layout 0);
+the panel raise and lower is level to the p95 with a p99 of 42 to 65
+against 28 to 48 (the collapse's last frames under the free bubble's
+add, as round 5 read, and the new pivot and throw cost nothing the
+overlay track's own host-GPU A/B or this one can see); a still panel
+draws once a second. Under the concurrent pairs' load every after is
+level or better than its before. Memory: +5.9 MB after a trim on the
+phone emulator (Java +1.2, native +2.4), what rounds 4 and 5 read, now
+named by the screens track's heap dumps (196) and still over the 2 MB
+rule by 4, and the GPU cache's screen-sized layer after a change is a
+purgeable cache entry gone at idle on both builds, not a standing cost. Start-up: +1.6 %
+on the quiet phone pair, within noise; the tablet's +38 % is the device
+tests' Gradle on the host. Size: +1.4 KB download over round 5. Device
+tests: green at the head on 5558 (one load-time flake, above) and both
+tracks' full suites at the heads integrated. Not signed off: the memory
+rule (the +4.9 to +5.9 MB step, the screens track's to bring down or
+the phone's to price), the first enlarge's
+frame and the paid fold's acceptance on a real GPU, and the owner's
+phone, untouched until the user says so in their own session (199).
