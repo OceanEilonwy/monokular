@@ -21,6 +21,7 @@ import androidx.compose.animation.SharedTransitionScope.SharedContentState
 import androidx.compose.animation.core.SeekableTransitionState
 import androidx.compose.animation.core.Transition
 import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.rememberTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -29,6 +30,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.State
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,7 +42,14 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.util.lerp
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.IntOffset
@@ -173,12 +182,23 @@ class Stage internal constructor(
     private val cameUpByItself: () -> Boolean,
     private val still: Boolean,
     private val scrub: BackScrub,
+    private val shownState: State<Float>,
 ) {
     /** The move under way between the two screens of the transition, read when a surface asks, not in composition. */
     fun moving(): Move = Nav.move(transition.currentState, transition.targetState, cameUpByItself(), still)
 
     /** Whether a back gesture holds the stage: it may yet spring back, so the screen it would leave is still the one up. */
     val scrubbing: Boolean get() = scrub.active
+
+    /**
+     * How far this screen is through arriving (0 to 1) or leaving (1 to 0),
+     * on [Motion.track]: the line the surfaces' bounds move on, so a part
+     * driven by it stays in step with them. Read in draw or layout.
+     */
+    fun shown(): Float = shownState.value
+
+    /** [shown] while the screens change by [move]; 1 otherwise, as at rest. */
+    fun shownDuring(move: Move): Float = if (moving() == move) shownState.value else 1f
 }
 
 /** A back gesture over the stage, from its start until it has committed or sprung back. */
@@ -273,7 +293,9 @@ fun TillStage(
                 transform(Nav.move(initialState, targetState, cameUpByItself(), m.still), m, Nav.isBack(initialState, targetState))
             },
         ) { screen ->
-            val stage = remember(m) { Stage(shared, this, transition, cameUpByItself, m.still, scrub) }
+            val visibility = (this as AnimatedVisibilityScope).transition
+            val shown = visibility.animateFloat({ m.track.fraction }, label = "shown") { if (it == EnterExitState.Visible) 1f else 0f }
+            val stage = remember(m) { Stage(shared, this, transition, cameUpByItself, m.still, scrub, shown) }
             CompositionLocalProvider(LocalStage provides stage) { content(screen) }
         }
     }
@@ -290,10 +312,12 @@ private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Ali
  * crossfades. Any other move, or Still, leaves it alone, so a sale that
  * came up by itself doesn't grow out of a row the cashier didn't tap.
  * Without [fade] both sides draw fully throughout: for the code, the same
- * bitmap on both, so every frame shows one solid, scannable code.
+ * bitmap on both, so every frame shows one solid, scannable code. A
+ * surface with a higher [layer] draws over one with a lower while both
+ * move: the code over its ground.
  */
 @Composable
-fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleShape, fade: Boolean = true): Modifier {
+fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleShape, fade: Boolean = true, layer: Float = 0f): Modifier {
     val stage = LocalStage.current ?: return this
     val m = motion
     if (m.still) return this
@@ -311,8 +335,68 @@ fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleSha
             state, stage.content,
             enter = if (fade) fadeIn(m.fade.fraction) else EnterTransition.None,
             exit = if (fade) fadeOut(m.fadeQuick.fraction) else ExitTransition.None,
-            boundsTransform = bounds, resizeMode = ScaledToWidth, clipInOverlayDuringTransition = overlayClip,
+            boundsTransform = bounds, resizeMode = ScaledToWidth, zIndexInOverlay = layer, clipInOverlayDuringTransition = overlayClip,
         )
+    }
+}
+
+/** Where a surface's parts draw while they move: grounds under what's on them, the code over everything. */
+object Layers {
+    const val GROUND = 0f
+    const val OVER_GROUND = 1f
+    const val CODE = 2f
+}
+
+/**
+ * [key]'s ground: a [color] rounded rectangle with nothing in it, which
+ * moves between the two screens' nodes while they change by [during]
+ * (on [Motion.track], with the surfaces on it), remeasured to its bounds
+ * on each frame (it has nothing inside to measure) rather than scaled, and
+ * with its corners going from [other] (its partner's) to [corner] (its
+ * own) on the same progress, so both sides draw the same shape on every
+ * frame and one ground is seen. It never holds what is on it: the code
+ * is its own surface over it (decision 113).
+ */
+@Composable
+fun Modifier.sharedGround(key: String, during: Move, color: Color, corner: Dp, other: Dp): Modifier {
+    val stage = LocalStage.current
+    val m = motion
+    if (stage == null || m.still) return drawBehind { drawRoundRect(color, cornerRadius = CornerRadius(corner.toPx())) }
+    val shared = stage.shared
+    val config = remember(stage, during) {
+        object : SharedContentConfig {
+            override val SharedContentState.isEnabled: Boolean get() = stage.moving() == during
+        }
+    }
+    val state = shared.rememberSharedContentState(key, config)
+    val bounds = remember(m) { BoundsTransform { _, _ -> m.track.spec(Rect.VisibilityThreshold) } }
+    return with(shared) {
+        sharedBounds(
+            state, stage.content, enter = EnterTransition.None, exit = ExitTransition.None,
+            boundsTransform = bounds, resizeMode = ResizeMode.RemeasureToBounds, zIndexInOverlay = Layers.GROUND,
+        )
+    }.drawBehind {
+        val r = lerp(other.toPx(), corner.toPx(), stage.shownDuring(during))
+        drawRoundRect(color, cornerRadius = CornerRadius(r))
+    }
+}
+
+/**
+ * Drawn over the moving surfaces while the screens change by [during]
+ * (they draw over both screens), and faded with its screen's progress:
+ * in over the second half of its arrival, once the ground has grown past
+ * it, and out over the first half of its leaving. Alpha is applied per
+ * draw, never through an offscreen buffer.
+ */
+@Composable
+fun Modifier.overSurfaces(during: Move): Modifier {
+    val stage = LocalStage.current ?: return this
+    if (motion.still) return this
+    return with(stage.shared) {
+        renderInSharedTransitionScopeOverlay(Layers.OVER_GROUND) { isTransitionActive && stage.moving() == during }
+    }.graphicsLayer {
+        alpha = ((stage.shownDuring(during) - 0.5f) * 2f).coerceIn(0f, 1f)
+        compositingStrategy = CompositingStrategy.ModulateAlpha
     }
 }
 

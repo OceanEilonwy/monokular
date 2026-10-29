@@ -310,14 +310,14 @@ private fun Amount(sale: TillSale, onCopyXmr: (TillSale) -> Unit, start: Boolean
 /** The code, which enlarges when tapped (CodeB), with the expand badge on its corner. */
 @Composable
 private fun Code(sale: TillSale, side: Dp, onEnlarge: () -> Unit) = Box(
-    Modifier.clip(RoundedCornerShape(32.dp)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
+    Modifier.clip(RoundedCornerShape(CodeCorner)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
 ) {
     QrCode(
         sale.code.uri,
         "Payment code for ${SaleText.amount(sale)}" + if (sale.code.hasReceipt) ", with the receipt in it" else "",
         Modifier.width(side),
         padding = 18.dp,
-        radius = 32.dp,
+        radius = CodeCorner,
         shared = sale.orderId,
     )
     Box(
