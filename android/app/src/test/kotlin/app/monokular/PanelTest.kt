@@ -4,6 +4,8 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.TransformOrigin
 import app.monokular.core.SalePhase
+import app.monokular.overlay.Edge
+import app.monokular.overlay.EdgeSnap
 import app.monokular.overlay.Handoff
 import app.monokular.overlay.Life
 import app.monokular.overlay.Panel
@@ -181,5 +183,15 @@ class PanelTest {
         free = want(free, usable = false, open = false).also { assertEquals(listOf(WindowAct.HideBubble), it.acts) }.windows
         assertEquals(listOf(WindowAct.ShowBubble), want(free, usable = true, open = false).acts, "back before it went: it grows again")
         assertEquals(listOf(WindowAct.RemoveBubble), Handoff.next(free, WindowEvent.BubbleLeft).acts)
+    }
+
+    @Test
+    fun `a let-go bubble goes flush against the nearer side`() {
+        val width = 264
+        val screen = 1280
+        assertEquals(EdgeSnap(left = true, x = 0), Edge.snap(x = 300, width, screen))
+        assertEquals(EdgeSnap(left = false, x = 1016), Edge.snap(x = 600, width, screen), "its centre past the middle")
+        assertEquals(EdgeSnap(left = true, x = 0), Edge.snap(x = 507, width, screen), "centre at 639: still the left")
+        assertEquals(EdgeSnap(left = false, x = 1016), Edge.snap(x = 508, width, screen), "centre at 640: the right")
     }
 }
