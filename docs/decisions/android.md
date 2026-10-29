@@ -2372,3 +2372,13 @@ design unchanged.
     each. `RunningMovesTest.foldKeepsItsSurface` fails on round 4's head
     in dark (the screen's ground inside the folding card at f13) and
     passes. The panel's fold is the overlay track's.
+180. **The debug build has a stage trace** (dev2, round 5; N-R4-2).
+    `adb shell setprop log.tag.MonokularStage DEBUG` and every frame of a
+    running change logs one line: the move, the two screens, the stage's
+    progress, whether a back gesture is seeking, the words' shares out
+    and in, and each moving surface's drawn bounds with the progress they
+    were drawn at. It is read as each change starts (one property read)
+    and compiled out of a release build (`BuildConfig.DEBUG`; no
+    `MonokularStage` in the release dex). The rig diffs the code's line
+    against its white's per frame from it. `StageTraceTest` checks it is
+    silent off and a line a frame on.
