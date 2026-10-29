@@ -1,0 +1,13 @@
+MonokularStage: f0 t=78978834 RowGrow Sale(70eb158c) -> Till p=0.000 seek=true out=1.00 in=0.00
+MonokularStage: f1 t=78978917 RowGrow Sale(70eb158c) -> Till p=0.000 seek=true out=1.00 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.000 [0,0,2560,1600]
+MonokularStage: f2 t=78978934 RowGrow Sale(70eb158c) -> Till p=0.000 seek=true out=1.00 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.000 [0,0,2560,1600]
+MonokularStage: f3 t=78978950 RowGrow Sale(70eb158c) -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.000 [0,0,2560,1600]
+MonokularStage: f4 t=78978967 RowGrow Sale(70eb158c) -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.000 [0,0,2560,1600]
+MonokularStage: f5 t=78978984 RowGrow Sale(70eb158c) -> Till p=0.041 seek=false out=0.85 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.041 [27,25,2533,1565]
+MonokularStage: f6 t=78979000 RowGrow Sale(70eb158c) -> Till p=0.143 seek=false out=0.46 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.143 [96,86,2464,1478]
+MonokularStage: f7 t=78979050 RowGrow Sale(70eb158c) -> Till p=0.264 seek=false out=0.01 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.264 [178,159,2382,1376]
+MonokularStage: f8 t=78979084 RowGrow Sale(70eb158c) -> Till p=0.628 seek=false out=0.00 in=0.16 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.628 [422,379,2138,1067]
+MonokularStage: f9 t=78979100 RowGrow Sale(70eb158c) -> Till p=0.798 seek=false out=0.00 in=0.55 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.798 [536,481,2024,923]
+MonokularStage: f10 t=78979150 RowGrow Sale(70eb158c) -> Till p=0.855 seek=false out=0.00 in=0.67 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.855 [574,515,1986,874]
+MonokularStage: f11 t=78979284 RowGrow Sale(70eb158c) -> Till p=0.959 seek=false out=0.00 in=0.91 | sale/order_70eb158c0de849b7a07422db5924e5c0 @0.959 [645,578,1915,786]
+MonokularStage: f12 t=78979317 null Till -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_70eb158c0de849b7a07422db5924e5c0 @1.000 [672,603,1888,751]

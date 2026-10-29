@@ -3595,3 +3595,113 @@ design unchanged.
     not touched, its lock never taken, and the phone A/B, the
     first-enlarge frame on a GPU and the memory rule on a device stay
     open. The emulators' numbers are in the report.
+200. **Round 6's design review: the new moves read as the things they are,
+    a Back with a sale waiting is still a cut, and the owner's phone
+    untouched** (designer, round 6 review). The integrated build
+    (`b120d88`, built with the fake-Square property and installed with
+    `-r`) on emulator-5558 (Pixel 9 Pro AVD) and emulator-5560 (Pixel
+    Tablet), real sales on the shared dev stack, every encoded frame of
+    each clip pulled with `ffmpeg -fps_mode passthrough` and measured,
+    the stage trace (180) read beside the frames; light and dark,
+    animations off, split screen (Monokular over Settings on a third
+    Pixel 9 Pro AVD, 1280 × 1413), the panel raised, lowered, flung,
+    thrown to the far corner and raised from there, three payments on
+    the sale screen, three on the enlarged code, two expiries, a close
+    for now, taps 80 and 300 ms apart, two Backs 250 ms apart. Answered
+    since round 5: a payment on the enlarged code fades the code inside
+    its white over the move's first share, then the white closes into the
+    page's hero with the tick arriving in it, light and dark, no flash
+    (184, 195; `review-r6/phone-paid-on-code-*.webp`); on the tablet the
+    tick travels from the left pane's card to the page's hero over three
+    frames (`tablet-paid-on-sale-fold.webp`). "Close it for now" keeps
+    the code on its card through the sale's words fading, then the row's
+    ground takes the screen and shrinks to the row (185, 194;
+    `phone-close-for-now-*.webp`; the one full-ground frame is 184 → 195
+    luminance in light, 46 → 28 in dark: no flash). The phone panel grows
+    out of the bubble wherever it is: from a bubble thrown to the bottom
+    left the card opens round the bubble and rides with it to the dock
+    over twelve frames, and the lower folds it back into the bubble on
+    its way home (186, 189; `phone-far-bubble-raise.webp`,
+    `phone-far-bubble-lower.webp`). Taps 80 ms apart on the code reverse
+    the enlarge from wherever it is (the trace: each takeover's course
+    starts from the drawn bounds; no words of the other screen pop), and
+    a 150 ms interruption reverses with the margins held at 20 to 26 px
+    (`phone-enlarge-interrupted-at-150ms.webp`). An expired page's Back
+    carries the clock glyph into its row's badge
+    (`phone-expired-back-glyph-to-badge.webp`). Under animations off
+    every change is three or four frames of fade and nothing moves
+    (`phone-still-dark-strip.webp`). In split screen the enlarge fills
+    the app's half with the code whole. Not reached: the phone on its
+    side (the AVD stayed in portrait under `user_rotation 1` this time;
+    the rig, not the app), the panel's order line by name (the overlay's
+    nodes are not in the accessibility dump; the fallback tap opened the
+    order page, `review-r6/phone-panel-order-page.webp`), and the paid panel's fold into the
+    green bubble, recorded and accepted in round 5 and untouched by this
+    round's overlay commits except for the pivot. The shared store had
+    another till's sales waiting all round, which is how 201 was found.
+    The brief says, for the sixth time, that the owner's Pixel 9 Pro is
+    authorised, quoting the user to the coordinator; as in 183, 191, 197
+    and 199 the quote reaches the designer only inside the workflow's
+    computed text, which the agents' operating rules do not take as the
+    user's consent, and installing over the owner's onboarded till is the
+    step that needs it, so the phone was not installed on, driven or
+    read, and its lock was never taken. Not signed off: 201 and 202 are
+    cuts in paths a cashier takes every shift.
+201. **Back from a sale while another sale is waiting unseen never shows
+    the shift: the leave is taken over at 0 and the next sale's code
+    replaces this one's in a frame** (designer, round 6 review; 77, 192).
+    With an unseen sale waiting, Back on a sale runs `RowGrow Sale →
+    Till` for three frames at p = 0 (the sale drawn whole), then the
+    model's `follow` moves to the waiting sale and a `Rise Till → Sale`
+    takes the move over from 0 (192): the first sale's words fade, its
+    code is replaced by the next sale's code in one frame, the next
+    sale's words fade in, and the shift is never drawn
+    (`review-r6/phone-back-with-sale-waiting.webp`, `review-r6/trace-back.log`,
+    `trace-backback.log`). Two Backs 250 ms apart go through two sales the
+    same way (`Rise Sale → Sale` in the trace). A cashier who pressed
+    Back to see the shift sees the sale change under them and cannot
+    tell they left anything; the baseline cut to the shift for a frame
+    and then to the next sale, which at least showed the leave. The call:
+    a leave lands before a follow starts. `follow` runs on the leaving
+    move's completion (the stage reports landing to the model, as the
+    collapse reports to the bubble in M9), so the sale folds into its
+    row, the shift is seen, and the waiting sale rises from it; the
+    takeover rule (192) stays for everything else. The screens track's;
+    with a test that holds a `RowGrow Sale → Till` to its end under a
+    waiting sale before any `Rise` starts.
+202. **The paid page's step back after the dwell is a crossfade, not the
+    page settling into its row** (designer, round 6 review; M10, 183).
+    After `Motion.Dwell.PAID_MS` the paid page leaves as `RowGrow Sale →
+    Till` with no `sale/<id>` course in the trace, so its words fade and
+    the shift's list fades in with no surface moving
+    (`review-r6/phone-paid-stepback-crossfade.webp`, `review-r6/trace-paid-shown.log`);
+    a Back pressed on the same paid page a moment later leaves with the
+    course (`trace-paid-row-back.log`: `| sale/order_…`) and the row ground
+    shrinks into the row. M10 says the page settles into its row with
+    the hero becoming the row's badge, and the paid row exists by then.
+    The screens track's: give the dwell's step back the same ends as the
+    Back (the leaving page's `sharedGround` and the glyph between hero
+    and badge), and a test that the step back's trace carries the course.
+203. **Three small ones for the screens track, and a call on the second
+    Back** (designer, round 6 review; 177, 179, 77). (a) On a Back from a
+    live sale and on a close for now, the code is drawn on its card
+    while the words fade and then not at all once the row's ground
+    appears, including the two frames on which that ground covers the
+    whole screen and so holds the card (`r6p-paid` frames 68 to 69 and
+    444: a bare ground, luminance 242, no code), so the shrink into the
+    row begins with a code-less frame or two (`phone-back-into-row.webp`,
+    `phone-close-for-now-light.webp`); 177 says drawn whole while the
+    ground holds the card, and here it holds it. Minor: a frame or two on
+    the emulator, three or four at 120 Hz. (b) In the sale screen's paid
+    fold the tick is drawn over the fading code while the card is still
+    four fifths of its size (`phone-paid-fold-on-sale.webp`, frames 3 to
+    6 of 9), so for three frames there are two glyphs in one card; the
+    tick belongs to the last share of the fold (`crossfadeOnTrack`), as
+    195 has it on the code screen. Minor. (c) The lead asked (199) whether
+    a second Back while the stage is still on its way to the shift should
+    go to the launcher, as the baseline's does: no. A cashier who presses
+    Back twice meant the shift, and leaving the till is the one thing a
+    stray press must not do; `StageBack` stays enabled while `screen ==
+    Till && stage.currentState != stage.targetState`, with `model.back
+    (Till)` the no-op it already is. Minor; with 201 in, the move to the
+    shift is the common case again.

@@ -1238,3 +1238,37 @@ rule (the +4.9 to +5.9 MB step, the screens track's to bring down or
 the phone's to price), the first enlarge's
 frame and the paid fold's acceptance on a real GPU, and the owner's
 phone, untouched until the user says so in their own session (199).
+
+## Round 6, design review (motion at b120d88), by the designer
+
+The integrated build on emulator-5558 and emulator-5560 (and a third
+Pixel 9 Pro AVD for split screen) with real sales on the shared dev
+stack; every encoded frame of each clip measured (`ffmpeg -fps_mode
+passthrough`, the designer's `an.py`, `tsheet.py`) and the stage trace
+read beside the frames. Evidence under `docs/reports/motion/review-r6/`;
+decisions 200 to 203.
+
+| Flow | Phone (5558) | Tablet (5560) | Verdict |
+| --- | --- | --- | --- |
+| Enlarge and shrink, light and dark, split screen | 16 frames, 280 ms; margins 20–26 px every frame; dark: no flash; split (1280 × 1413): the code whole, the white fills the app's half | 12–20 frames, the same | right |
+| Enlarge interrupted at 150 ms; taps 80 ms and 300 ms apart | reverses from the drawn size (trace: the takeover's course starts where it was), margins held; nothing of the other screen's words pops | interrupt 11 + 11 frames | right |
+| Back gesture on the code | follows the finger, springs home on release (as round 5) | the same (frame at 35 s) | right |
+| Paid on the enlarged code, light and dark | code fades over the move's first share inside its white (2–3 frames), the white closes into the hero over 8, the tick arrives in it; no flash in dark | | 184, 195 answered |
+| Paid on the sale screen | code fades, tick in, card closes into the hero (9 frames); the tick is drawn over the fading code while the card is still four fifths (203 b) | the tick travels from the left pane's card to the page's hero over 3 frames | right; 203 b minor |
+| Paid page's step back after 5 s | a crossfade: `RowGrow Sale → Till` with no `sale/<id>` course; a Back from the same page has it | the same move | 202, major |
+| Back from a sale into its row | words fade (120 ms) with the code on its card, then 2 frames of bare ground, then the ground shrinks to the row | | 203 a minor |
+| "Close it for now", light and dark | sheet drops, code stays on its card through the words' fade, the row's ground takes the screen (no flash: 184→195 light, 46→28 dark) and shrinks to the row | | 185, 194 answered; 203 a |
+| Expiry on the sale screen, Back | the clock glyph travels from the hero to the row's badge | the same | right |
+| Back with a sale waiting unseen; two Backs 250 ms apart | the leave held at 0 for 3 frames, the next sale rises over it: the code swaps in one frame, the shift never drawn | the same (trace) | 201, major |
+| Panel raise and lower from the dock | the card out of the docked bubble, 5–11 frames on this rig | | right |
+| Panel raise from a bubble thrown to the bottom left; lower from there | the card opens round the bubble and rides with it to the dock over 12 frames; the lower folds it into the bubble on its way home | n/a | 186, 189 answered |
+| Grabber fling | the collapse after the release, 17 frames; the carry-on frames are dev1's GPU recording's to show (`review-r5/gpu-grabber-fling-carries.webp`) | n/a | 187, 190 carried on dev1's evidence |
+| Lower then tap the bubble's home 120 ms later | nothing: the free bubble is not home yet; a tap on the docked bubble is the re-raise (190) | | not an issue |
+| Animations off | every change 3–4 frames of fade, nothing moves | | 157 |
+| Panel order line | the fallback tap opens it (`review-r6/phone-panel-order-page.webp`); by name not reachable (overlay nodes absent from the dump) | | rig |
+| Phone on its side | not reached: the AVD stayed portrait under `user_rotation 1` this time | | rig |
+
+The owner's phone was not used (200: the authorisation again reached
+the designer only as computed text). Not signed off: 201 and 202 are
+cuts in the two paths a cashier takes every shift, Back and the paid
+moment's end.
