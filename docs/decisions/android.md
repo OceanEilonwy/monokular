@@ -3705,3 +3705,30 @@ design unchanged.
     Till && stage.currentState != stage.targetState`, with `model.back
     (Till)` the no-op it already is. Minor; with 201 in, the move to the
     shift is the common case again.
+204. **The showcase ranks the round by what a cashier feels, its clips
+    are cut pairs on one emulator, and the open items are listed whole**
+    (designer, showcase; `docs/reports/motion.md`). The order is the
+    paid moment first (the one event a cashier must not miss and the
+    one place the bubble, panel, chip and page used to end at different
+    times), then the code's enlarge (the harshest cut, under the
+    customer's camera), the panel as the bubble opened, a sale as its
+    row, the shift's rows and words, animations off, and last the
+    things taken away (a still panel's 5 frames in 5 s, the pulse only
+    when it calls), which a cashier feels as heat and battery rather
+    than as motion. The "after" clips were recorded today on
+    emulator-5558 against this head (its code is round 6's `b03c864`:
+    the commits above it are reports), one short clip per improvement,
+    480 px wide and under 300 KB, with real sales on the shared stack;
+    the "before" clips are cut from the round-1 recordings of `f274ad7`
+    on the same AVD (`before/README.md`), not re-recorded, since the
+    baseline build has not moved. Two things the clips cannot show are
+    said rather than hidden: the Seen and Confirming sweeps of the ring
+    (the stand-in Square has only paid and expired, so the one sweep on
+    camera is the paid arc), and the feel of a 450 ms move on a real
+    screen (SwiftShader and the emulator's change-only recorder give it
+    five to twelve frames). The open items are the brief's list
+    unchanged in substance, in the designer's words, with the three
+    majors from 201, 202 and the memory rule first and the owner's
+    phone beside them, so the owner reads the whole bill in one place.
+    Nothing in the showcase is a new finding; what it adds is the
+    ranking and the pairs.
