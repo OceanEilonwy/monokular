@@ -34,6 +34,8 @@ import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import app.monokular.ui.Fixed
 import app.monokular.ui.qrBitmap
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /**
  * What the shift's ongoing notification says about a sale (the design's
@@ -168,14 +170,18 @@ class SaleNotifications(private val context: Context) {
 
     /**
      * The shift's notification for [sale], waiting for its money. [alert]
-     * makes it a heads-up (a new sale).
+     * makes it a heads-up (a new sale). Its large icon is the code, encoded
+     * off the main thread: with a receipt in it that's a version-25 code at
+     * four pixels a module, about 880 kB of pixels, and the service builds
+     * this on every phase change.
      */
-    fun sale(sale: TillSale, location: String?, alert: Boolean): Notification {
+    suspend fun sale(sale: TillSale, location: String?, alert: Boolean): Notification {
         val face = Face.of(sale, location)
         val showCode = showCode(sale.orderId)
+        val icon = withContext(Dispatchers.Default) { runCatching { qrBitmap(sale.code.uri, scale = 4, margin = 2) }.getOrNull() }
         val builder = live(face, sale, if (alert || sale.phase == SalePhase.Waiting) CHANNEL_SALES else CHANNEL_SHIFT)
             .setOnlyAlertOnce(!alert)
-            .setLargeIcon(runCatching { qrBitmap(sale.code.uri, scale = 4, margin = 2) }.getOrNull())
+            .setLargeIcon(icon)
             .setContentIntent(showCode)
             .addAction(0, "Show code", showCode)
         if (face.fullScreen) {
