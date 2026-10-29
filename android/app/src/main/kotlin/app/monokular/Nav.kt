@@ -17,6 +17,7 @@ import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.SharedTransitionScope.ResizeMode
 import androidx.compose.animation.SharedTransitionScope.SharedContentConfig
 import androidx.compose.animation.SharedTransitionScope.SharedContentState
+import androidx.compose.animation.core.FiniteAnimationSpec
 import androidx.compose.animation.core.SeekableTransitionState
 import androidx.compose.animation.core.Transition
 import androidx.compose.animation.core.VisibilityThreshold
@@ -127,6 +128,12 @@ object Nav {
 
     /** How far, of the width, the last onboarding step slides out. */
     const val STEP_OUT = 0.1f
+
+    /**
+     * Half way through a screen change: before it the screen being left is the picture, after it the one arriving,
+     * and the code screen's bars turn with it.
+     */
+    const val HALF_WAY = 0.5f
 
     fun move(from: Screen, to: Screen, cameUpByItself: Boolean, still: Boolean): Move {
         val same = from.orderIdOrNull() != null && from.orderIdOrNull() == to.orderIdOrNull()
@@ -495,12 +502,8 @@ fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleSha
     val surface = with(shared) {
         sharedBounds(
             // The face going stays drawn, opaque, for the whole move (an exit that holds alpha at 1, so no layer of its
-            // own), and the crossfade below shows it fading (An exit that changes nothing is there to tie the leaving side's life in the
-            // overlay to an animation of the transition, not to the screen's KeepUntilTransitionsFinished alone. On Compose
-            // animation 1.12.1 under this stage, ExitTransition.None here changed no frame RunningMovesTest or
-            // MotionFramesTest reads (decision 161); MotionFramesTest.theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow
-            // fails if the leaving ground ever stops being drawn mid-grow, whichever way it is kept.)
-            state, stage.content, enter = EnterTransition.None, exit = if (fade) fadeOut(m.track.fraction, targetAlpha = 1f) else ExitTransition.None,
+            // own), and the crossfade below shows it fading ([keptOpaque]).
+            state, stage.content, enter = EnterTransition.None, exit = if (fade) keptOpaque(m.track.fraction) else ExitTransition.None,
             boundsTransform = bounds, resizeMode = ScaledToWidth, zIndexInOverlay = layer, clipInOverlayDuringTransition = overlayClip,
         )
     }
@@ -510,7 +513,7 @@ fun Modifier.sharedSurface(key: String, during: Move, clip: Shape = RectangleSha
     if (!fade) {
         return surface.drawWithContent {
             if (!stage.isMoving(during)) track?.bounds = null
-            if (!stage.isMoving(during) || state.isMatchFound || stage.shown() >= HALF) drawContent()
+            if (!stage.isMoving(during) || state.isMatchFound || stage.shown() >= Nav.HALF_WAY) drawContent()
         }
     }
     // The crossfade inside the bounds, per draw (ModulateAlpha): an enter or exit fade would composite each face through
@@ -567,7 +570,7 @@ class GroundTrack : SharedTransitionScope.OverlayClip {
      * How far past its own [size] the ground's fill must reach, in its own pixels, to cover its shape on this frame
      * while its layout is an update behind: twice its last step, at the scale it is drawn; none before it has moved.
      */
-    internal fun reach(size: androidx.compose.ui.geometry.Size): Float {
+    internal fun reach(size: Size): Float {
         val b = bounds ?: return 0f
         if (size.width <= 0f || size.height <= 0f || b.width <= 0f || b.height <= 0f) return 0f
         return 2f * step / min(b.width / size.width, b.height / size.height)
@@ -662,12 +665,8 @@ fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, other: Gro
     return with(shared) {
         sharedBounds(
             // Each side stays in the overlay while it leaves (an exit that holds alpha at 1, so no layer), so its track
-            // is told where it is on every frame of the move (An exit that changes nothing is there to tie the leaving side's life in the
-            // overlay to an animation of the transition, not to the screen's KeepUntilTransitionsFinished alone. On Compose
-            // animation 1.12.1 under this stage, ExitTransition.None here changed no frame RunningMovesTest or
-            // MotionFramesTest reads (decision 161); MotionFramesTest.theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow
-            // fails if the leaving ground ever stops being drawn mid-grow, whichever way it is kept.)
-            state, stage.content, enter = EnterTransition.None, exit = fadeOut(m.track.fraction, targetAlpha = 1f),
+            // is told where it is on every frame of the move ([keptOpaque]).
+            state, stage.content, enter = EnterTransition.None, exit = keptOpaque(m.track.fraction),
             boundsTransform = bounds, resizeMode = ScaledToFill, zIndexInOverlay = Layers.GROUND,
             clipInOverlayDuringTransition = clip,
         )
@@ -692,7 +691,7 @@ fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, other: Gro
             // its ground whole and the other nothing, never the arriving one's at its layout size over the leaving one
             // (decision 146: a whole white window for a frame before every enlarge). A side that can't draw the move
             // ([other] null) keeps its ground: its partner, which would have drawn it, isn't there.
-            other == null || stage.shown() >= HALF -> {
+            other == null || stage.shown() >= Nav.HALF_WAY -> {
                 clip.bounds = null
                 with(painter) { paint(own.color, own.top.toPx(), own.bottom.toPx()) }
             }
@@ -701,8 +700,19 @@ fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, other: Gro
     }
 }
 
-/** Half way through a screen change: before it the screen being left is the picture, after it the one arriving. */
-private const val HALF = 0.5f
+/**
+ * A leaving shared surface's exit: a fade that changes nothing (alpha 1 to
+ * 1, so no layer of its own), there to tie the leaving side's life in the
+ * overlay to an animation of the transition rather than to the screen's
+ * `KeepUntilTransitionsFinished` alone; the crossfade is the surface's own
+ * per-draw alpha. On Compose animation 1.12.1 under this stage,
+ * `ExitTransition.None` changed no frame RunningMovesTest or
+ * MotionFramesTest reads (decision 161);
+ * `MotionFramesTest.theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow`
+ * fails if a leaving ground ever stops being drawn mid-grow, whichever way
+ * it is kept.
+ */
+private fun keptOpaque(spec: FiniteAnimationSpec<Float>): ExitTransition = fadeOut(spec, targetAlpha = 1f)
 
 
 /** An empty ground stretched to its moving bounds as one layer: nothing inside to measure, nothing to rasterise again. */
@@ -916,12 +926,8 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float): Modifier {
         // the circle on the frames the shared bounds hand drawing back before the change has landed.
         renderInSharedTransitionScopeOverlay(Layers.GROUND) { face.transition.isRunning }.sharedBounds(
             // The going face stays drawn for the whole change (an exit holding alpha at 1, so no layer of its own);
-            // the crossfade is the per-draw alpha below (An exit that changes nothing is there to tie the leaving side's life in the
-            // overlay to an animation of the transition, not to the screen's KeepUntilTransitionsFinished alone. On Compose
-            // animation 1.12.1 under this stage, ExitTransition.None here changed no frame RunningMovesTest or
-            // MotionFramesTest reads (decision 161); MotionFramesTest.theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow
-            // fails if the leaving ground ever stops being drawn mid-grow, whichever way it is kept.)
-            state, face, enter = EnterTransition.None, exit = fadeOut(m.surface.fraction, targetAlpha = 1f),
+            // the crossfade is the per-draw alpha below ([keptOpaque]).
+            state, face, enter = EnterTransition.None, exit = keptOpaque(m.surface.fraction),
             boundsTransform = bounds, resizeMode = ScaledToFit, zIndexInOverlay = Layers.GROUND,
         )
     }.graphicsLayer {
