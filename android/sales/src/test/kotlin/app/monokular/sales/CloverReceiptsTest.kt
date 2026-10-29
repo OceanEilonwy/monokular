@@ -16,13 +16,15 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+/** Clover's JSON as the till reads it, unknown fields passed over; one instance for the tests. */
+private val cloverJson = Json { ignoreUnknownKeys = true }
+
 /** A Clover order as the receipt in the code, built on the till. */
 class CloverReceiptsTest {
     private val server = MockWebServer()
     private val merchant = CloverMerchant("MCLOVER00001", "The Bean Room", "USD", "America/Los_Angeles", "US")
     private val sale = FoundSale("PAY_MONERO_1", 2205, "USD", null, "ORDER_CL_1", "2026-10-28T08:56:00Z", "DEV_FRONT")
-    private val order = Json { ignoreUnknownKeys = true }
-        .decodeFromString(CloverOrder.serializer(), cloverResource("order.json"))
+    private val order = cloverJson.decodeFromString(CloverOrder.serializer(), cloverResource("order.json"))
 
     @BeforeTest fun start() = server.start()
 
