@@ -158,8 +158,12 @@ developer: dev1 is the overlay, dev2 the app's screens; the tech lead owns
   (invisible) on its first frame. The docked bubble starts where the free
   bubble was (the window hands the last `params` position across) and
   springs to its dock slot (`Motion.settle`); the panel card scales and
-  fades up from the dock slot (`graphicsLayer { scaleX; scaleY; alpha;
-  transformOrigin }`, pivot at the docked bubble's centre, scale from
+  fades up out of the docked bubble wherever it is on that frame
+  (`graphicsLayer { scaleX; scaleY; alpha; transformOrigin }`, pivot at
+  the sliding docked bubble's centre, `Panel.docked`, so from a free
+  bubble far from the dock the card is the bubble opening on its way
+  there and the lower folds it back into the bubble before it flies home,
+  decision 189), scale from
   `Panel.SMALLEST` (0.3), alpha reaching 1 by a third of the way out of the
   bubble, `Motion.surface`). The raise's first tenth (`Panel.IN_BUBBLE`) is
   the card wholly in the bubble: `Panel.opened` measures the way out from

@@ -136,6 +136,31 @@ class PanelTest {
     }
 
     @Test
+    fun `the docked bubble is at the free bubble in the bubble, at the dock once open, and the card's pivot rides with it`() {
+        val dock = Offset(1100f, 200f)
+        val far = Offset(60f, 1400f)
+        assertEquals(far, Panel.docked(dock, far, 0f), "collapsed: where the free bubble is")
+        assertEquals(far, Panel.docked(dock, far, Panel.IN_BUBBLE), "in the bubble: still the free one's place")
+        assertEquals(dock, Panel.docked(dock, far, 1f), "open: in its slot")
+        val half = Panel.docked(dock, far, Panel.IN_BUBBLE + (1f - Panel.IN_BUBBLE) / 2f)
+        assertEquals(580f, half.x, 0.01f)
+        assertEquals(800f, half.y, 0.01f)
+        // The card scales about that point, so its scaled bounds keep the point on every frame (decision 189).
+        val card = Rect(40f, 280f, 1240f, 2400f)
+        for (step in 0..20) {
+            val raise = step / 20f
+            val at = Panel.docked(dock, far, raise)
+            val o = Panel.origin(at, card, corner = false)
+            val s = Panel.scale(raise)
+            val pivot = Offset(card.left + o.pivotFractionX * card.width, card.top + o.pivotFractionY * card.height)
+            assertEquals(at.x, pivot.x, 0.5f, "raise $raise: the pivot is the bubble")
+            assertEquals(at.y, pivot.y, 0.5f, "raise $raise: the pivot is the bubble")
+            val scaled = Rect(pivot.x + (card.left - pivot.x) * s, pivot.y + (card.top - pivot.y) * s, pivot.x + (card.right - pivot.x) * s, pivot.y + (card.bottom - pivot.y) * s)
+            assertTrue(scaled.contains(at) || at.y <= scaled.top, "raise $raise: the scaled card $scaled holds or sits under the bubble $at")
+        }
+    }
+
+    @Test
     fun `a phone's panel grows about its docked bubble, a tablet's from its side nearest the bubble, at the bubble's height`() {
         val card = Rect(100f, 200f, 500f, 1000f)
         assertEquals(TransformOrigin(0.875f, -0.05f), Panel.origin(Offset(450f, 160f), card, corner = false), "above the card's end: the dock")
