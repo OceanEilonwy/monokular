@@ -187,3 +187,85 @@ recordings (software GL: what moves, not how smoothly):
 | `phone-panel-paid-next-sale.mp4` | Paid, then the next waiting sale's code growing back out of the same circle; the bubble back to lit | M9 |
 | `phone-row-grows-into-sale.mp4` | A shift row growing into its sale and shrinking back; the back gesture scrubbing it | M7 |
 | `phone-code-grows-from-card.mp4` | The code card growing into the enlarged white screen, the code one solid layer throughout | M8 |
+
+## Round 2, screens track: on a GPU
+
+The phone attached over adb (the owner's Pixel 9 Pro) was not used: it
+needs the owner's say-so to install anything, and nobody asked them in
+this round. Instead dev2's emulator (emulator-5556, `Pixel_9_Pro` AVD,
+1280 × 2856) was restarted with `-gpu host`: SurfaceFlinger reports
+`AMD Radeon RX 6800 XT (radeonsi)` instead of SwiftShader, so raster is a
+real GPU's and the frame times mean something. Before (`f274ad7`'s debug
+build) and after alternate in one session with the same flows
+(`dev2-ab.sh` in the scratch folder, wrapping the lead's `flows-after.sh`:
+shift scroll, the code opened and tapped closed three times, ten shift to
+sale round trips), twice each; each flow's numbers are the
+`MainActivity` window's framestats (the last 120 frames), in ms.
+
+### Frames
+
+| Flow | Build | Frames | p50 | p90 | p99 | max | Limit (2 × before p95) |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Shift scroll (the round's whole shift, 12 swipes) | before | 120 | 16.8 | 16.8–16.9 | 16.9–17.0 | 16.9–17.3 | 34 |
+| | round 1 (`266a201`) | 120 | 16.8 | 16.9–20.4 | 17.0–26.2 | 17.1–33.5 | |
+| Code enlarge and shrink × 3 | before (cuts) | 6–20 | 16.8–66.8 | 66.8–117.0 | 83.4–117.9 | 83.4–117.9 | 166–234 |
+| | round 1 | 120 | 16.8 | 16.9–38.2 | 50.1 | 50.1 | |
+| | round 2 (this branch) | 120 | 16.8–16.9 | 33.5–47.4 | 100.1–133.5 | 100.1–133.5 | |
+| Shift ↔ sale × 10 | before (cuts) | 20–42 | 50.2–83.4 | 83.5–134.0 | 124.2–450.2 | 124.2–450.2 | 166–266 |
+| | round 1 | 120 of ~680 | 16.8 | 20.9–24.8 | 83.5–97.5 | 83.5–100.1 | |
+| | round 2 | 120 of ~430–520 | 16.8 | 17.0–33.5 | 17.5–66.8 | 18.3–66.8 | |
+
+**The 2 × rule passes on a GPU** for every flow: no after frame is longer
+than twice the before p95, and the grows' median frame is the display's
+16.7 ms. A cut drew one or two frames of 65–117 ms (the whole new screen
+laid out and drawn at once); a grow draws twenty to thirty frames, almost
+all on time. The round-2 shift scroll was not re-run because the shift
+had been reset to four rows by a reinstall (too short to scroll); the
+shift screen's changes this round are the badge's own scope (fewer calls
+per tick) and nothing on the scroll path. Load during the round-2 pass
+ran from 13 to 135.
+
+### Memory, after ten round trips
+
+`dev2-mem.sh`: install, ten shift ↔ sale round trips, meminfo 10 s and
+40 s later, then `am send-trim-memory RUNNING_CRITICAL`, and the GPU cache
+from `dumpsys gfxinfo` ("Total GPU memory usage").
+
+| Build | TOTAL PSS at rest (MB) | after trim | Native heap | GPU cache |
+| --- | --- | --- | --- | --- |
+| before, three runs | 92.6–94.6 | 91.7–92.3 | 12.4–12.8 | 2.2–2.3 MB |
+| round 2 before decision 120 | 104.5–106.4 | 105.0–105.2 | 21.2–21.6 | **85.5–86.8 MB** (84 purgeable) |
+| round 2, final (`f3346d6`), two runs | 98.6–109.4 | 98.5–106.8 | 17.6–24.9 | **0.2–5.1 MB** |
+
+The GPU cache was the shared surfaces' crossfade: each face of a
+full-screen surface went through its own offscreen texture every frame,
+and the cache kept them. Decision 120 draws the faces with
+`ModulateAlpha` instead, and the cache is back at the baseline's size.
+**PSS at rest is still 6–14 MB over the baseline**, nearly all native
+heap, and a trim doesn't return it. 2.6 MB of it is Skia's glyph cache
+(253 glyphs against 18: the text inside a scaled surface is rasterised at
+each size it passes through), the rest a one-time step on the first
+transitions that holds flat after (round 1's ten further round trips
+added 1.3 MB). It fails the 2 MB rule; decision 121 says what is known and
+what isn't.
+
+### Size
+
+Release (minified, unsigned): 8 052 466 B file, 4 585 747 B download,
+against round 1's 8 050 214 / 4 576 474 and the baseline's 7 951 910 /
+4 517 799: +2 KB / +9 KB this round, +101 KB / +68 KB over the baseline,
+which is over the 50 KB rule (round 1 already was).
+
+### Frames for review
+
+`frames/` holds the seeked frames `MotionFramesTest` writes on every run
+(`connectedDebugAndroidTest`, pulled to
+`build/outputs/connected_android_test_additional_output/`): the code grow
+and shrink, the row grow, the rise and the order grow at a quarter, a half
+and three quarters, and the paid fold at 60, 120, 240, 300 and 360 ms and
+at rest, each half size. The test fails if the enlarging or shrinking code
+is not square, is smaller than at rest, or has anything but white on any
+side. One artefact is open: `paid-fold-240` shows the hero circle's top
+cut along a straight line for the frames around 240 ms, while it is
+still settling (gone by 300 ms); its cause wasn't found this round (not
+the clip, the resize mode or the wrapper's order, each tried).

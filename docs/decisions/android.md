@@ -2166,3 +2166,16 @@ design unchanged.
     one at full opacity costs no layer. After: 5.1 MB and 0.2 MB of GPU
     cache in two runs. `Motion.crossfadeOnTrack` (fade's share of track)
     is the third preset this round adds to `Motion.kt`.
+121. **The shared surfaces cost 6–14 MB of native heap once, and that is
+    recorded rather than fixed this round** (dev2, round 2). Measured on a
+    host-GPU emulator after decision 120 took the GPU cache back to the
+    baseline's: 2.6 MB is Skia's glyph cache (text in a scaled surface
+    rasterised at each size it passes through, bounded by Skia's own
+    budget), the rest a step on the first transitions that holds flat
+    afterwards and that `RUNNING_CRITICAL` doesn't return. Neither is a
+    leak in the till's code (nothing grows with round trips), and the
+    obvious levers would cost what the motion is for: not scaling text
+    means re-laying out each frame, which principle 4 rules out. Settling
+    it needs a device: the owner's Pixel was attached, but installing on
+    it needs their say-so. Until then the 2 MB PSS rule is not met on the
+    emulator and the after report says so.
