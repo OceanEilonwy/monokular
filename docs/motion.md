@@ -584,7 +584,8 @@ every preset goes through on API 33+.
 
 Before numbers are taken on the base commit and after numbers on the
 integration branch, by the tech lead, on the same device, and kept in
-`docs/reports/motion/numbers.md`. The emulators here run software GL
+`docs/reports/motion/baseline.md` (before, with the scripts and the
+emulator caveats) and `docs/reports/motion/after.md`. The emulators here run software GL
 (`swangle`) on a host whose load average passed 60 during this round
 (the app ANR'd on its first frame once, and a frame took 9 s), so their
 frame times say whether something is *wrong*, not how it *feels*; the

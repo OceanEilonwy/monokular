@@ -847,3 +847,132 @@ design unchanged.
     reaches 16 dp past the circle), and on a tablet the floating panel
     can cover the free bubble when the bubble sits at the end edge at
     the panel's height.
+91. **The motion presets are one `@Immutable` value under the theme, and
+    reduced motion is its `Still` twin.** `ui/Motion.kt` (beside
+    `Theme.kt`) holds `class Motion` with the specs `docs/motion.md` §2
+    names (`surface`, `settle`, `flick`, `sweep`, `fade`, `fadeQuick`,
+    `pulse`, `glints`, `Dwell.paid`), two instances, `Motion.Full` and
+    `Motion.Still` (spatial specs `snap()`, fades `fadeQuick`, loops
+    off), and `LocalMotion`, a `staticCompositionLocalOf` that
+    `MonokularTheme` provides from `rememberReducedMotion()`: a
+    `ContentObserver` on `Settings.Global.ANIMATOR_DURATION_SCALE`, so
+    "Remove animations" takes effect without a restart and the three
+    composables that each do a Binder read on first composition today
+    (`LoadingMark`, `Circle`, `PanelCard`) read the local instead. Call
+    sites write `motion.surface`, as they write `mk.ink`; a number at a
+    call site is a review failure. Chosen over Material 3's
+    `MotionScheme` (1.4.0 has it) because every moving thing here is a
+    custom composable or an overlay window, not an M3 component, and over
+    a `MotionDurationScale` in the coroutine context because Compose
+    already applies the animator scale to its frame clock on API 33+
+    (which makes every spring and tween snap at scale 0 by itself); what
+    the local decides is the *shape* of a motion under reduced motion, a
+    crossfade instead of a transform, and whether a loop runs, which a
+    scale can't say. Springs for anything with a position (they retarget
+    from the current value and velocity); tweens only for opacity.
+92. **Overlay windows are made per open, and all their motion runs inside
+    the window.** Measured on the base commit (`docs/reports/motion/
+    baseline.md`): the panel window costs about 2 MB PSS and one
+    `ViewRootImpl` while it's up and gives both back when lowered;
+    keeping it alive hidden would hold that, plus a full-screen surface,
+    for every minute of a shift with a sale up, and a hidden touch-modal
+    window would need its flags flipped on every show. So `addPanel` and
+    `removePanel` stay the window's lifetime, but the panel's content is
+    added at progress 0 and the window is removed only when the collapse
+    (`docs/motion.md` M1, M2) has landed, by `removeView`, not
+    `removeViewImmediate`, which stays only in `stop()`. One `Animatable`
+    in 0..1 per panel window drives `graphicsLayer {}` (scale, alpha,
+    pivot at the docked bubble), seeded with the grabber's release
+    velocity, so a second tap mid-grow reverses from where it is. The
+    only window-attribute animation is the bubble's x on release (it is
+    a window, and `updateViewLayout` already runs per move event): an
+    `Animatable` on `AndroidUiDispatcher.Main` with `Motion.flick` and a
+    `VelocityTracker`'s velocity, one relayout per frame for about
+    300 ms, replacing `ValueAnimator` and its duration formula. Window
+    animation styles were rejected with the spec (not interruptible, no
+    origin). The tablet's floating window stays `WRAP_CONTENT` and grows
+    from its corner nearest the bubble (spec §5): a strip window spanning
+    the panel and the bubble's rect would give a true origin and keep
+    Square's touches outside the strip, at the cost of owning the taps
+    between them; left as the option to take if the corner pivot reads
+    wrong on the device.
+93. **Screens change inside one `SharedTransitionLayout` and one
+    `AnimatedContent`, and predictive back seeks the same transition.**
+    `MainActivity`'s `when (screen)` becomes `AnimatedContent(targetState
+    = screen)` with a `contentKey` that makes `Sale(a)` to `Sale(b)` and
+    `Sale(id)` to `Code(id)` transitions, and a `transitionSpec` by pair
+    (`docs/motion.md` M7); the code is a `sharedElement` with
+    `ScaleToBounds` (laid out once at the target size and scaled as one
+    layer, which is what principle 3 needs: no re-layout, no re-encode,
+    a scannable code every frame), the white card and the sale's row are
+    `sharedBounds`. `SharedTransitionScope` is still
+    `@ExperimentalSharedTransitionApi` in animation 1.12.1; the opt-in
+    lives in the one file that uses it, and the fallback if the API moves
+    at a BOM bump is a hand-rolled bounds animation on `LookaheadScope`
+    + `approachLayout` (stable), which is more code for the same frames.
+    Back: `PredictiveBackHandler` (activity-compose 1.13.0, over
+    navigationevent 1.0.0; the manifest already has
+    `enableOnBackInvokedCallback`) feeds a `SeekableTransitionState` so
+    the gesture scrubs the shrink and a cancel springs back; the
+    `BackHandler` rules of decision 77 are untouched, the gesture changes
+    no state before commit. No BOM bump: compose-bom 2026.09.00 resolves
+    to animation and foundation 1.12.1 (`animateItem`,
+    `SeekableTransitionState`, `SharedTransitionScope`), material3 1.4.0
+    and activity-compose 1.13.0, at minSdk 26. The enlarged code's
+    brightness is set once, on the first frame, as today: the display's
+    own controller ramps a window override, and a hand ramp is a relayout
+    per step; the lead checks the ramp on a device and only a visible
+    jump earns at most six steps over the transition (M8).
+94. **One paid dwell, 5 s, everywhere.** `Bubble.PAID_MS` (4 s: the green
+    bubble and the chip's tick), the panel's `delay(5_000)` before it
+    lowers and `TillNav.PAID_STEP_BACK_MS` (the sale screen stepping back)
+    become one `Motion.Dwell.paid` of 5 s, the acceptance criteria's
+    number, and the bubble's fade back to lit or idle is driven by the
+    panel's collapse landing, not by its own timer, so the docked bubble
+    no longer turns white a second before the panel it is docked to
+    moves on (`before-overlay2.mp4` at 0:24). Done and Back end the dwell
+    early and run the same exit. The dwell is reading time, so reduced
+    motion leaves it alone.
+95. **Motion is tested on the JVM where it is a rule and on the emulator
+    where it is a frame.** The rules (`Panel.lowers`, the collapse's
+    velocity seeding, the ring's sweep target, which spec `Motion.Still`
+    substitutes for which) are pure functions in `Motion`, `Panel` and
+    `PhaseRing`'s companions, tested in `app/src/test` as `Panel.lowers`
+    is today, with production values (no test-only specs). What happens
+    over time (the code's node keeps its size through the enlarge, the
+    ring's arc passes through a mid value and never a quarter mark, the
+    panel's progress reverses on a second tap, nothing recomposes
+    `QrCode` or `PhaseRing` per frame) gets Compose UI tests under
+    `app/src/androidTest` with `composeTestRule.mainClock` (`autoAdvance
+    = false`, `advanceTimeBy`), on `androidx.compose.ui:ui-test-junit4`
+    and `ui-test-manifest`, androidx and test-only, run with
+    `connectedDebugAndroidTest` against the round's emulators; no
+    Robolectric (a new third-party dependency, and it stands in a fake
+    `Choreographer` for exactly the thing being tested). CI stays
+    `./gradlew build` on Linux this round; an emulator job for the
+    instrumented tests is the lead's follow-up. Before and after numbers
+    are taken with the same scripts on the same emulator instance in one
+    session, compared as counts and ratios, never as milliseconds
+    against a phone (`baseline.md`'s caveats), and the final numbers on
+    a physical device.
+96. **Six performance fixes ride with the motion work, each owned by the
+    track that touches the file.** From `docs/reports/motion/baseline.md`:
+    the lit bubble's pulse redraws its window at ~56 fps for as long as a
+    sale is live, in two windows when the panel is up (dev1, with M4: the
+    pulse runs only in the free bubble while a code waits and the panel
+    is down); every countdown text starts its own one-second timer, six
+    live rows meaning six recompositions a second (dev2, with M12: one
+    clock per screen, tabular figures); `PanelActions` is rebuilt with
+    seven lambdas on every state change and neither it nor `TillActions`
+    is `@Immutable`, so the panel and the till's screens never skip
+    (dev1 and dev2); the same code is encoded three times per sale and
+    thrown away on every screen change, where a shared element wants one
+    `ImageBitmap` (dev2 owns `Qr.kt`: a cache of the last few codes;
+    dev1 uses it); the root of `MainActivity` recomposes on every runner
+    update and would hand `AnimatedContent` new lambdas per poll (dev2:
+    `derivedStateOf` on what each screen reads); the notification's
+    large-icon code is encoded on the main thread in the service's
+    collector (lead). Not a motion issue but measured on the way: JNA's
+    `libjnidispatch.so` ships for four ABIs the app doesn't build for,
+    about 0.5 MB of the release APK, an `abiFilters` line for another
+    day.
