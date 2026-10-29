@@ -1373,3 +1373,12 @@ design unchanged.
     doesn't buzz a second time (a two-line change in dev1's `Faces.kt`).
     `leave()` cancels the paid step-back, so Back during the dwell is
     the only step back.
+119. **The window's background is the theme's ground** (dev2, round 2;
+    review finding on the dark-mode recreation). The app ran on
+    `Theme.Material.Light.NoActionBar`, so the frame between a light/dark
+    change recreating the activity and Compose's first draw was the
+    light window background: one white frame in the dark theme.
+    `Theme.Monokular` (light and night) sets `windowBackground` to
+    `@color/ground`, which a JVM test holds equal to `LightTokens.ground`
+    and `DarkTokens.ground`, so the colour role stays defined once in
+    `Theme.kt` and the resource follows it.
