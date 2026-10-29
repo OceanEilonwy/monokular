@@ -19,12 +19,14 @@ import androidx.test.platform.app.InstrumentationRegistry
 import app.monokular.core.SalePhase
 import app.monokular.overlay.CARD_TAG
 import app.monokular.overlay.CODE_TAG
+import app.monokular.overlay.FloatingPanel
 import app.monokular.overlay.Panel
 import app.monokular.overlay.PanelActions
 import app.monokular.overlay.PanelMotion
 import app.monokular.overlay.PanelPage
 import app.monokular.overlay.PhonePanel
 import app.monokular.ui.Fixed
+import app.monokular.ui.Motion
 import app.monokular.ui.mk
 import org.junit.Rule
 import org.junit.Test
@@ -56,14 +58,18 @@ class OverlayFramesTest {
     private val surfaceMs = 450L
 
     /** The panel over a backdrop: a strong colour by default, so the card's edges show; [white] for Square's own ground. */
-    private fun panel(raised: Float, white: Boolean = false) {
+    private fun panel(raised: Float, white: Boolean = false, tablet: Boolean = false, presets: Motion = Motion.Full) {
         compose.mainClock.autoAdvance = false
         motion = PanelMotion(raised, mutableStateOf<Offset?>(Offset(1200f, 900f)))
         compose.setContent {
-            Till {
+            Till(presets) {
                 motion.raise.Attach()
                 Box(Modifier.fillMaxSize().background(if (white) Fixed.White else mk.danger).testTag("window")) {
-                    PhonePanel(sale, "Front Counter", BubbleLook.Lit, page, actions, motion)
+                    if (tablet) {
+                        FloatingPanel(sale, "Front Counter", page, actions, motion)
+                    } else {
+                        PhonePanel(sale, "Front Counter", BubbleLook.Lit, page, actions, motion)
+                    }
                 }
             }
         }
@@ -73,7 +79,7 @@ class OverlayFramesTest {
     private fun save(move: String, quarter: Int, image: Bitmap = compose.onNodeWithTag("window").captureToImage().asAndroidBitmap()) {
         val dir = File(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null), "frames").apply { mkdirs() }
         val small = Bitmap.createScaledBitmap(image, image.width / 4, image.height / 4, true)
-        File(dir, "phone-$move-q$quarter.png").outputStream().use { small.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        File(dir, (if (move.startsWith("tablet")) "" else "phone-") + "$move-q$quarter.png").outputStream().use { small.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     /** The code, wherever it shows on this frame, is square and drawn whole. */
@@ -85,7 +91,26 @@ class OverlayFramesTest {
         }
     }
 
-    private fun seek(move: String, start: () -> Unit) {
+    /**
+     * The code is drawn at full strength on this frame: its darkest modules
+     * are near black. A code faded in shows them grey, and a camera already
+     * on the panel would see a faint code (§10 rule 6).
+     */
+    private fun assertCodeOpaque(move: String, quarter: Int) {
+        val image = compose.onNodeWithTag("window").captureToImage().asAndroidBitmap()
+        val code = compose.onNodeWithTag(CODE_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        var darkest = 1f
+        for (y in code.top.toInt().coerceAtLeast(0) until code.bottom.toInt().coerceAtMost(image.height) step 2) {
+            for (x in code.left.toInt().coerceAtLeast(0) until code.right.toInt().coerceAtMost(image.width) step 2) {
+                val p = image.getPixel(x, y)
+                darkest = minOf(darkest, (android.graphics.Color.red(p) + android.graphics.Color.green(p) + android.graphics.Color.blue(p)) / (3f * 255f))
+            }
+        }
+        assertTrue(darkest < 0.15f, "$move q$quarter: the code's darkest module is $darkest light, so it is faded")
+    }
+
+    /** Seeks [move] to its quarters; from quarter [opaqueFrom] on, the code must be drawn at full strength. */
+    private fun seek(move: String, opaqueFrom: Int = 4, start: () -> Unit) {
         start()
         var at = 0L
         for (quarter in 1..3) {
@@ -94,6 +119,7 @@ class OverlayFramesTest {
             at = to
             save(move, quarter)
             assertCodeWhole(move, quarter)
+            if (quarter >= opaqueFrom) assertCodeOpaque(move, quarter)
         }
         compose.mainClock.advanceTimeBy(1_500)
         save(move, 4)
@@ -160,7 +186,26 @@ class OverlayFramesTest {
     fun theNextSaleGrowingOutOfThePaidTick() {
         sale = testSale("f1", SalePhase.Paid, expiresAt = expires)
         panel(raised = 1f)
-        seek("next-sale") { sale = testSale("f2", expiresAt = expires) }
+        seek("next-sale", opaqueFrom = 1) { sale = testSale("f2", expiresAt = expires) }
+    }
+
+    @Test
+    fun theTabletsCodeComingBackFromTheOrder() {
+        sale = sale.copy(receipt = sampleReceipt())
+        page = PanelPage.Order
+        panel(raised = 1f, tablet = true)
+        compose.mainClock.advanceTimeBy(1_000)
+        seek("tablet-back-to-code", opaqueFrom = 1) { page = PanelPage.Code }
+    }
+
+    @Test
+    fun thePhonesCodeComingBackFromTheOrderUnderStill() {
+        sale = sale.copy(receipt = sampleReceipt())
+        page = PanelPage.Order
+        panel(raised = 1f, presets = Motion.Still)
+        compose.mainClock.advanceTimeBy(1_000)
+        // Nothing grows under Still: the order crossfades off the code (fadeQuick), which is whole under it from then on.
+        seek("still-back-to-code", opaqueFrom = 2) { page = PanelPage.Code }
     }
 
     @Test
