@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!--
+        The window under the till's first frame: the theme's ground, so a
+        theme change, which recreates the activity, never shows a frame of
+        another colour before Compose draws.
+    -->
+    <style name="Theme.Monokular" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/ground</item>
+    </style>
+</resources>

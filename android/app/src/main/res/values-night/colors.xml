@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="paper">#FF1E1E1E</color>
+    <!-- The window's ground before the first frame: the theme's ground role (ui/Theme.kt). -->
+    <color name="ground">#FF1C1B19</color>
 </resources>
