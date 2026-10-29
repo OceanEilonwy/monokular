@@ -151,6 +151,13 @@ fun display(size: Int, tracking: Double = -0.4) = TextStyle(
     lineHeight = (size * 1.15).sp,
 )
 
+/**
+ * Figures that all take the same width ("tnum"): set wherever a countdown
+ * ([app.monokular.SaleText.clock]) ticks, so its digits change without the
+ * words around them shifting.
+ */
+val tabular = TextStyle(fontFeatureSettings = "tnum")
+
 /** Monokulo's palette: warm paper, ink, one orange primary; Manrope for display, Roboto for the rest. */
 @Composable
 fun MonokularTheme(dark: Boolean = isSystemInDarkTheme(), content: @Composable () -> Unit) {
