@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.IntOffset
 import app.monokular.ui.GLINT_MS
 import app.monokular.ui.Motion
 import app.monokular.ui.Preset
+import kotlin.math.abs
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
@@ -116,7 +117,39 @@ class MotionTest {
         assertEquals(200, through.durationMillis)
         val stillThrough = assertIs<TweenSpec<Float>>(still.fadeThrough.fraction)
         assertEquals(120, stillThrough.durationMillis, "under Still every crossfade is the quick one")
+        // Not a crossfade: two different labels in one place. Under Still it keeps its wait, so they never overlap there
+        // either, and takes 240 ms where a Still crossfade takes 120 (decision 141).
         assertEquals(quick.durationMillis, stillThrough.delay)
+    }
+
+    @Test
+    fun `a screen change's parts follow one straight line, and its progress springs`() {
+        val track = assertIs<TweenSpec<Float>>(full.track.fraction)
+        assertEquals(450, track.durationMillis)
+        assertEquals(0.5f, track.easing.transform(0.5f), "a line: half the time is half the way")
+        assertIs<SnapSpec<Float>>(still.track.fraction)
+        assertSame(full.surface.fraction.javaClass, full.stage!!.javaClass)
+        val stage = assertIs<SpringSpec<Float>>(full.stage)
+        assertEquals(380f, stage.stiffness, "the stage moves on the surface spring")
+        assertNull(still.stage, "under Still each part runs its own quick spec")
+        val surface = ms(full.surface.fraction)
+        assertTrue(abs(surface - 450) < 120, "the track is about as long as the spring takes to settle: $surface ms")
+    }
+
+    @Test
+    fun `on the track, words fade out before the arriving ones fade in`() {
+        assertEquals(200f / 450f, full.crossfadeOnTrack)
+        assertEquals(120f / 450f, full.fadeOutOnTrack)
+        assertTrue(full.fadeOutOnTrack + full.crossfadeOnTrack < 1f, "a gap between the leaving words and the arriving ones")
+        var p = 0f
+        while (p <= 1f) {
+            val going = Nav.through(p, isArriving = false, full.fadeOutOnTrack, full.crossfadeOnTrack)
+            val coming = Nav.through(p, isArriving = true, full.fadeOutOnTrack, full.crossfadeOnTrack)
+            assertTrue(going == 0f || coming == 0f, "at $p only one screen's words are drawn: $going and $coming")
+            p += 0.01f
+        }
+        assertEquals(1f, Nav.through(0f, isArriving = false, full.fadeOutOnTrack, full.crossfadeOnTrack), "at rest the leaving screen is whole")
+        assertEquals(1f, Nav.through(1f, isArriving = true, full.fadeOutOnTrack, full.crossfadeOnTrack), "and so is the arrived one")
     }
 
     @Test
