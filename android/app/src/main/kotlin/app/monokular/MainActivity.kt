@@ -86,153 +86,155 @@ class MainActivity : ComponentActivity() {
                 // Step 4 has no Back in setup (as Square's had none), but goes back to Settings when opened from there.
                 val stepFour = screen == Screen.PointOfSale && !model.setupDone
                 BackHandler(enabled = screen != Screen.Welcome && screen != Screen.Till && !stepFour) { model.back() }
-                CompositionLocalProvider(LocalPointOfSale provides model.pointOfSale, LocalEarlierPos provides model.earlierPos) { when (val s = screen) {
-                    Screen.Welcome -> WelcomeScreen(onStart = { model.go(Screen.Scan) })
-                    Screen.Scan -> ScanScreen(onCode = model::onCode, onBack = model::back)
-                    is Screen.Confirm -> ConfirmScreen(s.code, model.deviceName, busy, problem, { model.connect(s.code) }, model::back)
-                    is Screen.Connected -> ConnectedScreen(
-                        s.connection, store,
-                        onNext = { model.go(Screen.PointOfSale) }, onRetry = model::readStore, onWrong = model::disconnect,
-                    )
-                    Screen.PointOfSale -> PointOfSaleScreen(
-                        PosSetup(
-                            chosen = model.pointOfSale,
-                            location = model.location,
-                            merchant = model.cloverMerchant?.name,
-                            signedIn = model.posSignedIn,
-                            tender = tenderState.forScreen(),
-                            busy = busy,
-                            problem = problem ?: runner.till.problem,
-                            testSale = runner.till.sales.firstOrNull { it.found != null },
-                            setup = !model.setupDone,
-                        ),
-                        PosSetupActions(
-                            onChoose = model::choosePointOfSale,
-                            onSignIn = ::signIn,
-                            onChangeLocation = model::changeLocation,
-                            onLookAgain = model::lookAgain,
-                            onSkip = model::withoutPos,
-                            onContinue = {
-                                if (model.setupDone) {
-                                    model.back()
-                                } else {
-                                    // The test sale has done its job: the till opens on its idle screen, the sale in its list.
-                                    runner.till.sales.forEach { model.leave(it.orderId) }
-                                    model.go(Screen.Alerts)
-                                }
-                            },
-                        ),
-                    )
-                    is Screen.Locations -> LocationsScreen(s.locations, model::chooseLocation, model::back)
-                    Screen.Alerts -> AlertsScreen(
-                        place = model.placeName,
-                        currency = model.location?.currency ?: store.store?.baseCurrency ?: "USD",
-                        allowed = model.notificationsAllowed(),
-                        onAllow = ::allowNotifications,
-                        onSkip = { model.go(Screen.Float) },
-                        onBack = model::back,
-                    )
-                    Screen.Float -> FloatScreen(
-                        pos = model.pointOfSale,
-                        allowed = model.overlayAllowed(),
-                        onOpenSettings = { model.setBubble(true); openOverlaySettings() },
-                        onNotificationsOnly = { model.setBubble(false); model.go(Screen.Ready) },
-                        onContinue = { model.setBubble(true); model.go(Screen.Ready) },
-                        onBack = model::back,
-                    )
-                    Screen.Ready -> ReadyScreen(
-                        pos = model.pointOfSale,
-                        store = store.store?.name.orEmpty(),
-                        location = model.placeName,
-                        alerts = model.notificationsAllowed(),
-                        bubble = bubbleWanted && model.overlayAllowed(),
-                        onStart = model::startShift,
-                    )
-                    Screen.Till, is Screen.Sale, is Screen.Code, is Screen.Order -> {
-                        val sales = runner.till.sales
-                        val shown = when (s) {
-                            is Screen.Sale -> s.orderId
-                            is Screen.Code -> s.orderId
-                            is Screen.Order -> s.orderId
-                            else -> null
-                        }?.let { id -> sales.firstOrNull { it.orderId == id } }
-                        val pos = model.pointOfSale
-                        val refundsInPos = runner.refundsInPos != null
-                        val actions = remember(multiWindow, pos, refundsInPos) { tillActions(multiWindow, pos, refundsInPos) }
-                        when {
-                            // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
-                            // a disconnected till shows why, whatever was on screen.
-                            shown == null || runner.disconnected -> ShiftScreen(tillStatus(runner, store), sales, actions)
-                            s is Screen.Code -> CodeScreen(shown, onBack = { model.back(s) })
-                            s is Screen.Order -> OrderPage(shown, "Back to the sale", onBack = { model.back(s) }, onShowCode = { model.back(s) })
-                            else -> SaleScreen(
-                                shown, model.placeName, shown.orderId in refunding, runner.till.refundProblems[shown.orderId], refundSheet, actions,
+                CompositionLocalProvider(LocalPointOfSale provides model.pointOfSale, LocalEarlierPos provides model.earlierPos) {
+                    when (val s = screen) {
+                        Screen.Welcome -> WelcomeScreen(onStart = { model.go(Screen.Scan) })
+                        Screen.Scan -> ScanScreen(onCode = model::onCode, onBack = model::back)
+                        is Screen.Confirm -> ConfirmScreen(s.code, model.deviceName, busy, problem, { model.connect(s.code) }, model::back)
+                        is Screen.Connected -> ConnectedScreen(
+                            s.connection, store,
+                            onNext = { model.go(Screen.PointOfSale) }, onRetry = model::readStore, onWrong = model::disconnect,
+                        )
+                        Screen.PointOfSale -> PointOfSaleScreen(
+                            PosSetup(
+                                chosen = model.pointOfSale,
+                                location = model.location,
+                                merchant = model.cloverMerchant?.name,
+                                signedIn = model.posSignedIn,
+                                tender = tenderState.forScreen(),
+                                busy = busy,
+                                problem = problem ?: runner.till.problem,
+                                testSale = runner.till.sales.firstOrNull { it.found != null },
+                                setup = !model.setupDone,
+                            ),
+                            PosSetupActions(
+                                onChoose = model::choosePointOfSale,
+                                onSignIn = ::signIn,
+                                onChangeLocation = model::changeLocation,
+                                onLookAgain = model::lookAgain,
+                                onSkip = model::withoutPos,
+                                onContinue = {
+                                    if (model.setupDone) {
+                                        model.back()
+                                    } else {
+                                        // The test sale has done its job: the till opens on its idle screen, the sale in its list.
+                                        runner.till.sales.forEach { model.leave(it.orderId) }
+                                        model.go(Screen.Alerts)
+                                    }
+                                },
+                            ),
+                        )
+                        is Screen.Locations -> LocationsScreen(s.locations, model::chooseLocation, model::back)
+                        Screen.Alerts -> AlertsScreen(
+                            place = model.placeName,
+                            currency = model.location?.currency ?: store.store?.baseCurrency ?: "USD",
+                            allowed = model.notificationsAllowed(),
+                            onAllow = ::allowNotifications,
+                            onSkip = { model.go(Screen.Float) },
+                            onBack = model::back,
+                        )
+                        Screen.Float -> FloatScreen(
+                            pos = model.pointOfSale,
+                            allowed = model.overlayAllowed(),
+                            onOpenSettings = { model.setBubble(true); openOverlaySettings() },
+                            onNotificationsOnly = { model.setBubble(false); model.go(Screen.Ready) },
+                            onContinue = { model.setBubble(true); model.go(Screen.Ready) },
+                            onBack = model::back,
+                        )
+                        Screen.Ready -> ReadyScreen(
+                            pos = model.pointOfSale,
+                            store = store.store?.name.orEmpty(),
+                            location = model.placeName,
+                            alerts = model.notificationsAllowed(),
+                            bubble = bubbleWanted && model.overlayAllowed(),
+                            onStart = model::startShift,
+                        )
+                        Screen.Till, is Screen.Sale, is Screen.Code, is Screen.Order -> {
+                            val sales = runner.till.sales
+                            val shown = when (s) {
+                                is Screen.Sale -> s.orderId
+                                is Screen.Code -> s.orderId
+                                is Screen.Order -> s.orderId
+                                else -> null
+                            }?.let { id -> sales.firstOrNull { it.orderId == id } }
+                            val pos = model.pointOfSale
+                            val refundsInPos = runner.refundsInPos != null
+                            val actions = remember(multiWindow, pos, refundsInPos) { tillActions(multiWindow, pos, refundsInPos) }
+                            when {
+                                // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
+                                // a disconnected till shows why, whatever was on screen.
+                                shown == null || runner.disconnected -> ShiftScreen(tillStatus(runner, store), sales, actions)
+                                s is Screen.Code -> CodeScreen(shown, onBack = { model.back(s) })
+                                s is Screen.Order -> OrderPage(shown, "Back to the sale", onBack = { model.back(s) }, onShowCode = { model.back(s) })
+                                else -> SaleScreen(
+                                    shown, model.placeName, shown.orderId in refunding, runner.till.refundProblems[shown.orderId], refundSheet, actions,
+                                )
+                            }
+                        }
+                        Screen.Settings -> {
+                            val torRunning by produceState<Boolean?>(null, store) { value = model.torRunning() }
+                            val wakeUpChoice by model.wakeUpChoice.collectAsStateWithLifecycle()
+                            val wakeUpStatus by model.wakeUpStatus.collectAsStateWithLifecycle()
+                            // PackageManager is asked for the UnifiedPush apps' names only when the status changes.
+                            val distributorNames = remember(wakeUpStatus) { distributorNames(wakeUpStatus) }
+                            SettingsScreen(
+                                SettingsState(
+                                    connection = model.connection,
+                                    store = store,
+                                    pos = PosState(
+                                        chosen = model.pointOfSale,
+                                        signedIn = model.posSignedIn,
+                                        location = model.location,
+                                        merchant = model.cloverMerchant?.name,
+                                        tenderName = model.tenderName,
+                                        tender = tenderState.forScreen(),
+                                    ),
+                                    live = runner.live,
+                                    shiftOn = model.shiftOn,
+                                    alerts = model.notificationsAllowed(),
+                                    bubbleWanted = bubbleWanted,
+                                    bubbleAllowed = model.overlayAllowed(),
+                                    debug = model.debug,
+                                    baseUrls = model.baseUrls,
+                                    torRunning = torRunning,
+                                    wakeUps = WakeUpsState(
+                                        choice = wakeUpChoice,
+                                        status = wakeUpStatus,
+                                        monokular = model.monokularBell,
+                                        ownBell = model.ownBell,
+                                        distributorNames = distributorNames,
+                                        allowHttp = BuildConfig.DEBUG,
+                                    ),
+                                    problem = problem,
+                                ),
+                                SettingsActions(
+                                    onShift = { model.setShift(it); model.go(Screen.Settings) },
+                                    onAlerts = ::openNotificationSettings,
+                                    onBubble = { on ->
+                                        model.setBubble(on)
+                                        if (on && !model.overlayAllowed()) openOverlaySettings()
+                                    },
+                                    onChoosePos = model::choosePointOfSale,
+                                    onSignIn = ::signIn,
+                                    onChangeLocation = model::changeLocation,
+                                    onSignOut = model::signOutOfPos,
+                                    onChangePos = model::openPointOfSale,
+                                    onLookAgain = model::lookAgain,
+                                    onDisconnect = model::disconnect,
+                                    onBaseUrl = model::setBaseUrl,
+                                    onCopyAddress = { SaleNotifications.copyAddress(this, it) },
+                                    onTor = model::setTor,
+                                    onWakeUps = model::chooseWakeUps,
+                                    onOwnBell = model::useOwnBell,
+                                    onDistributor = model::chooseDistributor,
+                                    onGetDistributor = { openInTab(NTFY) },
+                                    onBellSignIn = { pos, applicationId -> model.signInUrl(pos, applicationId)?.let(::openInTab) },
+                                    onBack = model::closeSettings,
+                                ),
                             )
                         }
                     }
-                    Screen.Settings -> {
-                        val torRunning by produceState<Boolean?>(null, store) { value = model.torRunning() }
-                        val wakeUpChoice by model.wakeUpChoice.collectAsStateWithLifecycle()
-                        val wakeUpStatus by model.wakeUpStatus.collectAsStateWithLifecycle()
-                        // PackageManager is asked for the UnifiedPush apps' names only when the status changes.
-                        val distributorNames = remember(wakeUpStatus) { distributorNames(wakeUpStatus) }
-                        SettingsScreen(
-                            SettingsState(
-                                connection = model.connection,
-                                store = store,
-                                pos = PosState(
-                                    chosen = model.pointOfSale,
-                                    signedIn = model.posSignedIn,
-                                    location = model.location,
-                                    merchant = model.cloverMerchant?.name,
-                                    tenderName = model.tenderName,
-                                    tender = tenderState.forScreen(),
-                                ),
-                                live = runner.live,
-                                shiftOn = model.shiftOn,
-                                alerts = model.notificationsAllowed(),
-                                bubbleWanted = bubbleWanted,
-                                bubbleAllowed = model.overlayAllowed(),
-                                debug = model.debug,
-                                baseUrls = model.baseUrls,
-                                torRunning = torRunning,
-                                wakeUps = WakeUpsState(
-                                    choice = wakeUpChoice,
-                                    status = wakeUpStatus,
-                                    monokular = model.monokularBell,
-                                    ownBell = model.ownBell,
-                                    distributorNames = distributorNames,
-                                    allowHttp = BuildConfig.DEBUG,
-                                ),
-                                problem = problem,
-                            ),
-                            SettingsActions(
-                                onShift = { model.setShift(it); model.go(Screen.Settings) },
-                                onAlerts = ::openNotificationSettings,
-                                onBubble = { on ->
-                                    model.setBubble(on)
-                                    if (on && !model.overlayAllowed()) openOverlaySettings()
-                                },
-                                onChoosePos = model::choosePointOfSale,
-                                onSignIn = ::signIn,
-                                onChangeLocation = model::changeLocation,
-                                onSignOut = model::signOutOfPos,
-                                onChangePos = model::openPointOfSale,
-                                onLookAgain = model::lookAgain,
-                                onDisconnect = model::disconnect,
-                                onBaseUrl = model::setBaseUrl,
-                                onCopyAddress = { SaleNotifications.copyAddress(this, it) },
-                                onTor = model::setTor,
-                                onWakeUps = model::chooseWakeUps,
-                                onOwnBell = model::useOwnBell,
-                                onDistributor = model::chooseDistributor,
-                                onGetDistributor = { openInTab(NTFY) },
-                                onBellSignIn = { pos, applicationId -> model.signInUrl(pos, applicationId)?.let(::openInTab) },
-                                onBack = model::closeSettings,
-                            ),
-                        )
-                    }
-                } }
+                }
             }
         }
     }

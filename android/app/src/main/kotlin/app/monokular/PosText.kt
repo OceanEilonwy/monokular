@@ -84,6 +84,9 @@ object PosText {
         "Clover account), then tap **Look again**"
     const val LOOK_AGAIN = "Look again"
 
+    /** Settings' payment type row while the Monero payment type isn't at [pos] yet (decision 129). */
+    fun tenderMissing(pos: PointOfSale): String = "Not in ${pos.displayName} yet"
+
     /** How a sale never paid is refunded, said before the first one is (decision 130). */
     const val CLOVER_REFUND_NOTE = "A sale never paid in Monero is refunded in Clover's Orders app; Monokular shows you which."
 

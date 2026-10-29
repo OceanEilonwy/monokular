@@ -23,8 +23,10 @@ interface PosSwitchSide {
 /**
  * Choosing a point of sale (acceptance D6, decision 138), from step 4's rows
  * or Settings' "Change the point of sale". Choosing the one chosen changes
- * nothing. Choosing another while signed in to the first takes the Bell's
- * registration back first, then signs out of the old one, then saves the new;
+ * nothing. Choosing another takes the Bell's registration back first when
+ * still signed in to the first, then always signs out of the old one, so a
+ * sign-in that had already ended leaves no location, merchant, cursor or
+ * tender id behind, then saves the new;
  * the Wake-ups choice and the shift's saved sales are never touched, so the
  * Bell registers again for the new point of sale once it is signed in, and
  * the old sales' pages still open, named by the point of sale that took them.
@@ -33,9 +35,9 @@ object PosSwitch {
     /** Whether anything changed: the caller then shows the new point of sale's sign-in. */
     suspend fun choose(side: PosSwitchSide, from: PointOfSale?, signedIn: Boolean, to: PointOfSale): Boolean {
         if (from == to) return false
-        if (from != null) side.keepSalesNamed(from)
-        if (from != null && signedIn) {
-            side.takeBellRegistrationBack()
+        if (from != null) {
+            side.keepSalesNamed(from)
+            if (signedIn) side.takeBellRegistrationBack()
             side.signOut(from)
         }
         side.choose(to)

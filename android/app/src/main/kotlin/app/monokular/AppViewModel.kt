@@ -25,6 +25,7 @@ import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import app.monokular.ui.CloverTender
 import app.monokular.ui.RefundSheet
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -132,10 +133,19 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch { graph.runner.state.collect { follow(it.till.sales) } }
         // Not watching: the shift's sales still list, to open and refund.
         if (!stores.shiftOn) graph.runner.showSaved()
-        // Signed in to Clover: what its card and Settings say about the payment type. A remembered
-        // tender answers without asking Clover; nothing here ever adds one (decision 129).
+        // Signed in to Clover: what its card and Settings say about the payment type. An app start
+        // re-finds the Monero tender in Clover, or adds it if it's missing; a refusal is shown and
+        // only Look again asks once more, never a timer (decision 129).
         if (stores.pointOfSale == PointOfSale.Clover) stores.cloverMerchant?.let { merchant ->
-            viewModelScope.launch { tenderState.value = runCatching { graph.cloverSource(merchant).ensureTender() }.getOrNull() }
+            viewModelScope.launch {
+                tenderState.value = try {
+                    graph.cloverSource(merchant).ensureTender()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: PosException) {
+                    null
+                }
+            }
         }
     }
 

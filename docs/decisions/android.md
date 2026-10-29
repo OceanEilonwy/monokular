@@ -1451,7 +1451,11 @@ says otherwise.
      old point of sale (tokens, location or merchant, cursor, remembered
      payment type), keeps the Wake-ups choice and the shift's saved sales,
      and goes to the new one's sign-in; choosing the one chosen changes
-     nothing. It is `PosSwitch`, a pure helper tested on a recording fake,
+     nothing. The sign-out happens even when the old sign-in had already
+     ended (a refused refresh, Square's sign in again), so no location,
+     merchant, cursor or payment type id of a point of sale the till isn't
+     signed in to is left behind; only the Bell step waits on a sign-in.
+     It is `PosSwitch`, a pure helper tested on a recording fake,
      as `TillNav` is.
 139. **A `401` from Clover before the token's expiry (Clover ended it early)
      is met by one refresh and the request asked once more**; a refresh

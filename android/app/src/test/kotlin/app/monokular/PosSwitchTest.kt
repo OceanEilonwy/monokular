@@ -55,15 +55,15 @@ class PosSwitchTest {
     }
 
     @Test
-    fun `a first choice, or one before signing in, only chooses`() = runBlocking {
+    fun `a first choice only chooses, and one after the sign-in ended still signs out`() = runBlocking {
         val first = Recording()
         assertTrue(PosSwitch.choose(first, from = null, signedIn = false, to = PointOfSale.Clover))
         assertEquals(listOf("choose clover"), first.log)
         val notSignedIn = Recording()
         assertTrue(PosSwitch.choose(notSignedIn, from = PointOfSale.Square, signedIn = false, to = PointOfSale.Clover))
         assertEquals(
-            listOf("sales so far named square", "choose clover"), notSignedIn.log,
-            "no registration and no sign-in to undo, but sales found before signing out keep Square's name",
+            listOf("sales so far named square", "sign out of square", "choose clover"), notSignedIn.log,
+            "no registration to take back, but the old location, cursor and tender id go and sales found keep Square's name",
         )
     }
 }

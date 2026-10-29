@@ -276,7 +276,7 @@ private fun PosSection(p: PosState, a: SettingsActions) {
                     PointOfSale.Clover -> {
                         add { FactRow(PosText.placeRow(chosen), p.merchant.orEmpty()) }
                         if (p.tender == CloverTender.AddInClover) {
-                            add { FactRow("Payment type", "Not in Clover yet", valueColor = mk.warn) }
+                            add { FactRow("Payment type", PosText.tenderMissing(chosen), valueColor = mk.warn) }
                             add { ActionRow(PosText.LOOK_AGAIN, a.onLookAgain, mk.link) }
                         } else {
                             add { FactRow("Payment type", p.tenderName) }

@@ -28,6 +28,7 @@ class PosTextTest {
         )
         assertEquals("In Clover Register", PosText.atTheTill(clover))
         assertEquals("In Square Point of Sale", PosText.atTheTill(square))
+        assertEquals("Not in Clover yet", PosText.tenderMissing(clover))
         assertEquals(listOf("Sign in to Square", "Sign in to Clover"), PointOfSale.entries.map(PosText::signIn))
         assertEquals(listOf("Sign out of Square", "Sign out of Clover"), PointOfSale.entries.map(PosText::signOut))
         assertEquals(listOf("Location", "Merchant"), PointOfSale.entries.map(PosText::placeRow))
