@@ -7,6 +7,7 @@ import app.monokular.core.SalePhase
 import app.monokular.overlay.Edge
 import app.monokular.overlay.EdgeSnap
 import app.monokular.overlay.Handoff
+import app.monokular.overlay.Haptics
 import app.monokular.overlay.Life
 import app.monokular.overlay.PaidEvent
 import app.monokular.overlay.PaidMoment
@@ -193,6 +194,12 @@ class PanelTest {
         assertTrue(beside + Panel.FLOATING_SHADOW_DP > Panel.BUBBLE_WINDOW_DP, "the card starts past the bubble's window")
         assertTrue(beside + Panel.FLOATING_SHADOW_DP - Panel.BUBBLE_WINDOW_DP <= 16, "and close beside it, so it grows from the bubble")
         assertTrue(Panel.floatingInsetDp(bubbleOnEnd = false) < beside, "with the bubble on the other edge the panel keeps to its own")
+    }
+
+    @Test
+    fun `a payment buzzes on the bubble only while Monokular is away`() {
+        assertTrue(Haptics.bubbleConfirms(appVisible = false))
+        assertFalse(Haptics.bubbleConfirms(appVisible = true), "the sale screen in front buzzes instead")
     }
 
     @Test

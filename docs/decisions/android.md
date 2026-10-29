@@ -1286,3 +1286,13 @@ design unchanged.
      it is made, costs nothing per frame. A bubble dragged to the other edge
      while the panel is up moves the panel's window once, on the snap's
      landing.
+119. **A payment buzzes once, from the surface in front** (dev1, round 2,
+     P2; §6). `Haptics.bubbleConfirms(appVisible)` is the overlay's half of
+     the rule: the free and the docked bubble buzz for a payment only while
+     Monokular isn't on screen. With the app in front its sale screen is
+     the one the cashier is looking at and buzzes (S6, the screens track,
+     reads the same rule from the other side), and a bubble still on its
+     way out, or a tablet bubble the app came up beside, stays quiet. A
+     device test counts the haptics a payment performs on the bubble with
+     the app away (one) and in front (none); the test with the sale screen
+     composed beside it waits for S6.

@@ -273,15 +273,22 @@ class PanelActions(
  * with nothing to do, white with the [phase]'s ring (and a pulse) for a
  * sale, the ring closed in green round the tick on its pale ground once
  * it's paid. Its colours are the design's whatever the theme: it sits over
- * another app. [pulse] is false for the bubble docked above the panel,
+ * another app. [confirms] is whether a payment landing on it buzzes
+ * ([Haptics.bubbleConfirms]). [pulse] is false for the bubble docked above the panel,
  * which has nothing left to call for; [panelUp] is the free bubble's word
  * that a panel is up beside it (a tablet's), which stops its pulse too.
  */
 @Composable
-fun BubbleFace(look: BubbleLook, pulse: Boolean = true, phase: SalePhase = SalePhase.Waiting, panelUp: Boolean = false) = Box(
+fun BubbleFace(
+    look: BubbleLook,
+    pulse: Boolean = true,
+    phase: SalePhase = SalePhase.Waiting,
+    panelUp: Boolean = false,
+    confirms: Boolean = true,
+) = Box(
     Modifier.padding(if (pulse) BubblePadding else DockedPadding).clearAndSetSemantics {},
     contentAlignment = Alignment.Center,
-) { Circle(look, pulse, phase, panelUp) }
+) { Circle(look, pulse, phase, panelUp, confirms) }
 
 /** Room round the bubble's circle in its window: the pulse's halo reaches 16 dp out and isn't clipped. */
 val BubblePadding = 16.dp
@@ -299,7 +306,7 @@ private val BubbleSize = 56.dp
  * and only the middle crossfades: the grey logo, the pupil, the tick.
  */
 @Composable
-private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: Boolean) {
+private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: Boolean, confirms: Boolean) {
     val m = motion
     val alpha by animateFloatAsState(if (look == BubbleLook.Idle) 0.55f else 1f, m.fade.fraction, label = "bubble")
     val ground by animateColorAsState(
@@ -318,7 +325,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
     } else {
         null
     }
-    Confirm(look)
+    if (confirms) Confirm(look)
     Box(
         Modifier.size(BubbleSize)
             .drawBehind {
@@ -352,6 +359,16 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
             }
         }
     }
+}
+
+/** Where a payment's one confirming buzz comes from (`docs/motion.md` §6, decision 119). */
+object Haptics {
+    /**
+     * Whether the bubble buzzes for a payment: only while Monokular isn't
+     * on screen. With the app in front the cashier is looking at its sale
+     * screen, which buzzes; a bubble still leaving then stays quiet.
+     */
+    fun bubbleConfirms(appVisible: Boolean): Boolean = !appVisible
 }
 
 /**
@@ -746,7 +763,15 @@ private fun EndedHero(sale: TillSale) {
  * window's size, and the container is only a clip read in its draw.
  */
 @Composable
-fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage, actions: PanelActions, motion: PanelMotion) {
+fun PhonePanel(
+    sale: TillSale,
+    where: String,
+    look: BubbleLook,
+    page: PanelPage,
+    actions: PanelActions,
+    motion: PanelMotion,
+    confirms: Boolean = true,
+) {
     val m = app.monokular.ui.motion
     val pages = updateTransition(page, label = "page")
     val opened = pages.animateFloat({ m.surface.fraction }, label = "container") { if (it == PanelPage.Order) 1f else 0f }
@@ -763,7 +788,7 @@ fun PhonePanel(sale: TillSale, where: String, look: BubbleLook, page: PanelPage,
     Box(Modifier.fillMaxSize()) {
         if (codeUp) {
             Box(Modifier.graphicsLayer { alpha = codeAlpha.value; compositingStrategy = CompositingStrategy.ModulateAlpha }) {
-                PhoneCode(sale, where, look, actions, motion)
+                PhoneCode(sale, where, look, actions, motion, confirms)
             }
         }
         if (orderUp) {
@@ -823,7 +848,7 @@ private fun Modifier.container(motion: PanelMotion, opened: State<Float>, ground
 }
 
 @Composable
-private fun PhoneCode(sale: TillSale, where: String, look: BubbleLook, actions: PanelActions, motion: PanelMotion) {
+private fun PhoneCode(sale: TillSale, where: String, look: BubbleLook, actions: PanelActions, motion: PanelMotion, confirms: Boolean) {
     SideEffect { motion.undocked = false }
     val lower by rememberUpdatedState(actions.onLower)
     val bubble = @Composable {
@@ -848,7 +873,7 @@ private fun PhoneCode(sale: TillSale, where: String, look: BubbleLook, actions: 
                 .clip(CircleShape)
                 .clickable(role = Role.Button, onClickLabel = "Lower to the bubble", onClick = actions.onLower)
                 .semantics { contentDescription = "Lower to the bubble" },
-        ) { BubbleFace(look, pulse = false, phase = sale.phase) }
+        ) { BubbleFace(look, pulse = false, phase = sale.phase, confirms = confirms) }
     }
     // Taps on the panel itself stay there.
     val panel = @Composable { sideBySide: Boolean ->
