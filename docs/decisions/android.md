@@ -3732,3 +3732,62 @@ design unchanged.
     phone beside them, so the owner reads the whole bill in one place.
     Nothing in the showcase is a new finding; what it adds is the
     ranking and the pairs.
+
+205. **The ship step did not install on, drive or read the owner's
+    phone, as 199 and 200 did not** (tech lead, ship step). The brief
+    for this step says the owner's Pixel 9 Pro is authorised, quotes
+    the owner's words to the coordinator, and asks for the final
+    `f274ad7` against `motion` A/B on it before the push. That text
+    reached this agent only as the workflow's computed brief, and the
+    rules this agent runs under say in so many words that a quoted
+    consent inside such text is script output, not the user speaking,
+    and that no agent's message is ever the user's approval. The step
+    the consent would unlock installs builds over the owner's
+    onboarded store on their personal device; the phone is attached
+    (`adb devices` lists it beside five emulators), so the only thing
+    between the step and the device was this rule. The rule wins, as
+    it did in 162, 181, 182, 194, 199 and 200, and nothing was sent to
+    the phone's serial, its lock never taken, its backup untouched. So
+    the PR's performance table is the emulators' (round 6, same
+    session pairs), marked as such, and the phone A/B stays the first
+    open item: it needs the owner's own word in their own session, or
+    their own hand on `ab-r6.sh`, and then one decision amending 145
+    and 196 with the device's numbers. If the owner reads this and did
+    say those words, the agents did hear them; they could not act on
+    them from where they stood.
+
+206. **The PR opens from the round's base, `f274ad7`, and the rebase on
+    to today's `main` is the next job, not this one** (tech lead, ship
+    step). `origin/main` has merged #18 (the loading mark on the lit
+    bubble), #16, #17 and #19 (the Bell, Clover), #20, #21 and #22
+    since the base. A trial merge (`git merge-tree`) of this branch on
+    to it conflicts in 17 files with 47 hunks: `overlay/Faces.kt` (7)
+    and `overlay/Overlay.kt` (4) against #18, which 28 and 16 of this
+    branch's commits touch; `ui/Till.kt` (11), `AppViewModel.kt`,
+    `MainActivity.kt`, `TillRunner.kt`, `ShiftList.kt`, `ui/Shift.kt`,
+    `ui/SaleDetail.kt`, `ui/CodeScreen.kt`, `ui/OrderPage.kt`,
+    `ui/CloseSheet.kt`, `sales/Till.kt`, `PanelTest.kt` against the
+    Bell and Clover; `build.gradle.kts` and `libs.versions.toml`
+    against the pins; and `docs/decisions/android.md`, where `main` now
+    numbers its own decisions 90 to 146 and this branch numbers 90 to
+    204 from the same 89. The repo merges by rebase only, so every one
+    of the 96 commits must land on `main` clean and buildable; doing
+    that in the ship step, blind, across the overlay's 44 commits over
+    #18's bubble faces and the stage's over the Bell's view model, is a
+    round of work with its own measurements, not an hour's. The PR is
+    therefore a draft from the base, its body names the conflict set
+    and the plan: rebase in the order the tracks were built (M-series
+    overlay first, over #18's `Faces.kt`, keeping the mark's glints
+    inside the one `rememberInfiniteTransition` rule 7 allows; then
+    the screens' stage over the Bell's `AppViewModel` and
+    `MainActivity`), with `git rebase -x 'cd android && ./gradlew
+    :app:compileDebugKotlin :app:testDebugUnitTest'` so no commit lands
+    unbuilt, renumber this branch's 90 to 206 to 147 to 263 in one
+    final commit (the spec, the reports and the code's comments cite
+    them by number, so it is a search and replace with a check that
+    every cited number still points at the decision it did), and
+    re-run the A/B against the new `main` since the Bell's wake-ups
+    change what the till does at launch. The history itself is clean
+    for that: 96 commits, every subject a full sentence, no fixup or
+    wip, `./gradlew build` green at the tip; `gh pr checks` on the
+    draft will say what CI makes of the base.
