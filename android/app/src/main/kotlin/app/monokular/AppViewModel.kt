@@ -335,14 +335,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     private val switchSide = object : PosSwitchSide {
         override suspend fun takeBellRegistrationBack() = graph.wakeUps.unregister()
         override fun signOut(pos: PointOfSale) = signOutHere(pos)
+        override fun forgetCursor(pos: PointOfSale) = stores.forgetCursor(pos)
         override fun choose(pos: PointOfSale) {
             stores.pointOfSale = pos
         }
     }
 
     /**
-     * Forgets the sign-in to [pos] on this device: its tokens, its location or merchant, where
-     * its search for sales had got to, and the remembered tender id (acceptance T1.4).
+     * Forgets the sign-in to [pos] on this device: its tokens, its location or merchant, and the
+     * remembered tender id (acceptance T1.4); a change of point of sale forgets its cursor too.
      */
     private fun signOutHere(pos: PointOfSale) {
         when (pos) {
@@ -357,7 +358,6 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
                 tenderState.value = null
             }
         }
-        stores.forgetCursor(pos)
     }
 
     /**
@@ -578,8 +578,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
      */
     fun signOutOfPos() = work {
         val pos = stores.pointOfSale ?: return@work
-        graph.wakeUps.unregister()
-        signOutHere(pos)
+        PosSwitch.signOut(switchSide, pos)
         restart()
         go(Screen.PointOfSale)
     }

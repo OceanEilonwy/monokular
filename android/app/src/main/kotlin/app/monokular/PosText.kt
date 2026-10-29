@@ -154,6 +154,18 @@ object PosText {
      */
     fun of(sale: TillSale, till: PointOfSale?): PointOfSale? = sale.found?.pointOfSale ?: till
 
+    /** Whether this till rang [sale] up at a point of sale it has since changed from (decision 141). */
+    fun elsewhere(sale: TillSale, till: PointOfSale?): Boolean = sale.found != null && of(sale, till) != till
+
+    /**
+     * Where [sale] was rung up, by name: the till's [location] (its Square location or Clover
+     * merchant) for a sale of the point of sale it watches now, or another till's; for one rung
+     * up at the point of sale it changed from, that point of sale's name, since the old location
+     * or merchant went with its sign-in ("Clover · this till", never the new "Front Counter").
+     */
+    fun placeOf(sale: TillSale, till: PointOfSale?, location: String?): String? =
+        if (elsewhere(sale, till)) of(sale, till)?.displayName else location
+
     fun refundedIn(pos: PointOfSale?): String = "Refunded in ${name(pos)}"
 
     fun refundItIn(pos: PointOfSale?): String = "refund it in ${name(pos)}"

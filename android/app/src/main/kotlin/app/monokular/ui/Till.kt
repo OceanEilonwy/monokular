@@ -52,6 +52,7 @@ import app.monokular.CloseChoice
 import app.monokular.Closing
 import app.monokular.Ground
 import app.monokular.PosText
+import app.monokular.SaleHeader
 import app.monokular.SaleText
 import app.monokular.core.PointOfSale
 import app.monokular.StateIcon
@@ -151,13 +152,14 @@ fun SaleScreen(
 @Composable
 private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
     var asking by rememberSaveable(sale.orderId) { mutableStateOf(false) }
+    val header = SaleHeader.of(sale, LocalPointOfSale.current, location)
     KeepScreenOn()
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         BoxWithConstraints(Modifier.fillMaxSize().safeDrawingPadding()) {
             val wide = maxWidth >= 840.dp
             Column(Modifier.fillMaxSize()) {
                 SaleBar(
-                    sale, SaleText.place(sale, location), actions,
+                    sale, header.place, actions,
                     onClose = { asking = true }.takeIf { Closing.choices(sale).isNotEmpty() },
                 )
                 if (wide) {
@@ -174,8 +176,8 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
                         ) {
                             Amount(sale, actions.onCopyXmr, start = true)
                             StatusPill(sale)
-                            sale.receipt?.let { OrderCard(it, posOf(sale), withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
-                            Buttons(sale, actions)
+                            sale.receipt?.let { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
+                            Buttons(sale, header, actions)
                         }
                     }
                 } else {
@@ -191,12 +193,12 @@ private fun LiveSale(sale: TillSale, location: String?, actions: TillActions) {
                         Amount(sale, actions.onCopyXmr)
                         Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide)) { actions.onEnlarge(sale.orderId) }
                         StatusPill(sale)
-                        sale.receipt?.let { OrderCard(it, posOf(sale), withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
+                        sale.receipt?.let { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }) }
                     }
                     Box(
                         Modifier.align(Alignment.CenterHorizontally).widthIn(max = PhoneMaxWidth)
                             .padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
-                    ) { Buttons(sale, actions) }
+                    ) { Buttons(sale, header, actions) }
                 }
             }
         }
@@ -286,10 +288,10 @@ private fun StatusPill(sale: TillSale) = Row(
 }
 
 @Composable
-private fun Buttons(sale: TillSale, actions: TillActions) = Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+private fun Buttons(sale: TillSale, header: SaleHeader, actions: TillActions) = Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
     OutlineButton("Copy address", { actions.onCopy(sale) }, Modifier.weight(1f), height = 56.dp)
-    actions.onBackToPos?.let { back ->
-        PrimaryButton(PosText.backTo(LocalPointOfSale.current), back, Modifier.weight(1f), height = 56.dp, size = 16)
+    actions.onBackToPos?.takeIf { header.backToPos }?.let { back ->
+        PrimaryButton(PosText.backTo(header.pos), back, Modifier.weight(1f), height = 56.dp, size = 16)
     }
 }
 

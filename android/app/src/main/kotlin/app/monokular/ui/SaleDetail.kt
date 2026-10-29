@@ -31,6 +31,7 @@ import app.monokular.Fact
 import app.monokular.Ground
 import app.monokular.PageAction
 import app.monokular.PosText
+import app.monokular.SaleHeader
 import app.monokular.SalePage
 import app.monokular.SaleText
 import app.monokular.sales.TillSale
@@ -45,9 +46,10 @@ import app.monokular.sales.TillSale
  */
 @Composable
 fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProblem: String?, refundSheet: RefundSheet?, actions: TillActions) {
-    val pos = posOf(sale)
-    val page = SalePage.of(sale, pos, now = System.currentTimeMillis() / 1000, elsewhere = pos != LocalPointOfSale.current)
-    val subtitle = SaleText.place(sale, location) + sale.createdAt.takeIf { it > 0 }?.let { " · " + SaleText.time(it) }.orEmpty()
+    val header = SaleHeader.of(sale, LocalPointOfSale.current, location)
+    val pos = header.pos
+    val page = SalePage.of(sale, pos, now = System.currentTimeMillis() / 1000, elsewhere = header.elsewhere)
+    val subtitle = header.place + sale.createdAt.takeIf { it > 0 }?.let { " · " + SaleText.time(it) }.orEmpty()
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
             Column(Modifier.widthIn(max = 560.dp).fillMaxSize()) {

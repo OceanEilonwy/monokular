@@ -10,8 +10,11 @@ interface PosSwitchSide {
     /** The Bell's registration taken back, awaited, while the old sign-in is still here (acceptance T5.5). */
     suspend fun takeBellRegistrationBack()
 
-    /** Signed out of [pos]: its tokens, its location or merchant, its cursor and remembered tender id forgotten. */
+    /** Signed out of [pos]: its tokens, its location or merchant and its remembered tender id forgotten. */
     fun signOut(pos: PointOfSale)
+
+    /** Where [pos]'s search for sales had got to forgotten, so a sign-in to it later starts from then. */
+    fun forgetCursor(pos: PointOfSale)
 
     /** [pos] saved as the till's point of sale. */
     fun choose(pos: PointOfSale)
@@ -36,8 +39,20 @@ object PosSwitch {
         if (from != null) {
             if (signedIn) side.takeBellRegistrationBack()
             side.signOut(from)
+            side.forgetCursor(from)
         }
         side.choose(to)
         return true
+    }
+
+    /**
+     * Settings' "Sign out of …": the Bell's registration taken back, awaited, then the sign-in
+     * forgotten. The cursor stays, as Square's sign-out always kept it: signing in to the same
+     * point of sale again carries on from where the till had got to rather than reading the
+     * merchant's earlier payments again (decision 138).
+     */
+    suspend fun signOut(side: PosSwitchSide, pos: PointOfSale) {
+        side.takeBellRegistrationBack()
+        side.signOut(pos)
     }
 }

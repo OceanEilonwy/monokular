@@ -321,6 +321,8 @@ class BellWakeUps(
                 }
             }
             store.registration = null
+            // Its dings went with it: the next registration's Last wake-up starts at None yet.
+            lastDingAt = null
         }
     }
 

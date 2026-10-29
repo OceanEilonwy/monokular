@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.monokular.CloseChoice
 import app.monokular.Closing
+import app.monokular.PosText
 import app.monokular.core.PointOfSale
 import app.monokular.sales.TillSale
 import kotlinx.coroutines.launch
@@ -70,7 +71,7 @@ fun CloseSheet(sale: TillSale, source: PointOfSale, onChoice: (CloseChoice) -> U
                 Text(Closing.subtitle(sale, pos), fontSize = 14.sp, color = mk.muted)
             }
             val left = secondsLeft(sale.expiresAt)
-            for (choice in Closing.choices(sale, elsewhere = pos != LocalPointOfSale.current)) {
+            for (choice in Closing.choices(sale, elsewhere = PosText.elsewhere(sale, LocalPointOfSale.current))) {
                 Answer(choice, sale, pos, source, left) {
                     // Only once the sheet is down: a sale paid meanwhile swaps
                     // the screen out, cancels the hide and drops the answer.

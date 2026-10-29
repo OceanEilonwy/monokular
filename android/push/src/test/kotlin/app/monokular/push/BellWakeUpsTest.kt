@@ -561,6 +561,19 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
     }
 
     @Test
+    fun `a registration taken back takes its Last wake-up with it, so the next one starts at None yet`() = runTest {
+        val wakeUps = connected()
+        push.dings.emit(Unit)
+        runCurrent()
+        assertEquals(WakeUpStatus.Connected(testScheduler.currentTime / 1000), wakeUps.status.value)
+        // The point of sale changed (or the till signed out): the registration goes, then comes back for the new sign-in.
+        wakeUps.unregister()
+        wakeUps.recheck()
+        runCurrent()
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+    }
+
+    @Test
     fun `disconnecting takes the registration back and forgets the choice (A10_3)`() = runTest {
         val wakeUps = connected()
         wakeUps.unregister(forget = true)

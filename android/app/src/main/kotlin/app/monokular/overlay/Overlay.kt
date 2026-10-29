@@ -108,7 +108,7 @@ class Overlay(
                 focusLive = sale?.live == true
                 // The whole order is about the sale whose code is up: another sale, or this one ending, brings the code back.
                 if (focus != previous || sale?.live != true || sale.receipt == null) page.value = PanelPage.Code
-                val where = sale?.let { Panel.where(it, graph.stores.placeName) }.orEmpty()
+                val where = sale?.let { Panel.where(it, graph.stores.placeName(it)) }.orEmpty()
                 state.value = OverlayState(Bubble.look(sales, paid || landed), sale, where, if (sale?.live == true) shown else PanelPage.Code)
                 val usable = wanted && runner.running && !runner.disconnected && !visible && allowed()
                 usable to (open && sale != null)

@@ -1456,7 +1456,13 @@ says otherwise.
      merchant, cursor or payment type id of a point of sale the till isn't
      signed in to is left behind; only the Bell step waits on a sign-in.
      It is `PosSwitch`, a pure helper tested on a recording fake,
-     as `TillNav` is.
+     as `TillNav` is. Only a change forgets the old point of sale's cursor
+     (where its search for sales had got to); Settings' "Sign out of …"
+     (`PosSwitch.signOut`) keeps it, as Square's sign-out on Wake-ups did,
+     so signing in to the same point of sale again reads on from there
+     instead of reading the merchant's earlier payments again (Monokulo's
+     idempotency key would make that re-read harmless, but it costs
+     requests and Clover's rate limit for nothing).
      `Till` keeps the old sales safe from the new source: a sale another
      point of sale took is only ever marked to refund there
      (`refundPendingAt`), never sent to the till's point of sale, whose
@@ -1474,7 +1480,10 @@ says otherwise.
      (`FoundSale.title`, defaulted so saved shifts still read)** from the
      payments already read with `expand=order`, no extra request; blank
      titles are none, Square leaves it null. The sale page shows it as its
-     first fact, Order, and the Refund in Clover sheet names "order Table 4"
+     first fact, Order, wherever the page has facts: once the sale is
+     closed, paid, expired, reversed or refunded (a sale waiting for
+     payment shows its code and order card, with no facts, as before); and
+     the Refund in Clover sheet names "order Table 4"
      rather than the order's id, which is what the cashier finds in Clover's
      Orders app.
 141. **A sale found before the till's point of sale changed keeps the name
@@ -1493,6 +1502,23 @@ says otherwise.
      of sale isn't the one the till's source watches or that one can't
      refund (`Closing.refundsThere`), `Till.refund`'s own rule, and any sale
      that then stands as `RefundInPos` opens the sheet.
+     A sale screen's top is `SaleHeader`, from the sale and the till's
+     point of sale: the receipt's name ("Clover order …"), the bar's second
+     line, which names the old point of sale ("Clover · this till") rather
+     than the location the till watches now, since that sale wasn't rung up
+     there, and "Back to Square" only for a sale of the Square till it is
+     (`PosText.elsewhere`, `PosText.placeOf`; the notification and the
+     bubble's header say the same place). QA round 1 saw a Clover sale's
+     order card turn "Square receipt" on a Square till: the bar and the
+     button were this build's (fixed here); the receipt's name never reads
+     anything but `FoundSale.pointOfSale`, which a saved shift keeps
+     (`ShiftListTest` reads one back). The likeliest cause is the one QA's
+     notes record: other streams' builds of `app.monokular.debug`, which
+     name every receipt Square's and know no Clover, were being installed
+     over this one on the same emulator during the run. On an emulator of
+     its own against both stand-ins, a Clover sale left up through a change
+     to Square reads "Clover · this till", "Clover order …" and no Back to
+     Square, and still does after the app is stopped and opened again.
      A step 4 opened from Settings has Back and Done in place of the step
      number and the test sale, and the shift's top row says a Clover
      merchant's name once when it is the store's.
@@ -1507,3 +1533,29 @@ says otherwise.
      Square first", which the sale page shows as its refund problem. Before,
      its `Refunds.ByTill` did nothing and `Till` marked the sale refunded,
      on Wake-ups too.
+144. **QA round 1 on the Clover till.** A registration taken back (a
+     change of point of sale, a sign-out, another Bell) takes its Last
+     wake-up with it, so Settings › Wake-ups starts again at "None yet"
+     rather than showing the old point of sale's ding under "Checking
+     Square". The screenshots are acceptance T6.2's set, from QA's run
+     against tools/fake-clover (the dark Clover card from a run of the same
+     build):
+     [pos-choice](../screenshots/android/pos-choice.png)
+     ([dark](../screenshots/android/pos-choice-dark.png)),
+     [clover-signin](../screenshots/android/clover-signin.png)
+     ([dark](../screenshots/android/clover-signin-dark.png)),
+     [clover-connected](../screenshots/android/clover-connected.png)
+     ([dark](../screenshots/android/clover-connected-dark.png)),
+     [settings-pos-clover](../screenshots/android/settings-pos-clover.png)
+     ([dark](../screenshots/android/settings-pos-clover-dark.png)),
+     [refund-in-clover](../screenshots/android/refund-in-clover.png)
+     ([dark](../screenshots/android/refund-in-clover-dark.png)) and
+     [wakeups-clover](../screenshots/android/wakeups-clover.png)
+     ([dark](../screenshots/android/wakeups-clover-dark.png)); beside them
+     the sale with its Clover receipt
+     ([clover-sale](../screenshots/android/clover-sale.png)), the refund
+     not seen yet and then seen
+     ([clover-refund-not-seen](../screenshots/android/clover-refund-not-seen.png),
+     [clover-refunded](../screenshots/android/clover-refunded.png)) and
+     Settings after changing to Square
+     ([settings-pos-square](../screenshots/android/settings-pos-square.png)).

@@ -20,6 +20,9 @@ class PosSwitchTest {
         override fun signOut(pos: PointOfSale) {
             log += "sign out of ${pos.wire}"
         }
+        override fun forgetCursor(pos: PointOfSale) {
+            log += "forget ${pos.wire} cursor"
+        }
         override fun choose(pos: PointOfSale) {
             log += "choose ${pos.wire}"
         }
@@ -29,7 +32,7 @@ class PosSwitchTest {
     fun `switching while signed in takes the Bell's registration back, then signs out, then chooses`() = runBlocking {
         val side = Recording()
         assertTrue(PosSwitch.choose(side, from = PointOfSale.Square, signedIn = true, to = PointOfSale.Clover))
-        assertEquals(listOf("Bell: DELETE, awaited", "sign out of square", "choose clover"), side.log)
+        assertEquals(listOf("Bell: DELETE, awaited", "sign out of square", "forget square cursor", "choose clover"), side.log)
         assertEquals("Monokular Bell", side.wakeUpChoice, "the Wake-ups choice stays")
         assertEquals(listOf("bP9m", "k4Rt"), side.savedSales, "the shift's sales stay")
     }
@@ -38,7 +41,7 @@ class PosSwitchTest {
     fun `and back the other way`() = runBlocking {
         val side = Recording()
         assertTrue(PosSwitch.choose(side, from = PointOfSale.Clover, signedIn = true, to = PointOfSale.Square))
-        assertEquals(listOf("Bell: DELETE, awaited", "sign out of clover", "choose square"), side.log)
+        assertEquals(listOf("Bell: DELETE, awaited", "sign out of clover", "forget clover cursor", "choose square"), side.log)
     }
 
     @Test
@@ -59,8 +62,17 @@ class PosSwitchTest {
         val notSignedIn = Recording()
         assertTrue(PosSwitch.choose(notSignedIn, from = PointOfSale.Square, signedIn = false, to = PointOfSale.Clover))
         assertEquals(
-            listOf("sign out of square", "choose clover"), notSignedIn.log,
+            listOf("sign out of square", "forget square cursor", "choose clover"), notSignedIn.log,
             "no registration to take back, but the old location, cursor and tender id go",
         )
+    }
+
+    @Test
+    fun `signing out takes the Bell's registration back first and keeps the cursor, so signing in again reads on from there`() = runBlocking {
+        PointOfSale.entries.forEach { pos ->
+            val side = Recording()
+            PosSwitch.signOut(side, pos)
+            assertEquals(listOf("Bell: DELETE, awaited", "sign out of ${pos.wire}"), side.log, pos.wire)
+        }
     }
 }

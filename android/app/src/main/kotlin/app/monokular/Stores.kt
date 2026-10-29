@@ -214,6 +214,9 @@ class Stores(private val secure: SecureStore) {
     /** [sale]'s point of sale, for its words ([PosText.of]). */
     fun pointOfSale(sale: TillSale): PointOfSale? = PosText.of(sale, pointOfSale)
 
+    /** Where [sale] was rung up, by name ([PosText.placeOf]): [placeName], or the point of sale the till changed from. */
+    fun placeName(sale: TillSale): String? = PosText.placeOf(sale, pointOfSale, placeName)
+
     /** Forgets the store and everything about this till's point of sale. */
     fun forgetAll() {
         connection = null

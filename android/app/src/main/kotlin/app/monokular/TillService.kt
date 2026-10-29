@@ -88,7 +88,7 @@ class TillService : LifecycleService() {
                     is Ongoing.Sale -> {
                         // A heads-up once per sale, when it first appears; not again when an older one comes back to the top.
                         val alert = ongoing.sale.phase == SalePhase.Waiting && alerted.add(ongoing.sale.orderId)
-                        notes.ongoing(notes.sale(ongoing.sale, graph.stores.placeName, alert))
+                        notes.ongoing(notes.sale(ongoing.sale, graph.stores.placeName(ongoing.sale), alert))
                     }
                 }
             }

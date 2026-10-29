@@ -7,6 +7,7 @@ import app.monokular.receipt.PaymentCode
 import app.monokular.receipt.Receipt
 import app.monokular.sales.FoundSale
 import app.monokular.sales.TillSale
+import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.ZoneId
 import java.util.Locale
@@ -188,6 +189,30 @@ class ShiftListTest {
         val page = SalePage.of(titled, PointOfSale.Clover, now = at, Locale.US, zone)
         assertEquals(Fact("Order", "Table 4"), page.facts.first())
         assertEquals(listOf("Rung up", "Closed"), SalePage.of(sale("u", closedAt = at), PointOfSale.Clover, now = at, Locale.US, zone).facts.map { it.label })
+    }
+
+    @Test
+    fun `a Clover sale on a till changed to Square keeps Clover's name on its screens, read back from the saved shift too`() {
+        val clover = sale("c").let { it.copy(found = it.found!!.copy(pointOfSale = PointOfSale.Clover)) }
+        // The shift as Stores saves and reads it again (a reload, a relaunch).
+        val json = Json { ignoreUnknownKeys = true; explicitNulls = false }
+        val saved = json.decodeFromString(TillSale.serializer(), json.encodeToString(TillSale.serializer(), clover))
+        for (shown in listOf(clover, saved)) {
+            val header = SaleHeader.of(shown, PointOfSale.Square, location = "Front Counter")
+            assertEquals(PointOfSale.Clover, header.pos, "the receipt is Clover's order")
+            assertTrue(header.elsewhere)
+            assertEquals("Clover · this till", header.place, "not the Square location the till watches now")
+            assertFalse(header.backToPos, "no Back to Square for a Clover sale")
+            assertEquals("Clover order T5XWHYQG", PosText.receiptLabel(header.pos, "T5XWHYQG"))
+            val page = SalePage.of(shown.copy(closedAt = at), header.pos, now = at, Locale.US, zone, elsewhere = header.elsewhere)
+            assertEquals(listOf(PageAction.ShowCodeAgain), page.actions)
+            assertTrue(Closing.subtitle(shown, header.pos).endsWith(" · Clover has it as Monero"))
+        }
+        val square = SaleHeader.of(sale("s"), PointOfSale.Square, location = "Front Counter")
+        assertEquals(SaleHeader(PointOfSale.Square, elsewhere = false, place = "Front Counter · this till", backToPos = true), square)
+        val theirs = SaleHeader.of(sale("t", mine = false), PointOfSale.Square, location = "Front Counter")
+        assertEquals(SaleHeader(PointOfSale.Square, elsewhere = false, place = "From Back till", backToPos = true), theirs)
+        assertFalse(SaleHeader.of(sale("s"), PointOfSale.Clover, location = "The Bean Room").backToPos, "Clover's device is its own: no Back to")
     }
 
     @Test

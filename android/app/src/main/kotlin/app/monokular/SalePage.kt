@@ -39,6 +39,28 @@ data class SalePageModel(
 )
 
 /**
+ * A sale screen's top, on a till on [till] (decision 141): the point of sale that names the
+ * sale's words and receipt ([pos], [PosText.of]), whether the till has changed from it since
+ * ([elsewhere]), the bar's second line ([place]: "Front Counter · this till", "Clover · this
+ * till" for a sale rung up at the point of sale it changed from), and whether the sale offers
+ * "Back to Square" ([backToPos]): only on a till on Square, and never for a sale another point
+ * of sale took (decision 135).
+ */
+data class SaleHeader(val pos: PointOfSale?, val elsewhere: Boolean, val place: String, val backToPos: Boolean) {
+    companion object {
+        fun of(sale: TillSale, till: PointOfSale?, location: String?): SaleHeader {
+            val elsewhere = PosText.elsewhere(sale, till)
+            return SaleHeader(
+                pos = PosText.of(sale, till),
+                elsewhere = elsewhere,
+                place = SaleText.place(sale, PosText.placeOf(sale, till, location)),
+                backToPos = !elsewhere && till == PointOfSale.Square,
+            )
+        }
+    }
+}
+
+/**
  * The detail pages (PaidDetail, LatePaidDetail, ClosedDetail,
  * ExpiredDetail, ReversedDetail, RefundedDetail, OtherTillDetail): what
  * each says, from where the sale stands. Times the app doesn't know aren't
