@@ -654,3 +654,193 @@ native heap with the bubble up. Start-up: within noise on both. Size:
 track) and the bubble's native heap with the panel lowered (overlay
 track) are the items for round 4, with the after-trim pairs re-read on
 a quiet host.
+
+## Round 5, integrated build (motion at 24a995f, the lead's fix at a26a242), by the lead
+
+The integrated branch is round 4's `dc51b61`, the overlay track's five
+round-5 commits (`motion-dev1` at `d919b48`, a fast-forward), then the
+screens track's four replayed over them with their decisions renumbered
+175 to 181, and one commit of the lead's (decision 182). Measured as
+rounds 3 and 4 were (`ab-r5.sh`, a copy of `ab-r4.sh` with this build's
+APK; raw dumps under `measure-r5/<serial>/<before|after><n>/` in the
+lead's scratch folder): before is `f274ad7`'s debug build, after is this
+branch at `24a995f` (the devs' code; the lead's commit changes what the
+stage keeps, not what it draws), run alternately twice over on the phone
+(emulator-5558, Pixel 9 Pro AVD, SwiftShader) and then on the tablet
+(emulator-5560), both on the shared dev stack with sales rung up on the
+fake Square for each pass. Host load was 2 to 24 through the phone's
+passes and 9 to 14 through the tablet's, lower than rounds 3 and 4
+but still the host's swap chain more than the app in every median, so
+the numbers are read against each other, not against 16.7 ms. The
+owner's phone was not used (decision 182), so the phone numbers the
+brief asks to decide by are still not there.
+
+### Phone (emulator-5558, SwiftShader), before and after alternately
+
+| Flow | before 1 / 2 | after 1 / 2 | verdict |
+| --- | --- | --- | --- |
+| Shift scroll, window p50 / p90 / p99 / max | 35.7 / 50.7 / 71.8 / 83.5, 27.4 / 44.8 / 66.0 / 66.8 | 35.8 / 50.4 / 66.8 / 79.9, 24.3 / 50.2 / 65.1 / 67.8 | level |
+| Code open and close ×3, process janky / p50 / p90 / p95 / p99 | 18 frames (cuts): 55.6 % / 16 / 81 / 81 / 81, 44.4 % / 15 / 81 / 81 / 81 | 120 frames: 29.2 % / 29 / 57 / 69 / 109, 28.5 % / 26 / 48 / 57 / 117 | the grows render 100 more frames than the cuts; the worst frame is the first enlarge, below |
+| First code enlarge after launch (framestats, ms) | 66.8 and 82.7: layout 39 and 61 (the code screen laid out on the cut) | 117.2: animation 12.6, layout 8.0, record 4.5, issue 9.8, swap 81.9; then 123.1 and 131.3 waiting on the GPU (wait 10.5 and 85.4) | the app's part is 25 ms; round 3's 250 to 570 ms is gone; what is left is SwiftShader's swap |
+| Shift to sale and back ×10, process janky / p50 / p90 / p95 / p99 | 60 frames (cuts): 70.0 % / 16 / 81 / 93 / 150, 42.6 % / 16 / 81 / 81 / 93 | 431 and 428 frames: 13.5 % / 22 / 36 / 61 / 101, 16.4 % / 20 / 36 / 61 / 101 | the grows' p99 is under the cuts' |
+| Same, window p50 / p90 / p99 / max | 16.8 / 83.5 / 148.1 / 148.1, 16.2 / 81.9 / 94.7 / 94.7 | 30.2 / 49.7 / 98.1 / 103.5, 24.1 / 50.1 / 100.1 / 102.2 | |
+| Order open and Back ×5, process janky / p50 / p90 / p99 | 0.38 % / 5 / 16 / 16, 0.61 % / 5 / 16 / 16 | 1.14 % / 17 / 19 / 32, 0.98 % / 17 / 19 / 21 | the container transform draws the frames the cut did not; no frame over 33 ms |
+| Cold start, debug, median of 3 (ms) | 2078, 2107 | 2104, 2153 | +1 to +2 %, within the load's noise |
+
+### Overlay on the phone (the bubble found by its window; process-wide `gfxinfo`)
+
+| Flow | before 1 / 2 | after 1 / 2 | verdict |
+| --- | --- | --- | --- |
+| Lit bubble alone, 5 s: frames, janky, p50 / p90 | 302, 0 %, 18 / 19; 301, 0 %, 5 / 16 | 302, 0 %, 5 / 16; 301, 0 %, 5 / 16 | the pulse's loop on both, level |
+| Panel up and still, 5 s: frames, janky, p50 / p90 | 226, 31.0 %, 42 / 48; 226, 30.5 %, 40 / 53 | 5, 20 %, 14 / 16; 5, 0 %, 14 / 15 | the baseline redraws the panel at 45 fps while nothing moves; this build draws the countdown's tick, once a second |
+| Raise and lower ×5: frames, janky, p50 / p90 / p95 / p99 | 1305, 14.2 %, 16 / 46 / 48 / 65; 1300, 15.1 %, 16 / 46 / 48 / 65 | 823, 7.3 %, 5 / 32 / 44 / 73; 829, 7.6 %, 5 / 32 / 44 / 77 | half the janky share; the p99 is the last frames of the collapse under the free bubble's add |
+| Drag and snap ×2: frames, janky, p90 / p99 | 236, 3.0 %, 31 / 48; 238, 0.4 %, 16 / 18 | 239, 0 %, 16 / 16; 240, 0 %, 16 / 16 | better |
+| Memory with the bubble up, PSS (Java / native heap) | 104 728 (16 608 / 15 220), 105 906 (16 644 / 15 800) | 109 453 (17 588 / 16 576), 110 041 (17 484 / 16 860) | +4.1 to +4.7 MB, untrimmed: see memory below |
+
+### Tablet (emulator-5560), before and after alternately
+
+| Flow | before 1 / 2 | after 1 / 2 | verdict |
+| --- | --- | --- | --- |
+| Shift scroll, window p50 / p90 / p99 / max | 11.5 / 19.2 / 21.2 / 26.5, 19.2 / 36.1 / 43.7 / 43.8 | 19.1 / 27.2 / 33.4 / 33.5, 19.1 / 21.7 / 31.7 / 32.5 | level; no frame over 33.5 ms on either |
+| Code open and close ×3, process janky / p50 / p90 / p95 / p99 | 18 frames (cuts): 33.3 % / 8 / 61 / 61 / 61, 33.3 % / 11 / 81 / 81 / 81 | 123 and 121 frames: 24.4 % / 27 / 48 / 65 / 93, 33.1 % / 29 / 57 / 65 / 133 | the first enlarge's frame again (window max 100 and 167 ms), the rest under the cuts' p90 |
+| Shift to sale and back ×10, process janky / p50 / p90 / p95 / p99 | 60 and 61 frames: 66.7 % / 19 / 65 / 69 / 101, 47.5 % / 15 / 61 / 65 / 73 | 428 and 433 frames: 13.1 % / 16 / 38 / 53 / 81, 12.5 % / 16 / 29 / 48 / 77 | better than the cuts at every percentile |
+| Same, window p50 / p90 / p99 / max | 19.6 / 66.5 / 100.1 / 100.1, 16.0 / 61.1 / 75.5 / 75.5 | 18.4 / 65.4 / 88.2 / 100.2, 12.0 / 26.2 / 75.2 / 83.4 | |
+| Order open and Back ×5 (the tablet's crossfade), process janky / p50 / p99 | 1.46 % / 17 / 36, 0.42 % / 5 / 16 | 0.81 % / 17 / 26, 0.92 % / 17 / 30 | level |
+| Cold start, debug, median of 3 (ms) | 1505, 1482 | 1487, 1534 | within noise |
+
+### Overlay on the tablet (the floating panel)
+
+| Flow | before 1 / 2 | after 1 / 2 | verdict |
+| --- | --- | --- | --- |
+| Lit bubble alone, 5 s: frames, janky | 301, 0 %; 301, 0 % | 302, 0 %; 302, 0 % | the pulse's loop, level |
+| Panel up and still, 5 s: frames, janky, p50 | 307, 0.65 %, 5; 308, 1.95 %, 16 | 5, 0 %, 8; 5, 0 %, 8 | the baseline redraws the still panel at 60 fps; this build once a second |
+| Raise and lower ×5: frames, janky, p50 / p90 / p95 / p99 | 1502, 3.9 %, 17 / 25 / 32 / 48; 1415, 7.4 %, 16 / 36 / 40 / 61 | 935, 8.0 %, 17 / 32 / 40 / 65; 934, 5.9 %, 16 / 31 / 36 / 53 | level: one pass each way, the same p95 band |
+| Drag and snap ×2: frames, janky, p90 / p99 | 250, 11.6 %, 34 / 93; 238, 0.8 %, 19 / 32 | 230, 4.4 %, 32 / 53; 236, 0.9 %, 20 / 36 | level |
+| Memory with the bubble up, PSS (Java / native heap) | 108 012 (18 832 / 15 764), 107 055 (17 956 / 15 448) | 109 814 (18 028 / 16 140), 111 728 (19 272 / 16 468) | +1.8 and +4.7 MB, untrimmed |
+
+### Memory at rest, after a trim (`mem-r5.sh`, the phone emulator)
+
+Fresh on the shift, then ten shift to sale round trips and five order
+opens, 10 s at rest, then a `RUNNING_CRITICAL` trim; PSS in kB, Java
+heap / native heap in brackets. Before and after alternately, twice; the
+first pair with the devs' build (`24a995f`), the second with the lead's
+course fix on top (`a26a242`, `app-debug-r5b.apk`), which can show
+nothing on this flow (one sale's key, opened ten times) and is there for
+a day of sales.
+
+| | before 1 / 2 | after 1 / 2 (`24a995f`) | before 3 / 4 | after 3 / 4 (`a26a242`) |
+| --- | --- | --- | --- | --- |
+| Fresh on the shift | 96 970 (16 672 / 13 928), 96 967 (16 932 / 13 960) | 101 672 (17 852 / 15 848), 105 095 (20 644 / 16 224) | 99 255 (18 816 / 14 164), 98 133 (17 788 / 14 088) | 104 975 (20 680 / 16 108), 101 943 (18 244 / 15 736) |
+| After the flow and a trim | 105 121 (17 496 / 14 984), 105 413 (17 616 / 15 052) | 109 458 (18 768 / 16 656; the pass found no live row, so no round trips), 111 532 (18 860 / 17 348) | 105 893 (17 748 / 15 092), 105 620 (17 628 / 15 108) | 111 392 (18 936 / 17 200), 111 795 (18 824 / 17 744) |
+| Step over before, trimmed | | +4.3 (no trips), +6.1 MB | | +5.5, +6.2 MB |
+
+So the step is +5.5 to +6.2 MB after a trim, of it Java +1.2 and native
++2.1 to +2.7 MB, and the fresh step is +3.8 to +8.1 MB where decision 145
+accepted +2 to +3; round 3 read +2.5 to +6.4 on the same rig and the
+screens track read +5.6 and +6.0 on 5556 (decision 181). The untrimmed
+"mem rest" of the A/B runs says the same: phone +14.4 MB, tablet +8.3 to
++11.6 MB, most of it garbage the trim takes back. Over the 2 MB rule by
+3 to 4 MB, as the last two rounds were, and still with no heap dump
+naming it: the two window-sized overlay layers the stage now keeps
+(`Layers.GROUND` and `Layers.CODE`) are the round's one new standing
+allocation and the first thing to read in a dump.
+
+### Size
+
+Release, unsigned (`apkanalyzer`): 8 085 234 B file, 4 609 471 B
+download, against round 4's 8 068 850 / 4 597 216 (+16.4 KB / +12.3 KB;
+the dex is +15.7 KB, the screens track's stage geometry and the overlay
+track's fold) and the baseline's 7 951 910 / 4 517 799 (+133 KB / +92 KB,
+over the 50 KB rule as every round has been; no dependency was added, and
+the release dex carries no `MonokularStage` string).
+
+### Review findings (the integrated diff, every line)
+
+Both tracks' round-5 code keeps to the rules: the overlay's fold reads
+its scale, corner, colour and clip in `graphicsLayer` and `drawWithCache`
+with one path rewound per frame; the stage's grounds and codes are
+`Modifier.Node`s and two window-sized overlay layers that read one
+progress per frame, keep their geometry in plain floats, walk an
+`ArrayList` by index and draw the code's bitmap whole with
+`FilterQuality.None`; the mid-raise tap filter reads the raise on the
+pointer's down, never in composition; the trace is behind
+`BuildConfig.DEBUG` and a property read per change. The tests fail on the
+code they replace (each track ran them against round 4's head). What the
+lead changed, and what is left:
+
+- Fixed here (decision 182): `StageGeometry` kept every `Course` for the
+  life of the stage with the two `End`s it last drew between, and a
+  code's end holds its bitmap, so each sale opened and enlarged left a
+  13 KB code behind; a course now forgets its ends once neither is on a
+  screen (`CourseTest`). The map of courses itself still grows by one
+  small object per sale key; bounding it (drop an empty course, and have
+  `GroundTrack` look its course up by key rather than hold it) is the
+  screens track's (minor).
+- `GroundsPainter.paint` and `StageGeometry.paintCodes` read `course.to`,
+  which only a `locate` earlier in the same frame sets, so the stage draws
+  a surface only if one of its end nodes drew first this frame (they do,
+  as the AnimatedContent's children draw before the overlay boxes, but the
+  order is implicit); deriving the move from the course's ends would make
+  the stage's draw stand on its own (screens track, minor).
+- `FadeThroughNode.alpha()` writes `Course.holding`'s result into the
+  course (`lo`/`hi`) and reads it back through `heldFrom`/`heldUntil`:
+  per-draw scratch state on an object shared by every word run on the
+  ground; a packed return or node-local fields would do (screens track,
+  minor).
+- `locate()` runs several times a frame per surface (the lift predicate,
+  the clip, the alpha, the end node's draw, the stage's painter), each
+  walking the layout tree through `localPositionOf`; one placement per
+  frame, keyed on the change's generation and progress, would cut it to
+  one (screens track, minor; no allocation either way).
+- `GroundTrack.bounds` allocates a `Rect` and is read only by the device
+  tests and the trace reads `Course` directly; by the project's rule on
+  code only tests call, the tests should read the course's floats and the
+  getter go (screens track, minor).
+- Lint: the four new `ModifierNodeElement`s in `Nav.kt` have no
+  `inspectableProperties`, and `SaleDetail`'s `words` parameter trips
+  `ModifierParameter`; both idiom only (screens track, minor).
+- `Presence.exit` now reports its landing from inside the animation's
+  block, so `PanelLanded` removes the panel window from within the
+  window's own frame callback; the device tests and the recording are
+  clean and the old path ran in the same frame through the dispatcher, so
+  it is noted, not opened (overlay track).
+- `docs/motion.md` M1 is amended for `Panel.opened` and the mid-raise tap
+  (the overlay track's note), in the lead's commit.
+- Carried: the owner's phone (decision 182); the paid fold's acceptance
+  on a real GPU (168); `fadeThrough` under Still (141); the stash
+  `r4-flat` for a person to drop; the rebase onto `origin/main` and the
+  rigs under `tools/motion-rig` (lead); the heap dump naming the session's
+  growth (screens track), re-read after the course fix.
+
+### Device tests
+
+The stage's classes on emulator-5558 at `a26a242` (the course fix):
+`RunningMovesTest` 22, `MotionFramesTest` 19, `StageBackTest` 8,
+`StageTest` 4, `StatusWordsTest` 3, `StageTraceTest` 2, all green, with
+`CourseTest`'s 7 on the JVM; `./gradlew build` (unit tests and lint) is
+green at the head. Both tracks ran the full 149-test suite on their own
+emulators at the heads integrated here (`d919b48`, `7a753e6`). The run
+uninstalls the till from 5558, which is re-onboarded with `onboard.sh`
+and the round-5 build afterwards.
+
+### Verdict
+
+Frames: on both emulators the shift scroll, the order page and the
+overlay's bubble are level with the baseline; the shift to sale round
+trip renders seven times the cuts' frames with a lower p99 (phone 101 ms
+against 93 to 150, tablet 77 to 81 against 73 to 101); the panel raise
+and lower is half as janky on the phone and level on the tablet; a still
+panel draws once a second where the baseline redrew it at 45 to 60 fps.
+The first code enlarge after launch is the one frame still over the
+rule: 117 to 131 ms on the phone, 100 to 167 ms on the tablet, of which
+the app's own work (animation, layout, record) is 25 ms and the rest
+SwiftShader's swap and the wait on it; round 3's 250 to 570 ms is gone.
+Memory: +5.5 to +6.2 MB after a trim, over the rule by 3 to 4 MB, as the
+last two rounds were, now with a named first suspect (above). Start-up:
+within noise on both. Size: +16.4 KB over round 4. Device tests: the
+stage classes on 5558 against the course fix (below) and both tracks'
+full suites on their own emulators at the heads integrated here. Not
+signed off: the memory rule (screens track, with the heap dump), the
+first enlarge's frame and the paid fold's acceptance, both of which only
+a real GPU can settle, and the owner's phone, untouched until the user
+says so in their own session (decision 182).
