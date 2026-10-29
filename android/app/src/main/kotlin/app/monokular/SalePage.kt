@@ -43,7 +43,8 @@ data class SalePageModel(
  * ExpiredDetail, ReversedDetail, RefundedDetail, OtherTillDetail): what
  * each says, from where the sale stands. Times the app doesn't know aren't
  * written (decision 71). [till] is the till's point of sale, which names the
- * sale's ([PosText.of]).
+ * sale's. A sale whose order has a title at the point of sale (Clover's "Table
+ * 4") shows it first among the facts.
  */
 object SalePage {
     fun of(
@@ -53,7 +54,7 @@ object SalePage {
         locale: Locale = Locale.getDefault(),
         zone: ZoneId = ZoneId.systemDefault(),
     ): SalePageModel {
-        val pos = PosText.of(sale, till)
+        val pos = till
         val name = PosText.name(pos)
         val status = SaleText.status(sale, till)
         val hasIt = PosText.hasItAsMonero(pos)
@@ -66,7 +67,7 @@ object SalePage {
             sale.settled -> "Monokulo has stopped watching it."
             else -> "Monokulo keeps watching for a late payment for a while: if one arrives, this sale turns paid."
         }
-        return when (val standing = sale.standing) {
+        val model = when (val standing = sale.standing) {
             is Standing.Paid -> {
                 val closed = sale.closedAt != null
                 val note = when {
@@ -152,6 +153,8 @@ object SalePage {
                 note = null, order = true, facts = listOfNotNull(rungUp, fact("Seen on the network", sale.seenAt)), actions = emptyList(),
             )
         }
+        val title = sale.found?.title ?: return model
+        return model.copy(facts = listOf(Fact("Order", title)) + model.facts)
     }
 
     /**
@@ -227,7 +230,7 @@ object Closing {
 
     /** An answer's words at a till on [till]: another till's sale's "No" only closes it. */
     fun title(choice: CloseChoice, sale: TillSale, till: PointOfSale?): String = when (choice) {
-        CloseChoice.RefundIt -> "No: " + PosText.refundItIn(PosText.of(sale, till))
+        CloseChoice.RefundIt -> "No: " + PosText.refundItIn(till)
         CloseChoice.CloseForNow -> if (sale.found == null) "No: close it" else "Not sure: close it for now"
         CloseChoice.KeepUp -> "Yes: keep the code up"
     }
@@ -238,10 +241,10 @@ object Closing {
      */
     fun detail(choice: CloseChoice, sale: TillSale, till: PointOfSale?, refundsInPos: Boolean, secondsLeft: Long): String = when (choice) {
         CloseChoice.RefundIt ->
-            if (refundsInPos) "Monokular closes it and shows you how to refund it in ${PosText.name(PosText.of(sale, till))}."
+            if (refundsInPos) "Monokular closes it and shows you how to refund it in ${PosText.name(till)}."
             else "Monokular refunds the sale and closes it."
         CloseChoice.CloseForNow -> if (sale.found == null) {
-            PosText.refundOnOtherTill(PosText.of(sale, till), sale.deviceName ?: "the till that rang it up") + " A late payment still shows here."
+            PosText.refundOnOtherTill(till, sale.deviceName ?: "the till that rang it up") + " A late payment still shows here."
         } else {
             "It stays in the shift. A late payment still counts, and you can refund it there."
         }
@@ -254,5 +257,5 @@ object Closing {
     /** "Sale #bP9m · $13.88 · Square has it as Monero", or "… · From Back till" for another till's sale. */
     fun subtitle(sale: TillSale, till: PointOfSale?): String =
         "${SaleText.title(sale)} · ${SaleText.amount(sale)} · " +
-            if (sale.found != null) "${PosText.nameFirst(PosText.of(sale, till))} has it as Monero" else SaleText.place(sale, null)
+            if (sale.found != null) "${PosText.nameFirst(till)} has it as Monero" else SaleText.place(sale, null)
 }

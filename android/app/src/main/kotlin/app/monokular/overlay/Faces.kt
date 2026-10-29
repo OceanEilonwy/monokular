@@ -154,8 +154,8 @@ object Panel {
     /** What the cashier does about it: refund it from the shift, or on the till that took it. */
     fun endedLine(sale: TillSale, till: PointOfSale?): String = when {
         sale.refunded -> "Nothing more to do."
-        sale.found == null -> PosText.refundOnOtherTill(PosText.of(sale, till), sale.deviceName ?: "the till that took it")
-        else -> "Open the shift to ${PosText.refundItIn(PosText.of(sale, till))}."
+        sale.found == null -> PosText.refundOnOtherTill(till, sale.deviceName ?: "the till that took it")
+        else -> "Open the shift to ${PosText.refundItIn(till)}."
     }
 }
 

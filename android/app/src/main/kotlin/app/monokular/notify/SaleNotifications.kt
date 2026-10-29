@@ -258,9 +258,9 @@ class SaleNotifications(private val context: Context) {
             .setContentTitle("${SaleText.status(sale, till)} · ${SaleText.title(sale)}")
             .setContentText(
                 "${SaleText.amount(sale)}. " + if (sale.found != null) {
-                    PosText.refundItIn(PosText.of(sale, till)).replaceFirstChar(Char::uppercase) + " if the customer isn't paying."
+                    PosText.refundItIn(till).replaceFirstChar(Char::uppercase) + " if the customer isn't paying."
                 } else {
-                    PosText.refundOnOtherTill(PosText.of(sale, till), "the till that took it")
+                    PosText.refundOnOtherTill(till, "the till that took it")
                 },
             )
             .setCategory(NotificationCompat.CATEGORY_STATUS)

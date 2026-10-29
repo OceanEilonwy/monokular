@@ -72,7 +72,7 @@ fun RefundInPosSheet(sale: TillSale, sheet: RefundSheet, onRefunded: () -> Unit,
             Text(
                 PosText.refundSheetBody(
                     sheet.where,
-                    order = sale.found?.orderId,
+                    order = sale.found?.let { it.title ?: it.orderId },
                     time = sale.createdAt.takeIf { it > 0 }?.let { SaleText.time(it) },
                     amount = SaleText.amount(sale),
                 ),

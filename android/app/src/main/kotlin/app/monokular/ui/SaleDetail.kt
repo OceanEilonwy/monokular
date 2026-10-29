@@ -84,7 +84,7 @@ fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProb
                         for (action in page.actions) {
                             when (action) {
                                 PageAction.Refund -> PrimaryButton(
-                                    PosText.refundButton(PosText.of(sale, pos), SaleText.amount(sale)), { actions.onRefund(sale.orderId) }, Modifier.fillMaxWidth(),
+                                    PosText.refundButton(pos, SaleText.amount(sale)), { actions.onRefund(sale.orderId) }, Modifier.fillMaxWidth(),
                                     enabled = !refunding, height = 56.dp, size = 16,
                                 )
                                 PageAction.ShowCodeAgain -> OutlineButton(

@@ -178,6 +178,14 @@ class ShiftListTest {
     }
 
     @Test
+    fun `an order's title at the point of sale is the page's first fact`() {
+        val titled = sale("t", closedAt = at).let { it.copy(found = it.found!!.copy(title = "Table 4")) }
+        val page = SalePage.of(titled, PointOfSale.Clover, now = at, Locale.US, zone)
+        assertEquals(Fact("Order", "Table 4"), page.facts.first())
+        assertEquals(listOf("Rung up", "Closed"), SalePage.of(sale("u", closedAt = at), PointOfSale.Clover, now = at, Locale.US, zone).facts.map { it.label })
+    }
+
+    @Test
     fun `a till with no point of sale says so in plain words`() {
         assertEquals("Closed · not paid · refund it in your point of sale", ShiftList.row(sale("c", closedAt = at), null, 0, Locale.US, zone).sub)
         assertEquals("Refund it in your point of sale on Back till.", Panel.endedLine(sale("t", SalePhase.Expired, mine = false), null))

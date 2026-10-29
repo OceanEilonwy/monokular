@@ -63,8 +63,8 @@ object SaleText {
         }
         Standing.Closed -> "Closed · not paid"
         Standing.Expired, Standing.Reversed, Standing.OtherTill -> ended(sale.phase)
-        Standing.Refunded -> PosText.refundedIn(PosText.of(sale, till))
-        Standing.RefundInPos -> "Not paid · " + PosText.refundItIn(PosText.of(sale, till))
+        Standing.Refunded -> PosText.refundedIn(till)
+        Standing.RefundInPos -> "Not paid · " + PosText.refundItIn(till)
     }
 
     /** How a sale that isn't live ended, or that it was closed here while still waiting. */

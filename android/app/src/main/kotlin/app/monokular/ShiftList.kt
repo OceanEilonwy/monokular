@@ -78,7 +78,7 @@ object ShiftList {
         locale: Locale = Locale.getDefault(),
         zone: ZoneId = ZoneId.systemDefault(),
     ): ShiftRow {
-        val pos = PosText.of(sale, till)
+        val pos = till
         fun at(time: Long?) = time?.let { " · " + SaleText.time(it, locale, zone) }.orEmpty()
         val left = " · ${SaleText.clock(secondsLeft)} left"
         val other = sale.deviceName ?: "another till"

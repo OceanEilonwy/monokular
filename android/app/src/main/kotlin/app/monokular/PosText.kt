@@ -1,7 +1,6 @@
 package app.monokular
 
 import app.monokular.core.PointOfSale
-import app.monokular.sales.TillSale
 
 /**
  * Every word on screen that names the point of sale (acceptance D5, decision
@@ -141,14 +140,8 @@ object PosText {
     /** The Wake-ups status card's pace row. */
     fun checking(pos: PointOfSale?): String = "Checking ${name(pos)}"
 
-    // A sale's words, by the point of sale it was rung up at.
-
-    /**
-     * The point of sale [sale] was rung up at, as far as this till knows: its
-     * own sales are the till's point of sale's, and another till's are named
-     * by this till's too (Monokulo doesn't say which point of sale took them).
-     */
-    fun of(@Suppress("UNUSED_PARAMETER") sale: TillSale, till: PointOfSale?): PointOfSale? = till
+    // A sale's words, by the till's point of sale: Monokulo doesn't say which point of sale took another till's
+    // sale, and a sale kept from before the point of sale changed is named by the new one (decision A138).
 
     fun refundedIn(pos: PointOfSale?): String = "Refunded in ${name(pos)}"
 
