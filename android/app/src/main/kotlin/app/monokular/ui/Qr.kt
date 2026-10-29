@@ -13,6 +13,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.FilterQuality
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.semantics.contentDescription
@@ -46,13 +47,30 @@ fun qrBitmap(text: String, scale: Int = 1, margin: Int = 0): Bitmap {
     return Bitmap.createBitmap(pixels, side, side, Bitmap.Config.ARGB_8888)
 }
 
+/** How many codes [codeBitmap] keeps: the sale on screen, its panel and a couple that just ended. */
+private const val KEEP = 4
+
+/** The last [KEEP] codes drawn, by text, most recently used last. Read on the main thread, as composition is. */
+private val codes = object : LinkedHashMap<String, ImageBitmap>(KEEP, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ImageBitmap>): Boolean = size > KEEP
+}
+
+/**
+ * [text] as a code to draw: the same bitmap for the same text while it's
+ * one of the last [KEEP] asked for, so the sale screen, the enlarged code,
+ * the panel and a shared element between them draw one image instead of
+ * encoding it again (ZXing version 25 with a receipt in it) on every
+ * screen change.
+ */
+fun codeBitmap(text: String): ImageBitmap = codes.getOrPut(text) { qrBitmap(text).asImageBitmap() }
+
 /**
  * A payment code on its white card (the design's QR part): ink on white
  * whatever the theme, the card's padding its quiet zone.
  */
 @Composable
 fun QrCode(text: String, description: String, modifier: Modifier = Modifier, padding: Dp = 20.dp, radius: Dp = 36.dp) {
-    val bitmap = remember(text) { qrBitmap(text).asImageBitmap() }
+    val bitmap = remember(text) { codeBitmap(text) }
     Box(
         modifier
             .aspectRatio(1f)

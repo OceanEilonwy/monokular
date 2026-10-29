@@ -1741,3 +1741,50 @@ design unchanged.
     `libjnidispatch.so` ships for four ABIs the app doesn't build for,
     about 0.5 MB of the release APK, an `abiFilters` line for another
     day.
+97. **A preset is generic over what moves, and its thresholds are its
+    own** (refines 91). A Compose spec is typed by its value
+    (`FiniteAnimationSpec<Float>` for a progress, `<IntOffset>` for a
+    row's placement, `<IntSize>` for a pill's size, `<Rect>` for a shared
+    bounds transform, `<Color>` for a ground), and `SpringSpec` has no
+    variance, so one `Motion.surface` value can't serve them all. Each
+    preset is a `Preset` (`ui/Motion.kt`) with `fraction` (0..1, finished
+    within a thousandth: a spring on a full-screen surface never jumps
+    its last pixel, where Compose's default hundredth would be a visible
+    28 px on a Pixel 9 Pro), `px` (within half a pixel) and
+    `spec(visibilityThreshold)` for the rest, so a call site names the
+    kind of value and never a number. `Motion.Still` is a second instance
+    of the same class rather than a flag read at call sites: its spatial
+    presets are `snap()`, its `fade` the 120 ms tween, and its loops are
+    null, so `rememberInfiniteTransition` can't be started by mistake
+    (it needs the spec). The dwell is `Motion.Dwell.PAID_MS`, the repo's
+    style for a constant with a unit; `Bubble.PAID_MS` and
+    `TillNav.PAID_STEP_BACK_MS` are gone. Tested on the JVM with
+    production values: the presets' numbers, the order of their settling
+    times (a fade quicker than a move, a row before a window, a window
+    before the ring's sweep, the sweep under a second), that the sweep
+    never passes a quarter mark on its way, and `Still`'s substitutions.
+98. **The foundation carries what both tracks need, so neither waits.**
+    `codeBitmap(text)` in `ui/Qr.kt`, the last four codes as one
+    `ImageBitmap` each (96's cache, moved from dev2 to the foundation
+    because dev1's panel container and dev2's enlarge both share the
+    element); the instrumented test harness (`ui-test-junit4`,
+    `ui-test-manifest`, `AndroidJUnitRunner`, with `androidx.test:runner`
+    1.7.0 and `espresso-core` 3.7.0 pinned because the ones
+    `ui-test-junit4` brings reflect on `InputManager.getInstance` and die
+    on API 36 before a test runs; `app/src/androidTest/` with the
+    foundation's two tests: the theme provides the motion the system asks
+    for, and one code is one bitmap); explicit `compose-foundation`
+    and `compose-animation` dependencies from the same BOM, which the
+    tracks' `AnimatedContent`, `SharedTransitionLayout` and `animateItem`
+    import; and the lead's own fix from 96, the notification's large-icon
+    code encoded off the main thread.
+99. **Shared files have one owner each, and the other track asks.** dev1
+    (overlay): `overlay/*`, `ui/PhaseRing.kt` (M6 is used by every
+    surface but lives in one file; the overlay track has less on its
+    list), `ui/Mark.kt` (PR #18's file), `TillService.kt`. dev2 (screens):
+    `MainActivity.kt`, `AppViewModel.kt`, `SaleText.kt`, `ui/Till.kt`,
+    `ui/Parts.kt`, `ui/Qr.kt`, `ui/Theme.kt` and the rest of `ui/`. The
+    lead: `ui/Motion.kt`, `notify/`, the docs, the measurements and the
+    integration branch. A change wanted in the other track's file is a
+    message to its owner; the integration branch takes each track's PR by
+    rebase, dev1 first.
