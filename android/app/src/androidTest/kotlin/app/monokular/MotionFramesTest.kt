@@ -231,6 +231,31 @@ class MotionFramesTest {
     }
 
     /**
+     * A sale that ends while on screen (refunded from the close sheet, run out, or ended by its other till) folds the
+     * same way into its ended hero on the warn ground (N4). "Close it for now" leaves for the shift instead (decision 143).
+     */
+    @Test
+    fun aSaleEndedOnScreenClosesItsCodeIntoTheEndedHero() {
+        stage(Screen.Sale("a1"))
+        shown = sale.copy(phase = SalePhase.Cancelled)
+        compose.mainClock.advanceTimeByFrame()
+        val failures = mutableListOf<String>()
+        var at = 0L
+        for (ms in listOf(60L, 120L, 240L, 300L)) {
+            compose.mainClock.advanceTimeBy(ms - at)
+            at = ms
+            val frame = compose.onRoot().captureToImage()
+            save(frame, "ended-fold-$ms")
+            runCatching { assertHeroWhole(frame, ms) }.exceptionOrNull()?.let { failures += it.message.orEmpty() }
+            runCatching { assertWordsAtRestSize("at $ms ms") }.exceptionOrNull()?.let { failures += it.message.orEmpty() }
+        }
+        assertTrue(failures.isEmpty(), failures.joinToString("\n"))
+        compose.mainClock.advanceTimeBy(1_000)
+        save(compose.onRoot().captureToImage(), "ended-fold-rest")
+        compose.onAllNodesWithContentDescription("Payment code for", substring = true, useUnmergedTree = true).assertCountEquals(0)
+    }
+
+    /**
      * Once the card has closed to about the hero's size, the hero is a whole circle: the ground just above it, and its
      * top an arc, not cut straight by the page's scroll (the review's flat top at 240 ms).
      */
