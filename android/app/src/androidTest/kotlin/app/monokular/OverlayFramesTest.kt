@@ -15,6 +15,7 @@ import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.test.platform.app.InstrumentationRegistry
 import app.monokular.core.SalePhase
 import app.monokular.overlay.CARD_TAG
@@ -32,6 +33,7 @@ import org.junit.Rule
 import org.junit.Test
 import java.io.File
 import kotlin.math.abs
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -218,5 +220,63 @@ class OverlayFramesTest {
     fun theOrderGrowingOutOfTheCard() {
         panel(raised = 1f)
         seek("order-grow") { page = PanelPage.Order }
+    }
+
+    /** How far [a] and [b] are apart, 0 to 3. */
+    private fun apart(a: Int, b: Int): Float =
+        (abs(android.graphics.Color.red(a) - android.graphics.Color.red(b)) + abs(android.graphics.Color.green(a) - android.graphics.Color.green(b)) +
+            abs(android.graphics.Color.blue(a) - android.graphics.Color.blue(b))) / 255f
+
+    private fun window(): Bitmap = compose.onNodeWithTag("window").captureToImage().asAndroidBitmap()
+
+    /**
+     * Lowered, nothing of the card is left once the docked bubble is back
+     * where the free one will take over (decision 170): on every frame from
+     * the one the bubble is within 4 dp of its place (to the eye, landed), every pixel of the
+     * card's place at rest, but for the bubble's own corner, is the
+     * backdrop; and the collapse lands (the window may go) no later than
+     * two frames after that.
+     */
+    @Test
+    fun theLowerLeavesNoCardOnceTheBubbleIsHome() {
+        panel(raised = 1f)
+        val card = compose.onNodeWithTag(CARD_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val backdrop = window().getPixel(4, 4)
+        val home = Offset(1200f, 900f)
+        var landedAt = -1
+        var frame = 0
+        motion.raise.exit(landsAt = Panel.IN_BUBBLE) { landedAt = frame }
+        var homeAt = -1
+        val history = mutableListOf<Float>()
+        val centres = mutableListOf<Offset>()
+        while (frame < 120 && (homeAt < 0 || frame < homeAt + 4)) {
+            frame++
+            compose.mainClock.advanceTimeByFrame()
+            history += motion.raise.value
+            val bubble = compose.onAllNodesWithContentDescription("Lower to the bubble", useUnmergedTree = true).fetchSemanticsNodes()
+                .filter { abs(it.size.width - it.size.height) <= 2 }
+                .minByOrNull { abs(it.size.width - 80 * compose.density.density) } ?: continue
+            val centre = bubble.positionOnScreen + Offset(bubble.size.width / 2f, bubble.size.height / 2f)
+            centres += centre
+            if (homeAt < 0 && (centre - home).getDistance() <= 4 * compose.density.density) homeAt = frame
+            // The capture is the frame last drawn, one behind the layout the bubble's place is read from.
+            if (homeAt < 0 || frame == homeAt) continue
+            val image = window()
+            var left = 0
+            var firstLeft = ""
+            var lx = 9999; var rx = 0; var ty = 9999; var by = 0
+            for (y in card.top.toInt() + 4 until card.bottom.toInt().coerceAtMost(image.height) - 4 step 6) {
+                for (x in card.left.toInt() + 4 until (card.right - card.width / 4).toInt() step 6) {
+                    if (apart(image.getPixel(x, y), backdrop) > 0.03f) {
+                        if (left == 0) firstLeft = "($x,$y) ${Integer.toHexString(image.getPixel(x, y))} vs ${Integer.toHexString(backdrop)} card $card"
+                        lx = minOf(lx, x); rx = maxOf(rx, x); ty = minOf(ty, y); by = maxOf(by, y)
+                        left++
+                    }
+                }
+            }
+            assertEquals(0, left, "frame $frame (raise ${motion.raise.value}), the bubble at $centre home since $homeAt: $left pixels of the card are left, first $firstLeft, in [$lx,$ty]-[$rx,$by], raise by frame $history")
+        }
+        assertTrue(homeAt > 0, "the docked bubble gets home")
+        assertTrue(landedAt in 0..homeAt + 2, "the collapse lands on frame $landedAt, the bubble is home on $homeAt")
     }
 }
