@@ -1,5 +1,10 @@
 package app.monokular.ui
 
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -39,6 +44,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
@@ -47,9 +54,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.monokular.Ground
+import app.monokular.RowEnds
 import app.monokular.RowOpens
 import app.monokular.ShiftFilter
 import app.monokular.ShiftList
@@ -68,12 +77,15 @@ import app.monokular.sales.live
 fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions, now: LongState = rememberNowSeconds()) {
     var filter by rememberSaveable { mutableStateOf(ShiftFilter.All) }
     val rows = ShiftList.rows(sales, filter)
+    val arrive = motion.fade.fraction
+    val leave = motion.fadeQuick.fraction
+    val placement = motion.settle.spec(IntOffset.VisibilityThreshold)
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
             LazyColumn(Modifier.widthIn(max = 640.dp).fillMaxSize()) {
-                item { TopRow(status, actions) }
+                item(key = "top") { TopRow(status, actions) }
                 if (status.disconnected) {
-                    item {
+                    item(key = "disconnected") {
                         Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             Heading("Disconnected")
                             Lead("The store disconnected this device. Connect it again with a new code from the store's settings.")
@@ -82,13 +94,13 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                     }
                     return@LazyColumn
                 }
-                item {
+                item(key = "problem") {
                     Notice(status.problem, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
                     if (status.signInAgain) {
                         PrimaryButton("Sign in to Square again", actions.onSignIn, Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth())
                     }
                 }
-                item {
+                item(key = "summary") {
                     Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         Text("This shift", style = display(28, -0.4), modifier = Modifier.semantics { heading() })
                         Text(
@@ -97,11 +109,11 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                         )
                     }
                 }
-                if (!status.running || sales.isEmpty()) item { Idle(status.running, actions) }
+                if (!status.running || sales.isEmpty()) item(key = "idle") { Idle(status.running, actions) }
                 if (sales.isNotEmpty()) {
-                    item { Chips(filter, ShiftList.needsAction(sales)) { filter = it } }
+                    item(key = "chips") { Chips(filter, ShiftList.needsAction(sales)) { filter = it } }
                     if (rows.isEmpty()) {
-                        item {
+                        item(key = "empty") {
                             Text(
                                 ShiftList.empty(filter), fontSize = 15.sp, color = mk.muted, textAlign = TextAlign.Center,
                                 modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 48.dp),
@@ -109,20 +121,35 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                         }
                     }
                     itemsIndexed(rows, key = { _, sale -> sale.orderId }) { i, sale ->
-                        val shape = RoundedCornerShape(
-                            topStart = if (i == 0) 20.dp else 0.dp, topEnd = if (i == 0) 20.dp else 0.dp,
-                            bottomStart = if (i == rows.lastIndex) 20.dp else 0.dp, bottomEnd = if (i == rows.lastIndex) 20.dp else 0.dp,
-                        )
-                        Column(Modifier.padding(horizontal = 16.dp).fillMaxWidth().clip(shape).background(mk.card)) {
+                        // A row arriving fades in, the rows it displaces slide to their place, a row leaving fades (M11);
+                        // its corners, which follow its index, snap.
+                        Column(
+                            Modifier.animateItem(fadeInSpec = arrive, placementSpec = placement, fadeOutSpec = leave)
+                                .padding(horizontal = 16.dp).fillMaxWidth().clip(rowShape(ShiftList.ends(i, rows.lastIndex))).background(mk.card),
+                        ) {
                             if (i > 0) Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(mk.divider))
                             SaleRow(sale, now) { actions.onOpen(sale.orderId) }
                         }
                     }
-                    item { Spacer(Modifier.height(24.dp)) }
+                    item(key = "end") { Spacer(Modifier.height(24.dp)) }
                 }
             }
         }
     }
+}
+
+/** The rows' card's corner. */
+private val RowCorner = 20.dp
+private val OnlyRow = RoundedCornerShape(RowCorner)
+private val FirstRow = RoundedCornerShape(topStart = RowCorner, topEnd = RowCorner)
+private val LastRow = RoundedCornerShape(bottomStart = RowCorner, bottomEnd = RowCorner)
+
+/** A row's part of the card, made once rather than per row per composition. */
+private fun rowShape(ends: RowEnds): Shape = when (ends) {
+    RowEnds.Only -> OnlyRow
+    RowEnds.First -> FirstRow
+    RowEnds.Middle -> RectangleShape
+    RowEnds.Last -> LastRow
 }
 
 /** The dot, the store, this till and whether it's watching; Settings. */
@@ -215,18 +242,20 @@ private fun Chips(filter: ShiftFilter, needsAction: Int, onFilter: (ShiftFilter)
     }
 }
 
+/** The ground of a row's badge, by its glyph. */
+private fun badgeGround(icon: StateIcon): Ground = when (icon) {
+    StateIcon.Clock -> Ground.Warn
+    StateIcon.Warning -> Ground.Danger
+    StateIcon.Tick -> Ground.Paid
+    StateIcon.Ring, StateIcon.Refund, StateIcon.Close -> Ground.Chip
+}
+
 /** One sale: its state's icon, "Sale #m2Qe · $8.40", how it stands, and where a tap goes. */
 @Composable
 private fun SaleRow(sale: TillSale, now: LongState, onOpen: () -> Unit) {
     // Only a live row reads the clock, and only its own second: the shift above it doesn't tick.
     val seconds by remember(sale) { derivedStateOf { if (sale.live) secondsLeft(sale.expiresAt, now.longValue) else 0L } }
     val row = remember(sale, seconds) { ShiftList.row(sale, seconds) }
-    val ground = when (row.icon) {
-        StateIcon.Clock -> Ground.Warn
-        StateIcon.Warning -> Ground.Danger
-        StateIcon.Tick -> Ground.Paid
-        StateIcon.Ring, StateIcon.Refund, StateIcon.Close -> Ground.Chip
-    }
     Row(
         Modifier.fillMaxWidth().heightIn(min = 64.dp)
             .clickable(onClickLabel = if (row.opens == RowOpens.Code) "Show the code" else "Open the details", role = Role.Button, onClick = onOpen)
@@ -234,7 +263,13 @@ private fun SaleRow(sale: TillSale, now: LongState, onOpen: () -> Unit) {
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Box(Modifier.clearAndSetSemantics {}) { StateBadge(sale, row.icon, ground, RingRowSize, 18.dp, quiet = true) }
+        Box(Modifier.clearAndSetSemantics {}) {
+            // Ring to tick, ring to clock: one face of the badge fading into the next; the ring's own arc sweeps (M6).
+            val fade = motion.fade.fraction
+            AnimatedContent(targetState = row.icon, transitionSpec = { (fadeIn(fade) togetherWith fadeOut(fade)).using(null) }, label = "row badge") { icon ->
+                StateBadge(sale, icon, badgeGround(icon), RingRowSize, 18.dp, quiet = true)
+            }
+        }
         Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
             Text(row.title, fontSize = 16.sp, color = if (row.quiet) mk.muted else mk.ink, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(row.sub, fontSize = 13.sp, color = toneColor(row.tone), maxLines = 2, overflow = TextOverflow.Ellipsis)

@@ -22,6 +22,9 @@ enum class Tone { Link, Warn, Danger, Paid, Muted }
 /** The glyph in a row's circle, and on a detail page's hero. */
 enum class StateIcon { Ring, Clock, Warning, Tick, Refund, Close }
 
+/** Which of its corners a shift row rounds: the rows make one card, rounded at its two ends. */
+enum class RowEnds { Only, First, Middle, Last }
+
 /** One shift row, in words and roles: what the screen draws for a sale. */
 data class ShiftRow(
     val title: String,
@@ -111,6 +114,14 @@ object ShiftList {
             icon = icon,
             opens = opens(sale),
         )
+    }
+
+    /** The corners row [index] of rows up to [lastIndex] rounds: the card's top on the first, its bottom on the last. */
+    fun ends(index: Int, lastIndex: Int): RowEnds = when {
+        index == 0 && lastIndex == 0 -> RowEnds.Only
+        index == 0 -> RowEnds.First
+        index == lastIndex -> RowEnds.Last
+        else -> RowEnds.Middle
     }
 
     /** What an empty filter says where its rows would be. */

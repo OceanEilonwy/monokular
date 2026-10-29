@@ -271,4 +271,13 @@ class ShiftListTest {
         assertEquals("Ask the customer to pay the rest to the same code · 9:12 left", SaleText.hint(sale("w", SalePhase.Partial), 552))
         assertEquals("The customer can go: it's being confirmed", SaleText.hint(sale("w", SalePhase.Seen), 0))
     }
+
+    @Test
+    fun `the rows make one card, rounded at its top and bottom`() {
+        assertEquals(RowEnds.Only, ShiftList.ends(0, 0), "one row is the whole card")
+        assertEquals(RowEnds.First, ShiftList.ends(0, 2))
+        assertEquals(RowEnds.Middle, ShiftList.ends(1, 2))
+        assertEquals(RowEnds.Last, ShiftList.ends(2, 2))
+        assertEquals(RowEnds.Last, ShiftList.ends(1, 1), "of two, the second is the bottom")
+    }
 }
