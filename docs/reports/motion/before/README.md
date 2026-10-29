@@ -24,3 +24,20 @@ run: a panel of the other kind is swapped without animation, decision
 89, and the spec keeps that a snap); onboarding's steps (cuts, like
 every screen change; M7 gives them a slide); the enlarged code's
 brightness, which a screen recording can't show.
+
+## Cut for the showcase
+
+`docs/reports/motion.md` pairs each improvement with a short "before"
+and "after". The "before" clips below are cut from the recordings above
+with ffmpeg (480 px wide, 24 fps, under 100 KB each), not re-recorded:
+
+| Clip | From | Seconds |
+| --- | --- | --- |
+| `panel-raise-lower.mp4` | `before-overlay.mp4` | 0.3–3.8 (the tap pops the panel in) and 25.5–28.5 (the fling makes it vanish) |
+| `bubble-throw.mp4` | `before-bubble.mp4` | 6.5–14.5 |
+| `panel-paid-next-sale.mp4` | `before-overlay2.mp4` | 10.5–18.5 |
+| `panel-order.mp4` | `before-overlay2.mp4` | 0–7.5 |
+| `code-enlarge.mp4` | `before-code-paid.mp4` | 10.5–19.5 |
+| `paid-on-sale.mp4` | `before-code-paid.mp4` | 22.5–30 |
+| `row-to-sale.mp4` | `before-app-sale.mp4` | 21–24.5 |
+| `sale-arrives.mp4` | `before-app-sale.mp4` | 43.5–47.5 |
