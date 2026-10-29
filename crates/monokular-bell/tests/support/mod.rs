@@ -775,13 +775,17 @@ pub fn payment_webhook_of(
 /// Every log line this thread writes, at every level, until the guard
 /// drops. One global subscriber sends each line to the buffer of the
 /// thread that wrote it (tests run on a current-thread runtime, so the
-/// Bell's lines are the test's thread's).
+/// Bell's lines are the test's thread's). The lines carry no clock: the
+/// trace tests look for a payment's digits in what the Bell wrote, and a
+/// timestamp's microseconds (`06.424210Z`) held `4242` in two runs of
+/// eighty.
 pub fn capture_log() -> (CaptureGuard, Captured) {
     static INSTALL: Once = Once::new();
     INSTALL.call_once(|| {
         let subscriber = tracing_subscriber::fmt()
             .with_max_level(tracing::Level::TRACE)
             .with_ansi(false)
+            .without_time()
             .with_writer(|| ThreadSink)
             .finish();
         let _ = tracing::subscriber::set_global_default(subscriber);
