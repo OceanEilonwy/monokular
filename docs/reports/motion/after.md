@@ -269,3 +269,129 @@ side. One artefact is open: `paid-fold-240` shows the hero circle's top
 cut along a straight line for the frames around 240 ms, while it is
 still settling (gone by 300 ms); its cause wasn't found this round (not
 the clip, the resize mode or the wrapper's order, each tried).
+
+## Round 2, integrated build (motion at 6646a2e), by the lead
+
+The integrated branch is the overlay track's eight commits, the screens
+track's eight rebased over them, and one integration commit (one
+`PaidBuzz` rule for the payment's buzz, the decisions renumbered). Measured
+as round 1 was, before (`f274ad7`'s debug build) and after alternately in
+one session on one emulator, twice over (`ab-r2.sh` in the lead's scratch
+folder, raw dumps under `measure-r2/<serial>/<before|after><n>/`), with
+decision 127's changes to the rig: the stack's dead orders expired, two
+fresh sales rung up before each pass, the phone (emulator-5558, Pixel 9
+Pro, SwiftShader) first and the tablet (emulator-5560, Pixel Tablet)
+after it. Flows: the shift scrolled (12 swipes), the enlarged code opened
+and tapped closed three times, ten shift ↔ sale round trips then 10 s of
+rest for memory and the GPU's caches, the order opened from the sale and
+Back five times, the overlay's raise + lower five times and a drag + snap
+with memory after 10 s, and three cold starts of the debug build. Frame
+numbers are the `MainActivity` window's framestats (its last 120 frames)
+unless marked process-wide; the overlay flows are process-wide, since the
+overlay's windows are merged in `gfxinfo`.
+
+### Phone (emulator-5558, SwiftShader), before and after alternately
+
+| Flow | before 1 / 2 | after 1 / 2 | 2 × before p95 | verdict |
+| --- | --- | --- | --- | --- |
+| Shift scroll, window p50 / p90 / p99 / max | 9.9 / 18.9 / 33.5 / 35.9, 9.9 / 19.2 / 26.8 / 27.0 | 10.0 / 18.9 / 24.2 / 33.5, 19.1 / 31.7 / 39.0 / 40.6 | | no frame over 41 ms; the second after pass ran every frame at 19 ms, the first at 10 (see below) |
+| Code enlarge + shrink × 3, frames; p50 / p90 / p99 / max | 19; 16.8 / 61.5 / 65.6 / 65.6, 18; 8.4 / 64.1 / 69.6 / 69.6 | 120; 33.9 / 54.9 / 90.1 / 90.6, 120; 30.4 / 56.6 / 91.2 / 91.3 | 130–139 | passes (max 91) |
+| Shift ↔ sale × 10, frames; p50 / p90 / p99 / max | 62; 17.0 / 67.7 / 80.8 / 80.8, 60; 14.8 / 66.8 / 83.4 / 83.4 | 120 of 412; 19.0 / 38.2 / 93.1 / 95.3, 120 of 413; 18.6 / 48.8 / 98.6 / 108.6 | 138–146 | passes (max 109) |
+| Cold start, debug, median of 3 (ms) | 1739, 1776 | 1835, 1775 | | within noise |
+| PSS at rest after the round trips (MB) / native heap | 103.5 / 16.2, 102.8 / 16.2 | **123.1 / 29.7**, **127.3 / 31.2** | +2 MB rule | **fails: +20 to +24 MB PSS, +13.5 to +15 MB native heap** |
+| PSS with the bubble up, 10 s after the overlay flows / native | 104.8 / 15.8, 105.3 / 15.5 | **118.9 / 27.1**, **119.7 / 27.5** | | **fails: +14 MB** |
+| Dalvik heap at rest (MB) | 9.6 | 14.4 | | +4.8 MB, before any trim |
+
+### Tablet (emulator-5560), before and after alternately
+
+| Flow | before 1 / 2 | after 1 / 2 | 2 × before p95 | verdict |
+| --- | --- | --- | --- | --- |
+| Shift scroll, window p50 / p90 / p99 / max | 10.2 / 16.8 / 25.0 / 33.5, 40.4 / 52.1 / 66.9 / 66.9 (load 27) | 19.3 / 27.3 / 33.3 / 33.5, 19.2 / 23.1 / 28.1 / 29.4 | | no frame over 34 ms (see the swap note below) |
+| Code enlarge + shrink × 3, frames; p50 / p90 / p99 / max | 18; 16.8 / 66.8 / 66.8 / 66.8, 18; 16.8 / 74.4 / 98.0 / 98.0 | 112; 40.7 / 66.8 / 98.8 / 99.1, 110; 37.7 / 69.7 / 90.6 / 93.0 | 134–196 | passes (max 99) |
+| Shift ↔ sale × 10, frames; p50 / p90 / p99 / max | 60; 16.9 / 66.9 / 100.3 / 100.3, 60; 18.8 / 92.7 / 120.5 / 120.5 | 120 of 436; 15.5 / 42.2 / 82.2 / 83.9, 120 of 416; 14.2 / 35.8 / 90.8 / 91.1 | 200–241 | passes (max 91, under the cuts' own) |
+| Cold start, debug, median of 3 (ms) | 1439, 1438 | 2249 (load 27 just before), 1461 | | see the 5-run numbers below |
+| PSS at rest after the round trips (MB) / native heap | 105.4 / 15.3, 105.7 / 15.8 | **117.9 / 27.9**, **120.8 / 26.4** | +2 MB rule | **fails: +12.5 to +15 MB PSS, +11 to +13 MB native** |
+| PSS with the bubble up / native | 106.1 / 15.2, 106.6 / 15.2 | **119.2 / 26.2**, (after2 not reached before the run's end) | | **fails: +13 MB** |
+
+**The shift scroll's 19 ms frames.** In three of the four after passes (and
+one before pass on the tablet) every scroll frame took 19 ms where the
+others took 10. The framestats phases say where: animation 1.1 ms,
+layout 0.0, record 1.0–1.2, issue 0.8–0.9 in every pass, before and
+after; only the swap (SwapBuffers to FrameCompleted, the wait on the
+emulator's compositor) moves, 5.6–6.2 ms in the 10 ms passes and
+15.0–15.1 in the 19 ms ones. The app's own work per scroll frame is the
+same before and after, to a tenth of a millisecond; the 19 ms is the
+software swap chain's pacing on the host, which the first after pass on
+the phone (10.0 ms) did not have.
+
+### Overlay (the bubble found by its window; process-wide `gfxinfo`)
+
+Round 1's overlay runs, and this round's first attempt, tapped where a
+fresh install puts the bubble; after a drag it is elsewhere, and the
+panel never opened. `overlay-flow-r2.sh` reads the bubble's window from
+`dumpsys window` and screenshots the panel up
+(`review-r2/phone-panel-up-integrated.webp`).
+
+| Flow | Phone before 1 / 2 | Phone after 1 / 2 | Tablet before 1 / 2 | Tablet after 1 / 2 |
+| --- | --- | --- | --- | --- |
+| Lit bubble alone, 5 s: frames; p50 | 303; 6, 302; 5 | 301; 19, 301; 5 | 302; 5, 302; 16 | 302; 5, 279; 19 |
+| Panel up and still, 5 s: frames; p50 / p99 | 200; 46 / 85, 302; 18 / 32 | **5**; 12 / 15, **5**; 12 / 16 | 296; 16 / 85, 307; 18 / 32 | **5**; 10 / 13, **5**; 9 / 9 |
+| Raise + lower × 5: frames; janky; p50 / p95 / p99 | 1336; 10.8 %; 16 / 53 / 69, 1479; 1.6 %; 16 / 29 / 32 | 834; 6.4 %; 5 / 36 / 69, 844; 3.6 %; 5 / 27 / 77 | 1465; 6.7 %; 18 / 38 / 48, 1454; 5.3 %; 18 / 38 / 48 | 954; 6.8 %; 17 / 36 / 46, 927; 7.4 %; 17 / 38 / 77 |
+| Drag + snap × 2: p50 / p95 / p99 | 18 / 25 / 32, 5 / 16 / 19 | 5 / 16 / 16, 5 / 16 / 16 | 20 / 40 / 101, 30 / 40 / 48 | 18 / 22 / 38, 18 / 24 / 34 |
+| PSS with the bubble up, 10 s on (MB) / native | 95.7 / 14.0, 92.2 / 12.2 | 99.8 / 18.6, 99.9 / 18.5 | 97.6 / 14.2, 91.8 / 11.8 | 99.8 / 16.5, 104.5 / 18.8 |
+
+A panel up and still draws 5 frames in 5 s against the baseline's 200–307
+(its pulse kept running under the panel), on both; the tablet's free bubble
+stops pulsing beside its panel (decision 109). The raise and lower's p99
+is 69–77 ms on both builds and both emulators, a window being added; its
+p50 falls from 16–18 to 5–17. The drag and snap is smoother on both. The
+pulse itself draws every frame in both builds (301 frames in 5 s).
+
+### Memory at rest, after a trim (phone, `mem-r2.sh`)
+
+Fresh sales, ten round trips, the order opened five times, 10 s of rest,
+then `am send-trim-memory RUNNING_CRITICAL`:
+
+| Build | PSS on the shift, fresh | PSS at rest / native | after trim / native | glyph cache | GPU caches |
+| --- | --- | --- | --- | --- | --- |
+| before 1 / 2 | 98.3, 98.2 | 104.6 / 14.8, 109.0 / 15.3 | 104.4 / 14.9, 104.6 / 14.9 | 0.23 MB | 2.3 MB |
+| after 1 / 2 | 104.0, 99.0 | **126.0 / 29.5**, **116.4 / 23.5** | **123.4 / 29.5**, **115.2 / 23.6** | **4.30, 2.99 MB** | **16.45 MB (14.3 purgeable)**, 2.38 MB |
+
+After a trim the integrated build holds **10.6 to 19.0 MB more** than the
+baseline. `heapprofd` (`heap-r2.sh`, 32 KiB sampling, attached before the
+process started) names it: the after build's native heap steps 1.6 MB at
+start (0.66 against 0.33 MB of JIT code, 0.75 against 0.23 of glyphs)
+and 7.5 MB over ten round trips, of which **5.1 MB is Skia's glyph strike
+cache and text atlas** (`SkStrike::prepareImages` under
+`AtlasTextOp::onPrepareDraws`, 3.0 MB; `GrDrawOpAtlas::addToAtlas`, 1.8
+MB): the text inside a surface scaled as a layer is rasterised again at
+every scale the move passes through. The 14.3 MB purgeable GPU texture of
+the first after run is the size of one phone screen in RGBA; it did not
+recur in the second run. Decision 128 has what to do about it. The
+`Graphics` row is 0 on SwiftShader, so on a device part of this moves
+from the native heap to graphics memory; the glyph strikes do not.
+
+### Cold start
+
+Phone, debug, median of 3 per pass: before 1739 and 1776 ms, after 1835
+and 1775 (load 7–17). Tablet, 5 runs per pass (`ab-cold-r2.sh`), but the
+host's load climbed from 21 to 47 through it: debug before 1705 / 1887,
+after 1787 / 2364; release before 947 / 3080, after 1187 / 759. Nothing
+in those pairs separates from the load; the phone's quieter pairs put the
+debug start within 5 %.
+
+### Size
+
+Release, unsigned: 8 068 850 B file, 4 591 565 B download, against the
+baseline's 7 951 910 / 4 517 799 (+117 KB / +74 KB) and round 1's
+8 050 214 / 4 576 474 (+19 KB / +15 KB this round). Debug: 24 365 820 /
+19 825 798 against 23 637 209 / 19 684 630. Over the 50 KB rule, as round
+1 was; no dependency was added.
+
+### Verdict
+
+Frames pass everywhere the rule can be read on these emulators: the grows
+stay under twice the cuts' p95 on the phone and the tablet, the round trip
+and the drag get smoother, and a panel at rest no longer draws. Memory
+does not: 10 to 19 MB over the baseline after a trim, with the cause
+named (decision 128) and owned by the screens track. Not signed off.
