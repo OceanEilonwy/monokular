@@ -46,7 +46,11 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.graphics.asAndroidPath
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.util.lerp
@@ -382,6 +386,56 @@ fun Modifier.sharedGround(key: String, during: Move, color: Color, corner: Dp, o
     }.drawBehind {
         val r = lerp(other.toPx(), corner.toPx(), stage.shownDuring(during))
         drawRoundRect(color, cornerRadius = CornerRadius(r))
+    }
+}
+
+/** A sale's face (its live code, or its page) for the surfaces that morph between the two (M10). */
+val LocalFace = staticCompositionLocalOf<AnimatedVisibilityScope?> { null }
+
+/**
+ * [key]'s surface between a sale's two faces ([LocalFace]): while one
+ * turns into the other in place, its bounds move between the two faces'
+ * nodes on [Motion.surface], its content scaled as a layer and
+ * crossfading (the going face's under [Motion.fadeQuick], the coming
+ * one's with [Motion.fade]), clipped to a rounded rectangle whose
+ * corners go from [other] (its partner's) to [corner] (its own) on the
+ * same spring: the code card closing into the hero's circle.
+ */
+@Composable
+fun Modifier.faceSurface(key: String, corner: Dp, other: Dp): Modifier {
+    val stage = LocalStage.current ?: return this
+    val face = LocalFace.current ?: return this
+    val m = motion
+    if (m.still) return this
+    val shared = stage.shared
+    val state = shared.rememberSharedContentState(key)
+    val bounds = remember(m) { BoundsTransform { _, _ -> m.surface.spec(Rect.VisibilityThreshold) } }
+    val shown = face.transition.animateFloat({ m.surface.fraction }, label = "face") { if (it == EnterExitState.Visible) 1f else 0f }
+    val clip = remember(corner, other, shown) { RoundClip(corner, other, shown) }
+    return with(shared) {
+        sharedBounds(
+            state, face, enter = fadeIn(m.fade.fraction), exit = fadeOut(m.fadeQuick.fraction),
+            boundsTransform = bounds, resizeMode = ScaledToFit, zIndexInOverlay = Layers.GROUND, clipInOverlayDuringTransition = clip,
+        )
+    }
+}
+
+/** Scaled as one layer to fit the bounds, centred: a square card into a circle. */
+private val ScaledToFit = ResizeMode.scaleToBounds(ContentScale.Fit, Alignment.Center)
+
+/**
+ * A rounded rectangle whose corners go from [other] to [corner] as
+ * [shown] goes from 0 to 1, read per frame; one path, reused, so a frame
+ * allocates nothing.
+ */
+private class RoundClip(private val corner: Dp, private val other: Dp, private val shown: State<Float>) : SharedTransitionScope.OverlayClip {
+    private val path = Path()
+
+    override fun getClipPath(sharedContentState: SharedContentState, bounds: Rect, layoutDirection: LayoutDirection, density: Density): Path {
+        val r = with(density) { lerp(other.toPx(), corner.toPx(), shown.value) }.coerceAtMost(bounds.minDimension / 2f)
+        path.rewind()
+        path.asAndroidPath().addRoundRect(bounds.left, bounds.top, bounds.right, bounds.bottom, r, r, android.graphics.Path.Direction.CW)
+        return path
     }
 }
 

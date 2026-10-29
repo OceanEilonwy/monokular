@@ -1,7 +1,5 @@
 package app.monokular.overlay
 
-import android.os.Build
-import android.view.HapticFeedbackConstants
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateContentSize
@@ -78,6 +76,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -103,6 +102,8 @@ import androidx.compose.ui.util.lerp
 import androidx.compose.ui.zIndex
 import app.monokular.BubbleLook
 import app.monokular.PosText
+import app.monokular.MonokularApp
+import app.monokular.PaidBuzz
 import app.monokular.SaleText
 import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
@@ -111,6 +112,7 @@ import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import app.monokular.sales.standing
 import app.monokular.ui.CodeText
+import app.monokular.ui.confirm
 import app.monokular.ui.Fixed
 import app.monokular.ui.LightTokens
 import app.monokular.ui.LoadingMark
@@ -384,11 +386,11 @@ object Haptics {
 @Composable
 private fun Confirm(look: BubbleLook) {
     val view = LocalView.current
+    val appVisible = (LocalContext.current.applicationContext as MonokularApp).graph.appVisible
     val last = remember { arrayOf(look) }
     LaunchedEffect(look) {
-        if (look == BubbleLook.Paid && last[0] != BubbleLook.Paid) {
-            view.performHapticFeedback(if (Build.VERSION.SDK_INT >= 30) HapticFeedbackConstants.CONFIRM else HapticFeedbackConstants.CONTEXT_CLICK)
-        }
+        // A bubble still leaving as the app comes up leaves the buzz to the app: one per payment (PaidBuzz).
+        if (look == BubbleLook.Paid && last[0] != BubbleLook.Paid && PaidBuzz.by(appVisible.value) == PaidBuzz.Surface.Bubble) view.confirm()
         last[0] = look
     }
 }

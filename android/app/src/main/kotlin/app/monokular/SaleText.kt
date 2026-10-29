@@ -171,6 +171,18 @@ object SaleText {
     private const val NARROW_SPACE = '\u202F'
 }
 
+/**
+ * Which surface buzzes when a payment lands (`docs/motion.md` §6): the one
+ * the cashier is looking at, and it alone, so a payment is one buzz
+ * however many surfaces show it. The app when it is on screen (any of its
+ * screens: the sale turning paid, or its row), else the bubble.
+ */
+object PaidBuzz {
+    enum class Surface { App, Bubble }
+
+    fun by(appVisible: Boolean): Surface = if (appVisible) Surface.App else Surface.Bubble
+}
+
 /** Which till screen the sales lead to, as they change (decision 70). */
 object TillNav {
     /**
@@ -200,6 +212,10 @@ object TillNav {
         val sale = sales.firstOrNull { it.orderId == shown } ?: return null
         return shown.takeIf { it in liveBefore && sale.standing is Standing.Paid }
     }
+
+    /** Whether a payment landed since the last look: a sale that was live then is paid now. */
+    fun paymentLanded(sales: List<TillSale>, liveBefore: Set<String>): Boolean =
+        sales.any { it.orderId in liveBefore && it.standing is Standing.Paid }
 
     private fun liveOrUnknown(sales: List<TillSale>, orderId: String): Boolean =
         sales.firstOrNull { it.orderId == orderId }?.live ?: true
