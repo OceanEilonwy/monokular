@@ -2674,3 +2674,32 @@ design unchanged.
     alpha) stands as it was; `PhoneOrderOnDeviceTest` holds the heading
     at or below the card's top on the grow's first frames and only
     rising after.
+153. **The panel's card is one layer only while it grows or collapses**
+    (dev1, round 4; answers the review's overlay half of the memory
+    item). `heapprofd` on 5554 over a cold start, one sale, the bubble
+    up and the panel raised and lowered five times, before (f274ad7's
+    build) and after alternately, attached before the process started:
+    the round 3 head ended with 18.4 MB of unreleased native heap
+    against the baseline's 14.5, and 3.4 MB of the 3.8 MB difference was
+    Skia's glyph strikes and text atlas (`SkStrike::prepareImages`,
+    `GrDrawOpAtlas::addToAtlas`, FreeType glyph loads under
+    `AtlasTextOp`). Not the card's shadow, not the `ModulateAlpha`
+    layers, not the order line's `AnimatedVisibility`: the raise scales
+    the card from 0.3 with `graphicsLayer`, so every word on it is drawn
+    through a new matrix each frame and Skia rasterises each glyph again
+    at that size, the same cause as 128 in the app. `TextMotion.Animated`
+    was tried first and kept 3.3 MB of it. What went in: the card's
+    content goes through an `Offscreen` layer while `raise` is strictly
+    between 0 and 1 (`Presence.moving`, read in the layer block, so no
+    recomposition) and draws straight through, with no offscreen
+    buffer, at rest; the phone's order, which rides the same raise,
+    does the same. Each glyph is drawn once at its
+    own size into the layer and the layer is scaled; its texture goes
+    when the panel lands. It sits inside the card's clip and under its
+    shadow, so neither is cut. After: 14.1 MB unreleased (0.4 MB under
+    the baseline), PSS after the flow 104.2 MB against the baseline's
+    103.5 and the round 3 head's 109.5, native heap 13.2 MB against
+    14.1 and 18.4 (one pass each at load 28 to 70; the scripts are
+    `heap-ov.sh` and `bin/heapdiff.py` in dev1's scratch folder). The
+    code is in the layer during the move, scaled as part of it as it
+    already was (§10 rule 6 unchanged: one bitmap, never re-laid out).
