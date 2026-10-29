@@ -235,6 +235,34 @@ class TillTest {
     }
 
     @Test
+    fun `an ended sign-in keeps saying why until the cashier signs in, and a sale found after clears it`() = runBlocking {
+        val source = InPosSource(listOf(cloverSale))
+        var failure: PosException? = CloverException(401, "Clover's sign-in has ended. Sign in again.", signInAgain = true)
+        val till = Till(
+            object : SaleSource by source {
+                override suspend fun newSales(): List<FoundSale> = failure?.let { throw it } ?: source.newSales()
+            },
+            monokulo,
+            connection,
+        )
+        till.check()
+        failure = CloverException(401, "Sign in to Clover.", signInAgain = true)
+        till.check()
+        till.check()
+        assertEquals("Clover's sign-in has ended. Sign in again.", till.sales.value.problem, "the next checks' missing sign-in doesn't replace why it ended")
+        assertTrue(till.sales.value.signInAgain)
+        failure = CloverException(503, "Clover is busy.")
+        till.check()
+        assertEquals("Clover is busy.", till.sales.value.problem, "a problem of another kind is still shown")
+        assertFalse(till.sales.value.signInAgain)
+        failure = null
+        server.enqueue(order())
+        till.check()
+        assertEquals(null, till.sales.value.problem)
+        assertFalse(till.sales.value.signInAgain)
+    }
+
+    @Test
     fun `without a receipt the plain code is shown, and another device's sales are left alone`() = runBlocking {
         val other = sale.copy(id = "pay_2", deviceId = "dev_back")
         val source = FakeSource(listOf(sale, other))

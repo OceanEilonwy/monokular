@@ -165,7 +165,7 @@ class Till(
         val found = try {
             source.newSales()
         } catch (e: PosException) {
-            change { it.copy(problem = e.message, signInAgain = e.signInAgain) }
+            change { it.withPosProblem(e) }
             return@withLock 0
         } catch (e: Exception) {
             change { it.copy(problem = "Couldn't reach the POS: ${e.message}") }
@@ -230,6 +230,15 @@ class Till(
     } catch (_: Exception) {
         false
     }
+
+    /**
+     * [e] shown, unless the sign-in has already ended and [e] only says so
+     * again: the words that said why it ended ("Clover's sign-in has ended")
+     * stay until the cashier signs in, rather than the next check's bare
+     * "Sign in to Clover."
+     */
+    private fun TillState.withPosProblem(e: PosException): TillState =
+        if (signInAgain && e.signInAgain) this else copy(problem = e.message, signInAgain = e.signInAgain)
 
     private fun markRefunded(orderId: String) {
         val at = now()
