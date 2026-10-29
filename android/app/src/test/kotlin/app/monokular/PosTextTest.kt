@@ -4,7 +4,7 @@ import app.monokular.core.PointOfSale
 import kotlin.test.Test
 import kotlin.test.assertEquals
 
-/** The words that name the point of sale (acceptance D5, T2.6, T3.2, T4.1; decision A136). */
+/** The words that name the point of sale (acceptance D5, T2.6, T3.2, T4.1; decision 136). */
 class PosTextTest {
     private val square = PointOfSale.Square
     private val clover = PointOfSale.Clover

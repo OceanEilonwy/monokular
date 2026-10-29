@@ -98,10 +98,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** Step 4 was opened from Settings ("Change the point of sale"): back there once the new sign-in is done. */
     private var fromSettings = false
 
-    /** Clover's Monero payment type at the merchant, as the sign-in card shows it (decision A129); null while not known. */
+    /** Clover's Monero payment type at the merchant, as the sign-in card shows it (decision 129); null while not known. */
     val tenderState = MutableStateFlow<TenderState?>(null)
 
-    /** The refund sheet over the sale on screen, at a point of sale the till can't refund through (decision A130). */
+    /** The refund sheet over the sale on screen, at a point of sale the till can't refund through (decision 130). */
     val refundSheet = MutableStateFlow<RefundSheet?>(null)
 
     /** The sales that were live at the last look, to tell a sale paid on screen. */
@@ -133,7 +133,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         // Not watching: the shift's sales still list, to open and refund.
         if (!stores.shiftOn) graph.runner.showSaved()
         // Signed in to Clover: what its card and Settings say about the payment type. A remembered
-        // tender answers without asking Clover; nothing here ever adds one (decision A129).
+        // tender answers without asking Clover; nothing here ever adds one (decision 129).
         if (stores.pointOfSale == PointOfSale.Clover) stores.cloverMerchant?.let { merchant ->
             viewModelScope.launch { tenderState.value = runCatching { graph.cloverSource(merchant).ensureTender() }.getOrNull() }
         }
@@ -378,7 +378,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * A point of sale's redirect back into the app: [pos] is the one whose return address it
-     * came to. A redirect with no sign-in of that point of sale pending is dropped (decision A127).
+     * came to. A redirect with no sign-in of that point of sale pending is dropped (decision 127).
      */
     fun onPosRedirect(pos: PointOfSale, uri: Uri) = work {
         val pending = stores.pendingSignIn?.takeIf { it.pointOfSale == pos } ?: run {
@@ -422,8 +422,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * Clover's redirect: the tokens for the redirect's merchant, the merchant read, then the
-     * Monero payment type found or added (decision A129); the merchant is the till's place,
-     * with no locations to pick (decision A127).
+     * Monero payment type found or added (decision 129); the merchant is the till's place,
+     * with no locations to pick (decision 127).
      */
     private suspend fun finishClover(pending: PendingSignIn, uri: Uri) {
         val tokens = cloverAuth(pending.applicationId).finish(
@@ -615,7 +615,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /**
      * Refunds a sale's point-of-sale sale ([close] it first: the close sheet's "No"); its button
      * waits for the point of sale's answer. Where the till can't refund (Clover), the sale is
-     * marked for the cashier to refund there and the refund sheet opens (decision A130).
+     * marked for the cashier to refund there and the refund sheet opens (decision 130).
      */
     fun refund(orderId: String, close: Boolean = false) {
         if (orderId in refunding.value) return

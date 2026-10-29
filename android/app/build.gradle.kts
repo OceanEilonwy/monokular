@@ -27,7 +27,7 @@ android {
         buildConfigField("String", "SQUARE_BASE_URL", "\"\"")
         // The project's Clover application and the region it is in (sandbox,
         // north_america, europe or latin_america). Public too: Clover's
-        // low-trust sign-in is PKCE with no secret (decision A127). Replace the
+        // low-trust sign-in is PKCE with no secret (decision 127). Replace the
         // placeholder once the Clover application exists.
         buildConfigField("String", "CLOVER_APPLICATION_ID", "\"${providers.gradleProperty("monokular.clover.applicationId").getOrElse("REPLACE-ME-CLOVER")}\"")
         buildConfigField("String", "CLOVER_ENVIRONMENT", "\"${providers.gradleProperty("monokular.clover.environment").getOrElse("north_america")}\"")

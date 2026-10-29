@@ -18,7 +18,7 @@ interface PosSwitchSide {
 }
 
 /**
- * Choosing a point of sale (acceptance D6, decision A138), from step 4's rows
+ * Choosing a point of sale (acceptance D6, decision 138), from step 4's rows
  * or Settings' "Change the point of sale". Choosing the one chosen changes
  * nothing. Choosing another while signed in to the first takes the Bell's
  * registration back first, then signs out of the old one, then saves the new;

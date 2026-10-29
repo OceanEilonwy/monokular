@@ -41,7 +41,7 @@ import app.monokular.sales.TillSale
  * says comes from [SalePage]; a refund's answer turns it into the
  * Refunded page in place, or shows [refundProblem] above its buttons. At a
  * point of sale the till can't refund through, Refund opens [refundSheet]
- * (decision A130) until the sale shows refunded.
+ * (decision 130) until the sale shows refunded.
  */
 @Composable
 fun SaleDetail(sale: TillSale, location: String?, refunding: Boolean, refundProblem: String?, refundSheet: RefundSheet?, actions: TillActions) {

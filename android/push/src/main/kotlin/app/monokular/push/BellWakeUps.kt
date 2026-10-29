@@ -46,7 +46,7 @@ interface Distributors {
     val changes: SharedFlow<Unit>
 }
 
-/** The till's point-of-sale sign-in, as registering with a Bell needs it (A132). */
+/** The till's point-of-sale sign-in, as registering with a Bell needs it (decision 132). */
 interface PosSide {
     /** Where the till is signed in; null while it isn't signed in to a point of sale (or runs without one). */
     val signedIn: PosSignIn?
@@ -223,7 +223,7 @@ class BellWakeUps(
     /**
      * Register with [bell] for [signedIn], stopping at the first thing in the way; the status
      * that leaves. The Bell's entry for the till's point of sale is checked in acceptance
-     * T5.2's order: there at all, then its environment, then its application (A132).
+     * T5.2's order: there at all, then its environment, then its application (decision 132).
      */
     private suspend fun register(bell: BellAddress, signedIn: PosSignIn?): WakeUpStatus {
         val info = bells.info(bell)

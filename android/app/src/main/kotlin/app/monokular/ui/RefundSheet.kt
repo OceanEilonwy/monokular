@@ -29,7 +29,7 @@ import app.monokular.sales.TillSale
 
 /**
  * The refund sheet over a sale's page at a point of sale whose API can't
- * refund it (Clover, decision A130): open while the cashier refunds [orderId]
+ * refund it (Clover, decision 130): open while the cashier refunds [orderId]
  * there. [posName] and [where] are the source's words; [checking] while "I've
  * refunded it" asks the point of sale, [notSeen] when it answered no refund yet.
  */

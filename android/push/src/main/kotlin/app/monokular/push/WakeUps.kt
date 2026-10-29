@@ -126,7 +126,7 @@ sealed interface WakeUpStatus {
 
     /**
      * The Bell hears [pointOfSale] through another application, [applicationId]:
-     * the till must sign in to it through that one (decision 96, A132).
+     * the till must sign in to it through that one (decision 96, 132).
      */
     data class SignInNeeded(val pointOfSale: PointOfSale, val applicationId: String) : WakeUpStatus
 }

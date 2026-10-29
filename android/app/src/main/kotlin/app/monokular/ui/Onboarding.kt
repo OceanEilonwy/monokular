@@ -304,7 +304,7 @@ fun ConnectedScreen(connection: Connection, now: StoreNow, onNext: () -> Unit, o
     Footnote("Check this is the store you meant: payments go to its wallet. $CAN_DO")
 }
 
-/** Where Clover's Monero payment type stands, as step 4's Clover card shows it (decision A129). */
+/** Where Clover's Monero payment type stands, as step 4's Clover card shows it (decision 129). */
 enum class CloverTender {
     /** Not known yet: signing in, or looking. */
     Looking,

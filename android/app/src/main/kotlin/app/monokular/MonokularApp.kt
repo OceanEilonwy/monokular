@@ -80,7 +80,7 @@ class Graph(app: Application) {
     }
 
     fun cloverConfig() = CloverConfig(
-        // A Bell's application once the till has signed in through it (decision A132).
+        // A Bell's application once the till has signed in through it (decision 132).
         applicationId = stores.cloverApplicationId ?: BuildConfig.CLOVER_APPLICATION_ID,
         environment = cloverEnvironment,
         redirectUri = BuildConfig.CLOVER_REDIRECT_URI,
@@ -122,7 +122,7 @@ class Graph(app: Application) {
         )
     }
 
-    /** The till's point-of-sale sign-in, as a Bell registration needs it (decision A132). */
+    /** The till's point-of-sale sign-in, as a Bell registration needs it (decision 132). */
     private val posSide = object : PosSide {
         override val signedIn: PosSignIn?
             get() = if (stores.withoutPos) null else when (stores.pointOfSale) {

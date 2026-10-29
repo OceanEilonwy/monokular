@@ -25,7 +25,7 @@ import org.unifiedpush.android.connector.data.ResolvedDistributor
  * VAPID key. The connector keeps the keys and decrypts each push before
  * [WakePushService] hands it here (decision 92); only a ding for the
  * till's point of sale, [pointOfSale] as it is when the ding arrives, gets
- * through to [dings] (A133). Held by the app's graph for the life of the process.
+ * through to [dings] (decision 133). Held by the app's graph for the life of the process.
  */
 class UnifiedPushSubscriptions(
     private val context: Context,
@@ -140,7 +140,7 @@ internal object PushEvents {
 
     /**
      * A ding: decrypted, and exactly the JSON object `{"wake":"<pointOfSale>"}` for the
-     * till's point of sale (decision 92, A133). A Bell rings a till only for the point of
+     * till's point of sale (decision 92, 133). A Bell rings a till only for the point of
      * sale it registered, so a ding for another is stale or forged; none is a ding without one.
      */
     fun isDing(content: ByteArray, decrypted: Boolean, pointOfSale: PointOfSale?): Boolean {

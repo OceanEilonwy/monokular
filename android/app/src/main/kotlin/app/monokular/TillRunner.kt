@@ -36,7 +36,7 @@ data class RunnerState(
     val disconnected: Boolean = false,
     /** What the event stream's last failure said, while it's closed: `too-many-streams`, say. */
     val streamProblem: String? = null,
-    /** The till's point of sale can't refund through its API: the cashier refunds there (decision A130). */
+    /** The till's point of sale can't refund through its API: the cashier refunds there (decision 130). */
     val refundsInPos: Refunds.InPos? = null,
     val till: TillState = TillState(),
 )
@@ -161,7 +161,7 @@ class TillRunner(private val graph: Graph) {
         }
     }
 
-    /** The refund sheet's "I've refunded it": whether the point of sale now shows the sale refunded (decision A130). */
+    /** The refund sheet's "I've refunded it": whether the point of sale now shows the sale refunded (decision 130). */
     suspend fun confirmRefund(orderId: String): Boolean = till?.confirmRefund(orderId) ?: false
 
     /** Closes the sale for now (the close sheet's "Not sure"): its code comes down, it stays in the shift. */

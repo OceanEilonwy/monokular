@@ -111,11 +111,11 @@ class TillActions(
     val onCopyXmr: (TillSale) -> Unit,
     /**
      * Back to the point-of-sale app on this phone: Square's only, null for Clover, whose
-     * point of sale is a device of its own (decision A135), and when Square is already beside
+     * point of sale is a device of its own (decision 135), and when Square is already beside
      * Monokular (split screen).
      */
     val onBackToPos: (() -> Unit)?,
-    /** The refund sheet's "I've refunded it" (decision A130): ask the point of sale now. */
+    /** The refund sheet's "I've refunded it" (decision 130): ask the point of sale now. */
     val onRefundDone: (String) -> Unit,
     /** The refund sheet went away: "Not yet", Back or the scrim. */
     val onRefundSheetDismissed: () -> Unit,

@@ -39,7 +39,7 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
-            <!-- Square's and Clover's sign-ins return here (docs/design.md §1; decision A127). -->
+            <!-- Square's and Clover's sign-ins return here (docs/design.md §1; decision 127). -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />

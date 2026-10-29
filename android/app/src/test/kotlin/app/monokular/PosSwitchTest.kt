@@ -7,7 +7,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Changing the point of sale (acceptance T1.4, D6; decision A138): in order, and only what it should touch. */
+/** Changing the point of sale (acceptance T1.4, D6; decision 138): in order, and only what it should touch. */
 class PosSwitchTest {
     /** The app's side as a log, with the two things a switch must never touch beside it. */
     private class Recording : PosSwitchSide {

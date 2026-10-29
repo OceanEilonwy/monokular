@@ -257,7 +257,7 @@ class MainActivity : ComponentActivity() {
         onReopen = model::reopen,
         onCopy = { SaleNotifications.copyAddress(this, it.address) },
         onCopyXmr = { SaleNotifications.copyXmr(this, it.xmr) },
-        // Square's app is on this phone; a Clover point of sale is a device of its own (decision A135).
+        // Square's app is on this phone; a Clover point of sale is a device of its own (decision 135).
         onBackToPos = if (multiWindow || pos != PointOfSale.Square) null else ::backToSquare,
         onRefundDone = model::refundDone,
         onRefundSheetDismissed = model::refundSheetDismissed,

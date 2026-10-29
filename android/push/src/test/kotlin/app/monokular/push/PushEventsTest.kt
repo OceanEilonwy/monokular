@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** What the connector's callbacks mean: only a decrypted `{"wake":"<the till's point of sale>"}` is a ding (A8.35, A8.36, A133). */
+/** What the connector's callbacks mean: only a decrypted `{"wake":"<the till's point of sale>"}` is a ding (acceptance A8.35, A8.36; decision 133). */
 class PushEventsTest {
     private fun ding(text: String, decrypted: Boolean = true, pos: PointOfSale? = PointOfSale.Square) =
         PushEvents.isDing(text.toByteArray(), decrypted, pos)

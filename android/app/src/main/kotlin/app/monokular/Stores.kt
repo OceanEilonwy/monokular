@@ -49,7 +49,7 @@ class Stores(private val secure: SecureStore) {
         set(value) = write("square.location", SquareLocation.serializer(), value)
 
     /**
-     * The point of sale the till watches, chosen in setup or Settings (decision A126). A till
+     * The point of sale the till watches, chosen in setup or Settings (decision 126). A till
      * from before there was a choice, signed in to Square, is a Square till.
      */
     var pointOfSale: PointOfSale?
@@ -152,12 +152,12 @@ class Stores(private val secure: SecureStore) {
         get() = secure.get("debug.clover.base")
         set(value) = secure.put("debug.clover.base", value?.takeIf { it.isNotBlank() })
 
-    /** The Clover merchant this till is at: the redirect's `merchant_id`, read from Clover at sign-in (decision A127). */
+    /** The Clover merchant this till is at: the redirect's `merchant_id`, read from Clover at sign-in (decision 127). */
     var cloverMerchant: CloverMerchant?
         get() = read("clover.merchant", CloverMerchant.serializer())
         set(value) = write("clover.merchant", CloverMerchant.serializer(), value)
 
-    /** The Clover application the till signs in through when it isn't the build's own: a Bell's (decision A132). */
+    /** The Clover application the till signs in through when it isn't the build's own: a Bell's (decision 132). */
     var cloverApplicationId: String?
         get() = secure.get("clover.application")
         set(value) = secure.put("clover.application", value?.takeIf { it != BuildConfig.CLOVER_APPLICATION_ID })
@@ -197,7 +197,7 @@ class Stores(private val secure: SecureStore) {
         secure.put("${pos.wire}.handled", null)
     }
 
-    /** The Monero payment type's id at each Clover merchant (decision A129). */
+    /** The Monero payment type's id at each Clover merchant (decision 129). */
     val tenders = object : TenderStore {
         override fun tenderId(merchantId: String) = secure.get("clover.tender.$merchantId")
         override fun save(merchantId: String, tenderId: String?) = secure.put("clover.tender.$merchantId", tenderId)

@@ -237,7 +237,7 @@ object Closing {
 
     /**
      * The line under an answer, with [secondsLeft] on the code for "Yes". [refundsInPos]: the
-     * till can't refund at its point of sale, the cashier does it there (decision A130).
+     * till can't refund at its point of sale, the cashier does it there (decision 130).
      */
     fun detail(choice: CloseChoice, sale: TillSale, till: PointOfSale?, refundsInPos: Boolean, secondsLeft: Long): String = when (choice) {
         CloseChoice.RefundIt ->

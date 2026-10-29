@@ -78,12 +78,12 @@ object PosText {
     /** Clover's steps once the Monero payment type is there (acceptance T3.3). */
     val CLOVER_STEPS = listOf("Open **Clover Register** on the device", "Ring up a sale and choose **Monero** as the payment")
 
-    /** Clover refused to let the till add the payment type (acceptance T3.2, decision A129). */
+    /** Clover refused to let the till add the payment type (acceptance T3.2, decision 129). */
     const val CLOVER_ADD_TENDER = "Add a payment type called **Monero** in Clover (Setup › Payments, or ask whoever manages your " +
         "Clover account), then tap **Look again**"
     const val LOOK_AGAIN = "Look again"
 
-    /** How a sale never paid is refunded, said before the first one is (decision A130). */
+    /** How a sale never paid is refunded, said before the first one is (decision 130). */
     const val CLOVER_REFUND_NOTE = "A sale never paid in Monero is refunded in Clover's Orders app; Monokular shows you which."
 
     fun testSaleFound(pos: PointOfSale, amount: String): String = "Test sale found: $amount. Refund it in ${pos.displayName} when you like."
@@ -141,7 +141,7 @@ object PosText {
     fun checking(pos: PointOfSale?): String = "Checking ${name(pos)}"
 
     // A sale's words, by the till's point of sale: Monokulo doesn't say which point of sale took another till's
-    // sale, and a sale kept from before the point of sale changed is named by the new one (decision A138).
+    // sale, and a sale kept from before the point of sale changed is named by the new one (decision 138).
 
     fun refundedIn(pos: PointOfSale?): String = "Refunded in ${name(pos)}"
 
