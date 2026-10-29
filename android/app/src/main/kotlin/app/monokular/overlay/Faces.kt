@@ -158,6 +158,13 @@ object Panel {
         look == BubbleLook.Lit && !panelUp && (phase == SalePhase.Waiting || phase == SalePhase.Partial)
 
     /**
+     * How fast the panel's collapse starts when the grabber lets it go: the
+     * finger's [velocity] down (px a second) as progress a second over the
+     * card's [height], negative because the panel's progress falls toward 0.
+     */
+    fun collapseVelocity(velocity: Float, height: Float): Float = if (height > 0f) 0f - velocity / height else 0f
+
+    /**
      * The point a growing panel scales about, as fractions of its [card]
      * (both on screen): [from] itself on a phone, the docked bubble above
      * the card; on a tablet, whose window ends at the card, the card's
@@ -199,6 +206,8 @@ object Panel {
 @Immutable
 class PanelActions(
     val onLower: () -> Unit,
+    /** The grabber flung or dragged past its rule: lowers the panel at that speed, in progress a second. */
+    val onFlung: (Float) -> Unit,
     val onOpenShift: () -> Unit,
     val onOrder: () -> Unit,
     val onBackToCode: () -> Unit,
@@ -339,7 +348,8 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 if (wide) {
                     Modifier.graphicsLayer { alpha = 1f - (drag.value / height.coerceAtLeast(1f)).coerceIn(0f, 0.8f) }
                 } else {
-                    Modifier.offset { IntOffset(0, drag.value.roundToInt()) }
+                    // Let go past the rule, the drag shrinks with the panel into the dock.
+                    Modifier.offset { IntOffset(0, (drag.value * raise.value).roundToInt()) }
                 },
             )
             .shadow(16.dp, RoundedCornerShape(32.dp))
@@ -356,9 +366,9 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 onRelease = { velocity ->
                     scope.launch {
                         if (Panel.lowers(drag.value, height, velocity, fling)) {
-                            actions.onLower()
+                            actions.onFlung(Panel.collapseVelocity(velocity, height))
                         } else {
-                            drag.animateTo(0f, springBack)
+                            drag.animateTo(0f, springBack, initialVelocity = velocity)
                         }
                     }
                 },

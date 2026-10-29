@@ -89,6 +89,8 @@ class Overlay(
     private var panelMotion: PanelMotion? = null
     /** The windows as the handoff between them sees them (M1). */
     private var windows = Windows()
+    /** The grabber's speed for the next collapse, progress a second; null for none. */
+    private var flung: Float? = null
     /** The free bubble's centre on screen, where the docked bubble comes from and goes back to. */
     private val bubbleAt = mutableStateOf<Offset?>(null)
     /** The last usable and open shown, shown again when the configuration changes. */
@@ -187,10 +189,17 @@ class Overlay(
                 WindowAct.AddPanel -> addPanel(windows.wide, open = false)
                 WindowAct.AddPanelOpen -> addPanel(windows.wide, open = true)
                 WindowAct.OpenPanel -> panelMotion?.raise?.enter()
-                WindowAct.ClosePanel -> panelMotion?.raise?.exit { on(WindowEvent.PanelLanded) }
+                WindowAct.ClosePanel -> panelMotion?.raise?.exit(flung) { on(WindowEvent.PanelLanded) }
                 WindowAct.RemovePanel -> removePanel()
             }
         }
+        flung = null
+    }
+
+    /** Lowers the panel at the grabber's [velocity] (progress a second). */
+    private fun fling(velocity: Float) {
+        flung = velocity
+        lower()
     }
 
     /** Lowers the panel to the bubble, its code face up for next time. */
@@ -299,6 +308,7 @@ class Overlay(
         // One set of actions for the window's life, outside its content: a new state hands the panel the same ones.
         val actions = PanelActions(
             onLower = ::lower,
+            onFlung = ::fling,
             onOpenShift = { lower(); onOpenShift() },
             onOrder = { page.value = PanelPage.Order },
             onBackToCode = { page.value = PanelPage.Code },

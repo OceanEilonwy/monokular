@@ -56,6 +56,30 @@ class PresenceOnDeviceTest {
     }
 
     @Test
+    fun aFlingCollapsesSoonerThanALetGo() {
+        val letGo = Presence(1f)
+        val flung = Presence(1f)
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            CompositionLocalProvider(LocalMotion provides Motion.Full) {
+                letGo.Attach()
+                flung.Attach()
+            }
+        }
+        compose.mainClock.advanceTimeByFrame()
+        var letGoAt = 0
+        var flungAt = 0
+        var frame = 0
+        letGo.exit { letGoAt = frame }
+        flung.exit(-6f) { flungAt = frame }
+        while ((letGoAt == 0 || flungAt == 0) && frame < 200) {
+            frame++
+            compose.mainClock.advanceTimeByFrame()
+        }
+        assertTrue(flungAt in 1 until letGoAt, "flung down it's gone at frame $flungAt, let go at $letGoAt")
+    }
+
+    @Test
     fun underStillMotionItJumpsButStillLands() {
         val presence = attached(Motion.Still, initial = 1f)
         var landed = false

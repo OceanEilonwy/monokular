@@ -104,6 +104,13 @@ class PanelTest {
     }
 
     @Test
+    fun `a fling's speed carries into the collapse as progress a second`() {
+        assertEquals(-2f, Panel.collapseVelocity(velocity = 3000f, height = 1500f), "flung down, the panel's progress falls")
+        assertEquals(0f, Panel.collapseVelocity(velocity = 3000f, height = 0f), "not measured yet: no speed to carry")
+        assertEquals(0f, Panel.collapseVelocity(velocity = 0f, height = 1500f), "dragged and let go")
+    }
+
+    @Test
     fun `a phone's panel grows about its docked bubble, a tablet's about its corner nearest the bubble`() {
         val card = Rect(100f, 200f, 500f, 1000f)
         assertEquals(TransformOrigin(0.875f, -0.05f), Panel.origin(Offset(450f, 160f), card, corner = false), "above the card's end: the dock")
