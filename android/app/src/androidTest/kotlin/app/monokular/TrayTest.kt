@@ -79,6 +79,12 @@ class TrayTest {
             said.any { if (substring) it.contains(text) else it == text }
         }, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
 
+    /** A fold row, by what TalkBack says for it or by its "+N" pill. */
+    private fun folds() = exists("more waiting sale", substring = true) ||
+        compose.onAllNodes(SemanticsMatcher("a +N pill") { n ->
+            n.config.getOrNull(SemanticsProperties.Text).orEmpty().any { it.text.matches(Regex("\\+\\d+")) }
+        }, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
+
     private fun show(sales: List<TillSale>, motion: Motion = Motion.Full) {
         compose.setContent { Till(motion) { ShiftScreen(status, sales, noActions, now) } }
         compose.waitForIdle()
@@ -89,7 +95,7 @@ class TrayTest {
         val sales = busy(4)
         show(sales)
         assertEquals(listOf(true, true, true, false), sales.take(4).map(::shows), "three rows, the fourth folded away")
-        assertTrue(exists("+1"))
+        assertTrue(exists("+1") && folds())
         assertTrue(shows(sales[4]) && exists(ShiftList.EARLIER), "the paid sale under Earlier")
         compose.onNodeWithContentDescription("Show 1 more waiting sale").performClick()
         compose.waitForIdle()
@@ -116,14 +122,14 @@ class TrayTest {
         val sales = busy(2)
         show(sales)
         assertTrue(sales.take(2).all(::shows))
-        assertTrue(!exists("more waiting", substring = true) && !exists("Show fewer"))
+        assertTrue(!folds() && !exists("Show fewer"))
         assertTrue(exists("Waiting for payment, 2 sales") && exists(ShiftList.EARLIER))
     }
 
     @Test
     fun noLiveSaleNoTrayAndNoHeaders() {
         show(busy(0))
-        assertTrue(!exists(ShiftList.TRAY_HEADER, substring = true) && !exists(ShiftList.EARLIER) && !exists("more waiting", substring = true))
+        assertTrue(!exists(ShiftList.TRAY_HEADER, substring = true) && !exists(ShiftList.EARLIER) && !folds())
         assertTrue(shows(testSale("p1", SalePhase.Paid, paidAt = 900)), "the list reads as it always has")
     }
 
@@ -134,7 +140,7 @@ class TrayTest {
         compose.onNodeWithText("Needs action", useUnmergedTree = true).performClick()
         compose.waitForIdle()
         assertTrue(sales.take(5).all(::shows), "every live sale")
-        assertTrue(!exists("more waiting", substring = true) && !exists("Show fewer"), "no fold row")
+        assertTrue(!folds() && !exists("Show fewer"), "no fold row")
         assertTrue(!shows(sales[5]) && shows(sales[6]), "then what ended unpaid, not the paid sale")
     }
 
@@ -278,7 +284,7 @@ class TrayTest {
         val fold = compose.onNodeWithContentDescription("Show 1 more waiting sale")
         val rest = fold.fetchSemanticsNode().boundsInRoot.height
         assertTrue(rest >= with(compose.density) { 48.dp.toPx() }, "a touch target of 48 dp or more: $rest")
-        fold.performTouchInput { down(center); moveBy(Offset(0f, viewConfiguration.touchSlop)) }
+        fold.performTouchInput { down(center); moveBy(Offset(0f, viewConfiguration.touchSlop + 1f)) }
         compose.waitForIdle()
         val held = fold.fetchSemanticsNode().boundsInRoot.height
         recompositions.reset()
