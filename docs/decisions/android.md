@@ -4501,3 +4501,14 @@ design unchanged.
     screen, the ground landing in it. Before: the title gone and the tray's
     first row at -7 px; after, it passes with RunningMovesTest (55) and
     TrayTest (15) on 5556.
+301. **The shift list's items above the rows are one list, laid out and
+    counted from the same place** (dev2, round 2 fix round 2; the lead's
+    minor on 296). `rowIndex` added a hand-kept `HEAD_ITEMS = 4` (the top
+    row, the notice, the summary, the chips, plus "Not watching") to a
+    row's place among the rows; an item added over the rows would have
+    put a Back's restored row one off, caught only by a device test. Now
+    `Head.of(status, sales)` lists those items' keys in order, the
+    `LazyColumn` composes one item per key from it, and `rowIndex` counts
+    its size. Remembered on the three facts it reads, so it is made once
+    per change of them, not per composition. No change on screen; the
+    scrolled-row and step-back tests in `RunningMovesTest` (55) pass on 5556.

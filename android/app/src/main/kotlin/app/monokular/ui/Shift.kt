@@ -136,6 +136,7 @@ fun ShiftScreen(
     if (opens) SideEffect { folded = false }
     val shownFolded = folded && !opens
     val items = remember(sales, filter, shownFolded) { ShiftList.sections(sales, filter, shownFolded) }
+    val head = remember(status.disconnected, status.running, sales.isEmpty()) { Head.of(status, sales) }
     val trayFolds = remember(items) { items.any { it is ShiftItem.Fold } }
     val list = rememberLazyListState()
     // The shift is composed afresh by a Back (the stage composes only the screens it shows), its list at the top: a
@@ -148,7 +149,7 @@ fun ShiftScreen(
     // of Earlier, and holding its row under the finger would scroll the whole list, the tray's waiting sales off the
     // top. Only a row that would then be off screen is put back under the finger instead.
     if (cameFrom != null && place.sale == cameFrom && place.askedBy !== list) {
-        val index = rowIndex(status, sales, items, cameFrom)
+        val index = rowIndex(head, items, cameFrom)
         SideEffect {
             place.askedBy = list
             if (index >= 0) place.restore(list, index)
@@ -182,43 +183,40 @@ fun ShiftScreen(
             // size, so they are never read together with the sale's (decision 221).
             val chrome = Modifier.words(through = ShiftThrough)
             LazyColumn(Modifier.widthIn(max = 640.dp).fillMaxSize(), state = list) {
-                item(key = "top") { Box(chrome) { TopRow(status, actions) } }
-                if (status.disconnected) {
-                    item(key = "disconnected") {
-                        Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                // The items above the rows, from the one list a Back's place counts them by too (rowIndex).
+                for (key in head) item(key = key) {
+                    when (key) {
+                        Head.Top -> Box(chrome) { TopRow(status, actions) }
+                        Head.Disconnected -> Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
                             Heading("Disconnected")
                             Lead("The store disconnected this device. Connect it again with a new code from the store's settings.")
                             PrimaryButton("Connect again", actions.onForget, Modifier.fillMaxWidth())
                         }
-                    }
-                    return@LazyColumn
-                }
-                item(key = "problem") {
-                    Notice(status.problem, chrome.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
-                    if (status.signInAgain) {
-                        PrimaryButton(PosText.signInAgain(LocalPointOfSale.current), actions.onSignIn, chrome.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth())
-                    }
-                }
-                item(key = "summary") {
-                    Column(chrome.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("This shift", style = display(28, -0.4), modifier = Modifier.semantics { heading() })
-                        Text(
-                            if (status.running) ShiftList.summary(sales, status.startedAt) else "Not watching",
-                            fontSize = 14.sp, color = mk.muted,
-                        )
-                    }
-                }
-                if (!status.running || sales.isEmpty()) item(key = "idle") { Idle(status.running, actions) }
-                if (sales.isNotEmpty()) {
-                    // A filter chosen is a change of what is shown: its rows move as ever, even over a fold kept under the finger.
-                    item(key = "chips") {
-                        Box(chrome) {
+                        Head.Problem -> {
+                            Notice(status.problem, chrome.padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
+                            if (status.signInAgain) {
+                                PrimaryButton(PosText.signInAgain(LocalPointOfSale.current), actions.onSignIn, chrome.padding(start = 16.dp, end = 16.dp, bottom = 12.dp).fillMaxWidth())
+                            }
+                        }
+                        Head.Summary -> Column(chrome.padding(start = 24.dp, end = 24.dp, top = 4.dp, bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("This shift", style = display(28, -0.4), modifier = Modifier.semantics { heading() })
+                            Text(
+                                if (status.running) ShiftList.summary(sales, status.startedAt) else "Not watching",
+                                fontSize = 14.sp, color = mk.muted,
+                            )
+                        }
+                        Head.Idle -> Idle(status.running, actions)
+                        // A filter chosen is a change of what is shown: its rows move as ever, even over a fold kept under the finger.
+                        Head.Chips -> Box(chrome) {
                             Chips(filter, ShiftList.needsAction(sales)) {
                                 filter = it
                                 keptFor = null
                             }
                         }
                     }
+                }
+                if (status.disconnected) return@LazyColumn
+                if (sales.isNotEmpty()) {
                     if (items.isEmpty()) {
                         item(key = "empty") {
                             Text(
@@ -429,19 +427,37 @@ private val ShiftPlaceSaver = listSaver<ShiftPlace, Any>(
 )
 
 /**
- * [id]'s row's index in the shift's list, -1 if it has none: after the list's own items above the rows, as
- * [ShiftScreen] lays them out (the top row, the notice, the summary, "Not watching" or nothing yet, the chips).
+ * [id]'s row's index in the shift's list, -1 if it has none: after the list's own items above the rows, [head], the
+ * same list [ShiftScreen] lays them out from, so an item added there is counted here too.
  */
-private fun rowIndex(status: TillStatus, sales: List<TillSale>, items: List<ShiftItem>, id: String): Int {
-    if (status.disconnected || sales.isEmpty()) return -1
+private fun rowIndex(head: List<String>, items: List<ShiftItem>, id: String): Int {
+    if (Head.Disconnected in head) return -1
     val at = items.indexOfFirst { it is ShiftItem.Row && it.sale.orderId == id }
-    if (at < 0) return -1
-    val idle = if (!status.running) 1 else 0
-    return HEAD_ITEMS + idle + at
+    return if (at < 0) -1 else head.size + at
 }
 
-/** The list's items above the tray in every shift with sales: the top row, the notice, the summary and the chips. */
-private const val HEAD_ITEMS = 4
+/** The shift list's items above its rows, by key, in the order it shows them. */
+private object Head {
+    const val Top = "top"
+    const val Disconnected = "disconnected"
+    const val Problem = "problem"
+    const val Summary = "summary"
+    const val Idle = "idle"
+    const val Chips = "chips"
+
+    /** The top row; disconnected, nothing else; or the notice, the summary, "Not watching" or nothing yet, and the chips. */
+    fun of(status: TillStatus, sales: List<TillSale>): List<String> = buildList {
+        add(Top)
+        if (status.disconnected) {
+            add(Disconnected)
+            return@buildList
+        }
+        add(Problem)
+        add(Summary)
+        if (!status.running || sales.isEmpty()) add(Idle)
+        if (sales.isNotEmpty()) add(Chips)
+    }
+}
 
 /** A list item's key: the tray's three parts by name, a row by its sale, so a row keeps its item between sections. */
 private fun itemKey(item: ShiftItem): Any = when (item) {
