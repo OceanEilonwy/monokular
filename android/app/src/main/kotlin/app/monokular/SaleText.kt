@@ -11,7 +11,6 @@ import app.monokular.sales.standing
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
-import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.time.format.FormatStyle
@@ -170,21 +169,6 @@ object SaleText {
 
     /** "13.88 USD": the receipt's total with the currency's code. */
     fun total(receipt: Receipt): String = "${plain(receipt.total, receipt.currency)} ${receipt.currency}"
-
-    /**
-     * "Square receipt bP9m · 4:07 PM" or "Clover order 7F3KQ2MA · 4:07 PM" for a receipt built at
-     * [pos], the time left out on a detail page (the design's order cards).
-     */
-    fun receiptLabel(
-        receipt: Receipt,
-        pos: PointOfSale?,
-        withTime: Boolean,
-        locale: Locale = Locale.getDefault(),
-        zone: ZoneId = ZoneId.systemDefault(),
-    ): String {
-        val issued = if (withTime) runCatching { OffsetDateTime.parse(receipt.receipt.issueTimestamp).toEpochSecond() }.getOrNull() else null
-        return PosText.receiptLabel(pos, receipt.receipt.receiptId) + issued?.let { " · " + time(it, locale, zone) }.orEmpty()
-    }
 
     /** "Square receipt bP9m · 15 items · 79.21 USD": a folded order card's one row, whose receipt, how much and for what. */
     fun receiptSummary(receipt: Receipt, pos: PointOfSale?): String =
