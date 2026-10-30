@@ -27,6 +27,8 @@ object MkIcons {
     val Back = icon("back", 24f, "M20 12H5M11 5l-7 7 7 7" to 2.2f)
     /** A chevron to the right: a row or a line that opens something. */
     val Chevron = icon("chevron", 24f, "M9 5l7 7-7 7" to 2.4f)
+    /** A chevron pointing down: the waiting tray's fold, turned over when it is open. */
+    val Fold = icon("fold", 24f, "M6 9l6 6 6-6" to 2.2f)
     /** A cog: eight teeth round a hole. */
     val Settings = icon(
         "settings", 24f,
