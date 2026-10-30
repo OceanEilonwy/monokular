@@ -59,24 +59,27 @@ class BellApiTest {
     /** A P-256 point, as a Bell's VAPID key is. */
     private val vapid = subscription.p256dh
 
-    private val info = """{"points_of_sale":{"square":{"application_id":"sandbox-sq0idb-dev","environment":"sandbox"},
-        "clover":{"application_id":"MONOKULARBELL","environment":"north_america"}},"vapid_public_key":"$vapid","version":"0.2.0"}"""
+    /** A Bell ringing both of Square's environments and one of Clover's (decision 147). */
+    private val info = """{"points_of_sale":{"square":{"production":{"application_id":"sq0idp-live"},"sandbox":{"application_id":"sandbox-sq0idb-dev"}},
+        "clover":{"north_america":{"application_id":"MONOKULARBELL"}}},"vapid_public_key":"$vapid","version":"0.3.0"}"""
+
+    private val registered = """{"registration_id":"br_1","point_of_sale":"square","environment":"sandbox","application_id":"sandbox-sq0idb-dev"}"""
 
     @Test
-    fun `info reads the Bell's points of sale, with no Authorization and no body`() = runBlocking<Unit> {
+    fun `info reads each point of sale's environments and their applications, with no Authorization and no body`() = runBlocking<Unit> {
         routes["GET /bell/v1/info"] = { json(200, info) }
         val read = api.info(bell)
         assertEquals(
             BellInfo(
                 mapOf(
-                    "square" to BellPointOfSale("sandbox-sq0idb-dev", "sandbox"),
-                    "clover" to BellPointOfSale("MONOKULARBELL", "north_america"),
+                    "square" to mapOf("production" to "sq0idp-live", "sandbox" to "sandbox-sq0idb-dev"),
+                    "clover" to mapOf("north_america" to "MONOKULARBELL"),
                 ),
                 vapid,
             ),
             read,
         )
-        assertEquals(BellPointOfSale("MONOKULARBELL", "north_america"), read[PointOfSale.Clover])
+        assertEquals(mapOf("north_america" to "MONOKULARBELL"), read[PointOfSale.Clover])
         val request = seen.single()
         assertNull(request.headers["Authorization"])
         assertEquals(0L, request.bodySize)
@@ -85,31 +88,46 @@ class BellApiTest {
     @Test
     fun `a Bell running one point of sale lists it alone, and one this build doesn't know is kept unread`() = runBlocking<Unit> {
         routes["GET /bell/v1/info"] = {
-            json(200, """{"points_of_sale":{"clover":{"application_id":"MONOKULARBELL","environment":"sandbox"},"toast":{"application_id":"t","environment":"x"}},"vapid_public_key":"$vapid"}""")
+            json(
+                200,
+                """{"points_of_sale":{"clover":{"sandbox":{"application_id":"MONOKULARBELL"}},"toast":{"us":{"application_id":"t"}}},"vapid_public_key":"$vapid"}""",
+            )
         }
         val read = api.info(bell)
         assertNull(read[PointOfSale.Square])
-        assertEquals(BellPointOfSale("MONOKULARBELL", "sandbox"), read[PointOfSale.Clover])
+        assertEquals(mapOf("sandbox" to "MONOKULARBELL"), read[PointOfSale.Clover])
     }
 
-    /** The body as the Bell gets it, its keys checked at every level (acceptance B5, T5.1). */
+    @Test
+    fun `an environment this build doesn't know, or one in a shape it doesn't know, is passed over rather than failing the Bell`() = runBlocking<Unit> {
+        routes["GET /bell/v1/info"] = {
+            json(
+                200,
+                """{"points_of_sale":{"square":{"production":{"application_id":"sq0idp-live","region":"us"},"staging":{"application_id":"sq0idp-stg"},
+                   "beta":{"applications":["x"]},"canary":"sq0idp-c"},"toast":["x"]},"vapid_public_key":"$vapid"}""",
+            )
+        }
+        val read = api.info(bell)
+        assertEquals(mapOf("production" to "sq0idp-live", "staging" to "sq0idp-stg"), read[PointOfSale.Square])
+        assertEquals(emptyMap(), read.pointsOfSale["toast"])
+    }
+
+    /** The body as the Bell gets it, its keys checked at every level (acceptance B5, T5.1): the Bell refuses a field it doesn't know. */
     private fun sentBody(request: RecordedRequest) = Json.parseToJsonElement(request.body!!.utf8()).jsonObject.also { sent ->
-        assertEquals(setOf("point_of_sale", "access_token", "location_id", "subscription"), sent.keys)
+        assertEquals(setOf("point_of_sale", "environment", "access_token", "location_id", "subscription"), sent.keys)
         assertEquals(setOf("endpoint", "keys"), sent["subscription"]!!.jsonObject.keys)
         assertEquals(setOf("p256dh", "auth"), sent["subscription"]!!.jsonObject["keys"]!!.jsonObject.keys)
     }
 
     @Test
-    fun `register sends exactly the point of sale, the token, the location and the subscription's public half`() = runBlocking<Unit> {
-        routes["POST /bell/v1/register"] = {
-            json(201, """{"registration_id":"br_1","point_of_sale":"square","application_id":"sandbox-sq0idb-dev"}""")
-        }
-        assertEquals(BellRegistered("br_1"), api.register(bell, PointOfSale.Square, "EAAAtoken", "L1", subscription))
+    fun `register sends exactly the point of sale, its environment, the token, the location and the subscription's public half`() = runBlocking<Unit> {
+        routes["POST /bell/v1/register"] = { json(201, registered) }
+        assertEquals(BellRegistered("br_1"), api.register(bell, PointOfSale.Square, "sandbox", "EAAAtoken", "L1", subscription))
         val request = seen.single()
         assertNull(request.headers["Authorization"])
         assertEquals(
             Json.parseToJsonElement(
-                """{"point_of_sale":"square","access_token":"EAAAtoken","location_id":"L1",
+                """{"point_of_sale":"square","environment":"sandbox","access_token":"EAAAtoken","location_id":"L1",
                    "subscription":{"endpoint":"${subscription.endpoint}","keys":{"p256dh":"${subscription.p256dh}","auth":"${subscription.auth}"}}}""",
             ),
             sentBody(request),
@@ -117,15 +135,15 @@ class BellApiTest {
     }
 
     @Test
-    fun `a Clover till registers its merchant as the location, in the same shape`() = runBlocking<Unit> {
+    fun `a Clover till registers its merchant as the location and its region as the environment, in the same shape`() = runBlocking<Unit> {
         routes["POST /bell/v1/register"] = {
-            json(201, """{"registration_id":"br_2","point_of_sale":"clover","application_id":"MONOKULARBELL"}""")
+            json(201, """{"registration_id":"br_2","point_of_sale":"clover","environment":"europe","application_id":"MONOKULARBELL"}""")
         }
-        assertEquals(BellRegistered("br_2"), api.register(bell, PointOfSale.Clover, "clv-token", "MCLOVERDEV001", subscription))
+        assertEquals(BellRegistered("br_2"), api.register(bell, PointOfSale.Clover, "europe", "clv-token", "MCLOVERDEV001", subscription))
         val request = seen.single()
         assertEquals(
             Json.parseToJsonElement(
-                """{"point_of_sale":"clover","access_token":"clv-token","location_id":"MCLOVERDEV001",
+                """{"point_of_sale":"clover","environment":"europe","access_token":"clv-token","location_id":"MCLOVERDEV001",
                    "subscription":{"endpoint":"${subscription.endpoint}","keys":{"p256dh":"${subscription.p256dh}","auth":"${subscription.auth}"}}}""",
             ),
             sentBody(request),
@@ -148,10 +166,10 @@ class BellApiTest {
     @Test
     fun `the token is in one request of the three`() = runBlocking<Unit> {
         routes["GET /bell/v1/info"] = { json(200, info) }
-        routes["POST /bell/v1/register"] = { json(201, """{"registration_id":"br_1","point_of_sale":"square","application_id":"sandbox-sq0idb-dev"}""") }
+        routes["POST /bell/v1/register"] = { json(201, registered) }
         routes["DELETE /bell/v1/register/br_1"] = { MockResponse.Builder().code(204).build() }
         api.info(bell)
-        api.register(bell, PointOfSale.Square, "EAAAtoken", "L1", subscription)
+        api.register(bell, PointOfSale.Square, "sandbox", "EAAAtoken", "L1", subscription)
         api.unregister(bell, "br_1")
         val carrying = seen.filter { request -> "EAAAtoken" in request.body?.utf8().orEmpty() || request.headers.any { "EAAAtoken" in it.second } }
         assertEquals(listOf("POST"), carrying.map { it.method })
@@ -160,7 +178,7 @@ class BellApiTest {
     @Test
     fun `a problem is read by its type's slug, its detail and Retry-After`() = runBlocking<Unit> {
         routes["POST /bell/v1/register"] = { problem(429, "rate-limited", "slow down", retryAfter = 42) }
-        val e = assertFailsWith<BellException> { api.register(bell, PointOfSale.Square, "EAAAtoken", "L1", subscription) }
+        val e = assertFailsWith<BellException> { api.register(bell, PointOfSale.Square, "sandbox", "EAAAtoken", "L1", subscription) }
         assertEquals(429, e.status)
         assertEquals("rate-limited", e.type)
         assertEquals("slow down", e.detail)
@@ -170,7 +188,7 @@ class BellApiTest {
     @Test
     fun `an error without a problem is its status alone`() = runBlocking<Unit> {
         routes["POST /bell/v1/register"] = { MockResponse.Builder().code(502).body("<html>Bad gateway</html>").build() }
-        val e = assertFailsWith<BellException> { api.register(bell, PointOfSale.Square, "EAAAtoken", "L1", subscription) }
+        val e = assertFailsWith<BellException> { api.register(bell, PointOfSale.Square, "sandbox", "EAAAtoken", "L1", subscription) }
         assertEquals(502, e.status)
         assertNull(e.type)
         assertNull(e.detail)
@@ -197,6 +215,15 @@ class BellApiTest {
         assertFailsWith<NotABellException> { api.info(bell) }
         routes.remove("GET /bell/v1/info")
         assertFailsWith<NotABellException> { api.info(bell) }
+    }
+
+    @Test
+    fun `a Bell from before environments reads as ringing none of the till's`() = runBlocking<Unit> {
+        // One application per point of sale, its environment beside it: no environment maps to an application.
+        routes["GET /bell/v1/info"] = {
+            json(200, """{"points_of_sale":{"square":{"application_id":"sandbox-sq0idb-dev","environment":"sandbox"}},"vapid_public_key":"$vapid"}""")
+        }
+        assertEquals(emptyMap(), api.info(bell)[PointOfSale.Square])
     }
 
     @Test

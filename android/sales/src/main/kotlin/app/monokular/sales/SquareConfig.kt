@@ -15,7 +15,14 @@ data class SquareConfig(
     val connectBase: String
         get() = baseUrl ?: if (sandbox) "https://connect.squareupsandbox.com" else "https://connect.squareup.com"
 
+    /** The environment [applicationId] is in, as a Bell spells it: `sandbox` or `production` (decision 147). */
+    val environment: String
+        get() = environmentOf(applicationId)
+
     companion object {
+        /** Square's sandbox applications' ids start `sandbox-`; every other id is production's. */
+        fun environmentOf(applicationId: String): String = if (applicationId.startsWith("sandbox-")) "sandbox" else "production"
+
         /** The API version every request asks for. */
         const val API_VERSION = "2026-09-16"
 

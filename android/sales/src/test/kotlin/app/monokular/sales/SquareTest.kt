@@ -55,6 +55,13 @@ class SquareTest {
     private fun json(body: String) = MockResponse.Builder().code(200).setHeader("Content-Type", "application/json").body(body).build()
 
     @Test
+    fun `the environment is the application's, as a Bell names it`() {
+        assertEquals("production", config.environment)
+        assertEquals("sandbox", config.copy(applicationId = "sandbox-sq0idb-dev").environment)
+        assertEquals("production", SquareConfig.environmentOf("sq0idp-sandbox-lookalike"))
+    }
+
+    @Test
     fun `the pkce challenge is RFC 7636's`() {
         val pkce = Pkce("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk", "s")
         assertEquals("E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM", pkce.challenge)

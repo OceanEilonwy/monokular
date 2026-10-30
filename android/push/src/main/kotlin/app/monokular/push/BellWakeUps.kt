@@ -223,7 +223,8 @@ class BellWakeUps(
     /**
      * Register with [bell] for [signedIn], stopping at the first thing in the way; the status
      * that leaves. The Bell's entry for the till's point of sale is checked in acceptance
-     * T5.2's order: there at all, then its environment, then its application (decision 132).
+     * T5.2's order: there at all, then the till's environment among its environments, then
+     * that environment's application (decisions 132, 147).
      */
     private suspend fun register(bell: BellAddress, signedIn: PosSignIn?): WakeUpStatus {
         val info = bells.info(bell)
@@ -232,19 +233,18 @@ class BellWakeUps(
             return WakeUpStatus.NoPos
         }
         val pointOfSale = signedIn.pointOfSale
-        val entry = info[pointOfSale] ?: run {
+        val environments = info[pointOfSale] ?: run {
             release()
             return WakeUpStatus.Refused(PosWords.notRung(pointOfSale))
         }
-        // An environment the point of sale doesn't have: what answered isn't a Bell this build can read.
-        val environment = PosWords.environment(pointOfSale, entry.environment) ?: throw NotABellException()
-        if (entry.environment != signedIn.environment) {
+        // Environments other than the till's, ones this build doesn't know included, are never read.
+        val applicationId = environments[signedIn.environment] ?: run {
             release()
-            return WakeUpStatus.Refused(environment)
+            return WakeUpStatus.Refused(PosWords.notRung(pointOfSale, signedIn.environment))
         }
-        if (entry.applicationId != signedIn.applicationId) {
+        if (applicationId != signedIn.applicationId) {
             release()
-            return WakeUpStatus.SignInNeeded(pointOfSale, entry.applicationId)
+            return WakeUpStatus.SignInNeeded(pointOfSale, applicationId)
         }
         val through = when (val distributor = distributors.resolve()) {
             Distributor.None -> {
@@ -268,21 +268,24 @@ class BellWakeUps(
                 else -> return WakeUpStatus.Unreachable(PUSH_SILENT)
             }
         }
-        // The Bell keys a registration by its endpoint: a new one is a new registration (decision 95).
-        store.registration?.takeIf { it.subscription.endpoint != subscription.endpoint }?.let { takeBack(it) }
+        // The Bell keys a registration by its endpoint: a new one is a new registration (decision 95). So is one
+        // made for another point of sale or environment, or before registrations named theirs (decision 148).
+        store.registration?.takeIf { it.subscription.endpoint != subscription.endpoint || !it.isFor(signedIn) }?.let { takeBack(it) }
         val token = pos.accessToken() ?: run {
             release()
             return WakeUpStatus.NoPos
         }
         // Once the Bell has the request, its answer is kept whatever happens to the pass.
         withContext(NonCancellable) {
-            bells.register(bell, pointOfSale, token, signedIn.locationId, subscription).let { answer ->
+            bells.register(bell, pointOfSale, signedIn.environment, token, signedIn.locationId, subscription).let { answer ->
                 store.registration = BellRegistration(
                     bell = bell,
                     registrationId = answer.registrationId,
                     vapidPublicKey = info.vapidPublicKey,
                     subscription = subscription,
                     distributor = through,
+                    pointOfSale = pointOfSale.wire,
+                    environment = signedIn.environment,
                 )
             }
         }

@@ -13,21 +13,24 @@ object PosWords {
     fun notRung(pointOfSale: PointOfSale): String = "it doesn't ring ${pointOfSale.displayName} tills"
 
     /**
-     * The Bell's [environment] for [pointOfSale] in words ("it's for Clover in Europe"),
-     * or null for one the point of sale doesn't have: an answer this build can't read.
+     * The Bell rings [pointOfSale], but not in the till's [environment]: refused for good
+     * ("it doesn't ring Square sandbox tills", "it doesn't ring Clover tills in Europe").
      */
-    fun environment(pointOfSale: PointOfSale, environment: String): String? = when (pointOfSale) {
+    fun notRung(pointOfSale: PointOfSale, environment: String): String = "it doesn't ring ${tills(pointOfSale, environment)}"
+
+    /** [pointOfSale]'s tills in [environment]; one the point of sale doesn't have by its wire name. */
+    private fun tills(pointOfSale: PointOfSale, environment: String): String = when (pointOfSale) {
         PointOfSale.Square -> when (environment) {
-            "sandbox" -> "it's for Square's sandbox"
-            "production" -> "it's for Square's production accounts"
-            else -> null
+            "production" -> "Square production tills"
+            "sandbox" -> "Square sandbox tills"
+            else -> "Square $environment tills"
         }
         PointOfSale.Clover -> when (environment) {
-            "sandbox" -> "it's for Clover's sandbox"
-            "north_america" -> "it's for Clover in North America"
-            "europe" -> "it's for Clover in Europe"
-            "latin_america" -> "it's for Clover in Latin America"
-            else -> null
+            "north_america" -> "Clover tills in North America"
+            "europe" -> "Clover tills in Europe"
+            "latin_america" -> "Clover tills in Latin America"
+            "sandbox" -> "Clover sandbox tills"
+            else -> "Clover $environment tills"
         }
     }
 
