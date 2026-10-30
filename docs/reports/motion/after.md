@@ -1662,3 +1662,125 @@ first open. The full `connectedDebugAndroidTest` on 5556 at dc7acd8:
 the real sandbox in a browser, so the till was connected with "Not now:
 only show other tills' sales"; the stand-in Square's sales arrive the
 same way.
+
+## Round 2, final (motion-main at e460568), by the lead
+
+The review of the round's fixes (decisions 289 to 293, `934a408`) and of
+everything since `82ea3c7`: `Nav.kt` (`faceSurface`'s leaving code),
+`Shift.kt` (the fold opened in composition, the kept fold),
+`Faces.kt`, `Mark.kt` and `Motion.kt` (the tick's alpha and `untick`),
+and the tests the fixes added. `./gradlew build` is green at the head.
+
+**Device tests.** The full `connectedDebugAndroidTest` on emulator-5558 at
+`b692f01`: **216 tests, 0 failures, 0 skipped** (12 min 49 s). At
+`e460568` (the one change below): `TrayTest` 15 of 15, `RunningMovesTest`
+49 of 49, `StageBackTest` 9 of 9, `./gradlew build` green.
+Recomposition counts are the tests' on the test clock, all held: leaving
+Paid recomposes none of the bubble (`theBubblesLeavingPaid`, new), the
+chase and the spread none, a Back into the tray none of the rows,
+`ModelStage` one to four times over a Back with a second Back.
+
+**Review findings.**
+
+1. **A filter chosen after a kept fold jumped** (screens; fixed by the
+   lead, decision 295): 292's held placement (no `animateItem` placement
+   while the shift shows the kept fold of the same `sales`) was cleared by
+   a sales change but not by the other input of the items, the filter,
+   so after a scrolled tray was folded, Needs action or Paid moved every
+   row to its place in one frame. The chip now clears it;
+   `TrayTest.aFilterChosenAfterAKeptFoldStillMovesItsRows` fails before
+   (1936 to 805 px in one frame) and passes after.
+2. **"Show fewer" tapped during the Back's landing is ignored** (screens;
+   minor, left): the open is now derived in composition for the whole
+   change (`opens` while `leavingSale` names a folded row), so a fold
+   tapped in those 450 ms is re-opened by the next `SideEffect`; the
+   label never flips, so nothing wrong is drawn, and a second tap after
+   the landing folds. The spec's "stays open until Show fewer" is met
+   from rest; a fix would need a per-change "already opened" flag, more
+   state than the case is worth.
+3. Read and right: the leaving code on `through(1 − shown, fadeOutOnTrack)`
+   inside the layer, the card's white in the `drawBehind` outside it
+   (whole under the fading code); `keepFoldInPlace`'s negative offset
+   (the list has no content padding, so the item offset and the scroll
+   offset share an origin); the tick's trim held by `untick` (a `snap()`
+   behind `After`) while its alpha fades on `fadeQuick`, both read in
+   the draw, a paid again mid-fade coming back whole; `drawPath`'s alpha
+   allocates nothing (`MarkOnDeviceTest`). No `delay()`, frame loop,
+   reflection or new colour; presets only.
+4. **The chase and `uiautomator`** (decision 294) is the onboarding's
+   bubble preview too, not only the live bubble: the "Float over other
+   apps" step chases, so a screen-reading onboarding script stops there.
+   An accessibility event trace (`uiautomator events`, 4 s, a code
+   waiting) shows no events from the bubble: the chase sends nothing to
+   TalkBack per frame. This round's flows went by coordinates and made
+   their orders through the API (`final-r8.sh`, `orders-r8.sh`,
+   `mem-r8c.sh` in the lead's scratch folder; the till connected with
+   "Not now", so it sees them as another till's sales).
+
+**Frames.** Before is round 2 as integrated (`03116a5`, the r7 build of
+the round-2 sections above), after is this head's code (`934a408`'s
+build); the same flows alternately in one session, five live sales a pass
+(the oldest rises, Back lands in the tray, opened because its row was
+folded, and "Show fewer" folds it). `MainActivity`'s window, last 120
+frames, p50 / p90 / p99 / max ms (frames over 33.4 ms).
+
+| Phone, emulator-5558 | before 1 | after 1 | before 2 | after 2 |
+| --- | --- | --- | --- | --- |
+| Shift scroll, full tray | 33.5 / 38.6 / 50.2 / 50.3 (74) | 15.1 / 33.5 / 36.3 / 42.4 (24) | 9.6 / 18.9 / 19.4 / 23.1 (0) | 19.0 / 26.4 / 27.6 / 30.7 (0) |
+| Tray opened and folded x5 | 10.7 / 19.1 / 49.2 / 50.1 (3) | 16.8 / 19.5 / 46.7 / 50.1 (7) | 18.8 / 27.3 / 40.4 / 43.0 (9) | 11.1 / 19.1 / 38.6 / 43.8 (9) |
+| Row to sale and Back into the tray x10 | 11.7 / 25.2 / 85.4 / 100.1 (9) | 12.4 / 28.3 / 79.9 / 83.5 (11) | 11.4 / 29.1 / 74.7 / 76.3 (11) | 12.5 / 33.4 / 78.9 / 79.8 (13) |
+| Paid step-back, two a pass: frames, p50, max | 12, 151, 185 · 12, 117, 175 | 12, 90, 159 · 12, 103, 200 | 12, 67, 165 · 12, 129, 192 | 13, 56, 159 · 12, 115, 236 |
+| Cold start, median of 3 (ms) | 1 412 | 1 507 | 1 510 | 1 518 |
+
+| Tablet, emulator-5560 | before 1 | after 1 | before 2 | after 2 |
+| --- | --- | --- | --- | --- |
+| Shift scroll, full tray | 56.2 / 70.2 / 83.7 / 83.8 (105) | 10.9 / 19.2 / 95.7 / 100.1 (11) | 10.7 / 16.8 / 16.8 / 16.8 (0) | 11.1 / 16.8 / 18.7 / 19.3 (0) |
+| Tray opened and folded x5 | 10.3 / 19.1 / 42.6 / 47.3 (4) | 16.7 / 25.8 / 43.2 / 44.6 (7) | 10.4 / 20.3 / 50.0 / 52.2 (7) | 10.4 / 19.0 / 43.8 / 48.4 (3) |
+| Row to sale and Back into the tray x10 | 11.1 / 27.0 / 78.9 / 81.1 (8) | 16.4 / 25.0 / 78.7 / 83.4 (8) | 11.2 / 32.4 / 72.9 / 80.7 (11) | 16.8 / 28.5 / 74.1 / 82.3 (10) |
+| Paid step-back, two a pass: frames, p50, max | 9, 100, 300 · 18, 27, 83 | 9, 87, 273 · 13, 65, 184 | 9, 100, 291 · 13, 64, 176 | 9, 86, 292 · 13, 61, 167 |
+| Cold start, median of 3 (ms) | 1 554 | 1 490 | 1 534 | 1 512 |
+
+The first tablet pass ran while the phone was being connected (host load
+up to 17), so its scroll is the host, not the build. Read pass for pass,
+the two builds are level everywhere: the scroll, the tray's open and fold
+(p50 10 to 19 ms, p99 39 to 50) and the Back into the tray (p99 73 to 85)
+are round 2's numbers above, and the fixes (the fold opened one
+composition earlier, the code fading on the fold's progress, the label
+through, the fold held) cost nothing measurable. The step-back is the
+same two stalls on both builds (the shift's first frame, then one
+render-thread frame), as the round-2 section read them.
+
+**The bubble** (process-wide `gfxinfo`, home screen; every pass on both
+emulators and both builds): waiting, 301 to 302 frames in 5 s, p99 16 to
+24 ms; paid and the dwell, 135 to 138 frames in 6.5 s, p50 5 to 10 ms,
+p99 200 ms (each pass is a fresh install, so each paid is its process's
+first: finding 4's one-off frame, on both builds alike); idle again,
+**0 frames** in 5 s. The tick fading whole (293) adds nothing.
+
+**Memory after a trim** (`mem-r8c.sh`, the phone, alone, host load 1 to
+3; ten rises and Backs, 10 s at rest, `RUNNING_CRITICAL`; PSS kB, Java /
+native heap):
+
+| | base 1 | r7 1 | r8 1 | base 2 | r7 2 | r8 2 |
+| --- | --- | --- | --- | --- | --- | --- |
+| After the trim | 92 035 (14 852 / 12 552) | 102 300 (15 616 / 13 764) | 102 413 (15 652 / 13 776) | 92 098 (15 000 / 12 352) | 102 616 (15 716 / 13 944) | 102 572 (15 720 / 13 900) |
+| HWUI GPU cache (purgeable) | 2.45 MB (0.35) | 19.36 MB (17.26) | 19.12 MB (17.01) | 2.39 MB (0.29) | 19.37 MB (17.26) | 19.13 MB (17.03) |
+
+This round's fixes over round 2 as integrated: **+0.1 and −0.04 MB**,
+inside the noise; the heaps are the same to 0.1 MB. The step over the
+baseline (+10.3 to +10.5 MB in this flow) is r7's and r8's alike: the
+accepted motion step plus `main`'s own growth since `f274ad7`, which the
+round-2 section placed with the foundation build; it has not grown. One
+thing to read on the phone: in this flow (a sale rising by itself to its
+code, then Back) HWUI keeps 17 MB of purgeable cache after the trim on
+both builds, where the round-2 section's row-tap flow left 2.2 MB; it is
+not counted in PSS on this emulator, is purgeable, and is not this
+review's change.
+
+**Verdict.** The round-2 fixes are correct, tested (each fails before and
+passes after) and free in frames and memory; one regression they made
+(the filter after a kept fold) is fixed with its test. Open, all minor
+and for the phone: the first paid frame per process, the step-back's two
+stalls (both builds), the 20-sale tray's first open, `restingOn`'s
+same-snapshot gap (288), "Show fewer" during a landing (finding 2), and
+the purgeable cache after a rise. Shippable as it stands.
