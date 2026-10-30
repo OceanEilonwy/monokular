@@ -1886,3 +1886,48 @@ Open, as before, for the phone: the first paid frame per process, the
 step-back's two stalls, the 20-sale tray's first open, 288's gap,
 "Show fewer" during a landing, and the 17 MB purgeable cache after a rise
 (left for the owner to read on his phone, dev1's flow above). Shippable.
+
+## Round 2, final (motion-main at f2dd97f), review 3, by the lead
+
+Integrated: dev2's `ce9b8e0`, `95d212b`, `6cc945d`, `f2dd97f` (decisions
+299 to 302) on `dba680d`, linear; dev1 had no change (its minor needs the
+owner's phone, as 298 says). `./gradlew build` is green at the head. As the
+owner asked, only the fixed segments and their neighbours were tested: no
+full suite, no frame or memory measurement.
+
+**Device tests** (emulator-5558): `RunningMovesTest` **55 of 55** (the new
+`backAfterASelfRiseIntoARowUnderTheFoldIsNeverBare` light and dark and
+`thePaidStepBackFromTheFirstTrayRowKeepsTheListAtItsTop`, with the
+neighbours: 296's far-down Backs, 297's cancelled peek, the paid step-back
+pair, the folded and scrolled rows) and `TrayTest` **15 of 15** (the list's
+head items now come from `Head.of`).
+
+**Review of the new lines.** 299 is right: `carry()` reads the stage and
+the located course in the layer block and in draw, as the alpha already
+did; it keeps two float fields and allocates nothing; the move is the
+least whole-pixel step, so the modules stay sharp and the QR scans; it
+applies only to a leaving code whose course lets go of it before
+`1 − crossfadeOnTrack` (decided from the straight-line course, so the same
+answer on every frame of a move), so the higher rows (back2 to back4) and
+arriving codes are untouched. The node's own coordinates sit outside the
+layer it places, so the translation never feeds back into `inOverlay`.
+Keeping the code whole on its card is the better call than the fade the
+review offered, which dimmed every Back into a low row. 300 is right for
+the case it fixes and keeps 296's far-down and peeked cases; judging
+"shown whole" by indices at tap time is a heuristic (a row whose section
+above grew could land a little lower than the window), acceptable since it
+falls back to 296's finger place whenever the index leaves the window. 301
+removes the hand-kept count: one remembered key list, rebuilt only when the
+three facts it reads change. 302 is correct under strong skipping.
+
+**Frames, spot-checked on the fixed segments** (dev2's sheets
+`dev2-r2f2-sr.png`, `dev2-r2f2-sb.png`; every frame is asserted by the
+tests above on 5558). The self-rise Back: the code rides its card down
+into the opened tray and is gone only once the shift's words are in; no
+bare frame. The paid step-back: the list lands at its top, the title, the
+chips and "Waiting for payment" in view, three waiting and "Show 1 more
+waiting", the paid row first under Earlier, as the canvas's Main.
+
+**Verdict.** Both majors fixed with regression tests that failed before;
+the two minors closed. Still open for the owner's phone only, unchanged:
+298's list. Shippable.
