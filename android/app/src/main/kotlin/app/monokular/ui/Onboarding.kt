@@ -422,7 +422,11 @@ private fun ConnectedRow(who: String) = Row(
     }
 }
 
-/** The card the steps at the point of sale go on, with the test sale's row under them once connected. */
+/**
+ * The card the steps at the point of sale go on, with the test sale's row under
+ * them once connected, but not while Clover still needs the Monero payment type
+ * added by hand: no sale can be paid in Monero until it is there.
+ */
 @Composable
 private fun AtTheTill(pos: PointOfSale, s: PosSetup, steps: @Composable () -> Unit) {
     SectionLabel(PosText.atTheTill(pos))
@@ -432,7 +436,7 @@ private fun AtTheTill(pos: PointOfSale, s: PosSetup, steps: @Composable () -> Un
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         steps()
-        if (s.connected && s.setup) {
+        if (s.connected && s.setup && s.tender != CloverTender.AddInClover) {
             Row(
                 Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(mk.inset).padding(horizontal = 12.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
