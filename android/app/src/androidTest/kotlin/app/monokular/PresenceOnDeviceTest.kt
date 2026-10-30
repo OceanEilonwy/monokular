@@ -79,7 +79,7 @@ class PresenceOnDeviceTest {
         assertTrue(flungAt in 1 until letGoAt, "flung down it's gone at frame $flungAt, let go at $letGoAt")
     }
 
-    /** A panel's collapse lands where it is back in the bubble (decision 170), frames before the spring's tail ends. */
+    /** A panel's collapse lands where it is back in the bubble (decision 227), frames before the spring's tail ends. */
     @Test
     fun anExitLandsOnTheFrameItReachesItsLandingNotAfterTheTail() {
         val early = attached(Motion.Full, initial = 1f)

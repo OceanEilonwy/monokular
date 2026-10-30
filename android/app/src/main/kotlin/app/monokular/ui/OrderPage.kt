@@ -122,7 +122,7 @@ object OrderText {
 @Composable
 fun OrderPage(sale: TillSale, backLabel: String, onBack: () -> Unit, onShowCode: () -> Unit) {
     val now = rememberNowSeconds()
-    // No ground of its own while it grows out of the sale's card: the sale's is under it, the same colour (decision 128).
+    // No ground of its own while it grows out of the sale's card: the sale's is under it, the same colour (decision 185).
     Surface(Modifier.fillMaxSize().groundExcept(Move.OrderGrow, mk.ground), color = Color.Transparent, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
             // As wide as the app's other pages ([Page]), centred on a tablet or a wide window.

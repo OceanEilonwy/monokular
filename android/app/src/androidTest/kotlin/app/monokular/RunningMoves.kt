@@ -46,7 +46,7 @@ import kotlin.math.min
  * frame by frame as the device runs it, every frame captured. A seek puts
  * the stage, the shared match and the overlay in one consistent state; only
  * a running move can desynchronise them, so this is what sees a frame where
- * they disagree (decisions 146 to 149).
+ * they disagree (decisions 203 to 206).
  */
 class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActivity>, val sale: TillSale) {
     val sales = listOf(testSale("z0", expiresAt = 1_600), sale, testSale("b2", expiresAt = 1_600))
@@ -72,7 +72,7 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         compose.setContent {
             Till(motion, dark) {
                 CompositionLocalProvider(LocalGroundTracks provides { key -> GroundTrack(key).also { tracks.getOrPut(key) { mutableListOf() } += it } }) {
-                // The activity's window is the theme's ground (decision 124); a test's is white.
+                // The activity's window is the theme's ground (decision 181); a test's is white.
                 Box(Modifier.fillMaxSize().background(mk.ground)) {
                 ModelStage(model) { s ->
                     val stage = LocalStage.current
@@ -236,7 +236,7 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         }
 
         /**
-         * The flash detector (decision 146's review): over a screen change in the dark theme, no frame's mean luminance
+         * The flash detector (decision 203's review): over a screen change in the dark theme, no frame's mean luminance
          * is lighter than both of its ends by more than [margin] (a white frame between two dark ones), and none steps
          * from the frame before by more than the whole move's end to end difference (a jump to a third picture). A
          * frame darker than both is a card closing before the page's words come in, not a flash. The hard cuts of

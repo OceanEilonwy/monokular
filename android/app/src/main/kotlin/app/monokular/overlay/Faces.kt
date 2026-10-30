@@ -210,7 +210,7 @@ object Panel {
      * A collapse lands here, not at the spring's last thousandth: the
      * spring's tail from here to 0 is about a quarter of its length, which
      * left a faint card at the dock after the bubble had landed (decision
-     * 170). A raise passes it within a frame.
+     * 227). A raise passes it within a frame.
      */
     const val IN_BUBBLE = 0.1f
 
@@ -227,11 +227,11 @@ object Panel {
      * opening rather than a card fading, and gone while the docked bubble
      * still has the last [BUBBLE_ALONE] of its way to go, so to the eye the
      * bubble lands alone. Its shadow takes the same share, so the shadow
-     * never outlives the card (decision 134).
+     * never outlives the card (decision 191).
      */
     fun shown(raise: Float): Float = ((opened(raise) - BUBBLE_ALONE) * 3f).coerceIn(0f, 1f)
 
-    /** The share of the docked bubble's way, nearest the free bubble, it travels with no card (decision 170). */
+    /** The share of the docked bubble's way, nearest the free bubble, it travels with no card (decision 227). */
     const val BUBBLE_ALONE = 0.05f
 
     /**
@@ -240,7 +240,7 @@ object Panel {
      * [opened] of the way between. The bubble is drawn there, and a phone's
      * card scales about it, so the card grows out of the circle on every
      * frame wherever the free bubble was, and collapses into it on its way
-     * home (decision 189). [Offset] is a value, so a frame allocates nothing.
+     * home (decision 246). [Offset] is a value, so a frame allocates nothing.
      */
     fun docked(dock: Offset, from: Offset, raise: Float): Offset = lerp(from, dock, opened(raise))
 
@@ -255,7 +255,7 @@ object Panel {
      * (both on screen): [from] itself on a phone, the docked bubble above
      * the card; on a tablet, whose window ends at the card, the card's
      * side nearest the bubble at [from], at the bubble's height held to
-     * the card: the panel sits beside the bubble (decision 118), so it
+     * the card: the panel sits beside the bubble (decision 175), so it
      * grows out of the bubble's side of it (`docs/motion.md` §5).
      */
     fun origin(from: Offset, card: Rect, corner: Boolean): TransformOrigin {
@@ -341,11 +341,11 @@ class PanelActions(
  * sale, the ring closed in green round the tick on its pale ground once
  * it's paid. Its colours are the design's whatever the theme: it sits over
  * another app. [confirms] is whether a payment landing on it buzzes:
- * only while Monokular is away ([PaidBuzz], decision 119). [pulse] is false for the bubble docked above the panel,
+ * only while Monokular is away ([PaidBuzz], decision 176). [pulse] is false for the bubble docked above the panel,
  * which has nothing left to call for; [panelUp] is the free bubble's word
  * that a panel is up beside it (a tablet's), which stops its pulse too.
  * [presence] is the free bubble's window appearing and going, which the
- * circle's shadow follows (decision 134).
+ * circle's shadow follows (decision 191).
  */
 @Composable
 fun BubbleFace(
@@ -533,7 +533,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                     scope.launch {
                         if (Panel.lowers(drag.value, height, velocity, fling)) {
                             actions.onFlung(Panel.collapseVelocity(velocity, height))
-                            // Thrown, the card keeps the finger's way (M2, decision 190): the drag runs on at the
+                            // Thrown, the card keeps the finger's way (M2, decision 247): the drag runs on at the
                             // release speed under `thrown` while the raise collapses under surface, and the card's
                             // scale takes the offset with it, so the first frames carry on down before the collapse
                             // takes the card into the bubble.
@@ -584,7 +584,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
  * The header, the amount and what was bought, for the sale [faces] shows.
  * When the panel moves on to another sale (the next one waiting, after a
  * paid dwell), they fade through on the same transition as the hero growing
- * into its code and the status words (decision 169): the old sale's go under
+ * into its code and the status words (decision 226): the old sale's go under
  * `fadeQuick` with its "Paid · … received", the new one's arrive with its
  * status, so no frame reads two sales. A change to the same sale (its
  * receipt, its phase) is no transition here.
@@ -653,7 +653,7 @@ private data class FaceShown(val face: PanelFace, val sale: TillSale)
 
 /**
  * The code and its status while live; the tick once paid; else where the
- * code was. One place for all three (`docs/motion.md` M5, decision 171):
+ * code was. One place for all three (`docs/motion.md` M5, decision 228):
  * paid or ended, one surface shrinks from the code's white card into the
  * 88 dp circle at the same centre, its corners rounding into the circle and
  * its white turning the hero's ground as the hero's icon fades in inside it,
@@ -933,7 +933,7 @@ private fun StatusRow(sale: TillSale, now: LongState) = Row(
     PhaseRing(sale.phase, 26.dp)
     AnimatedContent(
         SaleText.status(sale, posOf(sale)),
-        // Through, not across: "Payment seen" never drawn over "Waiting for payment" (decision 168).
+        // Through, not across: "Payment seen" never drawn over "Waiting for payment" (decision 225).
         transitionSpec = { (fadeIn(m.fadeThrough.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
         label = "status words",
     ) { words ->
@@ -1224,12 +1224,12 @@ private fun Modifier.heldWhileMoving(raise: Presence, onTap: () -> Unit): Modifi
  * scales the panel in or out, and the layer scaled as a whole; at rest,
  * no offscreen buffer (the node draws straight through). Text drawn
  * through a scale is rasterised again at every scale the grow passes
- * through (a new glyph strike each frame, decision 128),
+ * through (a new glyph strike each frame, decision 185),
  * which with the panel raised and lowered five times held 3.5 MB more
  * native heap than the baseline; through the layer every glyph is drawn
  * at one size, the layer is redrawn only when its content changes, and
  * its texture goes when the panel lands. Inside the card's clip and under
- * its shadow, so neither is cut by the layer's bounds (decision 153).
+ * its shadow, so neither is cut by the layer's bounds (decision 210).
  */
 private fun Modifier.flatWhile(raise: Presence): Modifier = graphicsLayer {
     compositingStrategy = if (raise.moving) CompositingStrategy.Offscreen else CompositingStrategy.Auto
@@ -1245,7 +1245,7 @@ private val CardElevation = 16.dp
  * ([Panel.shown]). A parent's alpha drawn per draw (the grow's
  * `ModulateAlpha`) never reaches a child's shadow, so without this the
  * shadow stayed whole while the card faded out of it: a grey box left over
- * Square after the panel was gone (decision 134). Read in the layer, so a
+ * Square after the panel was gone (decision 191). Read in the layer, so a
  * frame recomposes nothing; the colour is a value, so it allocates nothing.
  */
 private fun Modifier.card(raise: Presence): Modifier = graphicsLayer {

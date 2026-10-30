@@ -165,7 +165,7 @@ class MainActivity : ComponentActivity() {
         val shown by remember(id) { derivedStateOf { id?.let { id -> runner.value.till.sales.firstOrNull { it.orderId == id } } } }
         val disconnected by remember { derivedStateOf { runner.value.disconnected } }
         // Being left, a screen keeps the sale as it was when the change began: closed, paid or gone under it, it
-        // still leaves with what it showed (decision 185).
+        // still leaves with what it showed (decision 242).
         val sale = keptWhileLeaving(s, flows.screen) { shown }.value
         when {
             // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;

@@ -50,7 +50,7 @@ import kotlin.test.assertTrue
  * files dir, `frames/`) and the payment code checked on each: square and
  * not clipped, so it would scan whichever frame a camera caught. A
  * recording on the software emulator can't show these frames (decision
- * 114); the test clock can.
+ * 171); the test clock can.
  */
 class OverlayFramesTest {
     @get:Rule
@@ -173,7 +173,7 @@ class OverlayFramesTest {
         return darkest
     }
 
-    /** Lowered over Square's white, the shadow goes with the card: never darker than the card is opaque (decision 134). */
+    /** Lowered over Square's white, the shadow goes with the card: never darker than the card is opaque (decision 191). */
     @Test
     fun theLowersShadowGoesWithTheCard() {
         panel(raised = 1f, white = true)
@@ -246,7 +246,7 @@ class OverlayFramesTest {
 
     /**
      * Lowered, nothing of the card is left once the docked bubble is back
-     * where the free one will take over (decision 170): on every frame from
+     * where the free one will take over (decision 227): on every frame from
      * the one the bubble is within 4 dp of its place (to the eye, landed), every pixel of the
      * card's place at rest, but for the bubble's own corner, is the
      * backdrop; and the collapse lands (the window may go) no later than
@@ -311,7 +311,7 @@ class OverlayFramesTest {
 
     /**
      * Paid, one surface shrinks from the code's card into the hero's circle
-     * (decision 171): on every frame there is a ground at least the hero's
+     * (decision 228): on every frame there is a ground at least the hero's
      * size round the tick, it never grows on the way, and it passes through
      * at least three sizes between the card and the circle.
      */
@@ -353,7 +353,7 @@ class OverlayFramesTest {
     /**
      * The panel moving on from a paid sale to the next one waiting: the old
      * sale's "… received" and the new sale's header are never both above
-     * half their strength on one frame (decision 169).
+     * half their strength on one frame (decision 226).
      */
     @Test
     fun theNextSalesHeaderNeverMeetsTheLastSalesAmount() {
@@ -448,7 +448,7 @@ class OverlayFramesTest {
 
     /**
      * The card grows out of the docked bubble wherever the free bubble was,
-     * and folds back into it on its way home (M1, decision 189): on every
+     * and folds back into it on its way home (M1, decision 246): on every
      * frame of a raise and a lower, from a free bubble at the far edge (the
      * left, half way down) and one beside the dock, the card's scaled
      * bounds hold or touch the docked bubble's circle, as near as the
@@ -495,7 +495,7 @@ class OverlayFramesTest {
 
     /**
      * A grabber flung down keeps going down after the finger lets go (M2,
-     * decision 190): the drag runs on at the release speed while the raise
+     * decision 247): the drag runs on at the release speed while the raise
      * collapses, so the card's top is lower on each of the first two frames
      * after the release than on the one before, then the collapse takes it
      * up into the bubble. Before 190 the top turned up on the first frame.
@@ -532,7 +532,7 @@ class OverlayFramesTest {
     /**
      * Thrown and raised again before it was gone (the docked bubble tapped
      * mid-collapse), the card comes back to its own place, not a throw's
-     * length below it (decision 190).
+     * length below it (decision 247).
      */
     @Test
     fun aThrownPanelRaisedAgainComesBackToItsPlace() {

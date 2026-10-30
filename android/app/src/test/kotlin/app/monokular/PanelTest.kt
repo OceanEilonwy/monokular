@@ -145,7 +145,7 @@ class PanelTest {
         val half = Panel.docked(dock, far, Panel.IN_BUBBLE + (1f - Panel.IN_BUBBLE) / 2f)
         assertEquals(580f, half.x, 0.01f)
         assertEquals(800f, half.y, 0.01f)
-        // The card scales about that point, so its scaled bounds keep the point on every frame (decision 189).
+        // The card scales about that point, so its scaled bounds keep the point on every frame (decision 246).
         val card = Rect(40f, 280f, 1240f, 2400f)
         for (step in 0..20) {
             val raise = step / 20f

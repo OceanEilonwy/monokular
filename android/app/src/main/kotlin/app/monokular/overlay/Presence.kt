@@ -55,7 +55,7 @@ class Presence(initial: Float = 0f) {
      * instead of after the spring's invisible tail. The landing is reported
      * mid-frame, from inside the spring's frame callback, so the overlay
      * removes the panel's window from within that window's own frame: that
-     * is intended (what it draws there is drawn as at 0, decision 170) and
+     * is intended (what it draws there is drawn as at 0, decision 227) and
      * tested (`PresenceOnDeviceTest`, `OverlayFramesTest`); moved to a post,
      * it would draw one more frame of a window that should be gone.
      */

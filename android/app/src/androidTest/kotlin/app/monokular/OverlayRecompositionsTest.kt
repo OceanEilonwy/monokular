@@ -21,7 +21,7 @@ import kotlin.test.assertTrue
  * rule 1): mid-move, the panel's card, its code, its rings and the order
  * run no composable body; every moving value is read in a layer, layout
  * or draw lambda. Counted from the compiler's trace markers, as Layout
- * Inspector counts them (decision 104).
+ * Inspector counts them (decision 161).
  */
 class OverlayRecompositionsTest {
     @get:Rule

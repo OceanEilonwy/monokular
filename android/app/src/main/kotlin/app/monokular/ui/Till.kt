@@ -217,12 +217,12 @@ fun SaleScreen(
         Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, GroundLook(mk.ground, 0.dp), ground, fadesIn = Move.Rise))
         // Paid or ended on screen, the live sale turns into its page in place (M10): the code card closes into the
         // page's hero circle, and the live sale's words fade out before the page's fade in, never two receipts at once
-        // (decision 131); the way back the same reversed ("Show the code again"). Per draw, never an offscreen layer.
+        // (decision 188); the way back the same reversed ("Show the code again"). Per draw, never an offscreen layer.
         val m = motion
         AnimatedContent(
             targetState = sale.live,
             // Over the row's ground as it opens, clipped to it; the words inside fade one by one around the code, which
-            // never fades (decision 148): opening, it is drawn whole wherever the ground has reached.
+            // never fades (decision 205): opening, it is drawn whole wherever the ground has reached.
             modifier = Modifier.words(over = Move.RowGrow, on = ground, fades = false),
             transitionSpec = { (EnterTransition.None togetherWith ExitTransition.KeepUntilTransitionsFinished).using(null) },
             label = "sale face",
@@ -256,7 +256,7 @@ fun SaleScreen(
 /** The moves a sale's words fade through: its row opening, its code or order growing, the sale rising by itself. */
 private val SaleThrough = setOf(Move.RowGrow, Move.CodeGrow, Move.OrderGrow, Move.Rise)
 
-/** The moves whose ground passes over a sale's words as they arrive: they are drawn over it (decision 147). */
+/** The moves whose ground passes over a sale's words as they arrive: they are drawn over it (decision 204). */
 private val SaleLift = setOf(Move.CodeGrow, Move.OrderGrow)
 
 /** The order card's: not its own grow, whose ground it is (its lines fade on it). */
@@ -269,7 +269,7 @@ private const val Circle = 0.5f
 /** A live sale full screen, for the customer to scan (SaleA); split in two on a wide window (decision 45). */
 @Composable
 private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions: TillActions, ground: GroundTrack) {
-    // The code card's white: words it still passes over as it shrinks back into the card wait for it to pass (decision 147).
+    // The code card's white: words it still passes over as it shrinks back into the card wait for it to pass (decision 204).
     val card = rememberGroundTrack(codeGround(sale.orderId))
     val words = Modifier.words(through = SaleThrough, lift = SaleLift, on = ground, clear = card)
     val orderWords = Modifier.words(through = OrderCardThrough, lift = OrderCardLift, on = ground, clear = card)
@@ -415,7 +415,7 @@ private fun Amount(sale: TillSale, onCopyXmr: (TillSale) -> Unit, start: Boolean
 @Composable
 private fun Code(sale: TillSale, side: Dp, card: GroundTrack, ground: GroundTrack, onEnlarge: () -> Unit) = Box(
     // Opening from its row or shrinking back into it, the code and its white are drawn whole or not at all: only on
-    // the frames the row's ground holds all of the card (decision 177). Paid or ended, the card closes into the page's
+    // the frames the row's ground holds all of the card (decision 234). Paid or ended, the card closes into the page's
     // hero (M10).
     Modifier.wholeOn(ground, Move.RowGrow).faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle, code = true)
         .clip(RoundedCornerShape(CodeCorner)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
@@ -457,7 +457,7 @@ internal fun StatusPill(sale: TillSale, now: LongState) = Row(
         AnimatedContent(
             targetState = SaleText.status(sale, posOf(sale)),
             // The pill's own size animates; the words' box takes the wider of the two while they change. The new words
-            // fade through, in once the old are out, never over them ("Paid" over "Waiting for payment": decision 168).
+            // fade through, in once the old are out, never over them ("Paid" over "Waiting for payment": decision 225).
             transitionSpec = { (fadeIn(through) togetherWith fadeOut(fadeQuick)).using(null) },
             label = "status words",
         ) { words ->
@@ -491,7 +491,7 @@ fun OrderCard(receipt: Receipt, pos: PointOfSale?, withTime: Boolean, onOpen: ((
     val (lines, more) = if (onOpen != null) SaleText.shownLines(receipt) else receipt.lineItems to 0
     val open = onOpen.takeIf { more > 0 }
     // On the sale, the card's ground grows into the order page's list (M7) while its three lines fade out and the
-    // page's whole list fades in, each at its own size (decisions 128, 131).
+    // page's whole list fades in, each at its own size (decisions 185, 188).
     Box(Modifier.fillMaxWidth()) {
         if (shared != null) {
             val ground = rememberGroundTrack(shared)

@@ -26,7 +26,7 @@ import kotlin.test.assertTrue
 
 /**
  * The panel growing out of the bubble and collapsing into it draws its
- * words at one size (decision 153): its content is one layer while the
+ * words at one size (decision 210): its content is one layer while the
  * raise scales it, so no glyph is rasterised at the scales the grow passes
  * through. Read from the renderer's own glyph count (`dumpsys gfxinfo`),
  * with every frame of three lowers and raises drawn: text drawn through

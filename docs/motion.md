@@ -80,13 +80,13 @@ is no position to carry. `Spring.StiffnessMedium` is 1500 and
 | `Motion.surface` | `spring(stiffness = 380f, dampingRatio = 0.86f)` | 450 ms | A window-sized thing arriving or leaving: the panel growing out of the bubble and collapsing back; the enlarged code growing from the sale's code; a screen's container transform (shift row to sale, order card to order page); the sale's code card turning into its paid or ended hero |
 | `Motion.settle` | `spring(stiffness = 800f, dampingRatio = 1f)` | 250 ms | Small things finding their place with no bounce: a shift row moving when another arrives or leaves; the status pill resizing when its words change; the panel's buttons changing width; the docked bubble sliding to its slot |
 | `Motion.flick` | `spring(stiffness = 600f, dampingRatio = 0.8f)` seeded with the release velocity | 300 ms | What the finger let go of: the bubble snapping to its edge; the grabber springing back; the close sheet settling (Material's own spring is kept) |
-| `Motion.thrown` | `exponentialDecay()` (the platform's plain friction) seeded with the release velocity; null under Still | runs until the card it moves has landed | What the finger threw, running on while something else brings it home: the grabber's fling past the rule (decision 190) |
+| `Motion.thrown` | `exponentialDecay()` (the platform's plain friction) seeded with the release velocity; null under Still | runs until the card it moves has landed | What the finger threw, running on while something else brings it home: the grabber's fling past the rule (decision 247) |
 | `Motion.sweep` | `spring(stiffness = 170f, dampingRatio = 1f)` | 600 ms | The phase ring's arc growing a quarter: slow enough to be a sweep, overdamped so it never overshoots a quarter mark, and a second step arriving mid-sweep just retargets |
 | `Motion.track` | `tween(450, LinearEasing)` | (a line, not a time) | The straight line every spatial part of a screen change follows (shared surfaces' bounds, rises, slides), so the stage at progress p has each part p of the way (decision 120) |
-| `Motion.stage` | `Motion.surface.fraction` on the stage's progress, null under Still | 450 ms | What moves the stage's progress to a screen: an uninterrupted change and the release of a back gesture alike, so a seek and a spring share one physics (decision 120) |
+| `Motion.stage` | `Motion.surface.fraction` on the stage's progress, null under Still | 450 ms | What moves the stage's progress to a screen: an uninterrupted change and the release of a back gesture alike, so a seek and a spring share one physics (decision 177) |
 | `Motion.fade` | `tween(200, LinearEasing)` | 200 ms | Crossfades between two faces of the same thing: the bubble's content, the status words, a row's badge, the paid hero's icon |
 | `Motion.fadeQuick` | `tween(120, LinearEasing)` | 120 ms | Exits under something that is arriving, and every crossfade under reduced motion |
-| `Motion.crossfadeOnTrack`, `Motion.fadeOutOnTrack` | `fade` and `fadeQuick` as shares of `track` (0.44, 0.27) | (shares) | On a screen change, a glyph surface's faces crossfade over `crossfadeOnTrack`; a screen's words fade out over the first `fadeOutOnTrack` and in over the last `crossfadeOnTrack`, so two screens' words are never drawn together (decisions 125, 138) |
+| `Motion.crossfadeOnTrack`, `Motion.fadeOutOnTrack` | `fade` and `fadeQuick` as shares of `track` (0.44, 0.27) | (shares) | On a screen change, a glyph surface's faces crossfade over `crossfadeOnTrack`; a screen's words fade out over the first `fadeOutOnTrack` and in over the last `crossfadeOnTrack`, so two screens' words are never drawn together (decisions 182, 195) |
 | `Motion.fadeThrough` | `tween(200, delayMillis = 120, LinearEasing)` (120 ms, still after its 120 ms wait, under Still: decision 141) | 320 ms | An entrance in the place of a different thing leaving under `fadeQuick`: the panel's buttons and words when its face changes ("Copy address" to "Done"), so two labels are never drawn over each other (added in round 2, decision 115) |
 | `Motion.pulse` | `tween(1600, LinearOutSlowInEasing)`, repeating | loop | The lit bubble's pulse, only while a code waits and the panel is down |
 | `Motion.glints` | `tween(GLINT_MS, LinearEasing)`, repeating | loop | The loading mark (unchanged) |
@@ -164,13 +164,13 @@ developer: dev1 is the overlay, dev2 the app's screens; the tech lead owns
   the sliding docked bubble's centre, `Panel.docked`, so from a free
   bubble far from the dock the card is the bubble opening on its way
   there and the lower folds it back into the bubble before it flies home,
-  decision 189), scale from
+  decision 246), scale from
   `Panel.SMALLEST` (0.3), alpha reaching 1 by a third of the way out of the
   bubble, `Motion.surface`). The raise's first tenth (`Panel.IN_BUBBLE`) is
   the card wholly in the bubble: `Panel.opened` measures the way out from
   there, a collapse lands there, and the bubble's last twentieth home has
-  no card with it (decision 170). While the card moves, a tap on its place
-  lowers it and opens nothing (decision 173). The free
+  no card with it (decision 227). While the card moves, a tap on its place
+  lowers it and opens nothing (decision 230). The free
   bubble window is removed on the frame the panel window has drawn, never
   before, so there is no frame with no bubble.
 - Phone, lower: the reverse. The free bubble window is added back at the
@@ -179,7 +179,7 @@ developer: dev1 is the overlay, dev2 the app's screens; the tech lead owns
   pixel-identical. Flung down the grabber, the drag runs on at the
   finger's speed (`Motion.thrown`, a decay) inside the card's scaling
   layer while the raise collapses, so the first frames after the release
-  carry on down before the collapse takes the card (decision 190). The shadow, grabber and header collapse with the card;
+  carry on down before the collapse takes the card (decision 247). The shadow, grabber and header collapse with the card;
   nothing inside the card animates separately.
 - Tablet: the floating panel scales and fades up from the corner of the
   card nearest the bubble (pivot clamped to the card's bounds; see the
@@ -188,7 +188,7 @@ developer: dev1 is the overlay, dev2 the app's screens; the tech lead owns
   covers it (`before-tablet-panel.webp`); the grow from that corner is
   then literally from the bubble, and a tap on the panel's grabber or
   beside it still lowers it, so nothing is lost; QA has the overlap as a
-  finding (decision 90).
+  finding (decision 147).
 - Interruption: one `Animatable` `raise` in 0..1 per panel window; a tap on
   the bubble, the grabber or beside the panel mid-animation retargets it
   (`animateTo` from the current value and velocity). A sale ending or the
@@ -213,7 +213,7 @@ developer: dev1 is the overlay, dev2 the app's screens; the tech lead owns
   `Motion.thrown` (`drag.animateDecay`), inside the card's scaling layer,
   so on screen it is the drag times the card's scale: the first two frames
   after the release carry on down, then the collapse takes the card into
-  the bubble (decision 190). Raised again mid-collapse, the drag springs
+  the bubble (decision 247). Raised again mid-collapse, the drag springs
   back to 0 under `Motion.flick`. Short of the rule: `drag.animateTo(0f, Motion.flick,
   initialVelocity = velocity)`.
 - Tablet: the drag fades the card (decision 65); past the rule the fade
@@ -352,7 +352,7 @@ code's foot, a shift row's badge, the close sheet's "Yes" glyph.
   - Shift to sale, a new sale coming up by itself (`TillNav.follow`): the
     sale fades in and rises from 4 % of the height below (`Motion.track`,
     enter only, the shift fading under it with `fadeQuick`; a slide, not a
-    scale, so its code is never smaller than at rest: decision 141); there
+    scale, so its code is never smaller than at rest: decision 198); there
     is no row to grow from, and it mustn't look like something the cashier did.
   - Sale to code (M8), sale to order page: the order card is the page's
     list card (`sharedBounds("order/$id")`), the rest crossfades.
@@ -636,7 +636,7 @@ M1, M2, M3, M5, M9's overlay half.
 
 dev2 (screens): M12 (small, everywhere), M11, M7, M8, M10, M9's app half.
 
-Tech lead: M13, M14, the integration branch, and decisions 90 onward in
+Tech lead: M13, M14, the integration branch, and decisions 147 onward in
 `docs/decisions/android.md` for anything above that is a call rather than
 a refinement (M9's dwell is one).
 
@@ -647,7 +647,7 @@ PR #16 and #17 don't touch these files.
 
 What every motion commit is reviewed against (the owner's "blazing fast,
 memory efficient, no hacky animation code"), in one place so a review says
-"rule 3" and not "I'd rather". Decisions 91 to 97 say why.
+"rule 3" and not "I'd rather". Decisions 148 to 154 say why.
 
 1. **Animated values are read in draw or layout only**: `graphicsLayer {}`,
    `drawBehind {}`, `Modifier.offset {}`, a `Canvas` lambda, a
@@ -709,7 +709,7 @@ memory efficient, no hacky animation code"), in one place so a review says
 ## 11. Tech lead amendments
 
 Where the spec met the codebase or the performance rules, what changed and
-why, each against the section or item it amends. Decisions 97 to 99 in
+why, each against the section or item it amends. Decisions 154 to 156 in
 `docs/decisions/android.md` record the calls.
 
 1. **Presets are generic over what moves (§2, M13).** A Compose spec is
@@ -737,7 +737,7 @@ why, each against the section or item it amends. Decisions 97 to 99 in
    panel's, the service's, the overlay's and the view model's timers read
    the one constant now. The rest of M9 (the bubble's fade following the
    panel's collapse) is the tracks'.
-4. **Instrumented tests have a harness (§8, decision 95).**
+4. **Instrumented tests have a harness (§8, decision 152).**
    `ui-test-junit4` and `ui-test-manifest` (androidx, test-only), with
    `AndroidJUnitRunner`; `androidx.test:runner` 1.7.0 and `espresso-core`
    3.7.0 are pinned because the versions `ui-test-junit4` brings fail on
@@ -746,7 +746,7 @@ why, each against the section or item it amends. Decisions 97 to 99 in
    green on `Pixel_9_Pro_motion` (emulator-5558); the tracks add theirs
    beside them and run `connectedDebugAndroidTest` on their emulator
    before a PR.
-5. **The code's bitmap cache is in the foundation (M5, M8, decision 96).**
+5. **The code's bitmap cache is in the foundation (M5, M8, decision 153).**
    `codeBitmap(text)` in `Qr.kt` keeps the last four codes, so the sale
    screen, the enlarged code, the panel and a shared element between them
    get one `ImageBitmap` for one text; `QrCode` reads it already. Both

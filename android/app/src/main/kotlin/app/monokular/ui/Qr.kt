@@ -79,7 +79,7 @@ fun codeBitmap(text: String): ImageBitmap = codes.getOrPut(text) { qrBitmap(text
  * as one layer over everything else that moves, never re-laid out, and
  * drawn whole on every frame; with [sharedCard] the card's white is the
  * ground that spreads into the enlarged code's white screen, the image
- * never inside it (decision 113); without, the code is on a ground
+ * never inside it (decision 170); without, the code is on a ground
  * already and has no white of its own.
  */
 @Composable

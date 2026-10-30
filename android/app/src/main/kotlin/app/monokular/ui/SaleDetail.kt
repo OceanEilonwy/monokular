@@ -56,9 +56,9 @@ import app.monokular.sharedSurface
  * (decision 130) until the sale shows refunded.
  * [words] goes on each of its own parts (everything but the hero), so
  * each fades through a screen change by its own place under a moving
- * ground, never the page as one block (decision 176). [card] is the
+ * ground, never the page as one block (decision 233). [card] is the
  * enlarged code's white, which closes into the hero when the sale is paid
- * or ends while its code is enlarged, the hero coming in over it (184).
+ * or ends while its code is enlarged, the hero coming in over it (241).
  */
 // [words] is not this page's modifier but its words' (each of its parts takes it), so it is not named or placed as one.
 @Suppress("ModifierParameter")

@@ -126,7 +126,7 @@ class PhaseRingOnDeviceTest {
         return maxOf(abs(v[0] - a * d[0]), abs(v[1] - a * d[1]), abs(v[2] - a * d[2]))
     }
 
-    /** Every frame of a change, the arc where it's filled on both sides is the fill or the paid colour over the track, never a mix of the two (decision 133). */
+    /** Every frame of a change, the arc where it's filled on both sides is the fill or the paid colour over the track, never a mix of the two (decision 190). */
     private fun assertNoMixedHue(what: String) {
         repeat(60) { frame ->
             val c = frame().at(45.0)

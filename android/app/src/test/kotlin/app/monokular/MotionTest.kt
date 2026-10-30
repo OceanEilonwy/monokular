@@ -121,7 +121,7 @@ class MotionTest {
         val stillThrough = assertIs<TweenSpec<Float>>(still.fadeThrough.fraction)
         assertEquals(120, stillThrough.durationMillis, "under Still every crossfade is the quick one")
         // Not a crossfade: two different labels in one place. Under Still it keeps its wait, so they never overlap there
-        // either, and takes 240 ms where a Still crossfade takes 120 (decision 141).
+        // either, and takes 240 ms where a Still crossfade takes 120 (decision 198).
         assertEquals(quick.durationMillis, stillThrough.delay)
     }
 

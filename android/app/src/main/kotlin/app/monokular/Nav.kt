@@ -129,7 +129,7 @@ sealed interface Move {
 object Nav {
     /**
      * How far down, of the height, a sale that came up by itself starts, rising into place: a slide, not a scale, so
-     * its code is never drawn smaller than at rest and its words never through a changing scale (decision 141).
+     * its code is never drawn smaller than at rest and its words never through a changing scale (decision 198).
      */
     const val RISE_BY = 0.04f
 
@@ -170,7 +170,7 @@ object Nav {
     /**
      * A screen's words at [toward] of a move (the stage's progress toward its target), fading through: [isArriving],
      * in over the last [arriving] of it; else out over the first [leaving]. With the two shares adding to less than
-     * the whole move, the two screens' words are never both drawn (decision 131).
+     * the whole move, the two screens' words are never both drawn (decision 188).
      */
     fun through(toward: Float, isArriving: Boolean, leaving: Float, arriving: Float): Float =
         if (isArriving) ((toward - 1f + arriving) / arriving).coerceIn(0f, 1f) else ((leaving - toward) / leaving).coerceIn(0f, 1f)
@@ -209,7 +209,7 @@ object Nav {
 
 /**
  * [move] as the screens' enter and exit, with [motion]'s presets; going back puts the screen arriving underneath.
- * Everything spatial is on [Motion.track], a straight line: the stage's progress is what springs (decision 112).
+ * Everything spatial is on [Motion.track], a straight line: the stage's progress is what springs (decision 169).
  */
 fun AnimatedContentTransitionScope<Screen>.transform(move: Move, motion: Motion, back: Boolean): ContentTransform {
     val fade = motion.fade.fraction
@@ -217,10 +217,10 @@ fun AnimatedContentTransitionScope<Screen>.transform(move: Move, motion: Motion,
     val transform = when (move) {
         // The grounds move between the two and each screen's words fade through over them, per draw. The screens
         // themselves don't fade: the one going stays as it is under the moving ground until it lands (it covers it by
-        // then, or it is the one shown), so no frame composites a whole screen through an alpha layer (decisions 125, 128).
+        // then, or it is the one shown), so no frame composites a whole screen through an alpha layer (decisions 182, 185).
         // The order page draws no ground of its own while it grows: the sale's, the same colour, is under it throughout.
         Move.RowGrow, Move.CodeGrow, Move.OrderGrow -> EnterTransition.None togetherWith ExitTransition.KeepUntilTransitionsFinished
-        // The sale slides up whole and opaque, its code included (decision 148: a customer's camera may already be on
+        // The sale slides up whole and opaque, its code included (decision 205: a customer's camera may already be on
         // it); its ground and words fade in per draw on the same progress ([sharedGround]'s fadesIn, [words]).
         Move.Rise -> slideInVertically(motion.track.spec(IntOffset.VisibilityThreshold)) { (it * Nav.RISE_BY).toInt() } togetherWith fadeOut(quick)
         Move.FadeThrough -> (fadeIn(fade) + scaleIn(motion.track.fraction, initialScale = Nav.SETTINGS_FROM)) togetherWith fadeOut(quick)
@@ -231,7 +231,7 @@ fun AnimatedContentTransitionScope<Screen>.transform(move: Move, motion: Motion,
                 (slideOutOfContainer(towards, slide) { (it * Nav.STEP_OUT).toInt() } + fadeOut(quick))
         }
         // Under Still a change to or from a screen that may show a payment code is a cut: its code and its white are
-        // whole on the first frame, never two codes of two sizes through each other (decision 148).
+        // whole on the first frame, never two codes of two sizes through each other (decision 205).
         Move.Crossfade -> if (mayShowCode(initialState) || mayShowCode(targetState)) EnterTransition.None togetherWith ExitTransition.None else fadeIn(quick) togetherWith fadeOut(quick)
     }
     // Screens fill the window: no size to animate.
@@ -258,7 +258,7 @@ class Stage internal constructor(
     /**
      * The move under way between the two screens of the transition, read when a surface asks, not in composition;
      * null at rest, so nothing done "during" a move outlives it (a code or order screen is the same order on both
-     * sides of a still stage, which [Nav.move] would otherwise call its grow: decision 130).
+     * sides of a still stage, which [Nav.move] would otherwise call its grow: decision 187).
      */
     fun moving(): Move? = held.during(transition.currentState, transition.targetState)
 
@@ -293,11 +293,11 @@ class Stage internal constructor(
 
     /**
      * This screen's own words and parts while the screens change by
-     * [move]: they fade through, never across (decision 131). Leaving,
+     * [move]: they fade through, never across (decision 188). Leaving,
      * they are gone by [Motion.fadeOutOnTrack] of the move; arriving, they
      * come in over its last [Motion.crossfadeOnTrack]; so two screens'
      * words are never drawn at once, and each is drawn at the size it was
-     * laid out at, never scaled (decision 128). A function of the stage's
+     * laid out at, never scaled (decision 185). A function of the stage's
      * progress toward this screen, so a cancelled gesture fades back the
      * way it came; 1 at rest.
      */
@@ -326,7 +326,7 @@ class Stage internal constructor(
 
 /**
  * The move of the screen change under way, decided once per change
- * (decision 149): the first to ask, the transform or a surface drawing,
+ * (decision 206): the first to ask, the transform or a surface drawing,
  * reads [cameUpByItself] for the pair, and everything after gets the same
  * answer until the stage is at rest, so a flag the till sets mid-move
  * can't turn a row's grow into a rise half way through it.
@@ -381,7 +381,7 @@ class BackScrub {
  * gesture holds the stage. When a gesture lets go, committed or cancelled,
  * the stage goes to wherever the model is by then, so a sale coming up or
  * a payment landing under the finger is followed rather than lost
- * (decision 129): at rest the stage and the model always agree.
+ * (decision 186): at rest the stage and the model always agree.
  */
 @Composable
 fun FollowScreen(state: SeekableTransitionState<Screen>, scrub: BackScrub, screen: State<Screen>) {
@@ -392,9 +392,9 @@ fun FollowScreen(state: SeekableTransitionState<Screen>, scrub: BackScrub, scree
             try {
                 // From rest, the screen arriving is composed and drawn once at 0 before the spring's clock starts, as
                 // a back gesture's is: its first frame is the change's heaviest (a whole screen composed), and counted
-                // on the clock it put the stage half way there on the first frame drawn (decision 178). Mid-move the
+                // on the clock it put the stage half way there on the first frame drawn (decision 235). Mid-move the
                 // new target is just retargeted, from where the move got to, a move still at 0 too: a seek there
-                // would hold the stage at 0 until the move it took over had run its course (decision 192).
+                // would hold the stage at 0 until the move it took over had run its course (decision 249).
                 if (m.stage != null && state.currentState == state.targetState) {
                     state.seekTo(0f, s)
                     // The next frame composes it; the spring's first frame, after it, starts the clock.
@@ -417,7 +417,7 @@ fun FollowScreen(state: SeekableTransitionState<Screen>, scrub: BackScrub, scree
  * it); never the stage's own current state, which mid-move is still the
  * screen before. On a settled stage the gesture seeks [state] toward the
  * target, so each part of the move is as far along as the finger (decision
- * 112); during a move, or with no target, or under Still, there's no
+ * 169); during a move, or with no target, or under Still, there's no
  * preview. Released, [onCommit] is told the screen it left and the stage
  * follows the model from where the finger left it ([FollowScreen]);
  * cancelled, the stage springs back to the model's screen. [scrub] is held
@@ -498,7 +498,7 @@ fun TillStage(
         snapshotFlow { transition.currentState == transition.targetState }.collect { if (it) held.during(transition.currentState, transition.currentState) }
     }
     // The debug build's stage trace: compiled out of a release build (BuildConfig.DEBUG is a constant), and off
-    // until switched on (decision 180).
+    // until switched on (decision 237).
     if (BuildConfig.DEBUG) StageTrace(state, transition, held, geometry, scrub)
     SharedTransitionLayout(Modifier.onPlaced { root.coordinates = it }) {
         val shared = this
@@ -516,7 +516,7 @@ fun TillStage(
                 CompositionLocalProvider(LocalStage provides stage) { content(screen) }
             }
         }
-        // The moving grounds and codes, drawn by the stage itself over both screens while a change runs (decision 175):
+        // The moving grounds and codes, drawn by the stage itself over both screens while a change runs (decision 232):
         // a window-sized layer each, so a surface larger than either of its ends' nodes is never cut to one of them.
         // At rest they draw nothing and are drawn in place, empty.
         val grounds = remember(geometry) { GroundsPainter(geometry) }
@@ -528,7 +528,7 @@ fun TillStage(
 
 /**
  * Every shared surface's two ends by key, and where each surface is on
- * the frame being drawn: the one read of a move (decision 175). A surface's
+ * the frame being drawn: the one read of a move (decision 232). A surface's
  * bounds on a frame are the straight line between its two ends' places,
  * as laid out on that frame, at the stage's own progress (the number the
  * words read, a back gesture seeks and [Motion.stage] springs), so a
@@ -560,7 +560,7 @@ internal class StageGeometry(
      * Every moving code's bitmap, scaled as one image to its course on this frame (principle 3: never re-laid out).
      * A code whose sale is no longer live where the stage is going (paid or ended on the enlarged code) has no
      * partner: it stays where it was, fading out by [fadeOut] inside its white as that closes into the page's hero,
-     * never outside it (decision 184).
+     * never outside it (decision 241).
      */
     fun paintCodes(scope: DrawScope) {
         for (i in 0 until courses.size()) {
@@ -973,7 +973,7 @@ class GroundLook(val color: Color, val top: Dp, val bottom: Dp = top)
  * one's on the same progress; neither end draws itself. What sits on
  * a ground is not inside it: its words fade through at their own size
  * ([words]), the code is its own surface over it ([sharedCode]), so nothing
- * on a ground is drawn through a changing scale (decision 128). With no
+ * on a ground is drawn through a changing scale (decision 185). With no
  * partner (a sale whose row is off the shift), a ground fades with its
  * screen. [track] is the screen's view of it, for the words on it.
  */
@@ -991,7 +991,7 @@ fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, track: Gro
  * Where [track]'s ground lands on this screen, looking like [look] as it
  * gets there, with nothing drawn of it here at rest: what is laid out on
  * this node draws itself (a paid page's hero, which the enlarged code's
- * white closes into when the payment lands on it: decision 184).
+ * white closes into when the payment lands on it: decision 241).
  */
 @Composable
 fun Modifier.groundEnd(track: GroundTrack, during: Move, look: GroundLook): Modifier {
@@ -1055,7 +1055,7 @@ private class GroundNode(
                 with(painter) { paint(own.color.copy(alpha = own.color.alpha * seen), own.top.toPx(), own.bottom.toPx()) }
             }
             // Moving: the stage draws the one ground where its line puts it on this frame, over both screens; neither
-            // end draws itself (decision 175).
+            // end draws itself (decision 232).
             track.locate() -> Unit
             // No partner (a sale whose row is off the shift): it fades with its screen, the one under it showing through.
             else -> with(painter) { paint(own.color.copy(alpha = own.color.alpha * stage.shown()), own.top.toPx(), own.bottom.toPx()) }
@@ -1119,10 +1119,10 @@ private class GroundPainter {
  * straight line between the two codes' places at the stage's progress:
  * the same read that places the white it sits on ([sharedGround]), so the
  * quiet zone runs from one rest margin to the other and is never below
- * the smaller (decision 175); neither end draws itself. Never re-laid out,
- * re-encoded or faded (principle 3, decision 148). A code with no partner
+ * the smaller (decision 232); neither end draws itself. Never re-laid out,
+ * re-encoded or faded (principle 3, decision 205). A code with no partner
  * on a frame of its move is drawn only by the screen that is the picture
- * then (decision 146).
+ * then (decision 203).
  */
 @Composable
 fun Modifier.sharedCode(key: String, during: Move, track: GroundTrack, bitmap: ImageBitmap, white: String): Modifier {
@@ -1169,7 +1169,7 @@ private class CodeNode(geometry: StageGeometry, end: End, var stage: Stage, var 
         val track = track
         when {
             !stage.isMoving(track.during) -> drawContent()
-            // Moving: the stage draws the code over everything, on its white's line (decision 175).
+            // Moving: the stage draws the code over everything, on its white's line (decision 232).
             track.locate() -> Unit
             // No partner but its white is moving (paid on the enlarged code): the stage fades it inside that white.
             whiteMoving(track.during) -> Unit
@@ -1189,7 +1189,7 @@ private class CodeNode(geometry: StageGeometry, end: End, var stage: Stage, var 
  * the other's on [Motion.track], in step with the stage's progress, and
  * its content, scaled as a layer, crossfades. Only for a glyph with no
  * words in it (a badge into a hero): a glyph drawn through a changing
- * scale is rasterised again at every scale (decision 128), so words ride a
+ * scale is rasterised again at every scale (decision 185), so words ride a
  * [sharedGround] instead; the code is a [sharedCode]. Any other move, or
  * Still, leaves it alone, so a sale that came up by itself doesn't grow
  * out of a row the cashier didn't tap. A surface with a higher [layer]
@@ -1278,7 +1278,7 @@ private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Ali
 /**
  * A payment code on a screen whose [ground] is moving by [during] is drawn
  * whole or not at all: only on the frames whose ground holds all of it, so
- * a moving edge never cuts a code (decision 177). Its white goes with it:
+ * a moving edge never cuts a code (decision 234). Its white goes with it:
  * the code is never drawn without the ground it needs to scan.
  */
 @Composable
@@ -1341,7 +1341,7 @@ object Layers {
  * `KeepUntilTransitionsFinished` alone; the crossfade is the surface's own
  * per-draw alpha. On Compose animation 1.12.1 under this stage,
  * `ExitTransition.None` changed no frame RunningMovesTest or
- * MotionFramesTest reads (decision 161);
+ * MotionFramesTest reads (decision 218);
  * `MotionFramesTest.theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow`
  * fails if a leaving ground ever stops being drawn mid-grow, whichever way
  * it is kept.
@@ -1361,13 +1361,13 @@ private class Placed {
  * over both screens) while it is [over] (clipped to [on], the ground they
  * sit on, where it is on that frame) or, arriving, one of [lift] (words
  * arriving where a ground still moves, so its edge never cuts them:
- * decision 147; leaving, they stay under the ground growing over them).
+ * decision 204; leaving, they stay under the ground growing over them).
  * Words on a moving ground [on] show only while it holds them: arriving,
  * their fade starts once it covers them; leaving, it ends before it
  * uncovers them; and arriving words wait for [clear]'s shrinking ground to
- * have passed them (decision 176). With [fades] false they are lifted and
+ * have passed them (decision 233). With [fades] false they are lifted and
  * clipped but not faded: a container whose words fade one by one around a
- * code that never fades (decision 148). Alpha is applied per draw, through
+ * code that never fades (decision 205). Alpha is applied per draw, through
  * a layer made only while one of their moves is under way, never an
  * offscreen buffer and nothing at rest. [through] and [lift] are compared
  * on every recomposition, so a call site passes top-level sets, never a
@@ -1387,7 +1387,7 @@ fun Modifier.words(
     if (m.still) return this
     val lifted = if (over == null && lift.isEmpty()) this else with(stage.shared) {
         // Lifted for as long as the stage's own move runs, which the shared bounds' matches (isTransitionActive) don't
-        // span: the stage draws the grounds over both screens from the change's first frame to its last (decision 175).
+        // span: the stage draws the grounds over both screens from the change's first frame to its last (decision 232).
         renderInSharedTransitionScopeOverlay(Layers.OVER_GROUND) {
             val move = stage.moving()
             (move != null && move == over && (on == null || on.locate())) || (move in lift && stage.arriving())
@@ -1472,14 +1472,14 @@ private class FadeThroughNode(
         compositingStrategy = CompositingStrategy.ModulateAlpha
     }
 
-    /** One of its moves. Every screen's words fade through a move that is theirs, a row's the cashier didn't tap too (164). */
+    /** One of its moves. Every screen's words fade through a move that is theirs, a row's the cashier didn't tap too (221). */
     private fun fades(move: Move?): Boolean = move != null && (move == over || move in through)
 
     private fun alpha(): Float {
         val move = stage.moving()
         if (!fades(move)) return 1f
         val arrivingHere = stage.arriving()
-        // The plain shares of the move: out over its first [leaving], in over its last [arriving] (decision 131).
+        // The plain shares of the move: out over its first [leaving], in over its last [arriving] (decision 188).
         var start = 1f - arriving
         var end = leaving
         val mine = placed
@@ -1517,7 +1517,7 @@ private class FadeThroughNode(
  * A screen's [color] ground, except while the screens change by [unless]:
  * the order page over the sale, whose ground is the same colour and stays
  * under it, so the page's words can fade in over the sale's going without
- * a whole page fading (decision 128).
+ * a whole page fading (decision 185).
  */
 @Composable
 fun Modifier.groundExcept(unless: Move, color: Color): Modifier {
@@ -1529,7 +1529,7 @@ fun Modifier.groundExcept(unless: Move, color: Color): Modifier {
  * [value] as [screen] showed it while it was the model's ([current]): from
  * the moment the model moves on, a screen being left keeps the picture it
  * had as its change began until the move lands and it goes, whatever the
- * model does to what it shows meanwhile (decision 185). A sale closed from
+ * model does to what it shows meanwhile (decision 242). A sale closed from
  * the sheet, expired or refunded as its screen is left still leaves with
  * its code on its card; the stage carries away what was on screen, never
  * the model's next state of it. Written in composition while the screen is
@@ -1557,11 +1557,11 @@ val LocalFace = staticCompositionLocalOf<AnimatedVisibilityScope?> { null }
  * from [other] (its partner's, as a share of the side: a circle is 0.5)
  * to [corner] on the same spring: the code card closing into the hero's
  * circle. The clip is the content's own, so it is where the content is on
- * every frame (decision 139). The [code]'s face (the live sale's card) is
- * the one white surface of the paid fold (decision 168): leaving, its
+ * every frame (decision 196). The [code]'s face (the live sale's card) is
+ * the one white surface of the paid fold (decision 225): leaving, its
  * white stays whole under its fading code until the hero, drawn over it,
  * has come in; arriving ("Show the code again") it is opaque from its
- * first frame, the hero fading off it (decision 148).
+ * first frame, the hero fading off it (decision 205).
  */
 @Composable
 fun Modifier.faceSurface(key: String, corner: Dp, other: Float, code: Boolean = false): Modifier {

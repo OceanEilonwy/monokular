@@ -30,7 +30,7 @@ fun ringFill(phase: SalePhase): Float = SaleText.step(phase) / 4f
  * A step sweeps (`docs/motion.md` M6, `motion.sweep`): the arc grows from
  * where it is, so a second step mid-sweep just carries on, and it closes
  * in [paid] once the sale is paid. The arc's two colours are two strokes,
- * never a blend of them (decision 133): the one going fades out under
+ * never a blend of them (decision 190): the one going fades out under
  * `motion.fadeQuick` before the one coming fades in (`motion.fadeThrough`),
  * so on the way to paid, or from a paid ring to the next sale's, the ring
  * is only ever [fill], [paid], or one of them fading over the [track].

@@ -5,7 +5,7 @@ the lead designer on 2026-10-30 against the integrated `motion` branch at
 `5fcf41e` (its code is `b03c864`, round 6's build; the commits after it
 are reports). The spec is [`docs/motion.md`](../motion.md), the numbers are
 [`motion/baseline.md`](motion/baseline.md) and
-[`motion/after.md`](motion/after.md), the calls are decisions 90 to 203
+[`motion/after.md`](motion/after.md), the calls are decisions 147 to 260
 in [`decisions/android.md`](../decisions/android.md).
 
 The design did not change: the panel with its grabber, the full-screen
@@ -94,10 +94,10 @@ raises it again from where it is.
 and the collapse become 120 ms fades; the ring's arc snaps to full.
 
 **Still open.** The sale screen's step back after the dwell is a
-crossfade, not the page settling into its row (decision 202; the Back
+crossfade, not the page settling into its row (decision 259; the Back
 from the same page does settle, `after/row-to-sale` at 5 s). In the sale
 screen's fold the tick is drawn over the fading code for three frames
-(203 b). Both are the screens track's, below.
+(260 b). Both are the screens track's, below.
 
 ### 2. The code enlarges from the code
 
@@ -204,10 +204,10 @@ no preview.
 
 **Still open.** Back from a sale while another sale is waiting unseen
 never shows the shift: the next sale's code replaces this one's in a
-frame (decision 201, the one real regression against the baseline's
+frame (decision 258, the one real regression against the baseline's
 cut). A Back into the row begins with one or two code-less frames
-(203 a). A second Back pressed while the shift is still arriving goes to
-the launcher, as it did before (203 c). All three are the screens
+(260 a). A second Back pressed while the shift is still arriving goes to
+the launcher, as it did before (260 c). All three are the screens
 track's, below.
 
 ### 5. The shift moves rows, words crossfade, numbers hold still
@@ -297,9 +297,9 @@ PSS in kB after the flows, ten seconds at rest and a
 | Pair 2 | 103 073 (16 060 / 14 096) | 107 945 (17 028 / 15 588) | +4.9 MB (Java +1.0, native +1.5) |
 | Release build, Welcome, not connected (baseline) | 23 916 | | the floor the debug figures sit 70 MB above |
 
-The rule was within 2 MB of before; decision 145 accepted 2 to 3 MB at
+The rule was within 2 MB of before; decision 202 accepted 2 to 3 MB at
 start-up. The step is 5 to 6 MB, and the screens track's heap dumps
-name it (decision 196): it is the shift's standing motion machinery,
+name it (decision 253): it is the shift's standing motion machinery,
 there from launch (each row's badge transition and shared surface, the
 rows' placement animation, the stage's transitions and the lookahead
 pass's per-node delegates, about 27 000 more objects), not a session's
@@ -386,7 +386,7 @@ does not exist because only the owner's phone can give it.
 ### Major
 
 - **Screens: Back with a sale waiting never shows the shift** (decision
-  201). The stage runs `RowGrow Sale → Till` for three frames at p = 0,
+  258). The stage runs `RowGrow Sale → Till` for three frames at p = 0,
   then the model's `follow` goes to the waiting sale and a `Rise` takes
   the move over from 0: the first sale's words fade, its code is replaced
   by the next sale's in one frame, the shift is never drawn
@@ -395,11 +395,11 @@ does not exist because only the owner's phone can give it.
   at least cut to the shift first. *Fix:* a leave lands before a follow
   starts: run `AppViewModel.follow` on the leaving move's completion
   (the stage reports landing to the model, as the panel's collapse
-  reports to the bubble) instead of on the sales update; keep 192's
+  reports to the bubble) instead of on the sales update; keep 249's
   takeover for everything else; a `RunningMovesTest` case that holds the
   `RowGrow` to p = 1 with the shift drawn before any `Rise` begins.
 - **Screens: the paid page's step back after the dwell is a crossfade**
-  (decision 202). The trace shows `RowGrow Sale → Till` with no
+  (decision 259). The trace shows `RowGrow Sale → Till` with no
   `sale/<id>` course, so the words fade and the shift fades in with no
   surface moving (`review-r6/phone-paid-stepback-crossfade.webp`); a Back
   on the same page a moment later leaves with the course and the ground
@@ -410,11 +410,11 @@ does not exist because only the owner's phone can give it.
   course and the hero glyph lands in the row's badge.
 - **Screens: memory after a trim is +4.9 to +5.9 MB over the baseline on
   the phone emulator** (105 070 → 111 010 and 103 073 → 107 945 kB; Java
-  +1.0 to +1.2, native +1.5 to +2.4) where decision 145 accepted +2 MB.
-  Decision 196 names it (the shift's standing motion machinery) and
+  +1.0 to +1.2, native +1.5 to +2.4) where decision 202 accepted +2 MB.
+  Decision 253 names it (the shift's standing motion machinery) and
   accepts it; the rule is not met and only the owner's phone can price
-  it. *Fix:* either the owner accepts the standing cost (amend 145 and
-  196 with the phone's number once measured) or the screens track takes
+  it. *Fix:* either the owner accepts the standing cost (amend 202 and
+  253 with the phone's number once measured) or the screens track takes
   the shared-surface and transition machinery off rows at rest (compose
   it on a change's first frame, or share one transition across the
   list) and re-measures with `mem-r6.sh`.
@@ -422,7 +422,7 @@ does not exist because only the owner's phone can give it.
   reached every agent only inside the workflow's computed brief, which
   by their operating rules is not the user's consent, and the step
   installs builds over the owner's onboarded data on a personal device
-  (decisions 162, 181, 182, 194, 199, 200). So the phone A/B, the first
+  (decisions 219, 238, 239, 251, 256, 257). So the phone A/B, the first
   enlarge's frame on a real GPU, the Graphics PSS reading and the 2 MB
   rule on a device are still open, and the brief's deciding numbers do
   not exist. *Fix:* the owner says so in their own session, or runs
@@ -436,7 +436,7 @@ does not exist because only the owner's phone can give it.
 
 - **Screens: the code is not drawn on the frames where the row's ground
   holds the whole screen** on a Back from a live sale and on a close for
-  now (203 a): one or two bare-ground frames on the emulator, three or
+  now (260 a): one or two bare-ground frames on the emulator, three or
   four at 120 Hz (`review-r6/phone-back-into-row.webp`). *Fix:* keep the
   code's end alive through the leaving screen's frames and draw the code
   whole while the card fits inside the ground's drawn bounds; test that
@@ -444,13 +444,13 @@ does not exist because only the owner's phone can give it.
   rest bounds draws the code.
 - **Screens: in the sale screen's paid fold the tick is drawn over the
   fading code** while the card is still four fifths of its size, three
-  frames of two glyphs in one card (203 b;
+  frames of two glyphs in one card (260 b;
   `review-r6/phone-paid-fold-on-sale.webp`). *Fix:* fade the tick in over
   the last `crossfadeOnTrack` share of the fold, the code out over the
   first `fadeOutOnTrack`, as the code screen's fold already does; test
   that no frame draws both above a threshold alpha.
 - **Both: a second Back while the shift is still arriving goes to the
-  launcher** (203 c; the baseline does the same, so not a regression).
+  launcher** (260 c; the baseline does the same, so not a regression).
   A cashier who pressed Back twice meant the shift, and leaving the till
   is the one thing a stray press must not do. *Fix:* `StageBack` stays
   enabled while `screen == Till && stage.currentState !=

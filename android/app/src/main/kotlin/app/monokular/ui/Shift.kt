@@ -98,7 +98,7 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
             // The shift's own words, its chrome as much as its rows, fade through a row's grow and shrink at their own
-            // size, so they are never read together with the sale's (decision 164).
+            // size, so they are never read together with the sale's (decision 221).
             val chrome = Modifier.words(through = ShiftThrough)
             LazyColumn(Modifier.widthIn(max = 640.dp).fillMaxSize()) {
                 item(key = "top") { Box(chrome) { TopRow(status, actions) } }
@@ -142,7 +142,7 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                         // A row arriving fades in, the rows it displaces slide to their place, a row leaving fades (M11);
                         // its corners, which follow its index, snap.
                         // Tapped, the row's card grows into its sale (M7) and the sale shrinks back into it.
-                        // Only the ground moves; the row's words fade out at their own size as the sale's fade in (decision 128).
+                        // Only the ground moves; the row's words fade out at their own size as the sale's fade in (decision 185).
                         val ends = ShiftList.ends(i, rows.lastIndex)
                         val shape = rowShape(ends)
                         Box(

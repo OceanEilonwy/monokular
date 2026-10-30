@@ -16,7 +16,7 @@ between states, not how smoothly; frame timings come from a device
 | `before-overlay.mp4` (75 s) | Over the home screen: the lit bubble with its pulse; a tap puts the panel up in one frame with the bubble re-appearing docked at its top; a short drag on the grabber springs back; a fling lowers it (the panel vanishes, the free bubble reappears at its edge); the bubble tapped again | M1, M2, M4 |
 | `before-overlay2.mp4` (60 s) | The panel's order line opens The order, full screen, in one frame; Back to the code; the sale paid: the panel's code becomes the paid tick in one frame and the docked bubble turns green; after the dwell the panel moves on to the next waiting sale's code, again in one frame; the bubble goes back to lit a second before that | M5, M9 |
 | `before-bubble.mp4` (40 s) | The docked bubble tapped to lower the panel; the free bubble dragged across the screen and let go: it slides to the near edge on a timer (no velocity); dragged back | M3, M4 |
-| `before-tablet-panel.webp` | The floating panel on the Pixel Tablet emulator over the home screen, the free bubble at the end edge behind it | M1 (tablet), decision 90's finding |
+| `before-tablet-panel.webp` | The floating panel on the Pixel Tablet emulator over the home screen, the free bubble at the end edge behind it | M1 (tablet), decision 147's finding |
 | `before-phone-landscape-shift.webp` | The shift on a phone on its side | M7, M11 |
 
 Not recorded: split screen (the configuration-change path is read, not

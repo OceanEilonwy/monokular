@@ -101,7 +101,7 @@ dependencies {
     implementation(libs.zxing.core)
     implementation(libs.okhttp)
     debugImplementation(libs.compose.ui.tooling)
-    // Compose UI tests on the emulator (decision 95): the test activity comes with the manifest artifact.
+    // Compose UI tests on the emulator (decision 152): the test activity comes with the manifest artifact.
     debugImplementation(libs.compose.ui.test.manifest)
     testImplementation(libs.kotlin.test.junit)
     testImplementation(libs.junit)

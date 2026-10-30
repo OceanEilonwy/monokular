@@ -15,7 +15,7 @@ import org.junit.Rule
 import org.junit.Test
 import kotlin.test.assertEquals
 
-/** One buzz per payment, from the surface the cashier is looking at (`docs/motion.md` §6, decision 119). */
+/** One buzz per payment, from the surface the cashier is looking at (`docs/motion.md` §6, decision 176). */
 class HapticOnDeviceTest {
     @get:Rule
     val compose = createComposeRule()

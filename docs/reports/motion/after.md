@@ -74,7 +74,7 @@ cut's 48 ms layout is gone); what is left is SwiftShader rasterising two
 full screens and a scaled layer in software, twenty times instead of
 once. The longest frame is 3.5× the cut's, which fails the round's "no
 frame over 2× the old p95" rule **on this emulator**; the baseline's
-caveat and decision 107 say why that rule can only be judged on a device
+caveat and decision 164 say why that rule can only be judged on a device
 with a GPU, and that is the first thing round 2 measures.
 
 **Overlay, lit bubble alone over the home screen, 5 s** (before, load
@@ -234,19 +234,19 @@ from `dumpsys gfxinfo` ("Total GPU memory usage").
 | Build | TOTAL PSS at rest (MB) | after trim | Native heap | GPU cache |
 | --- | --- | --- | --- | --- |
 | before, three runs | 92.6–94.6 | 91.7–92.3 | 12.4–12.8 | 2.2–2.3 MB |
-| round 2 before decision 125 | 104.5–106.4 | 105.0–105.2 | 21.2–21.6 | **85.5–86.8 MB** (84 purgeable) |
+| round 2 before decision 182 | 104.5–106.4 | 105.0–105.2 | 21.2–21.6 | **85.5–86.8 MB** (84 purgeable) |
 | round 2, final (`f3346d6`), two runs | 98.6–109.4 | 98.5–106.8 | 17.6–24.9 | **0.2–5.1 MB** |
 
 The GPU cache was the shared surfaces' crossfade: each face of a
 full-screen surface went through its own offscreen texture every frame,
-and the cache kept them. Decision 125 draws the faces with
+and the cache kept them. Decision 182 draws the faces with
 `ModulateAlpha` instead, and the cache is back at the baseline's size.
 **PSS at rest is still 6–14 MB over the baseline**, nearly all native
 heap, and a trim doesn't return it. 2.6 MB of it is Skia's glyph cache
 (253 glyphs against 18: the text inside a scaled surface is rasterised at
 each size it passes through), the rest a one-time step on the first
 transitions that holds flat after (round 1's ten further round trips
-added 1.3 MB). It fails the 2 MB rule; decision 126 says what is known and
+added 1.3 MB). It fails the 2 MB rule; decision 183 says what is known and
 what isn't.
 
 ### Size
@@ -278,7 +278,7 @@ track's eight rebased over them, and one integration commit (one
 as round 1 was, before (`f274ad7`'s debug build) and after alternately in
 one session on one emulator, twice over (`ab-r2.sh` in the lead's scratch
 folder, raw dumps under `measure-r2/<serial>/<before|after><n>/`), with
-decision 127's changes to the rig: the stack's dead orders expired, two
+decision 184's changes to the rig: the stack's dead orders expired, two
 fresh sales rung up before each pass, the phone (emulator-5558, Pixel 9
 Pro, SwiftShader) first and the tablet (emulator-5560, Pixel Tablet)
 after it. Flows: the shift scrolled (12 swipes), the enlarged code opened
@@ -342,7 +342,7 @@ panel never opened. `overlay-flow-r2.sh` reads the bubble's window from
 
 A panel up and still draws 5 frames in 5 s against the baseline's 200–307
 (its pulse kept running under the panel), on both; the tablet's free bubble
-stops pulsing beside its panel (decision 109). The raise and lower's p99
+stops pulsing beside its panel (decision 166). The raise and lower's p99
 is 69–77 ms on both builds and both emulators, a window being added; its
 p50 falls from 16–18 to 5–17. The drag and snap is smoother on both. The
 pulse itself draws every frame in both builds (301 frames in 5 s).
@@ -367,7 +367,7 @@ cache and text atlas** (`SkStrike::prepareImages` under
 MB): the text inside a surface scaled as a layer is rasterised again at
 every scale the move passes through. The 14.3 MB purgeable GPU texture of
 the first after run is the size of one phone screen in RGBA; it did not
-recur in the second run. Decision 128 has what to do about it. The
+recur in the second run. Decision 185 has what to do about it. The
 `Graphics` row is 0 on SwiftShader, so on a device part of this moves
 from the native heap to graphics memory; the glyph strikes do not.
 
@@ -394,14 +394,14 @@ Frames pass everywhere the rule can be read on these emulators: the grows
 stay under twice the cuts' p95 on the phone and the tablet, the round trip
 and the drag get smoother, and a panel at rest no longer draws. Memory
 does not: 10 to 19 MB over the baseline after a trim, with the cause
-named (decision 128) and owned by the screens track. Not signed off.
+named (decision 185) and owned by the screens track. Not signed off.
 
 ## Round 3, screens track (dev2, on emulator-5556 with the host GPU)
 
 What changed: a moving surface is an empty ground, and its words fade
-through at their own size (decisions 138 and 139); a still stage has no
-move, which was the empty order page (140); one driver keeps the stage on
-the model's screen through Back and gestures (137). The method is the
+through at their own size (decisions 195 and 196); a still stage has no
+move, which was the empty order page (197); one driver keeps the stage on
+the model's screen through Back and gestures (194). The method is the
 lead's: `mem-r2.sh` and `heap-r2.sh` with `heap-sites.py`, run from
 copies that take the serial and the APKs as arguments (`dev2-r3-mem.sh`
 and `dev2-r3-heap.sh` in the scratch folder; the rig itself is the lead's
@@ -476,7 +476,7 @@ sale and back on this build.
 
 The integrated branch is round 2's `3124bf5`, the overlay track's six
 round-3 commits, then the screens track's six replayed over them with
-their decisions renumbered 137 to 143 (decision 144). Measured as round 2
+their decisions renumbered 194 to 200 (decision 201). Measured as round 2
 was (`ab-r3.sh`, a copy of `ab-r2.sh` with this build's APK; raw dumps
 under `measure-r3/<serial>/<before|after><n>/` in the lead's scratch
 folder): before is `f274ad7`'s debug build, after is this branch, run
@@ -609,7 +609,7 @@ cancelled seek apart from a cancelled driver. What is left for round 4:
   nothing; it works and is commented, but the comment should name the
   Compose behaviour it works around so the next reader does not "fix" it
   (screens track, minor).
-- `Motion.fadeThrough` keeps its 120 ms wait under Still (decision 141),
+- `Motion.fadeThrough` keeps its 120 ms wait under Still (decision 198),
   so a ring or a label is blank for 120 ms between faces with
   animations off; acceptable, but the designer should see it once on a
   device (both tracks, minor).
@@ -620,7 +620,7 @@ cancelled seek apart from a cancelled driver. What is left for round 4:
   on a timed-out poll, or `appVisible`); worth a log line on `usable`'s
   changes and a quiet-host run before it is called anything (overlay
   track, open).
-- The rebase onto `origin/main` (seventeen files, decision 144) is the
+- The rebase onto `origin/main` (seventeen files, decision 201) is the
   lead's, before the PR.
 
 ### Size
@@ -647,7 +647,7 @@ builds. One frame fails the rule: the first code enlarge after launch,
 250 to 570 ms of renderer work once per process, with the cause not
 named (above). Memory: +2.5 to +8.6 MB after a trim, a third of round 2's
 step with its cause (text rasterised per scale) gone; of that, the 2 to
-3 MB at start-up is accepted (decision 145), which leaves the phone's
+3 MB at start-up is accepted (decision 202), which leaves the phone's
 second pair and the tablet over the rule by 1 to 6 MB, and +7 MB of
 native heap with the bubble up. Start-up: within noise on both. Size:
 +5.6 KB over round 2. Not signed off: the first enlarge's frame (screens
@@ -660,7 +660,7 @@ a quiet host.
 The integrated branch is round 4's `dc51b61`, the overlay track's five
 round-5 commits (`motion-dev1` at `d919b48`, a fast-forward), then the
 screens track's four replayed over them with their decisions renumbered
-175 to 181, and one commit of the lead's (decision 182). Measured as
+232 to 238, and one commit of the lead's (decision 239). Measured as
 rounds 3 and 4 were (`ab-r5.sh`, a copy of `ab-r4.sh` with this build's
 APK; raw dumps under `measure-r5/<serial>/<before|after><n>/` in the
 lead's scratch folder): before is `f274ad7`'s debug build, after is this
@@ -672,7 +672,7 @@ fake Square for each pass. Host load was 2 to 24 through the phone's
 passes and 9 to 14 through the tablet's, lower than rounds 3 and 4
 but still the host's swap chain more than the app in every median, so
 the numbers are read against each other, not against 16.7 ms. The
-owner's phone was not used (decision 182), so the phone numbers the
+owner's phone was not used (decision 239), so the phone numbers the
 brief asks to decide by are still not there.
 
 ### Phone (emulator-5558, SwiftShader), before and after alternately
@@ -735,9 +735,9 @@ a day of sales.
 | Step over before, trimmed | | +4.3 (no trips), +6.1 MB | | +5.5, +6.2 MB |
 
 So the step is +5.5 to +6.2 MB after a trim, of it Java +1.2 and native
-+2.1 to +2.7 MB, and the fresh step is +3.8 to +8.1 MB where decision 145
++2.1 to +2.7 MB, and the fresh step is +3.8 to +8.1 MB where decision 202
 accepted +2 to +3; round 3 read +2.5 to +6.4 on the same rig and the
-screens track read +5.6 and +6.0 on 5556 (decision 181). The untrimmed
+screens track read +5.6 and +6.0 on 5556 (decision 238). The untrimmed
 "mem rest" of the A/B runs says the same: phone +14.4 MB, tablet +8.3 to
 +11.6 MB, most of it garbage the trim takes back. Over the 2 MB rule by
 3 to 4 MB, as the last two rounds were, and still with no heap dump
@@ -768,7 +768,7 @@ pointer's down, never in composition; the trace is behind
 code they replace (each track ran them against round 4's head). What the
 lead changed, and what is left:
 
-- Fixed here (decision 182): `StageGeometry` kept every `Course` for the
+- Fixed here (decision 239): `StageGeometry` kept every `Course` for the
   life of the stage with the two `End`s it last drew between, and a
   code's end holds its bitmap, so each sale opened and enlarged left a
   13 KB code behind; a course now forgets its ends once neither is on a
@@ -806,8 +806,8 @@ lead changed, and what is left:
   it is noted, not opened (overlay track).
 - `docs/motion.md` M1 is amended for `Panel.opened` and the mid-raise tap
   (the overlay track's note), in the lead's commit.
-- Carried: the owner's phone (decision 182); the paid fold's acceptance
-  on a real GPU (168); `fadeThrough` under Still (141); the stash
+- Carried: the owner's phone (decision 239); the paid fold's acceptance
+  on a real GPU (225); `fadeThrough` under Still (198); the stash
   `r4-flat` for a person to drop; the rebase onto `origin/main` and the
   rigs under `tools/motion-rig` (lead); the heap dump naming the session's
   growth (screens track), re-read after the course fix.
@@ -843,44 +843,44 @@ full suites on their own emulators at the heads integrated here. Not
 signed off: the memory rule (screens track, with the heap dump), the
 first enlarge's frame and the paid fold's acceptance, both of which only
 a real GPU can settle, and the owner's phone, untouched until the user
-says so in their own session (decision 182).
+says so in their own session (decision 239).
 
 ## Round 5, design review (motion at fe6f893), by the designer
 
 The integrated build on emulator-5558 and emulator-5560 with real sales
 on the shared dev stack; every encoded frame of each clip measured
 (`ffmpeg -fps_mode passthrough`, the designer's `an.py` and the stage
-trace of 180 read side by side). Evidence under
-`docs/reports/motion/review-r5/`; decisions 183 to 188.
+trace of 237 read side by side). Evidence under
+`docs/reports/motion/review-r5/`; decisions 240 to 245.
 
 | Flow | Phone (5558) | Tablet (5560) | Verdict |
 | --- | --- | --- | --- |
-| Enlarge and shrink, light and dark, landscape | 16 frames, 250 ms; margins 20–26 px every frame (rest 22–24); no flash in dark | 11–14 frames, 270 ms; margins 64→222 px monotonic, never outside | 163 answered |
-| Back gesture on the code (a third, a sixth, two full) | code 612→570 px with the finger, release springs home from there | the same | 166 answered |
+| Enlarge and shrink, light and dark, landscape | 16 frames, 250 ms; margins 20–26 px every frame (rest 22–24); no flash in dark | 11–14 frames, 270 ms; margins 64→222 px monotonic, never outside | 220 answered |
+| Back gesture on the code (a third, a sixth, two full) | code 612→570 px with the finger, release springs home from there | the same | 223 answered |
 | Row to sale and back, Rise and Back | the stage's progress 0.14→0.72 across one 83 ms gap: three or four drawn frames | smoother, still few frames | emulator; a GPU's to judge |
-| Paid on the sale screen | two frames of code fade inside its white, 100 ms gap, the page | not recorded | 168 carried |
-| Paid on the enlarged code | the code cuts in one frame, the page fades in | not recorded | 184, major |
-| "Close it for now" | the code vanishes with the sheet, words fade on a bare ground, the row's badge arrives alone | not recorded | 185, major |
+| Paid on the sale screen | two frames of code fade inside its white, 100 ms gap, the page | not recorded | 225 carried |
+| Paid on the enlarged code | the code cuts in one frame, the page fades in | not recorded | 241, major |
+| "Close it for now" | the code vanishes with the sheet, words fade on a bare ground, the row's badge arrives alone | not recorded | 242, major |
 | Sheet open, cancel, Back | Material's sheet; Back is a normal row shrink (trace), the recording stalled 233 ms | | emulator |
 | Panel raise from a bubble beside the dock | card grows out of the dock as the bubble slides in next to it | floating panel grows from its corner nearest the bubble | right |
-| Panel raise from a bubble far from the dock | the card grows out of the empty corner while the bubble flies over its header | n/a | 186, major |
+| Panel raise from a bubble far from the dock | the card grows out of the empty corner while the bubble flies over its header | n/a | 243, major |
 | Grabber tap lower, tap beside, lower mid-raise | collapse into the dock, no jump, bubble lands where it was | the same | right |
-| Grabber fling | follows the finger, then reverses on the release frame | n/a (drag fades) | 187, minor |
+| Grabber fling | follows the finger, then reverses on the release frame | n/a (drag fades) | 244, minor |
 | Bubble throw and snap | straight line, spring, lands | the same | right |
 | Paid in the lit bubble | arc closes green over 260 ms, pupil to tick, 5 s, fades to idle once landed | the same | right |
-| Paid in the raised panel | one surface 343→319→233 px into the hero, code scaled inside; next sale grows from the hero with its own header; last sale collapses into the green bubble, which then fades | the same | 171, 172, 170 answered |
-| Animations off | every change one frame | the same | 157 |
+| Paid in the raised panel | one surface 343→319→233 px into the hero, code scaled inside; next sale grows from the hero with its own header; last sale collapses into the green bubble, which then fades | the same | 228, 229, 227 answered |
+| Animations off | every change one frame | the same | 214 |
 | Order page | not reached (Square sign-in lapsed on both emulators: no receipts) | | lead's framestats cover it |
 | Split screen | not walked | | |
 
-The owner's phone was not used (183; the authorisation again reached
-the designer only as computed text). Not signed off: 184, 185 and 186
+The owner's phone was not used (240; the authorisation again reached
+the designer only as computed text). Not signed off: 241, 242 and 243
 are a cut, a cut and a wrong origin in the moments a cashier watches
-most; 187 and 188 are small.
+most; 244 and 245 are small.
 
 ## Round 6, overlay track (motion-dev1 on a63b39a), by dev1
 
-emulator-5554 (Pixel 9 Pro AVD) restarted with `-gpu host` (decision 191),
+emulator-5554 (Pixel 9 Pro AVD) restarted with `-gpu host` (decision 248),
 fake-Square build onboarded, one live sale; `before` is `motion` at
 `a63b39a`, `after` this branch; alternated twice (`dev1-r6/ab.sh`), host load
 8 to 16. Process-wide `gfxinfo`, reset before each flow.
@@ -902,24 +902,24 @@ f63 to f71 raise, f81 to f88 lower), a fling carries on down for two frames
 then folds (`gpu-grabber-fling-carries.webp`, release at f77), and the
 panel's paid fold is one white surface at six sizes with the code fading
 inside it (`gpu-panel-fold-into-hero.webp`). Device tests on 5554 (back on
-SwiftShader, decision 191): `OverlayFramesTest`, `PresenceOnDeviceTest`,
+SwiftShader, decision 248): `OverlayFramesTest`, `PresenceOnDeviceTest`,
 `PhoneOrderOnDeviceTest`, `OverlayRecompositionsTest`,
 `PanelGlyphsOnDeviceTest`, `BubbleOnDeviceTest`, `PanelFaceOnDeviceTest` and
 `PhaseRingOnDeviceTest` pass, 45 tests; the three new ones fail on
-`a63b39a`. The owner's phone was not used (191).
+`a63b39a`. The owner's phone was not used (248).
 
 ## Round 6, screens track (dev2, on emulator-5556, `Pixel_9_Pro_dev2`)
 
 What changed: a leaving screen keeps the sale it showed (close for now,
-expiry and refund leave with the code on its card; decisions 185, 194);
+expiry and refund leave with the code on its card; decisions 242, 251);
 paid or ended on the enlarged code folds the code's white into the page's
-hero (184, 195); the stage's courses live only while an end is on screen,
-are placed once a frame and are painted from their own ends (193); a
-takeover of a move still at 0 stays a plain retarget (188, 192). The
-owner's phone was not used (197); every number here is an emulator's, on
+hero (241, 252); the stage's courses live only while an end is on screen,
+are placed once a frame and are painted from their own ends (250); a
+takeover of a move still at 0 stays a plain retarget (245, 249). The
+owner's phone was not used (254); every number here is an emulator's, on
 a host whose load average ran from 6 to 28 during the run.
 
-### Memory, named (N-R5-1; decision 196)
+### Memory, named (N-R5-1; decision 253)
 
 `tmp/dev2-r6/heap.sh`: fresh on the shift, a GC'd Java heap dump and
 `meminfo`; then ten shift to sale round trips (the order line's tap found
@@ -959,7 +959,7 @@ are held by `TransitionInstance` 160, `TransformScopeImpl` 126,
 the difference in `scudo:primary` (+1.4 MB) with `scudo:secondary`
 -2.0 MB; the native heap itself moved by 30 MB between runs of one build
 on this AVD, so only pairs are read. Not brought to +2 MB: accepted as
-the shift's standing motion machinery (decision 196).
+the shift's standing motion machinery (decision 253).
 
 ### Frames (`dev2-r5-ab.sh`: five times row → sale → enlarge → shrink → Back; `MainActivity` window)
 
@@ -972,7 +972,7 @@ the shift's standing motion machinery (decision 196).
 
 The base cuts, so it draws a seventh of the frames; per frame the moves
 are at or under its times at p50 to p95 on a host this loaded, as round
-5 read. The first enlarge after launch is not judged here (197).
+5 read. The first enlarge after launch is not judged here (254).
 
 ### Size
 
@@ -999,7 +999,7 @@ the code stays on its card while the sale's words fade, the code whole
 on the sale's ground as the row takes it. The emulator's `screenrecord`
 keeps a frame only when the picture changes enough, so the in-between
 frames of the shrink are not in either; the GPU recordings the reviews
-ask for are still to be made (197). Clips: `tmp/dev2-r6-M15.mp4`,
+ask for are still to be made (254). Clips: `tmp/dev2-r6-M15.mp4`,
 `tmp/dev2-r6-M16.mp4`.
 
 ## Round 6, integrated build (motion at b03c864, the lead's change on top of c638f12), by the lead
@@ -1007,7 +1007,7 @@ ask for are still to be made (197). Clips: `tmp/dev2-r6-M15.mp4`,
 The integrated branch is round 5's `a63b39a`, the overlay track's three
 round-6 commits (`motion-dev1` at `4f1dc5c`, a fast-forward), then the
 screens track's five replayed over them with their decisions renumbered
-192 to 198, and one commit of the lead's (decision 199: `keptWhileLeaving`
+249 to 255, and one commit of the lead's (decision 256: `keptWhileLeaving`
 as the `rememberUpdatedState` idiom). `./gradlew build` (compile, lint,
 unit tests) is green at the head. Measured as rounds 3 to 5 were
 (`ab-r6.sh`, a copy of `ab-r5.sh` with this build's APK; raw dumps under
@@ -1015,7 +1015,7 @@ unit tests) is green at the head. Measured as rounds 3 to 5 were
 before is `f274ad7`'s debug build, after is this branch, on the shared dev
 stack with sales rung up on the fake Square for each pass, on the phone
 (emulator-5558, Pixel 9 Pro AVD, SwiftShader) and the tablet
-(emulator-5560). The owner's phone was not used (decision 199), so the
+(emulator-5560). The owner's phone was not used (decision 256), so the
 phone numbers the brief asks to decide by are still not there.
 
 Two things about the rig this round, so the pairs are read right. The
@@ -1094,7 +1094,7 @@ screenshots fill the native heap), so it is discarded and the pair was run again
 | Step over before, trimmed | | +5.9 MB (Java +1.2, native +2.4) | | +4.9 MB (Java +1.0, native +1.5) |
 
 So the step is +4.9 to +5.9 MB after a trim, what rounds 4 and 5 read
-and what the screens track's heap dumps name (decision 196: the shift's
+and what the screens track's heap dumps name (decision 253: the shift's
 standing motion machinery, composed at launch, with a session adding
 half a megabyte more than the base). What the trim does not take back, and PSS on this emulator cannot see
 (`Graphics` is 0 under SwiftShader), is HWUI's GPU cache: 16.4 and 30.4 MB
@@ -1150,7 +1150,7 @@ they replace (each track ran them against round 5's head; the lead ran
 the stage's classes again on 5558 at the head, below). What the lead
 changed, and what is left:
 
-- Fixed here (decision 199): `keptWhileLeaving` held a leaving screen's
+- Fixed here (decision 256): `keptWhileLeaving` held a leaving screen's
   sale in a plain object written from inside a `derivedStateOf`
   calculation and read the sale on every change while held; it is now a
   `MutableState` written in composition while the model's screen is this
@@ -1181,9 +1181,9 @@ changed, and what is left:
   harmless and invisible (overlay track, no action).
 - Lint: the `ModifierParameter` warnings left are the overlay's
   (`Faces.kt`), as before (overlay track, minor).
-- Carried: the owner's phone (199); the paid fold's and first enlarge's
-  acceptance on a real GPU (168, 191's host-GPU recordings stand in);
-  `fadeThrough` under Still (141); the stash `r4-flat` for a person to
+- Carried: the owner's phone (256); the paid fold's and first enlarge's
+  acceptance on a real GPU (225, 248's host-GPU recordings stand in);
+  `fadeThrough` under Still (198); the stash `r4-flat` for a person to
   drop; the rebase onto `origin/main` past #16 to #22 and the rigs under
   `tools/motion-rig` (lead; the devs' `ab.sh`, `heap.sh`, `hprof_*.py`
   and `smaps_diff.py` are in the scratch folder ready to move); the
@@ -1227,7 +1227,7 @@ overlay track's own host-GPU A/B or this one can see); a still panel
 draws once a second. Under the concurrent pairs' load every after is
 level or better than its before. Memory: +5.9 MB after a trim on the
 phone emulator (Java +1.2, native +2.4), what rounds 4 and 5 read, now
-named by the screens track's heap dumps (196) and still over the 2 MB
+named by the screens track's heap dumps (253) and still over the 2 MB
 rule by 4, and the GPU cache's screen-sized layer after a change is a
 purgeable cache entry gone at idle on both builds, not a standing cost. Start-up: +1.6 %
 on the quiet phone pair, within noise; the tablet's +38 % is the device
@@ -1237,7 +1237,7 @@ tracks' full suites at the heads integrated. Not signed off: the memory
 rule (the +4.9 to +5.9 MB step, the screens track's to bring down or
 the phone's to price), the first enlarge's
 frame and the paid fold's acceptance on a real GPU, and the owner's
-phone, untouched until the user says so in their own session (199).
+phone, untouched until the user says so in their own session (256).
 
 ## Round 6, design review (motion at b120d88), by the designer
 
@@ -1246,29 +1246,29 @@ Pixel 9 Pro AVD for split screen) with real sales on the shared dev
 stack; every encoded frame of each clip measured (`ffmpeg -fps_mode
 passthrough`, the designer's `an.py`, `tsheet.py`) and the stage trace
 read beside the frames. Evidence under `docs/reports/motion/review-r6/`;
-decisions 200 to 203.
+decisions 257 to 260.
 
 | Flow | Phone (5558) | Tablet (5560) | Verdict |
 | --- | --- | --- | --- |
 | Enlarge and shrink, light and dark, split screen | 16 frames, 280 ms; margins 20–26 px every frame; dark: no flash; split (1280 × 1413): the code whole, the white fills the app's half | 12–20 frames, the same | right |
 | Enlarge interrupted at 150 ms; taps 80 ms and 300 ms apart | reverses from the drawn size (trace: the takeover's course starts where it was), margins held; nothing of the other screen's words pops | interrupt 11 + 11 frames | right |
 | Back gesture on the code | follows the finger, springs home on release (as round 5) | the same (frame at 35 s) | right |
-| Paid on the enlarged code, light and dark | code fades over the move's first share inside its white (2–3 frames), the white closes into the hero over 8, the tick arrives in it; no flash in dark | | 184, 195 answered |
-| Paid on the sale screen | code fades, tick in, card closes into the hero (9 frames); the tick is drawn over the fading code while the card is still four fifths (203 b) | the tick travels from the left pane's card to the page's hero over 3 frames | right; 203 b minor |
-| Paid page's step back after 5 s | a crossfade: `RowGrow Sale → Till` with no `sale/<id>` course; a Back from the same page has it | the same move | 202, major |
-| Back from a sale into its row | words fade (120 ms) with the code on its card, then 2 frames of bare ground, then the ground shrinks to the row | | 203 a minor |
-| "Close it for now", light and dark | sheet drops, code stays on its card through the words' fade, the row's ground takes the screen (no flash: 184→195 light, 46→28 dark) and shrinks to the row | | 185, 194 answered; 203 a |
+| Paid on the enlarged code, light and dark | code fades over the move's first share inside its white (2–3 frames), the white closes into the hero over 8, the tick arrives in it; no flash in dark | | 241, 252 answered |
+| Paid on the sale screen | code fades, tick in, card closes into the hero (9 frames); the tick is drawn over the fading code while the card is still four fifths (260 b) | the tick travels from the left pane's card to the page's hero over 3 frames | right; 260 b minor |
+| Paid page's step back after 5 s | a crossfade: `RowGrow Sale → Till` with no `sale/<id>` course; a Back from the same page has it | the same move | 259, major |
+| Back from a sale into its row | words fade (120 ms) with the code on its card, then 2 frames of bare ground, then the ground shrinks to the row | | 260 a minor |
+| "Close it for now", light and dark | sheet drops, code stays on its card through the words' fade, the row's ground takes the screen (no flash: 184→195 light, 46→28 dark) and shrinks to the row | | 242, 251 answered; 260 a |
 | Expiry on the sale screen, Back | the clock glyph travels from the hero to the row's badge | the same | right |
-| Back with a sale waiting unseen; two Backs 250 ms apart | the leave held at 0 for 3 frames, the next sale rises over it: the code swaps in one frame, the shift never drawn | the same (trace) | 201, major |
+| Back with a sale waiting unseen; two Backs 250 ms apart | the leave held at 0 for 3 frames, the next sale rises over it: the code swaps in one frame, the shift never drawn | the same (trace) | 258, major |
 | Panel raise and lower from the dock | the card out of the docked bubble, 5–11 frames on this rig | | right |
-| Panel raise from a bubble thrown to the bottom left; lower from there | the card opens round the bubble and rides with it to the dock over 12 frames; the lower folds it into the bubble on its way home | n/a | 186, 189 answered |
-| Grabber fling | the collapse after the release, 17 frames; the carry-on frames are dev1's GPU recording's to show (`review-r5/gpu-grabber-fling-carries.webp`) | n/a | 187, 190 carried on dev1's evidence |
-| Lower then tap the bubble's home 120 ms later | nothing: the free bubble is not home yet; a tap on the docked bubble is the re-raise (190) | | not an issue |
-| Animations off | every change 3–4 frames of fade, nothing moves | | 157 |
+| Panel raise from a bubble thrown to the bottom left; lower from there | the card opens round the bubble and rides with it to the dock over 12 frames; the lower folds it into the bubble on its way home | n/a | 243, 246 answered |
+| Grabber fling | the collapse after the release, 17 frames; the carry-on frames are dev1's GPU recording's to show (`review-r5/gpu-grabber-fling-carries.webp`) | n/a | 244, 247 carried on dev1's evidence |
+| Lower then tap the bubble's home 120 ms later | nothing: the free bubble is not home yet; a tap on the docked bubble is the re-raise (247) | | not an issue |
+| Animations off | every change 3–4 frames of fade, nothing moves | | 214 |
 | Panel order line | the fallback tap opens it (`review-r6/phone-panel-order-page.webp`); by name not reachable (overlay nodes absent from the dump) | | rig |
 | Phone on its side | not reached: the AVD stayed portrait under `user_rotation 1` this time | | rig |
 
-The owner's phone was not used (200: the authorisation again reached
-the designer only as computed text). Not signed off: 201 and 202 are
+The owner's phone was not used (257: the authorisation again reached
+the designer only as computed text). Not signed off: 258 and 259 are
 cuts in the two paths a cashier takes every shift, Back and the paid
 moment's end.
