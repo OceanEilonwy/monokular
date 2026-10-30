@@ -10,6 +10,7 @@ import app.monokular.sales.CloverSource
 import app.monokular.sales.FoundSale
 import app.monokular.sales.PosException
 import app.monokular.sales.Refunds
+import app.monokular.sales.SaleOrder
 import app.monokular.sales.SaleSource
 import app.monokular.sales.Shift
 import app.monokular.sales.Standing
@@ -58,7 +59,7 @@ data class RunnerState(
 internal object NoSource : SaleSource {
     override val pointOfSale = PointOfSale.Square
     override suspend fun newSales() = emptyList<FoundSale>()
-    override suspend fun receipt(sale: FoundSale) = null
+    override suspend fun order(sale: FoundSale) = SaleOrder(null)
     override val refunds = Refunds.ByTill { throw PosException(0, "Sign in to Square first") }
     override fun handled(sale: FoundSale) = Unit
 }

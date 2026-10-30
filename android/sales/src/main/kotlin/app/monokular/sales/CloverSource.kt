@@ -1,7 +1,6 @@
 package app.monokular.sales
 
 import app.monokular.core.PointOfSale
-import app.monokular.receipt.Receipt
 import java.time.Duration
 import java.time.Instant
 
@@ -114,10 +113,11 @@ class CloverSource(
         cursor.save(since.toString(), handled)
     }
 
-    override suspend fun receipt(sale: FoundSale): Receipt? {
-        val orderId = sale.orderId ?: return null
-        if (merchant.country == null) return null
-        return CloverReceipts.of(api.order(merchant.id, orderId), merchant, sale)
+    /** The receipt alone: the till reads no customer from Clover's order. */
+    override suspend fun order(sale: FoundSale): SaleOrder {
+        val orderId = sale.orderId ?: return SaleOrder(null)
+        if (merchant.country == null) return SaleOrder(null)
+        return SaleOrder(CloverReceipts.of(api.order(merchant.id, orderId), merchant, sale))
     }
 
     override val pointOfSale = PointOfSale.Clover

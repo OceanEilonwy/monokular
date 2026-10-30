@@ -23,14 +23,12 @@ interface SaleSource {
      */
     suspend fun newSales(): List<FoundSale>
 
-    /** The sale's receipt, or null when it can't be read. */
-    suspend fun receipt(sale: FoundSale): Receipt?
-
     /**
-     * The sale's receipt and whom it's for, from one read of its order: the
-     * receipt alone ([receipt]) at a point of sale that names no customer.
+     * The sale's receipt and whom it's for, from one read of its order: a
+     * null receipt when it can't be read, and no name at a point of sale
+     * that gives none.
      */
-    suspend fun order(sale: FoundSale): SaleOrder = SaleOrder(receipt(sale))
+    suspend fun order(sale: FoundSale): SaleOrder
 
     /** How a sale never paid in Monero is refunded at this point of sale. */
     val refunds: Refunds
@@ -42,7 +40,8 @@ interface SaleSource {
 /**
  * What the till takes from a sale's order at the point of sale: its
  * receipt, and the customer's name when the point of sale gives one
- * (Square's fulfillment recipient). Both stay on the device ([TillSale.receipt]).
+ * (Square's fulfillment recipient). The name stays on the device; the
+ * receipt leaves it only in the sale's code ([TillSale.receipt]).
  */
 data class SaleOrder(val receipt: Receipt?, val customerName: String? = null)
 

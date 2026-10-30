@@ -289,8 +289,8 @@ class CloverSourceTest {
     @Test
     fun `a merchant whose country isn't known gets the plain code`() = runBlocking {
         val sale = FoundSale("PAY_MONERO_1", 2205, "USD", null, "ORDER_CL_1", "2026-10-28T08:56:00Z", null)
-        assertNull(source(at = merchant.copy(country = null)).receipt(sale))
-        assertNull(source().receipt(sale.copy(orderId = null)))
+        assertNull(source(at = merchant.copy(country = null)).order(sale).receipt)
+        assertNull(source().order(sale.copy(orderId = null)).receipt)
         assertEquals(0, server.requestCount)
     }
 }

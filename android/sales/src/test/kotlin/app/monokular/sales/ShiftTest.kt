@@ -4,7 +4,6 @@ import app.monokular.core.AppIdentity
 import app.monokular.core.Connection
 import app.monokular.core.MonokuloApi
 import app.monokular.core.PointOfSale
-import app.monokular.receipt.Receipt
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
@@ -26,7 +25,7 @@ private class SlowSource(private val takes: Duration = Duration.ZERO) : SaleSour
         delay(takes)
         return emptyList()
     }
-    override suspend fun receipt(sale: FoundSale): Receipt? = null
+    override suspend fun order(sale: FoundSale) = SaleOrder(null)
     override val refunds = Refunds.ByTill {}
     override fun handled(sale: FoundSale) = Unit
 }

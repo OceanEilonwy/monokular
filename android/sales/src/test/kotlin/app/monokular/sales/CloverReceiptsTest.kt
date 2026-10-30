@@ -38,7 +38,7 @@ class CloverReceiptsTest {
         val api = CloverApi(OkHttpClient(), config, CloverAuth(OkHttpClient(), config, tokens, now))
         val source = CloverSource(api, config, merchant, MemoryCursor(), MemoryTenders(), now)
         server.enqueue(MockResponse.Builder().code(200).body(cloverResource("order.json")).build())
-        val receipt = assertNotNull(source.receipt(sale))
+        val receipt = assertNotNull(source.order(sale).receipt)
         val request = server.takeRequest()
         assertEquals("/v3/merchants/MCLOVER00001/orders/ORDER_CL_1", request.url.encodedPath)
         assertEquals("lineItems", request.url.queryParameter("expand"))

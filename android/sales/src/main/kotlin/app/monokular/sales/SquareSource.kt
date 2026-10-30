@@ -1,7 +1,6 @@
 package app.monokular.sales
 
 import app.monokular.core.PointOfSale
-import app.monokular.receipt.Receipt
 import java.time.Instant
 
 /** Where a source keeps its place, so a restart neither repeats nor skips sales. */
@@ -48,8 +47,6 @@ class SquareSource(
         val since = maxOf(Instant.parse(cursor.since() ?: sale.createdAt), Instant.parse(sale.createdAt))
         cursor.save(since.toString(), handled)
     }
-
-    override suspend fun receipt(sale: FoundSale): Receipt? = order(sale).receipt
 
     /** The receipt and the order's recipient ([SquareOrder.customerName]), from the one read. */
     override suspend fun order(sale: FoundSale): SaleOrder {
