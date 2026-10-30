@@ -8,6 +8,7 @@ import app.monokular.core.PointOfSale
 import app.monokular.core.SaleEvent
 import app.monokular.core.SalePhase
 import app.monokular.receipt.Receipt
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.advanceTimeBy
@@ -955,5 +956,72 @@ class TillTest {
         assertFalse(theirs.live)
         till.onStatus("ord_1", SalePhase.Paid, settled = true)
         assertEquals(Standing.Paid(late = true), till.sales.value.sales.first { it.orderId == "ord_1" }.standing)
+    }
+
+    /** The order as Monokulo reads it back with [confirmations] of the 10 the store asks for. */
+    private fun read(status: String, confirmations: Int, code: Int = 200) = MockResponse.Builder().code(code).body(
+        """{"order_id":"ord_1","status":"$status","is_final":false,"address":"8Bx","xmr_amount_piconero":80000000000,
+           "amount":"13.88","currency":"USD","merchant_order_id":"bP9m","expires_at":1761312000,
+           "confirmations":$confirmations,"confirmations_required":10,"_links":{"self":{"href":"/api/v1/orders/ord_1"}}}""",
+    ).build()
+
+    private fun event(name: String, at: Long = 5) = SaleEvent(name, "ord_1", "13.88", "USD", "8Bx", 80000000000, "bP9m", 1761312000, "", at)
+
+    @Test
+    fun `a sale keeps the store's threshold from its order, and its events say what they can of the count`() = runBlocking {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection)
+        server.enqueue(read("pending", 0, code = 201))
+        till.check()
+        val made = till.sales.value.sales.single()
+        assertEquals(0, made.confirmations)
+        assertEquals(10, made.confirmationsRequired, "the ring knows what it counts to before anything is paid")
+        till.onEvent(event("sale.seen"))
+        assertEquals(0, till.sales.value.sales.single().confirmations, "seen: in the pool, no block yet")
+        till.onEvent(event("sale.confirming"))
+        assertEquals(1, till.sales.value.sales.single().confirmations, "confirming: at least the block it's in")
+        till.onStatus("ord_1", SalePhase.Confirming, confirmations = 4, required = 10)
+        till.onEvent(event("sale.confirming"))
+        assertEquals(4, till.sales.value.sales.single().confirmations, "an event again never counts back what a read said")
+        till.onEvent(event("sale.seen"))
+        assertEquals(0, till.sales.value.sales.single().confirmations, "back in the pool (its block was lost), it has none")
+    }
+
+    @Test
+    fun `an older Monokulo that gives no count leaves the ring to fill by step`() = runBlocking {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        assertEquals(null, till.sales.value.sales.single().confirmationsRequired)
+        till.onStatus("ord_1", SalePhase.Confirming)
+        val shown = till.sales.value.sales.single()
+        assertEquals(1, shown.confirmations)
+        assertEquals(null, shown.confirmationsRequired, "nothing to count to")
+    }
+
+    @Test
+    fun `a confirming sale is read again at once and then every 20 s, until it's paid`() = runTest {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection)
+        server.enqueue(order())
+        till.check()
+        server.takeRequest()
+        server.takeRequest()
+        backgroundScope.launch { till.followConfirmations() }
+        testScheduler.advanceTimeBy(3 * Till.CONFIRMATIONS_READ_MS)
+        testScheduler.runCurrent()
+        assertEquals(2, server.requestCount, "nothing is read while no payment is on its way")
+        server.enqueue(read("confirming", 4))
+        server.enqueue(read("confirming", 5))
+        server.enqueue(read("paid", 10))
+        till.onEvent(event("sale.confirming"))
+        val counted = till.sales.first { it.sales.single().confirmations == 4 }.sales.single()
+        assertEquals(10, counted.confirmationsRequired, "read at once: the event only says it's in a block")
+        val start = testScheduler.currentTime
+        till.sales.first { it.sales.single().confirmations == 5 }
+        assertEquals(Till.CONFIRMATIONS_READ_MS, testScheduler.currentTime - start, "the next read is a wait later")
+        val paid = till.sales.first { it.sales.single().phase == SalePhase.Paid }.sales.single()
+        assertEquals(10, paid.confirmations)
+        for (n in 1..3) assertEquals("/api/v1/orders/ord_1", server.takeRequest().url.encodedPath, "read $n at its self link")
+        testScheduler.advanceTimeBy(10 * Till.CONFIRMATIONS_READ_MS)
+        assertEquals(5, server.requestCount, "paid, it's read no more")
     }
 }
