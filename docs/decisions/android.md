@@ -4520,3 +4520,22 @@ design unchanged.
     change, and the one instance lives for the activity, so with Kotlin
     2.4's strong skipping a composable taking it compares it by identity
     and still skips.
+303. **The showcase puts round 2 first, describes only the approved
+    design, and marks round 1's open items in place** (the lead designer,
+    round 2's report). `docs/reports/motion.md` opens with a "Round 2"
+    section, and round 1's sections keep their text under "Round 1:"
+    headings, so the before and after of round 1 still reads as it did.
+    The round-2 section describes the owner's approved canvas only.
+    Options the owner did not choose are not shown or compared there, so
+    an implementor reading the report has one design to build to. Round
+    1's open items are not deleted. Each is marked "Closed in round 2"
+    with the decisions that closed it, or "Still open" with where it
+    went, so the history stays checkable. The after clips were recorded
+    on `f2dd97f` on emulator-5558 by coordinates, because `uiautomator`
+    cannot read a screen while the bubble chases (294). They are in
+    `docs/reports/motion/after-r2/` beside `before-r2/`, with one
+    reduced-motion clip added (Back into a folded row with animations
+    off), because the round's reduced-motion behaviour had no recording.
+    The step-back clip shows only four frames of the move on the
+    emulator, the two stalls already on the phone list. The report says
+    so and points at the test that holds the move frame for frame.

@@ -1,14 +1,324 @@
 # Motion: the showcase
 
-What the motion round did to the Android till, for the owner. Written by
-the lead designer on 2026-10-30 against the integrated `motion` branch at
-`5fcf41e` (its code is `b03c864`, round 6's build; the commits after it
-are reports). The spec is [`docs/motion.md`](../motion.md), the numbers are
-[`motion/baseline.md`](motion/baseline.md) and
-[`motion/after.md`](motion/after.md), the calls are decisions 147 to 260
-in [`decisions/android.md`](../decisions/android.md).
+What the motion work did to the Android till, for the owner. Written by
+the lead designer on 2026-10-30. Round 2 comes first and is written
+against `motion-main` at `1afc52b` (its code is `f2dd97f`, round 2's
+final build; the commits after it are reports). Round 1, further down,
+was written against the integrated `motion` branch at `5fcf41e` (code
+`b03c864`). The spec is [`docs/motion.md`](../motion.md) (§12 and §13
+for round 2), the numbers are [`motion/baseline.md`](motion/baseline.md)
+and [`motion/after.md`](motion/after.md), and the calls are decisions
+147 to 303 in [`decisions/android.md`](../decisions/android.md).
 
-The design did not change: the panel with its grabber, the full-screen
+## Round 2: the waiting tray, Back, and the logo bubble
+
+What round 2 changed, from the owner's decisions of 2026-10-30 and the
+design he approved for them (the handoff canvas; `docs/motion.md` §12,
+decisions 266 to 268). The canvas is the only design this section
+describes. Where it is quoted, it is the approved artboard (`Main`,
+`TrayOpen`, `TrayDark`, `TrayFew`, `BackSequence`, `TraySpec`,
+`BubbleStates`, `BubblePrototype`, `BubbleSpec`), so an implementor has
+one design to build to, not a choice. The build is `motion-main` at
+`f2dd97f`, which includes every round-2 fix through decision 302; the
+commits after it are reports.
+
+### The clips
+
+Each "after" clip in [`motion/after-r2/`](motion/after-r2/) was recorded
+today on that build on the Pixel 9 Pro emulator (`emulator-5558`, light
+theme), against the local Monokulo and the stand-in Square, with real
+sales rung up and paid through the dev stack. Each "before" clip in
+[`motion/before-r2/`](motion/before-r2/) is `65a81c7`, the till as round
+1 left it, on the same emulator. All are 480 px wide (the bubble's crop
+300 px) and under 115 KB. The caveat from round 1 still applies: the
+emulator renders on the host's CPU and its recorder keeps a frame only
+when the picture changes, so read the clips for *what* happens, not for
+how smooth it is. The grey "This request could not be authorized · Sign
+in to Square again" notice at the top of the shift is the test till's
+Square connection on the dev stack. It is not part of the design.
+
+| Change | Before | After |
+| --- | --- | --- |
+| Back with a sale waiting | [back-with-sale-waiting](motion/before-r2/back-with-sale-waiting.mp4) | [back-with-sale-waiting](motion/after-r2/back-with-sale-waiting.mp4) |
+| Back into a folded row (the tray opens in place) | [back-with-sale-waiting](motion/before-r2/back-with-sale-waiting.mp4) (no tray) | [back-into-folded-row](motion/after-r2/back-into-folded-row.mp4) |
+| The tray folded and opened | (no tray) | [tray-open-fold](motion/after-r2/tray-open-fold.mp4) |
+| The paid fold and step-back | [paid-step-back](motion/before-r2/paid-step-back.mp4) | [paid-step-back](motion/after-r2/paid-step-back.mp4) |
+| The bubble: idle, waiting, paid, idle | [bubble-states](motion/before-r2/bubble-states.mp4), [close](motion/before-r2/bubble-states-close.mp4) | [bubble-states](motion/after-r2/bubble-states.mp4), [close](motion/after-r2/bubble-states-close.mp4) |
+| Animations off: Back into a folded row | | [reduced-motion-back](motion/after-r2/reduced-motion-back.mp4) |
+
+The tracks' and reviews' own round-2 recordings are evidence for the
+record: `bubble-states-r2*.mp4`, `bubble-live-paid-r2.mp4`,
+`back-with-sale-waiting-r2.mp4`, `paid-step-back-r2.mp4`,
+`tray-open-fold-r2.mp4`, and the review clips
+`back-from-folded-row-r2-review.mp4`,
+`paid-fold-and-step-back-r2-review.mp4` and
+`tray-fold-label-r2-review.mp4` in [`motion/`](motion/). The last three
+were recorded before fixes 296 to 302 went in.
+
+### 1. Back lands on the shift, and what waits goes in the tray
+
+**Before** (decision 258). On a sale, with another sale rung up in the
+meantime, Back did not reach the shift. The first sale's words faded,
+the waiting sale's code replaced the first sale's code in one frame, and
+the shift was never drawn. A second Back then shrank that sale into the
+plain list. The cashier pressed Back and got a different sale.
+
+**After** (decisions 266, 282, 289, 296, 297, 299, 300). Back always
+lands on the shift. The sale's words fade (`fadeQuick`), its card shrinks
+on `surface` into its row in the amber "Waiting for payment" tray, the
+code stays whole on the card while the card can hold it, and the row's
+words fade in at their own size. A sale that arrived meanwhile is
+already a row in the tray. Its bubble and notification still call, but
+it never takes over the screen
+(`after-r2/back-with-sale-waiting`: #1856 arrives while the cashier is on
+#1855, and Back lands #1855 in the tray's second row under it). A sale
+that arrives while the shift is on screen and at rest still rises by
+itself, because that is what the till is for (§12.6 4).
+
+- **Back into a folded row.** The sale being left can be the fourth or
+  later live sale, whose row is folded away. The tray then opens in the
+  composition that starts the Back (289), so the row exists on the first
+  frame, and the card lands in it with the code carried inside (299). In
+  `after-r2/back-into-folded-row`, #1874 rose by itself, four more were
+  rung while it showed, and Back lands it in the fifth row, with "Show
+  fewer" under the open tray. The tray stays open until "Show fewer" or
+  until the cashier leaves the shift.
+- **A row tapped far down the list.** Back brings the list back to where
+  it was when the row was tapped (296, 300), so the card lands where the
+  finger left it. A row that would then be off screen is put back under
+  the finger instead. A cancelled back peek keeps that place (297).
+- **A second Back while the shift is still arriving** lands on the shift
+  and never leaves the app (260 c, decision 283).
+- **Interruption.** A tap on a tray row during the landing starts the
+  next grow from where the stage is (249). A sale that arrives during
+  the landing goes into the tray under the moving card and does not take
+  the move over.
+- **Animations off.** A 120 ms crossfade with no movement. The tray
+  snaps open when it must (`after-r2/reduced-motion-back`).
+
+### 2. The waiting tray (A4, opens in place)
+
+**Before.** There was no tray. Waiting sales were rows among the rest of
+the shift, and a sale that waited unseen had nowhere to be seen.
+
+**After** (decisions 266, 269, 280, 281, 291, 292, 295). Under the chips
+are the header "Waiting for payment" with its count, then an amber
+`warnGround` tray holding a white `card` of every live sale, newest
+first. After three rows the tray folds into a 48 dp row, "Show N more
+waiting", in `ink` with a chevron. Tapped, the tray opens in place and
+the row reads "Show fewer". Everything else is under "Earlier". With no
+live sale there is no tray and no headers, and the shift reads as it
+always did. There is no "New" tag and no bottom bar.
+
+- **Motion.** Opening is the extra rows fading in where they will sit
+  (`fade`) while "Earlier" moves down on `settle`. Folding is the
+  reverse on `fadeQuick`. The tray has no height animation of its own:
+  it is its rows (`after-r2/tray-open-fold`). The fold's label fades
+  through, never across (291), and the chevron turns 180° in the layer.
+- **Under the finger.** Folding a scrolled tray keeps the fold row at the
+  pixel it was tapped at (292). A filter chosen after that still moves
+  its rows (295).
+- **Animations off.** Opening and folding jump, and the labels swap.
+
+### 3. The paid step-back is Back
+
+**Before** (decision 259). After the paid page's 5 s dwell, the page's
+words faded and the shift's list faded in. No surface moved, so the paid
+sale went nowhere.
+
+**After** (decisions 266, 285, 300). After the dwell, the paid page
+leaves exactly as a Back pressed on it does. The same `RowGrow` reverse,
+with the sale's course, shrinks the page into its row, which by then
+sits at the top of "Earlier". The hero's tick becomes the row's badge.
+The list comes back at the top, so the title, the chips and the tray
+are in view and the paid row is the first under "Earlier" (300). On the
+test clock it is the Back frame for frame, within half a pixel
+(`thePaidStepBackIsTheBack`, light and dark). In
+`after-r2/paid-step-back` the emulator shows only four frames of the move
+because of the two stalls in the performance section. The landing is the
+point: #1861 paid, and its row at the top of Earlier with the tray above.
+
+- **Interruption.** Back during the dwell runs the same exit at once.
+- **Animations off.** A 120 ms crossfade, as Back is.
+
+### 4. The frames tidied (260 a, b, c)
+
+- **(a) The code is never missing from its card** (289, 296, 299). On a
+  Back from a live sale and on "Close it for now", the code is drawn
+  whole on its card on every frame the row's ground holds the card. On a
+  Back into a low row, the card carries its code inside it, moved by
+  whole pixels so the modules stay sharp and the QR still scans, until
+  the shift's words are in. A code with no row to go to fades out over
+  the move. No frame shows bare ground. Round 1's evidence is
+  `review-r6/phone-back-into-row.webp`. The fix is in
+  `after-r2/back-into-folded-row` and in device tests that check every
+  frame (`backIntoAFoldedRowOpensTheTray`,
+  `backAfterASelfRiseIntoARowUnderTheFoldIsNeverBare`, light and dark).
+- **(b) One glyph in the card at a time** (286, 290). In the sale
+  screen's paid fold, the leaving code fades on the fold's own progress
+  and is gone by 27 % closed. The tick comes in over the fold's last
+  share (`crossfadeOnTrack`), so it is never drawn over the code. Round
+  1's evidence is `review-r6/phone-paid-fold-on-sale.webp`, frames 3 to
+  6. The fix is at the start of `after-r2/paid-step-back`.
+- **(c) A second Back stays in the till** (283): see change 1.
+
+### 5. The bubble is the logo (B5 c, the border chases)
+
+**Before.** The idle bubble was the grey mark. A waiting sale lit it with
+the loading mark's glints and a pulse. A payment closed a green ring
+round a tick on a pale green ground.
+
+**After** (decisions 267, 270 to 275, 293). One mark is drawn by `mark()`
+in every state, and only its colours and its border change
+(`after-r2/bubble-states`, `bubble-states-close` at 2×):
+
+- **Idle.** A grey mark with a grey border, the whole bubble at 55 %, on
+  a white ground at 90 %.
+- **Waiting.** A still orange lens with no glints. The border becomes a
+  pale #D8D2C7 track, and a black #1A1917 segment, 30 % of the border,
+  chases clockwise round it from 12 o'clock at constant speed, one turn
+  per 1250 ms (`Motion.chase`). The pulse rings out behind it, as
+  before, only while waiting and with the panel down.
+- **Paid.** The glass fills green from the core out, in four rings 60 ms
+  apart (`Motion.spread`). A white tick draws over it (`Motion.tick`)
+  once the core is green, and the border is whole and black. There is
+  no spinner, no green ring and no pulse. After `Dwell.PAID_MS` the
+  bubble returns to Idle the same way: green to grey, and the tick fades
+  out whole on `fadeQuick`, never un-drawn (293).
+- **Colours.** All are `Fixed`, the same in light and dark, because the
+  bubble sits over other apps. The two greens and the idle grey moved
+  into `Fixed` beside `Paid`. The ground is white in every state, and
+  `paidGround` left the bubble.
+- **TalkBack.** The bubble's window carries what the border no longer
+  says: "Monokular, $12.00 waiting for payment", then "seen on the
+  network", "confirming", "paid", or "nothing waiting".
+- **Interruption.** A payment that lands mid-turn stops the chase where
+  it is and fades the arc out as the track darkens (274). A sale that
+  ends mid-spread retargets each ring from where it is. A payment that
+  lands again during the tick's fade brings the tick back whole.
+- **Animations off.** No chase, so a waiting bubble shows the whole
+  border in ink. No pulse. The lens changes in one 120 ms fade, and the
+  tick appears whole.
+- **Cost.** Idle draws no frames. The chase's loop exists only while the
+  bubble is lit and shown (`onlyTheLitBubbleRunsALoop`). One frame of
+  the mark allocates nothing (`MarkOnDeviceTest`), and nothing
+  recomposes through the chase, the spread or leaving Paid
+  (`OverlayRecompositionsTest`).
+
+### Round 2's performance
+
+All of this is from [`motion/after.md`](motion/after.md), round 2's
+sections. Before is round 1's integrated build (`b03c864`) or round 2 as
+first integrated (`03116a5`, then `b692f01`), measured alternately in
+one session on the same emulator. Round 1's caveat applies: the
+emulators render through SwiftShader, so a pair says whether something
+is wrong, not how it feels.
+
+| Flow (`MainActivity`, last 120 frames) | Round 1's build | Round 2 |
+| --- | --- | --- |
+| Shift scroll with a full tray, phone: p99 (frames over 33 ms) | 68 and 58 ms (53, 15) | 44 and 32 ms (11, 1) |
+| Back into the tray ×10, phone: p99 | 78 to 85 ms (round 1's Back) | 73 to 80 ms |
+| Back into the tray ×10, tablet: p99 | 84 to 104 ms | 74 to 84 ms |
+| Tray opened and folded ×5, both emulators: p50 / p99 | (no tray) | 10 to 19 / 39 to 53 ms |
+| Paid step-back, phone: frames, max | 12, 210 to 237 ms (round 1's crossfade) | 12 to 18, 159 to 246 ms |
+| Cold start, phone, median of 3 | 1 502 and 1 553 ms | 1 507 to 1 585 ms (host noise) |
+
+- **The fixes cost nothing measurable.** Decisions 289 to 297, measured
+  against round 2 as integrated, were level pass for pass on both
+  emulators. Decisions 299 to 302 were checked by their device tests
+  only, as the owner asked.
+- **The bubble.** Idle draws 0 frames in 5 s on every build. Waiting
+  draws a frame a vsync (302 in 5 s, p99 16 to 24 ms), at the same cost
+  as the pulse it replaced. Paid and the dwell draw 135 to 143 frames
+  in 6.5 s, p50 5 to 10 ms. The process's first paid moment has one 200
+  to 300 ms frame on SwiftShader, and later ones are 17 to 32 ms.
+- **Memory.** The accepted step (+4.9 to +5.9 MB, decision 268) has not
+  grown. Round 2's tracks add nothing at rest: the foundation build
+  without them trims 0.8 to 1.2 MB *above* round 2. The extra +5 MB over
+  round 1's build is `main`'s own growth since `f274ad7` (Bell, Clover,
+  the wake-ups). The later fixes measured +0.1, −0.04, −0.23 (phone) and
+  +0.77 MB (tablet, one pass), all inside the noise. The 28 MB
+  screen-sized purgeable layer round 1 left in HWUI's cache after a Back
+  is gone: 2.2 MB, the baseline's size. After a self-rise and Back, 17 MB
+  of purgeable cache remains on both round-2 builds. It is not counted
+  in PSS on the emulator and is for the phone (decision 298).
+- **Tests.** The full device suite passed 220 of 220 at `63855a4`. At the
+  head, `RunningMovesTest` passed 55 of 55 and `TrayTest` 15 of 15.
+  `./gradlew build` is green.
+- **Against the owner's rules.** Every new animated value is read in a
+  layer, draw or layout lambda. Nothing allocates per frame. There is no
+  `delay()`, frame loop or reflection. The presets are `Motion`'s only
+  (`chase`, `spread` and `tick` joined them). There is one reduced-motion
+  switch, colours come only through roles and `Fixed`, no dependency was
+  added, and the code is always drawn whole, so it scans on every frame.
+
+### Round 2's open items
+
+None is a crash or a wrong state, and none blocks shipping.
+
+- **Screens, minor: the restored row is judged by indices** (decision
+  300). Whether the tapped row is "shown whole" is decided from item
+  indices recorded at tap time. If a section above the row changes
+  height after the payment (for example, the tray's fold changes), the
+  restored window can leave the row slightly lower than expected or cut
+  at the bottom edge. *Fix:* no change needed to ship. The code falls
+  back to 296's finger place whenever the index leaves the window. If a
+  phone run shows a cut row, compare the measured offset in a
+  post-layout `SideEffect` and fall back to the finger place.
+- **Screens, minor: `WholeNode.carry()` repeats fixed work.** It
+  recomputes `Course.holding` on every frame, in both the layer block and
+  draw, although the answer is fixed for the whole move. It allocates
+  nothing, but the work is repeated. *Fix:* optional. Cache the answer
+  per move, keyed on the located course, if a phone profile ever shows
+  it.
+- **Screens, minor, not a regression: the 4th row is an empty slot for a
+  moment after the self-rise Back into the 5th row** (decision 299). The
+  4th waiting row, just above where the card lands, shows as an empty
+  slot for 1 frame in light and about 3 frames (about 50 ms) in dark,
+  until the in-place unfold reaches it. The row under the fold reveals
+  top-down while the landing row is already whole, so for a moment the
+  4th row looks like a hole (about 1.2 s into
+  `after-r2/back-into-folded-row`). The pre-fix clip shows the same
+  reveal; the ground used to cover it, and now the carried code does
+  until the words begin. The code is never dropped, and no frame shows
+  bare ground. *Fix:* no change this round. If the owner notices it on
+  his phone, start the unfold reveal of the rows under the fold when the
+  code begins to leave the card, not when the ground lands, so the row
+  above the landing row is already there when the code goes. Do it
+  inside the existing unfold progress, read in draw, with no new
+  animation. It is on decision 298's phone-read list.
+- **Both, minor: unchanged items that need a real phone.** The first
+  paid-bubble frame per process; the step-back's two stalls (the shift's
+  first frame, then one render-thread frame, the same on round 1's
+  crossfade); the 20-sale tray's first open (one 150 to 210 ms frame);
+  `restingOn`'s same-snapshot gap (288); "Show fewer" tapped during a
+  landing being ignored until the landing ends; and about 17 MB of
+  purgeable HWUI cache after a self-rise (298). *Fix:* the owner reads
+  these on his phone using decision 298's flow (`mem-r8c.sh`'s self-rises
+  and Backs, then `dumpsys meminfo` and `gfxinfo`). The bubble's warm-up
+  (the tick drawn once at alpha 0) is the fix only if the phone shows the
+  first paid frame.
+
+### What round 2 closed from round 1
+
+Round 1's open items further down are marked where they stand. Closed:
+Back with a sale waiting (major; 266, 282), the paid step-back as a
+crossfade (major; 266, 285), the memory step (major; accepted by the
+owner, decision 268, and not made worse), the code missing on a Back and
+a close for now (260 a; 289, 296, 299), the tick over the fading code
+(260 b; 286, 290), the second Back leaving the app (260 c; 283),
+`TillStage`'s two collectors (284), the `aSaleRisesDark` flake (guarded,
+with no recurrence in three full suites), the last `ModifierParameter`
+warnings (the overlay track's rename; 288), and the screen-sized HWUI
+layer after a row's Back (gone; the self-rise case is 298's). Still
+open: the owner's phone, the phone on its side, and the panel's order
+line by name.
+
+Everything below this point is round 1's.
+
+## Round 1: what it did
+
+In round 1 the design did not change: the panel with its grabber, the full-screen
 sale with the tinted X, the close sheet, the enlarged white code, the
 icon-only chip with its phase ring, the theme's colour roles are all as
 they were. What changed is how those states reach each other. Nothing
@@ -16,7 +326,7 @@ moves for its own sake; every move answers "where did that come from?"
 or "where did it go?", and a cashier who never notices any of it is the
 intended result.
 
-## The clips
+## Round 1: the clips
 
 Every "after" clip under [`motion/after/`](motion/after/) was recorded
 today on this build, on the Pixel 9 Pro emulator (`emulator-5558`,
@@ -34,7 +344,7 @@ on a phone. The frame timings are in the performance section; the
 feel of the moves on a real screen is still the owner's phone to
 judge (open items).
 
-To rerun the clips' scripts on round 2's build: `uiautomator dump`,
+To rerun these clips' scripts on round 2's build: `uiautomator dump`,
 which the screen-reading steps use, times out while the bubble's border
 chases (a code waiting keeps the window from going idle), so pay or
 expire the waiting sale before a step that reads the screen, or tap by
@@ -55,7 +365,7 @@ The longer round-1 to round-4 recordings in `motion/after/` (`phone-*`,
 and [`motion/review-r6/`](motion/review-r6/) are the evidence the reviews
 rested on; they stay for the record.
 
-## The improvements, in the order a cashier feels them
+## Round 1: the improvements, in the order a cashier feels them
 
 ### 1. The paid moment is one moment
 
@@ -253,7 +563,7 @@ sale, the enlarged screen and the panel. The windows are added once per
 open and removed after their exit lands, so an open no longer composes
 the panel from nothing.
 
-## Performance
+## Round 1: performance
 
 Before is `f274ad7`'s debug build, after is this branch, measured by the
 tech lead before and after *alternately in one session on one emulator*
@@ -348,7 +658,7 @@ loop of the app's own. Every spring and tween is a named preset in
 in `rememberMotion()`. No dependency was added; compose-bom 2026.09.00
 already had everything at minSdk 26.
 
-## What was deliberately not animated, and why
+## Round 1: what was deliberately not animated, and why
 
 - **The QR modules, a fade-in of the code, a redraw as it scales, a
   "scan me" shimmer.** The code is a bitmap scaled as one layer and
@@ -382,17 +692,19 @@ already had everything at minSdk 26.
   not seeded by velocity, re-measures the code per frame, ignored by
   Android 12+, clipped by the window, or a dependency.
 
-## Open items
+## Round 1: open items
 
-Everything the round leaves, by track and severity, with the fix each
-one points at. Nothing here is a crash or a wrong state; they are the
+Everything round 1 left, by track and severity, with the fix each
+one pointed at. Round 2 closed most of them; each is marked
+**Closed in round 2** or **Still open** with where it went. Nothing here is a crash or a wrong state; they are the
 places where a move is still a cut, a rule is not yet met, or a number
 does not exist because only the owner's phone can give it.
 
 ### Major
 
-- **Screens: Back with a sale waiting never shows the shift** (decision
-  258). The stage runs `RowGrow Sale → Till` for three frames at p = 0,
+- **Closed in round 2** (266, 282: Back always lands on the shift; the
+  waiting sale goes in the tray). **Screens: Back with a sale waiting
+  never shows the shift** (decision 258). The stage runs `RowGrow Sale → Till` for three frames at p = 0,
   then the model's `follow` goes to the waiting sale and a `Rise` takes
   the move over from 0: the first sale's words fade, its code is replaced
   by the next sale's in one frame, the shift is never drawn
@@ -404,8 +716,9 @@ does not exist because only the owner's phone can give it.
   reports to the bubble) instead of on the sales update; keep 249's
   takeover for everything else; a `RunningMovesTest` case that holds the
   `RowGrow` to p = 1 with the shift drawn before any `Rise` begins.
-- **Screens: the paid page's step back after the dwell is a crossfade**
-  (decision 259). The trace shows `RowGrow Sale → Till` with no
+- **Closed in round 2** (266, 285: the step-back is the Back, into the
+  row at the top of Earlier). **Screens: the paid page's step back after
+  the dwell is a crossfade** (decision 259). The trace shows `RowGrow Sale → Till` with no
   `sale/<id>` course, so the words fade and the shift fades in with no
   surface moving (`review-r6/phone-paid-stepback-crossfade.webp`); a Back
   on the same page a moment later leaves with the course and the ground
@@ -414,8 +727,9 @@ does not exist because only the owner's phone can give it.
   the glyph between hero and badge) on the `cameUpByItself` path, not
   only on `model.back`; test that the step back's trace carries the
   course and the hero glyph lands in the row's badge.
-- **Screens: memory after a trim is +4.9 to +5.9 MB over the baseline on
-  the phone emulator** (105 070 → 111 010 and 103 073 → 107 945 kB; Java
+- **Closed in round 2** (268: the owner accepted the step; round 2 does
+  not grow it). **Screens: memory after a trim is +4.9 to +5.9 MB over
+  the baseline on the phone emulator** (105 070 → 111 010 and 103 073 → 107 945 kB; Java
   +1.0 to +1.2, native +1.5 to +2.4) where decision 202 accepted +2 MB.
   Decision 253 names it (the shift's standing motion machinery) and
   accepts it; the rule is not met and only the owner's phone can price
@@ -424,7 +738,8 @@ does not exist because only the owner's phone can give it.
   the shared-surface and transition machinery off rows at rest (compose
   it on a change's first frame, or share one transition across the
   list) and re-measures with `mem-r6.sh`.
-- **Both: the owner's Pixel 9 Pro was not used.** The authorisation
+- **Still open** (decision 298's phone-read list). **Both: the owner's
+  Pixel 9 Pro was not used.** The authorisation
   reached every agent only inside the workflow's computed brief, which
   by their operating rules is not the user's consent, and the step
   installs builds over the owner's onboarded data on a personal device
@@ -440,36 +755,38 @@ does not exist because only the owner's phone can give it.
 
 ### Minor
 
-- **Screens: the code is not drawn on the frames where the row's ground
-  holds the whole screen** on a Back from a live sale and on a close for
+- **Closed in round 2** (289, 296, 299). **Screens: the code is not
+  drawn on the frames where the row's ground holds the whole screen** on a Back from a live sale and on a close for
   now (260 a): one or two bare-ground frames on the emulator, three or
   four at 120 Hz (`review-r6/phone-back-into-row.webp`). *Fix:* keep the
   code's end alive through the leaving screen's frames and draw the code
   whole while the card fits inside the ground's drawn bounds; test that
   every `RowGrow Sale → Till` frame whose ground contains the card's
   rest bounds draws the code.
-- **Screens: in the sale screen's paid fold the tick is drawn over the
-  fading code** while the card is still four fifths of its size, three
+- **Closed in round 2** (286, 290). **Screens: in the sale screen's
+  paid fold the tick is drawn over the fading code** while the card is still four fifths of its size, three
   frames of two glyphs in one card (260 b;
   `review-r6/phone-paid-fold-on-sale.webp`). *Fix:* fade the tick in over
   the last `crossfadeOnTrack` share of the fold, the code out over the
   first `fadeOutOnTrack`, as the code screen's fold already does; test
   that no frame draws both above a threshold alpha.
-- **Both: a second Back while the shift is still arriving goes to the
-  launcher** (260 c; the baseline does the same, so not a regression).
+- **Closed in round 2** (283). **Both: a second Back while the shift
+  is still arriving goes to the launcher** (260 c; the baseline does the same, so not a regression).
   A cashier who pressed Back twice meant the shift, and leaving the till
   is the one thing a stray press must not do. *Fix:* `StageBack` stays
   enabled while `screen == Till && stage.currentState !=
   stage.targetState` (`model.back(Till)` is already a no-op); a
   `StageBackTest` case with two Backs 250 ms apart from a sale ending on
   the shift with the activity never finishing.
-- **Screens: `TillStage` runs two `snapshotFlow`s on the same
-  predicate** (`currentState != targetState` for the frame-stamp loop,
+- **Closed in round 2** (284: one collector). **Screens: `TillStage`
+  runs two `snapshotFlow`s on the same predicate** (`currentState != targetState` for the frame-stamp loop,
   `==` to forget the held move): two collectors where one would do.
   *Fix:* one `LaunchedEffect(transition, geometry)`: on `false` call
   `held.during(current, current)`; on `true` run the `withFrameNanos`
   loop with the `finally` resetting `geometry.frame` to 0.
-- **Screens: `RunningMovesTest.aSaleRisesDark` failed once** on 5558
+- **Closed in round 2** (the `HeldMove` guard with its slow-frame
+  tests; no recurrence in round 2's full suites).
+  **Screens: `RunningMovesTest.aSaleRisesDark` failed once** on 5558
   under host load 13 to 16 (from frame 11 both screens read the move as
   `RowGrow` where `Rise` was asked, then the stage did not land before
   `SETTLE_FRAMES`); run alone twice it passes in 10 s. The symptom is a
@@ -479,8 +796,10 @@ does not exist because only the owner's phone can give it.
   and check `HeldMove` cannot start a new generation while
   `currentState != targetState`; guard it if it can, with the slow-frame
   test as the regression.
-- **Screens: HWUI's GPU cache holds one or two screen-sized purgeable
-  textures after a screen change** (16.3 to 30.4 MB against the
+- **Closed in round 2 for a row's Back** (2.2 MB after the trim, the
+  baseline's size); **still open after a self-rise** (17 MB purgeable,
+  decision 298, for the phone). **Screens: HWUI's GPU cache holds one
+  or two screen-sized purgeable textures after a screen change** (16.3 to 30.4 MB against the
   baseline's 2.2; 14.2 MB is one 1280 × 2856 RGBA screen). It is there
   right after launch, survives a round trip, is evicted by the code
   enlarge and by HWUI's idle purge about 15 s after the last draw on
@@ -491,13 +810,14 @@ does not exist because only the owner's phone can give it.
   rising sale page's or the shift's), fade per part or clip the layer to
   the moving surface, or release the layer when the change lands;
   otherwise leave it, noted here.
-- **Overlay: the remaining `ModifierParameter` lint warnings** are in
+- **Closed in round 2** (the overlay track's rename; 288 for the last
+  one). **Overlay: the remaining `ModifierParameter` lint warnings** are in
   `overlay/Faces.kt` (`PanelCard` and friends take a `wordsLayer`
   modifier not as the first optional `modifier` parameter); idiom only.
   *Fix:* name the parameter for what it is as `SaleDetail` did (`words`)
   with a `@Suppress("ModifierParameter")` and a one-line reason, or
   reorder to the convention.
-- **Both: not reached this round, so not judged.** The phone on its side
+- **Still open.** **Both: not reached this round, so not judged.** The phone on its side
   (the AVD stayed in portrait under `settings put system user_rotation
   1`; the rig, not the app), the panel's order line by name (overlay
   nodes are absent from the accessibility dump; the fallback tap opened
