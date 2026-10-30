@@ -120,6 +120,8 @@ class RunningMovesTest {
             if (changed(frames[1].bitmap, frames.first().bitmap, whole) || changed(frames[1].bitmap, frames.first().bitmap, card)) {
                 failures += "f1: the change's first frame is not the frame before it"
             }
+            val foot = Rect(card.left, card.bottom + 6f, card.right, card.bottom + 30f)
+            if (dark && inkAndWhite(frames.first().bitmap, foot).second <= FOOT_SHARE) failures += "f0: the card's foot is not under the code at $foot"
             for (f in frames.drop(1).dropLast(RunningMoves.SETTLE_FRAMES)) {
                 if (f.p >= 1f) continue
                 if (f.leavingCodes.none { it.width > 20f }) failures += "f${f.index}: the leaving sale's code card is gone before the move landed (p ${f.p})"
@@ -127,6 +129,9 @@ class RunningMovesTest {
                 val holds = g.left <= card.left + 1f && g.top <= card.top + 1f && g.right >= card.right - 1f && g.bottom >= card.bottom - 1f
                 val (ink, white) = inkAndWhite(f.bitmap, card)
                 if (holds && (ink < CODE_SHARE || white < CODE_SHARE)) failures += "f${f.index}: the row's ground at $g holds the card at $card, but no code is drawn there"
+                // On a phone the card's foot is under the code: its white never shows on a frame the code is not drawn (on the
+                // dark theme's ground, where it would be seen).
+                if (dark && ink < CODE_SHARE && inkAndWhite(f.bitmap, foot).second > FOOT_SHARE) failures += "f${f.index}: the card's foot at $foot is drawn with no code above it (p ${f.p})"
             }
         }
         check(name, dark, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures)
@@ -1278,6 +1283,9 @@ class RunningMovesTest {
 
         /** A region with this much of both modules and white has a code in it. */
         const val CODE_SHARE = 0.05f
+
+        /** More of a strip's pixels white than this, on a dark ground, is the code card's foot drawn there. */
+        const val FOOT_SHARE = 0.5f
 
         /** A text run with this much spread of luminance in its region has ink in it to be read. */
         const val INK_SPREAD = 12f
