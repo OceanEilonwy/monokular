@@ -213,7 +213,7 @@ class TrayTest {
         compose.mainClock.advanceTimeByFrame()
         val entering = recompositions.count("app.monokular.ui.SaleRow")
         repeat(10) { compose.mainClock.advanceTimeByFrame() }
-        assertTrue(entering <= 3, "only the three rows coming in compose: $entering")
+        assertTrue(entering in 1..3, "only the three rows coming in compose, and the tracer sees them: $entering")
         assertEquals(entering, recompositions.count("app.monokular.ui.SaleRow"), "no row recomposes over the next ten frames")
     }
 
