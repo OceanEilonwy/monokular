@@ -3756,7 +3756,7 @@ design unchanged.
     say those words, the agents did hear them; they could not act on
     them from where they stood.
 
-206. **The PR opens from the round's base, `f274ad7`, and the rebase on
+263. **The PR opens from the round's base, `f274ad7`, and the rebase on
     to today's `main` is the next job, not this one** (tech lead, ship
     step). `origin/main` has merged #18 (the loading mark on the lit
     bubble), #16, #17 and #19 (the Bell, Clover), #20, #21 and #22
@@ -3912,3 +3912,60 @@ design unchanged.
     (same emulator instance, one session, trimmed, pairs alternated), is
     within that instance's run-to-run noise, with the heap's object
     count read the same way.
+269. **Round 2's architecture: the tray is keyed items in the shift's one
+    list, Back and the dwell share `leave`, the stage reports its rest
+    to the model, and the bubble is one mark read in draw** (tech lead,
+    round 2 build; `docs/motion.md` §13; 266, 267). The tray has no node
+    of its own: `ShiftList.sections` (pure, JVM-tested) lays out header,
+    tray rows, fold, Earlier and the rest as items of the `LazyColumn`
+    the rows already live in, keyed `"tray"`, `"fold"`, `"earlier"` and
+    the sale id, so a row paid or ended is the same keyed item moving to
+    Earlier under M11's three `animateItem` specs, and each tray item
+    draws its slice of the `warnGround` behind itself; the fold is one
+    `rememberSaveable` beside the filter. Back into a folded row opens
+    the fold as the change starts (the shift reads the stage's
+    `currentState` once per change, at composition), not on landing,
+    because the ground needs a row to land in. `AppViewModel.leave` is
+    the one path for Back and the dwell; `TillNav.follow` on the shift
+    narrows to a live sale new since the last look while the stage rests
+    on the shift, which the stage reports through `FollowScreen`'s
+    `onLanded` (258's mechanism, kept for this reason alone: a sale
+    arriving mid-Back goes under the moving card into the tray, one
+    arriving on the resting shift still rises, §12.6 item 4); `leave`,
+    `openShift`, `closeSettings` and `backTarget` make no follow of
+    their own. The second Back (260 c) is `StageBack` enabled while the
+    stage is still arriving on the shift, read as a `derivedStateOf` at
+    the activity's root: two recompositions a change, none a frame. The
+    bubble's `AnimatedContent` becomes one `updateTransition(look)`
+    whose values (alpha, border colour, four ring colours, arc alpha,
+    tick trim) and the one infinite transition (pulse and chase) are
+    read only in `mark()`'s draw. `TillStage`'s two `snapshotFlow`s go
+    to the screens track with `Nav.kt`, not the lead, since the track
+    owns the file this round.
+270. **Three presets join `Motion`: `chase`, `spread` and `tick`; a
+    spring that must wait gets its wait in its spec** (tech lead, round
+    2 build; 267, §12.5). `chase` is `loop(CHASE_MS = 1250, LinearEasing)`
+    beside `pulse`, null under Still (a whole ink border). `spread` is a
+    list of four presets, ring `i` a `fade` with `delayMillis = i ×
+    SPREAD_STEP_MS` (60), so the rim is done at 380 ms; under Still each
+    ring is `fadeQuick` with no delay, one quick fade for the lens. The
+    tick is `sweep` started where the core's ring ends; a spring carries
+    no delay of its own, so `After` is a `Preset` whose spec (`Delayed`,
+    a `FiniteAnimationSpec` that holds the inner spec at its start for
+    the wait, as a tween's `delayMillis` does) plays the spring from a
+    later start: a start in the spec, never a `delay()`, interruptible
+    like any spring (retargeted mid-hold it restarts from where it
+    stands). Under Still the tick snaps whole. `MotionTest` holds all
+    three to their numbers and forms.
+271. **The bubble's new colours are `Fixed` by purpose; the mark's own
+    shades stay the mark's** (tech lead, round 2 build; 267, §12.6 item
+    5). `Fixed.PaidLight` #2EA052 and `Fixed.PaidMid` #238A43 for the
+    lens's lighter greens (`Fixed.Paid` is the core), `Fixed.ChaseTrack`
+    #D8D2C7 for the border's pale track, `Fixed.IdleBorder` #565656 out
+    of `Faces.kt`'s literal. The orange and grey shade lists in `Mark.kt`
+    are the SVG's own, as round 1 had them; the green list is built
+    there from the three `Fixed` greens. `BubbleColoursTest` holds the
+    canvas's contrast claims: the white tick at least 3:1 on every green,
+    ink at least 3:1 on the chase track, the greens darkening toward the
+    core. The "206." between 262 and 264 was 263 (a numbering slip in
+    65a81c7), relabelled here.

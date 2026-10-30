@@ -159,4 +159,63 @@ class MotionTest {
     fun `one paid dwell, five seconds, which reduced motion leaves alone`() {
         assertEquals(5_000L, Motion.Dwell.PAID_MS)
     }
+
+    @Test
+    fun `the bubble's border chases at one speed, a turn and a quarter of a second, and not at all under Still`() {
+        val chase = assertIs<TweenSpec<Float>>(full.chase!!.animation)
+        assertEquals(1250, chase.durationMillis)
+        assertEquals(Motion.CHASE_MS, chase.durationMillis)
+        assertEquals(0.5f, chase.easing.transform(0.5f), "constant speed: half the turn is half the time")
+        assertNull(still.chase, "under Still the border is whole ink, no loop")
+    }
+
+    @Test
+    fun `the lens spreads ring by ring from the core, each a fade a step after the last, done well inside the paid dwell`() {
+        assertEquals(4, Motion.SPREAD_RINGS, "the mark's rings: the core, the inner six, the middle twelve, the rim")
+        assertEquals(Motion.SPREAD_RINGS, full.spread.size)
+        val fade = assertIs<TweenSpec<Float>>(full.fade.fraction)
+        for (ring in 0 until Motion.SPREAD_RINGS) {
+            val step = assertIs<TweenSpec<Float>>(full.spread[ring].fraction)
+            assertEquals(fade.durationMillis, step.durationMillis, "ring $ring is a fade")
+            assertEquals(ring * Motion.SPREAD_STEP_MS, step.delay, "ring $ring starts a step after ring ${ring - 1}")
+        }
+        assertEquals(60, Motion.SPREAD_STEP_MS)
+        val done = ms(full.spread.last().fraction)
+        assertEquals(380, done.toInt(), "the rim is green by 380 ms")
+        assertTrue(done < Motion.Dwell.PAID_MS / 10, "the lens is long done before the paid moment ends")
+        for (ring in 0 until Motion.SPREAD_RINGS) {
+            val step = assertIs<TweenSpec<Float>>(still.spread[ring].fraction)
+            assertEquals(120, step.durationMillis, "under Still every ring is the quick fade")
+            assertEquals(0, step.delay, "and none waits: one fade, no spread")
+        }
+    }
+
+    @Test
+    fun `the tick sweeps on once the core is green, waiting in its spec and never overshooting`() {
+        val coreDone = ms(full.spread[0].fraction)
+        val sweep = ms(full.sweep.fraction)
+        val tick = full.tick.fraction.vectorize(Float.VectorConverter)
+        val from = AnimationVector1D(0f)
+        val to = AnimationVector1D(1f)
+        val rest = AnimationVector1D(0f)
+        assertEquals(coreDone + sweep, tick.getDurationNanos(from, to, rest) / 1_000_000, "the core's fade, then the sweep")
+        var t = 0L
+        while (t < coreDone * 1_000_000) {
+            assertEquals(0f, tick.getValueFromNanos(t, from, to, rest).value, "at $t ns the tick waits for the core")
+            assertEquals(0f, tick.getVelocityFromNanos(t, from, to, rest).value, "and is not moving")
+            t += 8_000_000
+        }
+        val sprung = full.sweep.fraction.vectorize(Float.VectorConverter)
+        var later = coreDone * 1_000_000
+        var seenOnItsWay = false
+        while (later <= (coreDone + sweep) * 1_000_000) {
+            val value = tick.getValueFromNanos(later, from, to, rest).value
+            assertEquals(sprung.getValueFromNanos(later - coreDone * 1_000_000, from, to, rest).value, value, "from the core's end the tick is the sweep itself")
+            assertTrue(value <= 1f, "the tick never runs past its end: $value")
+            if (value > 0.1f && value < 0.9f) seenOnItsWay = true
+            later += 8_000_000
+        }
+        assertTrue(seenOnItsWay, "the tick is drawn on its way, not only whole")
+        assertIs<SnapSpec<Float>>(still.tick.fraction, "under Still the tick is whole at once")
+    }
 }
