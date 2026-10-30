@@ -3969,3 +3969,17 @@ design unchanged.
     ink at least 3:1 on the chase track, the greens darkening toward the
     core. The "206." between 262 and 264 was 263 (a numbering slip in
     65a81c7), relabelled here.
+280. **The tray's sections are one pure list, and Needs action now lists
+    the live sales** (dev2, round 2, S1; `docs/motion.md` §12.3, §12.6
+    items 7 and 8). `ShiftList.sections(sales, filter, folded)` returns
+    the shift's items in order (`TrayHeader`, `Row`, `Fold`, `Earlier`)
+    beside `rows`, which it still uses for each filter's sales. Under
+    Needs action the tray holds every live sale, unfolded and with no
+    fold row, then the sales ended unpaid under Earlier: until now the
+    filter showed no live sale at all (a waiting sale is not one that
+    needs action, and the chip's count still says so), but the canvas
+    puts the tray on that filter, so its live sales are listed and the
+    count is unchanged. The Earlier header is only there when something
+    is under it (a tray of live sales alone reads as the tray), and with
+    no live sale under the filter the items are `rows` as they read
+    before, corners counted over the whole list.
