@@ -9,6 +9,14 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -226,5 +234,56 @@ class TrayTest {
         compose.mainClock.advanceTimeByFrame()
         compose.mainClock.advanceTimeByFrame()
         assertTrue(shows(sales[3]) && exists("Show fewer"))
+    }
+
+    /**
+     * The fold row's two labels are two different words: they fade through, never across (decisions 188, 291), so on
+     * no frame can both be read ("Show fewerore waiting"). Read as the label's ink at a quarter or more: two labels
+     * over each other draw more of it than the longer one alone.
+     */
+    @Test
+    fun theFoldLabelFadesThroughNeverAcross() {
+        show(busy(4))
+        val fold = { compose.onNode(hasContentDescription("Show", substring = true) and hasClickAction()) }
+        // The window's picture, read where the fold row is: the row's own layer is not one to capture.
+        val label = { ink(compose.onRoot().captureToImage(), fold().fetchSemanticsNode().boundsInRoot) }
+        val folded = label()
+        compose.mainClock.autoAdvance = false
+        fold().performClick()
+        var most = 0
+        repeat(30) {
+            compose.mainClock.advanceTimeByFrame()
+            most = maxOf(most, label())
+        }
+        val open = label()
+        assertTrue(most <= maxOf(folded, open) * INK_SLACK, "two labels drawn over each other: $most ink pixels, the labels alone $folded and $open")
+    }
+
+    /** The pixels of [image] inside [r] darker than a [SEEN] step from the tray's amber toward the ink: words that can be read. */
+    private fun ink(image: ImageBitmap, r: Rect): Int {
+        val pixels = image.toPixelMap()
+        val xs = r.left.toInt().coerceAtLeast(0) until r.right.toInt().coerceAtMost(pixels.width)
+        val ys = r.top.toInt().coerceAtLeast(0) until r.bottom.toInt().coerceAtMost(pixels.height)
+        var light = 0f
+        var dark = 255f
+        for (y in ys) for (x in xs) {
+            val l = luminance(pixels[x, y])
+            light = maxOf(light, l)
+            dark = minOf(dark, l)
+        }
+        val faint = light - (light - dark) * SEEN
+        var n = 0
+        for (y in ys) for (x in xs) if (luminance(pixels[x, y]) < faint) n++
+        return n
+    }
+
+    private fun luminance(c: Color) = 255f * (0.2126f * c.red + 0.7152f * c.green + 0.0722f * c.blue)
+
+    private companion object {
+        /** A frame's label ink may exceed the longer label's at rest by this much (anti-aliasing); two labels are far more. */
+        const val INK_SLACK = 1.1f
+
+        /** Words drawn at a quarter or more of their ink are words a cashier reads. */
+        const val SEEN = 0.25f
     }
 }

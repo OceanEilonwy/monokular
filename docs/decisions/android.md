@@ -4263,3 +4263,19 @@ design unchanged.
     tick cross at most four) and fails any frame with modules past 0.32
     closed or modules under the tick: before the change f7 and f8 failed
     in both themes, after it none.
+291. **The fold row's label fades through, not across: the canvas's
+    "crossfades" amended** (dev2, round 2 review; 188, TraySpec's motion
+    table "Fold label and chevron: fade 200 · Show 18 more waiting
+    crossfades to Show fewer"). A plain fade both ways drew the two
+    labels over each other for about 100 ms ("Show fewerore waiting",
+    the lead's fold21dark f7 to f12), which decision 188 forbids for two
+    different texts. The designer's call, recorded here: the canvas's
+    word was shorthand for "the label changes with a fade", so the fold
+    row uses the till's preset for unlike labels, the one "Copy address"
+    and "Done" use: the old out over `fadeQuick`, the new in over
+    `fadeThrough` (its `fade` after the quick one's length), the chevron's
+    turn on `settle` unchanged. `TrayTest.theFoldLabelFadesThroughNeverAcross`
+    reads the label's ink at a quarter or more on every frame of the
+    change; with the plain fade it found 6425 pixels where the labels
+    alone draw 5664 and 3397, with the fade through no more than the
+    longer label.
