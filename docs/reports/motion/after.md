@@ -1620,3 +1620,38 @@ round 6 read under load; not a quiet-pair number. Device tests: 209 of
 first paid frame and the step-back's stalls on a GPU, 260 a (not
 reproduced by anyone), and the owner's phone, which the coordinator
 measures after this run.
+
+## Round 2 review, screens track (dev2, emulator-5556 with the host GPU)
+
+What the review sent back to the screens track, fixed with a regression
+each (decisions 289 to 292):
+
+- **260 a, the bare ground on a Back from a folded row** (289): the tray
+  now opens in the composition that starts the change. The new
+  `backIntoAFoldedRowOpensTheTray` (light, dark) caught f2 and f3 at 100%
+  ground before and passes after; under Still the cut lands on the open
+  tray. On the device: a Back from the fifth waiting sale (#1817, tray
+  folded), 25 recorded frames, none more than 97% ground
+  (`back-from-folded-row-r2-review.mp4`); `gfxinfo` over the Back: 21
+  frames, p50 11 ms, p90 48, p99 109 (the shift's first frame, the
+  review's pre-existing first-frame stall).
+- **260 b, the tick over the fading code** (290): the leaving code fades
+  on the fold's own progress, gone by 27% closed. The tightened
+  `thePaidFoldDrawsTheTickOnlyInItsLastShare` fails f7 and f8 before, none
+  after; on the device the recorded frames show the code fading with no
+  tick, then the paid page (`paid-fold-and-step-back-r2-review.mp4`, which
+  also holds the step-back into the top of Earlier).
+- **The fold label** (291): fades through; `theFoldLabelFadesThroughNeverAcross`.
+- **The fold row under the finger** (292): `foldingAScrolledTrayKeepsTheFoldRowWhereItIs`
+  holds it within a pixel for thirty frames; before, it left the screen.
+  Five folds and opens of the tray (four waiting): 480 frames, p50 10 ms,
+  p90 19, p95 26, 3.5% janky (`tray-fold-label-r2-review.mp4`).
+
+Not reproduced here and left for the phone, as the review asked: the
+tablet's one "Close it for now" frame (a closed sale never folds, so not
+289's cause), the dwell step-back's two stalls, and the 20-sale tray's
+first open. The full `connectedDebugAndroidTest` on 5556 at dc7acd8:
+**214 tests, 0 failures**. The fresh install's Square sign-in now opens
+the real sandbox in a browser, so the till was connected with "Not now:
+only show other tills' sales"; the stand-in Square's sales arrive the
+same way.
