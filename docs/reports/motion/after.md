@@ -1272,3 +1272,351 @@ The owner's phone was not used (257: the authorisation again reached
 the designer only as computed text). Not signed off: 258 and 259 are
 cuts in the two paths a cashier takes every shift, Back and the paid
 moment's end.
+
+## Round 2, integrated build (motion-main at 03116a5, this report on top), by the lead
+
+Round 2 is `motion` rebased onto `main` (`ca702e4`, on `16dee74`: Bell,
+Clover, the loading mark's glints in the lit bubble from #18, the
+wake-ups), then dev2's screens track (eleven commits, the waiting tray,
+Back always on the shift, the step-back held to the Back, the second
+Back, `TillStage`'s one collector, the paid fold's tick) and dev1's
+overlay track (four commits, the lint rename, `mark()` with rings, arc
+and tick, the logo bubble, its device tests), each replayed by
+cherry-pick, linear, and one change of the lead's (decision 288: the
+last `ModifierParameter` warning). `./gradlew build` (compile, lint,
+unit tests) is green at the head.
+
+Measured as rounds 3 to 6 were, with this round's own flows (`ab-r7.sh`
+and `mem-r7.sh` in the lead's scratch folder, raw dumps under
+`measure-r7/<serial>/<variant><n>/`): **before is round 1's integrated
+build** (`app-debug-r6.apk`, motion at `b03c864`, the build round 1's
+verdict rested on) and **after is this branch**, alternately in one
+session on the same emulator over the same shared dev stack; memory is
+read against the baseline (`f274ad7`'s debug build) too, three builds
+alternated, since decision 268's "no worse" is against the step the
+baseline measures. Each pass rings five sales on the stand-in Square, so
+the shift holds a full tray (three rows and "Show N more waiting") on
+after and the same five sales as plain rows on before. The flows: the
+shift scrolled up and down three times; the tray opened and folded five
+times (after only: before has no tray); shift to sale and Back ten
+times (on after, Back lands in the tray); 10 s at rest for memory and
+HWUI's caches; then the bubble on the home screen, waiting alone for 5 s
+(after: the chase; before: the phase ring and the pulse), the newest
+pending order settled as paid (the spread, the tick and the 5 s dwell),
+then idle for 5 s; then three cold starts. The phone is emulator-5558
+(Pixel 9 Pro AVD, SwiftShader) and the tablet emulator-5560; the owner's
+phone was not touched. Recomposition counts are the device tests' (they
+run on the test clock, where a count means something): `TrayTest`,
+`RunningMovesTest.aBackIntoTheTrayRecomposesNothingPerFrame` and
+`OverlayRecompositionsTest`, below.
+
+### Phone (emulator-5558, SwiftShader), before and after alternately; both pairs concurrent with the tablet's (host load 6 to 9)
+
+`MainActivity`'s window, the last 120 frames of each flow from `framestats`
+(ms), with the process histogram's janky share. Before is round 1's build
+(`b03c864`), after this branch. The tray column is the after build's own
+flow (see below): before has no tray.
+
+| flow | before 1 | after 1 | before 2 | after 2 |
+| --- | --- | --- | --- | --- |
+| Shift scroll, full tray: p50 / p90 / p99 / max | 30.8 / 50.1 / 67.9 / 69.3 | 16.8 / 32.5 / 43.6 / 45.2 | 18.8 / 42.9 / 57.9 / 66.9 | 18.9 / 27.0 / 32.1 / 33.5 |
+| Shift scroll, frames over 16.7 / 33.4 ms of 120 | 119 / 53 | 67 / 11 | 92 / 15 | 114 / 1 |
+| Shift scroll, process janky | 9.3 % | 6.1 % | 2.5 % | 1.9 % |
+| Shift to sale and Back x10 (after: Back into the tray): p50 / p90 / p99 / max | 18.8 / 33.5 / 85.2 / 103.8 | 18.7 / 50.6 / 72.6 / 73.0 | 18.5 / 50.2 / 78.2 / 84.8 | 16.8 / 30.8 / 77.1 / 100.1 |
+| Round trip, frames over 16.7 / 33.4 ms of 120 | 79 / 13 | 69 / 23 | 70 / 37 | 62 / 11 |
+| Round trip, process janky | 14.8 % | 11.6 % | 14.2 % | 12.0 % |
+| PSS at rest on the shift, 10 s, untrimmed (kB) | 108 322 | 112 125 | 111 429 | 116 146 |
+| Cold start, median of 3 (ms) | 1 502 | 1 569 | 1 553 | 1 585 |
+
+### Tablet (emulator-5560), before and after alternately; both pairs concurrent with the phone's
+
+| flow | before 1 | after 1 | before 2 | after 2 |
+| --- | --- | --- | --- | --- |
+| Shift scroll, full tray: p50 / p90 / p99 / max | 35.7 / 37.6 / 46.4 / 47.5 | 19.5 / 44.2 / 67.0 / 67.3 | 25.1 / 33.8 / 50.8 / 56.0 | 12.3 / 30.9 / 50.8 / 54.3 |
+| Shift scroll, frames over 16.7 / 33.4 ms of 120 | 119 / 79 | 114 / 30 | 119 / 27 | 45 / 8 |
+| Shift to sale and Back x10: p50 / p90 / p99 / max | 19.4 / 67.0 / 83.5 / 110.6 | 16.8 / 29.8 / 75.7 / 80.7 | 16.8 / 37.6 / 103.5 / 106.5 | 11.9 / 27.0 / 74.8 / 75.4 |
+| Round trip, frames over 16.7 / 33.4 ms of 120 | 71 / 50 | 63 / 10 | 60 / 15 | 43 / 9 |
+| PSS at rest on the shift, 10 s, untrimmed (kB) | 113 720 | 124 691 | 113 457 | 117 889 |
+| Cold start, median of 3 (ms) | 1 562 | 1 787 | 1 512 | 1 746 |
+
+### The tray opened and folded (`tray-r7.sh`, after only, five waiting: three rows and "Show 2 more waiting")
+
+`ab-r7.sh`'s tray step never ran: its gate reads the screen through
+`uiautomator dump`, which waits for an idle UI, and the chasing bubble
+keeps the UI busy while a code waits (finding 8 below). The flow was run
+on its own by coordinates, the store first emptied and five sales rung,
+after the A/B and the memory passes, host load 1 to 5. Five opens and
+five folds; `MainActivity`'s window, the last 120 frames.
+
+| | phone 1 | phone 2 | tablet 1 | tablet 2 |
+| --- | --- | --- | --- | --- |
+| p50 / p90 / p99 / max (ms) | 11.1 / 19.6 / 56.9 / 57.9 | 11.4 / 19.4 / 44.4 / 48.2 | 10.7 / 16.8 / 52.7 / 62.5 | 10.7 / 16.8 / 49.1 / 50.1 |
+| Frames over 16.7 / 33.4 ms of 120 | 38 / 6 | 42 / 4 | 15 / 6 | 13 / 4 |
+| Process janky | 4.4 % | 4.1 % | 4.3 % | 3.3 % |
+
+An open is the two rows fading in where they sit and the fold row
+settling down by two rows on `settle`; a fold the reverse: a p50 of 11
+ms and five to six frames in ten openings over 33 ms (the frame the two
+rows compose on, 45 to 62 ms), the cheapest flow of the round on both
+emulators. With twenty waiting (the shared store at its fullest, before
+the passes were ordered), the open composed a screen's worth of rows in
+one frame at 150 to 210 ms (finding 5).
+
+### The bubble, idle, waiting and paid (`idle-r7.sh`, the phone; the bubble's window, process-wide `gfxinfo`)
+
+The shared store emptied first (every pending order expired), so the
+bubble is idle; then one sale rung (waiting), then that sale paid, then
+idle again. Before and after alternately, the host at load 2 to 3, no
+screencap during the paid moment in the `paid-r7.sh` rows.
+
+| | before 1 | after 1 | before 2 | after 2 |
+| --- | --- | --- | --- | --- |
+| Idle, frames in 5 s | 0 | 0 | 0 | 0 |
+| Waiting, frames in 5 s (p50 / p99 ms) | 302 (5 / 16) | 302 (19 / 21) | 301 (17 / 19) | 302 (5 / 16) |
+| Paid and the 5 s dwell, frames in 6.5 s (p50 / p95 / p99 ms) | 60 (21 / 40 / 61) | 66 (16 / 32 / 300) | 58 (20 / 38 / 69) | 67 (16 / 24 / 250) |
+| Idle again, frames in 5 s | 0 | 0 | 0 | 0 |
+| Paid alone, no screencap, one process: 1st / 2nd / 3rd paid, p99 ms | 57 / 36 / - | 200 / 17 / 32 | | |
+
+Idle draws nothing on either build: the after build's one infinite
+transition exists only while the bubble is lit (decision 274), and the
+test `onlyTheLitBubbleRunsALoop` holds it. Waiting is a frame a vsync on
+both: before, the phase ring's pulse; after, the chase, a constant-speed
+arc that by design redraws every frame of its 1250 ms turn, at the same
+cost per frame as the pulse it replaces (p50 5 to 19 ms on SwiftShader,
+the same spread as before's). Paid: the spread, tick and dwell draw 60
+to 67 frames in 6.5 s on both builds (the 200 ms spread and the dwell's
+end fade; nothing between), with one difference: **the process's first
+paid moment on the after build has one 200 to 300 ms frame** (frames 18
+to 20 of the moment, the render thread 230 to 250 ms in
+`IssueDrawCommands` for one frame and the two behind it queued on it),
+where before's first paid moment had the same shape at 44 to 62 ms, and
+the second and third paid moments in the same process are 17 and 32 ms
+on after against 36 on before. It is a one-off per process on
+SwiftShader (Skia's first pipeline for the new draw ops, the stroked
+tick with round caps and joins under the lens's clip being the new one;
+the arc has already drawn by then), not per-paid work: `MarkOnDeviceTest`
+holds that a frame of the mark allocates nothing and
+`OverlayRecompositionsTest` that nothing recomposes through the spread.
+On a device with a GPU and a persistent shader cache it is a few
+milliseconds once; it is listed as a minor for the overlay track to
+confirm on the phone, with the warm-up (drawing the tick once at alpha
+0, or at the window's first frame) as the fix if it shows.
+
+### The paid step-back (`stepback-r7.sh`, the phone, the dwell's end; `coldback`, one Back)
+
+A sale rung with the till on the shift rises to its code, is paid there
+(paid in place), dwells 5 s and steps back into the shift; the counters
+are reset 3.5 s into the dwell, so the frames are the step-back's. Three
+in one process on after, two on before (before's step-back is round 1's
+crossfade; after's is the row's grow reversed, the Back).
+
+| | after 1 | after 2 | after 3 | before 1 | before 2 |
+| --- | --- | --- | --- | --- | --- |
+| Frames drawn | 12 | 12 | 18 | 12 | 12 |
+| p50 / p90 / max (ms) | 75.9 / 221.3 / 246.0 | 104.6 / 196.2 / 200.1 | 25.7 / 166.8 / 187.0 | 156.0 / 221.7 / 237.3 | 120.2 / 204.3 / 209.9 |
+
+Frame by frame the two builds are the same shape: the first frame is
+130 to 180 ms on the UI thread (`PerformTraversals` to `DrawStart`: the
+shift composed and laid out under the sale as the change starts, the
+arriving screen's first frame of decision 235), the frame behind it
+waits that long for the thread, and at about 300 ms in there is one
+render-thread frame of 65 to 103 ms issuing the frame's GPU work and 55
+to 83 ms in the swap, with the UI thread's next frame waiting on it (the
+`sync` of 112 to 156 ms). The before build's crossfade has the same two
+stalls at the same two places, so this is the dwell's end as it was, not
+the round's move; and a single Back from a code taken on its own has the
+one stall too (`coldback`: 21 frames, p50 14.3, max 155 ms after 25 s on
+the code; 20 frames, p50 12.3, max 149 ms warm), where the A/B's round
+trips, read over their last 120 frames of ten trips, average it away
+(p99 73 to 85). HWUI's cache does not grow across the step-back (32.0 MB
+with the code up, 32.4 right after, the code screen's own layers that
+round 6 named), so the GPU stall is not a new layer of this move; what
+it is on SwiftShader, and whether it exists at all on a GPU, is for the
+phone. The step-back is the Back frame for frame on the test clock
+(`thePaidStepBackIsTheBack`, within half a pixel) and, here, the Back
+in cost: dev2's 100 to 150 ms gaps on 5556 are these two stalls.
+
+### Memory at rest, after a trim (`mem-r7.sh` and `mem-r7b.sh`, the phone emulator, alone, host load 1 to 4)
+
+Round 6's flow: fresh on the shift, ten shift to sale round trips and
+five order opens, 10 s at rest, a `RUNNING_CRITICAL` trim; PSS in kB,
+Java heap / native heap in brackets, HWUI's GPU cache from `gfxinfo`.
+Four builds, alternated in one session: the baseline (`f274ad7`), round
+1's integrated build (`b03c864`, the one round 6 measured), this round
+(`motion-main`), and, because the first three told two stories, the
+round's foundation (`ca702e4`: `main` at `16dee74` with round 1 rebased
+on it and the lead's presets, before either track's commit).
+
+| | base 1 | round 1, pass 1 | round 2, pass 1 | base 2 | round 1, pass 2 | round 2, pass 2 |
+| --- | --- | --- | --- | --- | --- | --- |
+| Fresh on the shift | 98 482 (16 832 / 14 260) | 102 047 (16 068 / 15 748) | 107 106 (16 296 / 15 256) | 99 086 (17 044 / 14 092) | 100 949 (15 900 / 16 060) | 107 403 (16 384 / 15 532) |
+| After the flow, 10 s at rest | 99 851 (15 372 / 15 440) | 112 530 (21 692 / 18 932) | 116 777 (21 632 / 17 760) | 101 856 (17 472 / 15 036) | 110 903 (21 192 / 18 156) | 115 386 (19 944 / 18 124) |
+| After the trim | 99 911 (15 232 / 15 420) | 105 654 (16 600 / 17 128) | 110 692 (16 440 / 16 736) | 100 120 (15 704 / 15 260) | 106 532 (17 152 / 17 684) | 110 698 (16 556 / 16 796) |
+| HWUI GPU cache after the trim (purgeable) | 2.27 MB (0.16) | 30.43 MB (28.29) | 2.20 MB (0.10) | 2.26 MB (0.15) | 30.49 MB (28.36) | 2.22 MB (0.12) |
+
+| | foundation 1 | round 2, pass 3 | foundation 2 | round 2, pass 4 |
+| --- | --- | --- | --- | --- |
+| Fresh on the shift | 112 112 (20 568 / 16 900) | 106 917 (16 364 / 15 316) | 111 811 (20 344 / 16 836) | 106 864 (16 576 / 15 496) |
+| After the trim | 112 033 (17 180 / 17 548) | 110 866 (16 456 / 17 240) | 111 752 (17 120 / 17 396) | 110 946 (16 512 / 17 312) |
+| HWUI GPU cache after the trim (purgeable) | 16.95 MB (14.81) | 2.26 MB (0.16) | 16.42 MB (14.28) | 2.22 MB (0.12) |
+
+Read one step at a time. Round 1's build over the baseline is the +5.7
+to +6.4 MB step decision 268 accepts (round 6 read +4.9 to +5.9). This
+round over round 1's build reads +4.2 to +5.0 MB more, which was the
+question of the round; but both heaps are flat (Java 16.4 to 16.6 MB
+against 16.6 to 17.2, native 16.7 to 16.8 against 17.1 to 17.7) and the
+whole difference is `Unknown` in `meminfo`'s summary (+5.6 MB: anonymous
+pages outside both heaps, where ART's class and JIT structures and the
+loaded code's relocations live), and it is already there **fresh on the
+shift**, before any flow (+5 to +6.5 MB at launch). The foundation build
+places it: `ca702e4` is `main` plus round 1 and nothing of this round,
+and it trims to 112.0 MB, **0.8 to 1.2 MB above this round's build**, not below
+it. So the +5 MB over round 1's build is `main`'s own growth between
+`f274ad7` and `16dee74` (Bell, Clover, the wake-ups: the debug APK grew
+from 24.5 to 26.0 MB before this round's 0.4 MB), which the owner's
+instance carries whether or not this branch lands, and the round's two
+tracks add nothing at rest: decision 268's "no worse" holds, with the
+tray's three keyed items and the mark's four colours and one path
+invisible under the run-to-run noise (±0.9 MB between passes of one
+build). Two things improved: the 28 MB purgeable screen-sized layer that
+round 1's build left in HWUI's cache after a Back (round 6, decision
+253's neighbour) is not there on this build (2.2 MB, the baseline's
+size, on every pass; the foundation build still shows 14.8 MB of it),
+since a Back now lands in a row rather than fading a whole screen; and
+the Java heap after the flow is 1.2 to 1.7 MB lower than round 1's.
+
+### Review findings (the integrated diff, every line)
+
+Read: `Mark.kt`, `Faces.kt`, `Overlay.kt`, `PhaseRing.kt`, `Nav.kt`,
+`AppViewModel.kt`, `MainActivity.kt`, `ShiftList.kt`, `Shift.kt`,
+`SaleText.kt`, `Icons.kt`, and every test the round added or changed,
+against the owner's rules, the canvas (`TraySpec`, `BubbleSpec`, the
+artboards) and `docs/motion.md` §12 and §13. Both tracks' values match
+the canvas where the canvas states them (the tray's 18/24/8/24 and
+22/24/8/24 headers, 24 dp corners on 4 dp padding, the 48 dp fold row,
+15 sp 600 ink and a 16 dp chevron, the 38 dp mark, 30 % arc from 12
+o'clock, the greens and the track, the labels); the presets are
+`Motion`'s only (`chase`, `spread`, `tick`, `fade`, `fadeQuick`,
+`settle`, `sweep`, `crossfadeOnTrack`); no `delay()`, `Handler`,
+reflection or frame loop in the diff; every animated value is read in a
+layer, a draw or a layout lambda; no colour outside `Theme.kt`'s roles
+and `Fixed`; nothing the round made dead is left (`PhaseRing`'s `paid`
+and `pupil`, the bubble's `LoadingMark`, `paidGround` and tick icon are
+gone from the bubble and still live where else they are used).
+
+1. **`SaleItem`'s `moves: Modifier`** (screens; fixed by the lead,
+   decision 288): the one `ModifierParameter` warning left; renamed and
+   given its default, lint is at the five pre-existing manifest and
+   network-config warnings.
+2. **The model's `restingOn`** (screens; read and left, decision 288):
+   nulled by `go` to another screen and set only by the stage's landing
+   report, so two `go` calls in one snapshot ending where the stage
+   rests would leave it null until the next change. No path in the till
+   does that (every `go` is its own snapshot: a tap, a Back, the dwell's
+   end, a sales change), and the fix the no-move branch of
+   `FollowScreen` could give would be coalesced the same way, so it is
+   recorded, not changed.
+3. **The held arc angle** (overlay; read and left, decision 274): the
+   draw writes the chase's last angle into a one-slot `FloatArray` so a
+   paid mid-turn fades the arc where it is. It is the one value in the
+   round written from a draw; nothing but that draw reads it and a frame
+   of the chase allocates nothing (`MarkOnDeviceTest`), so it stays.
+4. **The first paid moment's frame** (overlay; minor, open): one 200 to
+   300 ms frame on the process's first paid bubble on SwiftShader, the
+   render thread issuing the frame's draw commands, then 17 to 32 ms on
+   every later paid moment (before: 44 to 62 ms, then 36). A one-off
+   pipeline for the stroked tick under the lens's clip is the likely
+   cost; it should be read on the phone, and warmed (the tick drawn once
+   at alpha 0 on the window's first frame) only if the phone shows it.
+5. **Opening a tray of many** (screens; minor, noted): "Show 17 more
+   waiting" composes a screen's worth of rows in one frame (the list
+   composes what fits, not the 17): 150 to 210 ms on these emulators
+   with twenty waiting, 45 to 57 ms p99 with five (the tray flow below).
+   It is the first-frame cost of any list growing by a screen, the
+   canvas's "the rows fade in where they will sit" has no cheaper
+   reading, and a till with twenty sales waiting is the shared dev
+   store, not a counter; nothing to do unless the phone shows it.
+6. **The frames to tidy, 260 a** (screens; open, not reproduced):
+   neither the screens track's harness test (`backFromALiveSaleLeaves
+   WithItsCode`, light and dark, the code drawn whole on every frame the
+   ground holds its card) nor its five recordings on 5556 showed the
+   ground without the code on a Back from a live sale or a close-for-now;
+   the lead's A/B frames on 5558 and 5560 are not screenshots of every
+   frame and cannot add to that. Decision 286 names a likely mechanism;
+   it is for the phone, where the owner saw it.
+7. **The dwell's step-back frames** (screens; see the step-back flow
+   below): the move is the Back's frame for frame on the test clock
+   (`thePaidStepBackIsTheBack`, light and dark, within half a pixel);
+   dev2 saw 100 to 150 ms gaps in two of three runs on 5556 that moving
+   the service's and overlay's `PAID_MS` timers did not remove.
+8. **`uiautomator dump` times out while the bubble chases** (overlay;
+   a note, not a defect): the dump waits for an idle window and the
+   chase redraws every frame while a code waits, so test and
+   measurement scripts that read the screen through it (`ui.sh`) fail
+   until the sale is paid; TalkBack does not wait for idle and is
+   unaffected (`OverlayFramesTest` reads the label). The lead's tray and
+   paid flows went by coordinates for this reason.
+
+### Device tests
+
+The full `connectedDebugAndroidTest` on emulator-5558 at the integrated
+head: **209 tests, 0 failures, 0 skipped** in 12 min 11 s
+(`TrayTest` 12, `RunningMovesTest` 46, `OverlayFramesTest` 24,
+`StageBackTest` 9, `OverlayRecompositionsTest` 7, `MarkOnDeviceTest` 2,
+`InterruptTest` 45, `MotionFramesTest` 19, `PhaseRingOnDeviceTest` 6,
+the rest as round 1 had them), with `./gradlew build` (JVM tests
+`ShiftListTest` 29, `MarkGeometryTest`, `NavTest`, `SaleTextTest`, lint)
+green. Both tracks ran the full suite on their own emulators at the
+heads integrated (179 on 5554, 197 on 5556). Recomposition counts, from
+those tests on the test clock: opening the tray composes only the one to
+three rows coming in and nothing over the next ten frames
+(`openingTheTrayRecomposesOnlyTheRowsComingIn`); over a Back into the
+tray `SaleRow`, `TrayHeader`, `FoldRow` and `RowBadge` recompose 0 times
+and `ShiftScreen` at most once, at the landing
+(`aBackIntoTheTrayRecomposesNothingPerFrame`); `BubbleFace`, `Circle`
+and the mark's `Canvas` recompose 0 times over ten frames of the chase
+and ten of the paid spread (`OverlayRecompositionsTest`); `ModelStage`
+composes one to four times over a whole Back with a second Back mid-move
+(`StageBackTest`); 100 frames of the mark allocate no more objects than
+100 empty frames (`MarkOnDeviceTest`). The round-1 flake
+(`aSaleRisesDark`) did not recur in this run; the `HeldMove` guard's
+JVM test fails before the guard and passes after, and three slow-frame
+rises pass.
+
+### Clips
+
+`docs/reports/motion/bubble-live-paid-r2.mp4` (the lead, emulator-5558,
+the real stack: the logo bubble chasing over the home screen while a
+rung-up sale waits, the payment landing on it, the glass filling green
+from the core out under the tick, the 5 s dwell and the fade back to the
+grey idle mark); the tracks' own `bubble-states-r2.mp4`,
+`bubble-states-r2-close.mp4` (dev1, the showcase at 4x),
+`back-with-sale-waiting-r2.mp4`, `paid-step-back-r2.mp4`,
+`tray-open-fold-r2.mp4` and the artboard side-by-sides under `r2-dev2/`
+(dev2); the round's before clips under `before-r2/`.
+
+### Verdict
+
+Frames: the shift with a full tray scrolls better than round 1's build
+on both emulators (phone p99 44 and 32 ms against 68 and 58, frames over
+33 ms 11 and 1 of 120 against 53 and 15; tablet level to better); Back
+into the tray is level with round 1's Back (p99 73 to 77 against 78 to
+85 on the phone, 75 against 84 to 104 on the tablet); the tray opens and
+folds at p50 11 ms; the bubble draws nothing idle on either build, a
+frame a vsync waiting on both (the chase for the pulse, at the same cost
+per frame), and the paid moment the same 60 to 67 frames in its 6.5 s,
+with one first-time 200 to 300 ms frame per process on SwiftShader for
+the overlay track to read on the phone (finding 4); the paid step-back
+is the Back frame for frame and in cost, with two stalls at the dwell's
+end that round 1's crossfade had just the same and a single cold Back
+shares (for the phone). Memory: this round's tracks add nothing at rest
+(the foundation build trims 0.8 to 1.2 MB *above* this one); the +5 MB
+the first table shows over round 1's build is `main`'s own growth since
+`f274ad7`, and the screen-sized purgeable layer round 1's build left
+after a Back is gone on this one. Start-up: +32 to +67 ms on the phone,
++185 to +234 on the tablet under concurrent load, the same direction
+round 6 read under load; not a quiet-pair number. Device tests: 209 of
+209 on 5558 at the head. What is not signed off from the emulator: the
+first paid frame and the step-back's stalls on a GPU, 260 a (not
+reproduced by anyone), and the owner's phone, which the coordinator
+measures after this run.
