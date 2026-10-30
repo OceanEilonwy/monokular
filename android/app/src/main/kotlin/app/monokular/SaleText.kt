@@ -257,6 +257,18 @@ class PhaseChanges {
 /** What the bubble shows. */
 enum class BubbleLook { Idle, Lit, Paid }
 
+/** What a tap on the bubble does. */
+enum class BubbleTap {
+    /** No sale to show: Monokular itself comes to the front, as its launcher icon would bring it. */
+    OpenApp,
+
+    /** The panel opens on the bubble's sale. */
+    OpenPanel,
+
+    /** The panel goes back into the bubble. */
+    LowerPanel,
+}
+
 object Bubble {
     /** Green for [app.monokular.ui.Motion.Dwell.PAID_MS] after a sale is paid, then lit while a sale's code is up, else faded. */
     fun look(sales: List<TillSale>, justPaid: Boolean): BubbleLook = when {
@@ -274,6 +286,25 @@ object Bubble {
         val shown = sales.firstOrNull { it.orderId == previous }
         if (justPaid && shown?.phase == SalePhase.Paid) return previous
         return sales.firstOrNull { it.live }?.orderId ?: previous
+    }
+
+    /**
+     * What a tap does, with [sale] the one the bubble is about ([focus]) and
+     * [panelOpen] whether its panel is up or on its way. The panel only shows
+     * a sale, so with none the bubble opens Monokular instead of a panel that
+     * would never appear (and stay "open" for the next tap to lower).
+     */
+    fun tap(sale: TillSale?, panelOpen: Boolean): BubbleTap = when {
+        sale == null -> BubbleTap.OpenApp
+        panelOpen -> BubbleTap.LowerPanel
+        else -> BubbleTap.OpenPanel
+    }
+
+    /** What TalkBack says a tap does ("double-tap to …"). */
+    fun tapLabel(tap: BubbleTap): String = when (tap) {
+        BubbleTap.OpenApp -> "Open Monokular"
+        BubbleTap.OpenPanel -> "Show the sale"
+        BubbleTap.LowerPanel -> "Lower to the bubble"
     }
 
     /**

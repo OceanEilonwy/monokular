@@ -50,6 +50,7 @@ class TillService : LifecycleService() {
             onCopyXmr = { SaleNotifications.copyXmr(this, it.xmr) },
             onFullScreen = ::openSale,
             onOpenShift = ::openShift,
+            onOpenApp = ::openApp,
         )
         overlay.start()
         val changes = PhaseChanges()
@@ -123,6 +124,21 @@ class TillService : LifecycleService() {
             Intent(this, MainActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
                 .putExtra(MainActivity.EXTRA_SHIFT, true),
+        )
+    }
+
+    /**
+     * Brings Monokular to the front as its launcher icon does (the idle
+     * bubble): the task it was in, on the screen it was on, or a fresh one.
+     * Allowed from here because the tap is on the overlay's own visible
+     * window, as [openShift] and [openSale] are.
+     */
+    private fun openApp() {
+        startActivity(
+            Intent(this, MainActivity::class.java)
+                .setAction(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_LAUNCHER)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED),
         )
     }
 

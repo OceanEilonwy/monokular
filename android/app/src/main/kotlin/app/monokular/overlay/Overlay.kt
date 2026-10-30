@@ -29,6 +29,8 @@ import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.AndroidUiDispatcher
 import androidx.compose.ui.platform.ComposeView
+import androidx.core.view.ViewCompat
+import androidx.core.view.accessibility.AccessibilityNodeInfoCompat.AccessibilityActionCompat
 import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleRegistry
@@ -39,6 +41,7 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import app.monokular.Bubble
 import app.monokular.BubbleLook
+import app.monokular.BubbleTap
 import app.monokular.BuildConfig
 import app.monokular.Graph
 import app.monokular.PaidBuzz
@@ -76,8 +79,9 @@ data class OverlayState(
  * screen). Shown during a shift when the cashier allowed "display over
  * other apps" and didn't choose notifications only, and hidden while
  * Monokular itself is on screen. The bubble opens the panel and, tapped
- * again, lowers it; so do the panel's grabber and a tap beside it. Runs
- * on the main thread, in the till's service.
+ * again, lowers it; so do the panel's grabber and a tap beside it. With no
+ * sale to show, the bubble opens Monokular instead. Runs on the main
+ * thread, in the till's service.
  */
 class Overlay(
     private val context: Context,
@@ -88,6 +92,8 @@ class Overlay(
     private val onFullScreen: (TillSale) -> Unit,
     /** Opens Monokular on the shift (the panel's header row). */
     private val onOpenShift: () -> Unit,
+    /** Brings Monokular to the front as it was (the bubble tapped with no sale to show). */
+    private val onOpenApp: () -> Unit,
 ) {
     private val wm = context.getSystemService(WindowManager::class.java)
     private val owner = WindowOwner()
@@ -249,6 +255,20 @@ class Overlay(
         lower()
     }
 
+    /** A tap on the bubble, free or docked: the panel up or down on the sale, or Monokular when there is none. */
+    private fun tapBubble() {
+        when (Bubble.tap(state.value.sale, panelOpen.value)) {
+            BubbleTap.OpenApp -> {
+                // Never left wanting a panel that can't show: the next tap after a sale arrives opens it.
+                panelOpen.value = false
+                // Once on screen, Monokular's own visibility takes the overlay down (Handoff.usable).
+                onOpenApp()
+            }
+            BubbleTap.OpenPanel -> panelOpen.value = true
+            BubbleTap.LowerPanel -> lower()
+        }
+    }
+
     /** Lowers the panel to the bubble, its code face up for next time. */
     private fun lower() {
         // Done, the grabber or a tap beside the panel during the dwell ends it with the same collapse.
@@ -287,7 +307,7 @@ class Overlay(
         val presence = Presence(if (atRest) 1f else 0f)
         // On a tablet the bubble stays up beside the floating panel: a second tap lowers it.
         lateinit var frame: BubbleFrame
-        frame = BubbleFrame(context, wm, params, scope, onTap = { if (panelOpen.value) lower() else panelOpen.value = true }) { left, y ->
+        frame = BubbleFrame(context, wm, params, scope, onTap = ::tapBubble) { left, y ->
             val moved = prefs.bubbleOnLeft != left
             prefs.bubbleOnLeft = left
             prefs.bubbleY = y
@@ -306,8 +326,9 @@ class Overlay(
                 val m = LocalMotion.current
                 // The bubble no longer shows the step: its label says it (§12.5).
                 val label = remember(s.look, s.sale) { Bubble.label(s.look, s.sale) }
+                val tapLabel = Bubble.tapLabel(Bubble.tap(s.sale, open))
                 SideEffect {
-                    frame.describe(label)
+                    frame.describe(label, tapLabel)
                     frame.motion = m
                 }
                 // Appearing and going, the circle scales and fades inside its window (M4).
@@ -381,7 +402,7 @@ class Overlay(
             onCopy = onCopy,
             onCopyXmr = onCopyXmr,
             onFullScreen = { lower(); onFullScreen(it) },
-            onBubble = { if (panelOpen.value) lower() else panelOpen.value = true },
+            onBubble = ::tapBubble,
         )
         val motion = PanelMotion(if (open) 1f else 0f, bubbleAt)
         val view = compose {
@@ -460,7 +481,8 @@ private class WindowOwner : SavedStateRegistryOwner {
  * The bubble's window: a tap opens the panel (or lowers it again), a drag
  * moves it, and letting go snaps it to the nearer side. Touches are
  * handled here, in screen coordinates, because the window moves under the
- * finger. TalkBack hears one button, named for the bubble's state.
+ * finger. TalkBack hears one button, named for the bubble's state, its
+ * double-tap named for what the tap does.
  */
 @SuppressLint("ViewConstructor")
 private class BubbleFrame(
@@ -493,8 +515,15 @@ private class BubbleFrame(
         accessibilityLiveRegion = ACCESSIBILITY_LIVE_REGION_POLITE
     }
 
-    fun describe(label: String) {
+    private var tapLabel: String? = null
+
+    fun describe(label: String, tap: String) {
         if (contentDescription != label) contentDescription = label
+        if (tapLabel != tap) {
+            tapLabel = tap
+            // A label only: the click itself stays performClick's.
+            ViewCompat.replaceAccessibilityAction(this, AccessibilityActionCompat.ACTION_CLICK, tap, null)
+        }
     }
 
     override fun getAccessibilityClassName(): CharSequence = Button::class.java.name

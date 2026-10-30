@@ -160,6 +160,24 @@ class SaleTextTest {
     }
 
     @Test
+    fun `a tap on the bubble with no sale to show opens Monokular, and with one opens or lowers the panel`() {
+        // No sale this shift yet: the panel has nothing to show, so the app comes up instead, panel wanted or not.
+        assertEquals(null, Bubble.focus(emptyList(), previous = null, justPaid = false))
+        assertEquals(BubbleTap.OpenApp, Bubble.tap(null, panelOpen = false))
+        assertEquals(BubbleTap.OpenApp, Bubble.tap(null, panelOpen = true))
+        assertEquals("Open Monokular", Bubble.tapLabel(BubbleTap.OpenApp))
+        // A sale waiting: the tap toggles the panel, as before.
+        val waiting = listOf(sale())
+        val focus = waiting.firstOrNull { it.orderId == Bubble.focus(waiting, previous = null, justPaid = false) }
+        assertEquals(BubbleTap.OpenPanel, Bubble.tap(focus, panelOpen = false))
+        assertEquals(BubbleTap.LowerPanel, Bubble.tap(focus, panelOpen = true))
+        // The last sale ended: the bubble is idle but still about it, so the panel shows it ended.
+        val ended = sale(phase = SalePhase.Expired, closedAt = 1)
+        assertEquals(BubbleTap.OpenPanel, Bubble.tap(ended, panelOpen = false))
+        assertEquals("Lower to the bubble", Bubble.tapLabel(BubbleTap.LowerPanel))
+    }
+
+    @Test
     fun `the panel stays on a sale while it shows as paid, then moves to the next one waiting`() {
         val waiting = sale("older")
         val paid = sale("newer", phase = SalePhase.Paid)
