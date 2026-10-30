@@ -589,6 +589,8 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
  * status, so no frame reads two sales. A change to the same sale (its
  * receipt, its phase) is no transition here.
  */
+// [words] is not this part's modifier but its words' (the parts that fade through a change take it), so it is not named or placed as one.
+@Suppress("ModifierParameter")
 @Composable
 private fun Details(faces: Transition<FaceShown>, where: String, actions: PanelActions, words: Modifier, spacing: Dp, oneLine: Boolean = false) {
     val m = motion
@@ -630,6 +632,8 @@ private fun Details(faces: Transition<FaceShown>, where: String, actions: PanelA
  * spacing above it is inside the room, so nothing steps. A panel that comes
  * up with its receipt shows the line at once.
  */
+// [words] is not this part's modifier but its words' (the parts that fade through a change take it), so it is not named or placed as one.
+@Suppress("ModifierParameter")
 @Composable
 private fun LateOrderLine(sale: TillSale, actions: PanelActions, words: Modifier, spacing: Dp, oneLine: Boolean) {
     val m = motion
@@ -665,6 +669,8 @@ private data class FaceShown(val face: PanelFace, val sale: TillSale)
  * designed size. Everything that moves is read in layout or draw, and all of
  * it follows [faces], so the fold and the words start on one frame.
  */
+// [words] is not this part's modifier but its words' (the parts that fade through a change take it), so it is not named or placed as one.
+@Suppress("ModifierParameter")
 @Composable
 private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, words: Modifier) {
     val m = motion
@@ -828,10 +834,10 @@ private val HeroSize = 88.dp
  * height the same.
  */
 @Composable
-private fun Buttons(faces: Transition<FaceShown>, actions: PanelActions, words: Modifier) {
+private fun Buttons(faces: Transition<FaceShown>, actions: PanelActions, modifier: Modifier = Modifier) {
     val m = motion
     faces.AnimatedContent(
-        words.fillMaxWidth().padding(top = 4.dp),
+        modifier.fillMaxWidth().padding(top = 4.dp),
         transitionSpec = { (fadeIn(m.fadeThrough.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
         contentKey = { it.face },
     ) { side ->
