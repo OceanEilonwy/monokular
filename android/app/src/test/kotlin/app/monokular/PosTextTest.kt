@@ -26,7 +26,7 @@ class PosTextTest {
                 "on this device: Monokulo never sees it, or what was bought.",
             PosText.permissions(square),
         )
-        assertEquals("In Clover Register", PosText.atTheTill(clover))
+        assertEquals("On your Clover device", PosText.atTheTill(clover))
         assertEquals("In Square Point of Sale", PosText.atTheTill(square))
         assertEquals("Not in Clover yet", PosText.tenderMissing(clover))
         assertEquals(listOf("Sign in to Square", "Sign in to Clover"), PointOfSale.entries.map(PosText::signIn))
@@ -36,6 +36,28 @@ class PosTextTest {
         assertEquals("Sales paid with this payment type at this merchant show up in Monokular.", PosText.signedInFootnote(clover))
         assertEquals("Without Clover, Monokular shows the sales other tills make, without receipts.", PosText.withoutFootnote(clover))
         assertEquals("Without a point of sale, Monokular shows the sales other tills make, without receipts.", PosText.withoutFootnote(null))
+    }
+
+    @Test
+    fun `Clover's steps card reads as Square's, with its test sale refunded in the Orders app`() {
+        assertEquals("Take Monero in Clover Register", PosText.CLOVER_STEPS_TITLE)
+        assertEquals(
+            listOf(
+                "Monokular added a payment type called **Monero** for you",
+                "Open **Clover Register** on the Station, Mini, Flex or Go",
+                "Ring up a sale, tap **Pay**, then choose **Monero**",
+            ),
+            listOf(PosText.cloverTenderStep(added = true)) + PosText.CLOVER_STEPS,
+        )
+        assertEquals(
+            "Monokular adds a payment type called **Monero** for you",
+            PosText.cloverTenderStep(added = false),
+            "before the sign-in, or while the till looks, it hasn't added it yet",
+        )
+        assertEquals("Waiting for a test sale… Any amount; refund it in Clover's Orders app after.", PosText.testSaleWaiting(clover))
+        assertEquals("Test sale found: $1.00. Refund it in Clover's Orders app when you like.", PosText.testSaleFound(clover, "$1.00"))
+        assertEquals("Waiting for a test sale… Any amount, you can refund it after.", PosText.testSaleWaiting(square))
+        assertEquals("Test sale found: $1.00. Refund it in Square when you like.", PosText.testSaleFound(square, "$1.00"))
     }
 
     @Test

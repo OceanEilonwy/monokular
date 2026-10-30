@@ -441,7 +441,7 @@ private fun AtTheTill(pos: PointOfSale, s: PosSetup, steps: @Composable () -> Un
                 val testSale = s.testSale
                 if (testSale == null) {
                     LoadingMark(26.dp, label = "Waiting for a test sale")
-                    Text("Waiting for a test sale… Any amount, you can refund it after.", fontSize = 14.sp)
+                    Text(PosText.testSaleWaiting(pos), fontSize = 14.sp)
                 } else {
                     PaidTick(26.dp)
                     Text(PosText.testSaleFound(pos, SaleText.amount(testSale)), fontSize = 14.sp)
@@ -451,10 +451,10 @@ private fun AtTheTill(pos: PointOfSale, s: PosSetup, steps: @Composable () -> Un
     }
 }
 
-/** Numbered steps, `**bold**` for what to tap. */
+/** Numbered steps from [from], `**bold**` for what to tap. */
 @Composable
-private fun NumberedSteps(steps: List<String>) = Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-    steps.forEachIndexed { i, step -> Text(rich("${i + 1}.  $step"), fontSize = 15.sp, lineHeight = 22.sp) }
+private fun NumberedSteps(steps: List<String>, from: Int = 1) = Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    steps.forEachIndexed { i, step -> Text(rich("${i + from}.  $step"), fontSize = 15.sp, lineHeight = 22.sp) }
 }
 
 /** Square's card: as it was before Clover joined, the payment type added by the cashier in Square. */
@@ -493,9 +493,10 @@ private fun SquareCard(s: PosSetup, a: PosSetupActions) {
 }
 
 /**
- * Clover's card (acceptance T2.6, T3.2, T3.3): the merchant once signed in;
- * the Monero payment type the till added, or the step to add it in Clover
- * with Look again when Clover didn't let it; how a sale never paid is refunded.
+ * Clover's card (acceptance T2.6, T3.2, T3.3), laid out as Square's: the
+ * merchant once signed in; a titled card of numbered steps whose first is the
+ * Monero payment type the till added, or adding it in Clover with Look again
+ * when Clover didn't let it; the test sale; how a sale never paid is refunded.
  */
 @Composable
 private fun CloverCard(s: PosSetup, a: PosSetupActions) {
@@ -511,11 +512,13 @@ private fun CloverCard(s: PosSetup, a: PosSetupActions) {
     Footnote(PosText.permissions(pos))
     Notice(s.problem, Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp))
     AtTheTill(pos, s) {
+        Text(PosText.CLOVER_STEPS_TITLE, fontSize = 17.sp, fontWeight = FontWeight.SemiBold)
         if (s.connected && s.tender == CloverTender.AddInClover) {
-            Text(rich(PosText.CLOVER_ADD_TENDER), fontSize = 15.sp, lineHeight = 22.sp)
+            NumberedSteps(listOf(PosText.CLOVER_ADD_TENDER))
             OutlineButton(PosText.LOOK_AGAIN, a.onLookAgain, Modifier.fillMaxWidth(), enabled = !s.busy)
+            NumberedSteps(PosText.CLOVER_STEPS, from = 2)
         } else {
-            NumberedSteps(PosText.CLOVER_STEPS)
+            NumberedSteps(listOf(PosText.cloverTenderStep(added = s.connected && s.tender == CloverTender.Ready)) + PosText.CLOVER_STEPS)
         }
     }
     Footnote(PosText.CLOVER_REFUND_NOTE)
