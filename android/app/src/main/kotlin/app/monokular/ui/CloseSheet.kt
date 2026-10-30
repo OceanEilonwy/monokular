@@ -40,7 +40,7 @@ import kotlinx.coroutines.launch
 
 /**
  * "Is the customer paying?" (the design's CloseAsk; decisions 62, 70): the
- * tinted X's sheet over the sale, on the sale screen's clock [now]. Each answer slides the sheet away, then
+ * tinted X's sheet over the sale, or over the shift when its row is swiped, on that screen's clock [now]. Each answer slides the sheet away, then
  * goes up as [onChoice]; the scrim, Back and a drag down dismiss it
  * unchanged.
  */

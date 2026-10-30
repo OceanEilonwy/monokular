@@ -36,7 +36,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.absoluteOffset
+import androidx.compose.foundation.layout.absolutePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -75,6 +76,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.AbsoluteAlignment
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -223,7 +225,7 @@ fun ShiftScreen(
     // rows compose in the list's measure, after this composition, so the flag is a fact about what is shown, not a frame.
     var keptFor by remember { mutableStateOf<List<TillSale>?>(null) }
     val keeping = shownFolded && keptFor === sales
-    // The sale whose row was swiped to the start (or given TalkBack's "Close sale"): its X's sheet is up, for as long
+    // The sale whose row was swiped left (or given TalkBack's "Close sale"): its X's sheet is up, for as long
     // as the sale still has the X. Kept here, not on the row, so the sheet stays up as the row moves in the list.
     var asking by rememberSaveable { mutableStateOf<String?>(null) }
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
@@ -356,13 +358,13 @@ private fun SaleItem(
     val bottom = (ends == RowEnds.Last || ends == RowEnds.Only) && !trayFolds
     val slice = if (!item.tray) Modifier else Modifier.background(mk.warnGround, traySlice(top, bottom))
         .padding(start = TrayPadding, end = TrayPadding, top = if (top) TrayPadding else 0.dp, bottom = if (bottom) TrayPadding else 0.dp)
-    // A row whose sale has the X swipes to the start over the X's ground ([RowSwipe]): the card and its words move as
+    // A row whose sale has the X swipes left over the X's ground ([RowSwipe]): the card and its words move as
     // one, by a pull in dp held and settled as the fold's stack's is.
     val pull = if (onAsk != null) remember { StackPull() } else null
     Box(modifier.padding(horizontal = 16.dp).fillMaxWidth().then(slice)) {
         Box(if (pull != null && onAsk != null) Modifier.swipesToAsk(pull, onAsk) else Modifier) {
             if (pull != null) SwipeBacking(pull.dp, shape)
-            Box(if (pull != null) Modifier.offset { IntOffset(pull.dp.floatValue.dp.roundToPx(), 0) } else Modifier) {
+            Box(if (pull != null) Modifier.absoluteOffset { IntOffset(pull.dp.floatValue.dp.roundToPx(), 0) } else Modifier) {
                 val ground = rememberGroundTrack("sale/${sale.orderId}")
                 Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, rowLook(ends, mk.card), ground))
                 Column(Modifier.fillMaxWidth().words(over = Move.RowGrow, on = ground).clip(shape)) {
@@ -375,9 +377,10 @@ private fun SaleItem(
 }
 
 /**
- * A row swiped to the start ([RowSwipe]): horizontal only, so the list's scroll and the fold's pull down keep theirs,
- * and not from inside the system's gesture zones, where a swipe in from the edge is Back. The row follows the finger
- * on [pull] (still under reduced motion), and let go it settles back on [Motion.settle] with the finger's speed; past
+ * A row swiped left ([RowSwipe]): horizontal only, so the list's scroll and the fold's pull down keep theirs,
+ * and not from inside the system's gesture zones, where a swipe in from the edge is Back. Left as drawn in any layout
+ * direction (the owner's "left swipe"; the finger, the offset and the backing are all absolute). The row follows the finger
+ * on [pull] (not under reduced motion), and let go it settles back on [Motion.settle] with the finger's speed; past
  * the reach or flung, [onAsk] too. A new touch catches it where it is.
  */
 @Composable
@@ -393,7 +396,7 @@ private fun Modifier.swipesToAsk(pull: StackPull, onAsk: () -> Unit): Modifier {
             val down = awaitFirstDown(requireUnconsumed = false)
             if (placed.inZone(down.position, zones, this)) return@awaitEachGesture
             var raw = 0f
-            // To the start only: a swipe to the end is nobody's, one up or down the list's.
+            // Left only: a swipe to the right is nobody's, one up or down the list's.
             val start = awaitHorizontalTouchSlopOrCancellation(down.id) { change, over ->
                 if (over < 0f) {
                     change.consume()
@@ -440,7 +443,7 @@ private class Placed {
 }
 
 /**
- * What a swiped row uncovers: the X's danger ground in the row's [shape], its X at the end, drawn only in the strip
+ * What a swiped row uncovers: the X's danger ground in the row's [shape], its X at the right, drawn only in the strip
  * the card has moved off ([pull], read per draw), so nothing is drawn at rest and nothing shows round the card.
  */
 @Composable
@@ -458,9 +461,9 @@ private fun BoxScope.SwipeBacking(pull: FloatState, shape: Shape) {
                 }
             }
         },
-        contentAlignment = Alignment.CenterEnd,
+        contentAlignment = AbsoluteAlignment.CenterRight,
     ) {
-        Icon(MkIcons.Close, contentDescription = null, tint = mk.danger, modifier = Modifier.padding(end = 24.dp).size(16.dp))
+        Icon(MkIcons.Close, contentDescription = null, tint = mk.danger, modifier = Modifier.absolutePadding(right = 24.dp).size(16.dp))
     }
 }
 

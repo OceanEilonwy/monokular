@@ -1,7 +1,9 @@
 package app.monokular
 
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -13,6 +15,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.unit.LayoutDirection
 import app.monokular.OneClockTest.Companion.noActions
 import app.monokular.OneClockTest.Companion.status
 import app.monokular.core.PointOfSale
@@ -28,9 +31,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
- * A shift row swiped to the start ([RowSwipe]): past a third it brings up the sale page's X's sheet, the same answers
+ * A shift row swiped left ([RowSwipe]): past a third it brings up the sale page's X's sheet, the same answers
  * doing the same; a small swipe settles back; a swipe up the list still scrolls it; only rows whose page has the X
- * swipe; reduced motion still asks; TalkBack reaches it as the row's "Close sale".
+ * swipe; reduced motion still asks; TalkBack reaches it as the row's "Close sale"; right to left, it is still a left swipe.
  */
 class SwipeToCloseTest {
     @get:Rule
@@ -49,8 +52,10 @@ class SwipeToCloseTest {
 
     private fun row(sale: TillSale) = compose.onNodeWithText(title(sale))
 
-    private fun show(sales: List<TillSale>, motion: Motion = Motion.Full) {
-        compose.setContent { Till(motion) { ShiftScreen(status, sales, actions, now) } }
+    private fun show(sales: List<TillSale>, motion: Motion = Motion.Full, direction: LayoutDirection = LayoutDirection.Ltr) {
+        compose.setContent {
+            CompositionLocalProvider(LocalLayoutDirection provides direction) { Till(motion) { ShiftScreen(status, sales, actions, now) } }
+        }
         compose.waitForIdle()
     }
 
@@ -66,7 +71,7 @@ class SwipeToCloseTest {
         swipeLeft(startX = width * 0.8f, endX = width * to, durationMillis = ms)
     }
 
-    /** Holds the finger half the row's width to the start of where it went down; how far the row has followed it. */
+    /** Holds the finger half the row's width to the left of where it went down; how far the row has followed it. */
     private fun held(sale: TillSale, rest: Float): Float {
         row(sale).performTouchInput { down(Offset(width * 0.8f, centerY)) }
         repeat(10) {
@@ -179,5 +184,17 @@ class SwipeToCloseTest {
         compose.runOnUiThread { custom.single().action() }
         compose.waitForIdle()
         assertTrue(asks())
+    }
+
+    @Test
+    fun rightToLeftTheRowStillFollowsTheFingerLeft() {
+        val sale = testSale("w1", expiresAt = 1_900)
+        show(listOf(sale), direction = LayoutDirection.Rtl)
+        val rest = end(sale)
+        val moved = held(sale, rest)
+        val width = row(sale).fetchSemanticsNode().boundsInRoot.width
+        assertTrue(moved < -width * 0.4f, "with the finger, not against it: $moved of $width")
+        assertTrue(asks(), "let go past a third")
+        assertEquals(rest, end(sale), 0.5f, "settled back")
     }
 }
