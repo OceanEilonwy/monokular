@@ -3857,3 +3857,58 @@ design unchanged.
     numbers it was written with and says so. The round-2 brief's 201,
     202 and 203 a to c are 258, 259 and 260 here; its "decisions 90-207"
     are 147 to 264.
+
+266. **Back always lands on the shift, waiting sales wait in a tray, and
+    the paid step-back is Back** (the owner, 2026-10-30; the designer's
+    spec, `docs/motion.md` §12.1 to §12.4; supersedes 258 and 259).
+    Pressing Back on a sale lands on the shift even when another sale is
+    waiting unseen: there is no follow on a leave, not after it lands
+    either, so 258's "a leave lands, then the follow starts" goes. A
+    sale that arrived while the cashier was on another screen waits in
+    the shift's waiting tray (design A4, opens in place): a "Waiting for
+    payment" header with the count, an amber `warnGround` tray holding a
+    `card` of every live sale, folded after three rows into "Show N more
+    waiting" (ink, not link orange: 4.36:1 on the tint) and "Show fewer",
+    the rest under "Earlier"; no New tag, bar, snackbar, banner, stripe
+    or outline. A sale arriving while the shift itself is showing still
+    rises by itself (198, 222): the canvas says nothing against it and
+    it is what the till is for, so `TillNav.follow` narrows to that case
+    rather than going. The paid page's step-back after the dwell is the
+    same `RowGrow` reverse into its row (at the top of Earlier) as a
+    Back, with the course, so 259's crossfade goes; the owner wants the
+    two to feel identical. The three frame tidy-ups (260 a, b, c) are in
+    scope as written there. Before clips of the three behaviours are in
+    `docs/reports/motion/before-r2/`.
+267. **The bubble is the logo, and its border is the spinner** (the
+    owner, 2026-10-30, design B5 c; `docs/motion.md` §12.5; supersedes
+    M4's faces and 265 a's look). Idle is the grey mark at 55 % as today;
+    Waiting is a still orange lens (#18's glints leave the bubble;
+    `LoadingMark` stays elsewhere) whose border becomes a pale #D8D2C7
+    track with a black #1A1917 segment chasing clockwise at constant
+    speed, one turn per 1250 ms; Paid fills the lens green from the core
+    out (four rings, 60 ms apart, 200 ms each) and draws a white tick
+    over it, the border whole and black, no ring, spinner or pulse. The
+    bubble draws no `PhaseRing` and no pupil; the ground is white in
+    every state (`paidGround` leaves the bubble). Still: no chase (a
+    whole ink border), no pulse, 120 ms fades. Two presets join
+    `Motion`: `chase`, a loop beside `pulse`, and `spread`, a fade with
+    a per-ring start. The designer's calls where the canvas and the code
+    differed, each a small one (§12.6): the arc is the canvas's 30 % of
+    the border, not the brief's "a third"; the one mark is 38 dp in
+    every state (the lit face was `LoadingMark` at 40 dp); the idle
+    border's #565656, a literal in `Faces.kt`, and the two new greens go
+    in `Fixed`; the tick starts where the core's ring ends, in the spec,
+    never a `delay()`; the bubble's window gets the TalkBack label the
+    canvas gives it ("Monokular, $12.00 waiting for payment", carrying
+    the step), where `BubbleFace` cleared its semantics.
+268. **The +4.9 to +5.9 MB memory step after a trim is accepted, and the
+    2 MB rule is superseded by "no worse"** (the owner, 2026-10-30;
+    `docs/motion.md` §12.7; supersedes §8's and §10 rule 12's "PSS at
+    rest within 2 MB" and the part of 202 and 253 that left it to the
+    phone). Decision 253 named the step as the shift's motion machinery
+    standing from launch (+0.5 MB a session), and the owner accepts it
+    as read. Round 2 does not spend time on it, and does not make it
+    worse: the round's after-minus-before, measured as 253 measured
+    (same emulator instance, one session, trimmed, pairs alternated), is
+    within that instance's run-to-run noise, with the heap's object
+    count read the same way.
