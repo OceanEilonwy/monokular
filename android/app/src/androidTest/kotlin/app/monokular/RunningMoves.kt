@@ -53,6 +53,9 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
     val now = mutableLongStateOf(1_000)
     var shown by mutableStateOf(sale)
 
+    /** The shift's sales, newest first, as the shift screen lists them. */
+    var shift by mutableStateOf(listOf(sales[0], sale, sales[2]))
+
     /** Each screen's stage as it last composed: what it says is moving, read on every frame. */
     private val stages = mutableMapOf<Screen, Stage>()
 
@@ -84,7 +87,7 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
                         is Screen.Code -> CodeScreen(sale, onBack = {})
                         is Screen.Order -> OrderPage(sale, "Back to the sale", onBack = {}, onShowCode = {})
                         is Screen.Sale -> SaleScreen(sale, "Front", refunding = false, refundProblem = null, refundSheet = null, actions = noActions, now = now)
-                        else -> ShiftScreen(status, listOf(sales[0], sale, sales[2]), noActions, now)
+                        else -> ShiftScreen(status, shift, noActions, now)
                     }
                     }
                 }
@@ -125,7 +128,7 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
     )
 
     /** The model sent to [to] (as the till does, or the cashier), and every frame until the stage has landed and settled. */
-    fun run(to: Screen, byItself: Boolean = false, groundKey: String? = null, change: () -> Unit = {}): List<Frame> {
+    fun run(to: Screen, byItself: Boolean = false, groundKey: String? = null, during: (frame: Int) -> Unit = {}, change: () -> Unit = {}): List<Frame> {
         val frames = mutableListOf(capture(0, to, groundKey))
         // What the model does to the sale in the same update as it moves the screen (closed from the sheet, paid on the code).
         change()
@@ -133,6 +136,8 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         var landed = 0
         var i = 1
         while (i < MAX_FRAMES && landed < SETTLE_FRAMES) {
+            // What happens to the till while the move runs (a sale arriving mid-Back), before the frame [i] draws.
+            during(i)
             compose.mainClock.advanceTimeByFrame()
             frames += capture(i++, to, groundKey)
             if (model.stage.currentState == to && model.stage.targetState == to) landed++

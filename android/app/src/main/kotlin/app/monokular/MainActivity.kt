@@ -112,7 +112,7 @@ class MainActivity : ComponentActivity() {
                 val scrub = remember { BackScrub() }
                 // Step 4 has no Back in setup (as Square's had none), but goes back to Settings when opened from there.
                 val stepFour = screen == Screen.PointOfSale && !model.setupDone
-                FollowScreen(stage, scrub, screenState)
+                FollowScreen(stage, scrub, screenState, onLanded = model::landed)
                 StageBack(
                     enabled = screen != Screen.Welcome && screen != Screen.Till && !stepFour,
                     state = stage, scrub = scrub, current = { model.screen.value }, target = model::backTarget, onCommit = model::back,
