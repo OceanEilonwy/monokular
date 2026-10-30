@@ -54,12 +54,14 @@ class CloverCardTest {
         compose.onNodeWithText("Look again").assertHasClickAction().assertHeightIsAtLeast(48.dp)
         shown("2.  Open Clover Register")
         compose.onNodeWithText("Monokular added", substring = true, useUnmergedTree = true).assertDoesNotExist()
+        // No sale can be paid in Monero until the payment type is there, so nothing waits for one.
+        compose.onNodeWithText("Waiting for a test sale", substring = true, useUnmergedTree = true).assertDoesNotExist()
     }
 
     @Test
     fun aTestSaleFoundSaysToRefundItInTheOrdersApp() {
-        show(CloverTender.Ready, testSale("t"))
-        shown("Test sale found: ")
-        shown("Refund it in Clover's Orders app when you like.")
+        val sale = testSale("t")
+        show(CloverTender.Ready, sale)
+        shown("Test sale found: ${SaleText.amount(sale)}. Refund it in Clover's Orders app when you like.")
     }
 }
