@@ -95,6 +95,15 @@ class NotificationFaceTest {
     }
 
     @Test
+    fun `whom a sale is for is never on a notification, private version or public`() {
+        val named = sale().copy(customerName = "Ana López")
+        for (face in listOf(Face.of(named, "Front Counter"), Face.paid(named.copy(phase = SalePhase.Paid)))) {
+            assertFalse(listOfNotNull(face.title, face.text, face.detail, face.publicText).any { "Ana" in it }, face.toString())
+        }
+        assertEquals("Paid · Sale #bP9m", Face.paid(named.copy(phase = SalePhase.Paid)).title)
+    }
+
+    @Test
     fun `paid is a green tick and the amount received`() {
         val face = Face.paid(sale(phase = SalePhase.Paid))
         assertEquals(R.drawable.ic_tick, face.icon)

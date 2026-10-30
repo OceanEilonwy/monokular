@@ -171,6 +171,39 @@ class SquareTest {
     }
 
     @Test
+    fun `a sale's order names whom it's for when a pickup names them, from the one read`() = runBlocking {
+        val source = source(MemoryCursor("2026-10-22T16:05:00Z"))
+        server.enqueue(json(resource("payments.json")))
+        val sale = source.newSales().single()
+        server.enqueue(json(resource("order-pickup.json")))
+        val read = source.order(sale)
+        assertEquals("Ana López", read.customerName, "on one line, trimmed")
+        assertNotNull(read.receipt)
+        assertFalse(app.monokular.receipt.ReceiptCode.of("monero:8Bx?tx_amount=0.1", read.receipt!!).uri.contains("Ana"), "the name is never in the code")
+        assertEquals(2, server.requestCount, "the payments and the order: no Customers lookup")
+        server.enqueue(json(resource("order.json")))
+        assertNull(source.order(sale).customerName, "an order with no fulfillment names no one")
+    }
+
+    @Test
+    fun `a recipient's name is read defensively, and a strange shape never costs the receipt`() {
+        val codec = kotlinx.serialization.json.Json { ignoreUnknownKeys = true }
+        fun name(fulfillments: String) = codec.decodeFromString(
+            SquareOrder.serializer(),
+            """{"id":"o","location_id":"L1","created_at":"2026-10-22T16:06:41Z","total_money":{"amount":1,"currency":"USD"},"fulfillments":$fulfillments}""",
+        ).customerName
+        assertEquals("Sam", name("""[{"delivery_details":{"recipient":{"display_name":"Sam"}}}]"""))
+        assertEquals("Kai", name("""[{"shipment_details":{"recipient":{"display_name":"Kai"}}}]"""))
+        assertEquals("Lee", name("""[{"pickup_details":{"recipient":{"display_name":" "}}},{"pickup_details":{"recipient":{"display_name":"Lee"}}}]"""), "a blank name is skipped")
+        assertEquals("x".repeat(80), name("""[{"pickup_details":{"recipient":{"display_name":"${"x".repeat(500)}"}}}]"""))
+        assertNull(name("""[{"pickup_details":{"recipient":{"display_name":42}}}]"""), "a number isn't a name")
+        assertNull(name("""[{"pickup_details":{"recipient":"Ana"}}]"""))
+        assertNull(name("""["Ana", null, 3]"""))
+        assertNull(name("""{"pickup_details":{}}"""))
+        assertNull(name("null"))
+    }
+
+    @Test
     fun `a refund is the whole sale, once`() = runBlocking {
         val source = source(MemoryCursor("2026-10-22T16:05:00Z"))
         server.enqueue(json("""{"refund":{"id":"r"}}"""))

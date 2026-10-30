@@ -32,7 +32,7 @@ import kotlin.test.assertTrue
 import java.time.Instant
 
 /** A POS that has the sales it's given. */
-class FakeSource(var sales: List<FoundSale>, private val receipt: Receipt? = null) : SaleSource {
+class FakeSource(var sales: List<FoundSale>, private val receipt: Receipt? = null, private val customerName: String? = null) : SaleSource {
     val handledIds = mutableListOf<String>()
     val refunded = mutableListOf<String>()
     /** The POS is down: refunds fail with this. */
@@ -40,6 +40,7 @@ class FakeSource(var sales: List<FoundSale>, private val receipt: Receipt? = nul
     override val pointOfSale = PointOfSale.Square
     override suspend fun newSales() = sales.filter { it.id !in handledIds }
     override suspend fun receipt(sale: FoundSale) = receipt
+    override suspend fun order(sale: FoundSale) = SaleOrder(receipt, customerName)
     override val refunds = Refunds.ByTill { sale ->
         refusal?.let { throw SquareException(503, it) }
         refunded += sale.id
@@ -198,6 +199,20 @@ class TillTest {
         assertTrue(sent.contains(""""amount":"13.88"""") && sent.contains(""""merchant_order_id":"bP9m""""), sent)
         assertTrue(sent.contains(""""idempotency_key":"${Till.idempotencyKey(sale)}""""), sent)
         assertFalse(sent.contains("Flat white"), "nothing bought goes to Monokulo: $sent")
+    }
+
+    @Test
+    fun `whom a sale is for stays on the till, and in its saved shift`() = runBlocking {
+        val shift = MemoryShift()
+        val till = Till(FakeSource(listOf(sale), receipt, customerName = "Ana López"), monokulo, connection, store = shift)
+        server.enqueue(order())
+        till.check()
+        assertEquals("Ana López", till.sales.value.sales.single().customerName)
+        assertEquals("Ana López", Till(FakeSource(emptyList()), monokulo, connection, store = shift).sales.value.sales.single().customerName)
+        server.takeRequest()
+        val sent = server.takeRequest().body!!.utf8()
+        assertFalse(sent.contains("Ana"), "the name never goes to Monokulo: $sent")
+        assertFalse(till.sales.value.sales.single().code.uri.contains("Ana"), "nor into the code")
     }
 
     @Test

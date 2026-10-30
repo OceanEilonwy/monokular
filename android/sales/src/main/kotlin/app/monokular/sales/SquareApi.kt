@@ -5,6 +5,8 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -52,7 +54,27 @@ data class SquareOrder(
     @SerialName("total_money") val totalMoney: Money,
     @SerialName("total_tip_money") val totalTipMoney: Money? = null,
     @SerialName("total_discount_money") val totalDiscountMoney: Money? = null,
+    /**
+     * The order's pickups, deliveries and shipments, kept as plain JSON: only
+     * the name of whom each is for is read ([customerName]), and a shape
+     * Square changes there never costs the sale its receipt.
+     */
+    val fulfillments: JsonElement? = null,
 ) {
+    /**
+     * Who the order is for, when the seller named them on a pickup, delivery
+     * or shipment ("Ana López"): the first recipient's `display_name`, on one
+     * line. Null when none names one; an order with only a `customer_id`
+     * would need Square's Customers API, which the till's scopes don't reach.
+     */
+    val customerName: String?
+        get() = (fulfillments as? JsonArray).orEmpty().asSequence()
+            .mapNotNull { it as? JsonObject }
+            .flatMap { f -> RECIPIENT_DETAILS.asSequence().mapNotNull { f[it] as? JsonObject } }
+            .mapNotNull { ((it["recipient"] as? JsonObject)?.get("display_name") as? JsonPrimitive)?.takeIf { p -> p.isString } }
+            .map { oneLine(it.content).take(MAX_NAME) }
+            .firstOrNull { it.isNotEmpty() }
+
     @Serializable
     data class LineItem(
         val name: String? = null,
@@ -74,6 +96,14 @@ data class SquareOrder(
         val percentage: String? = null,
         @SerialName("applied_money") val appliedMoney: Money? = null,
     )
+
+    companion object {
+        /** Where a fulfillment names whom it's for, by its type. */
+        private val RECIPIENT_DETAILS = listOf("pickup_details", "delivery_details", "shipment_details")
+
+        /** The most of a name kept: a title shows far less, and a shift keeps it for every sale. */
+        private const val MAX_NAME = 80
+    }
 }
 
 @Serializable
