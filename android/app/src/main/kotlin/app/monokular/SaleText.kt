@@ -186,6 +186,10 @@ object SaleText {
         return PosText.receiptLabel(pos, receipt.receipt.receiptId) + issued?.let { " · " + time(it, locale, zone) }.orEmpty()
     }
 
+    /** "Square receipt bP9m · 15 items · 79.21 USD": a folded order card's one row, whose receipt, how much and for what. */
+    fun receiptSummary(receipt: Receipt, pos: PointOfSale?): String =
+        PosText.receiptLabel(pos, receipt.receipt.receiptId) + " · " + items(receipt) + " · " + total(receipt)
+
     /** "4:07 PM" (or "16:07"): a time of day as the till's locale writes it, with a plain space before am or pm. */
     fun time(epochSeconds: Long, locale: Locale = Locale.getDefault(), zone: ZoneId = ZoneId.systemDefault()): String =
         DateTimeFormatter.ofLocalizedTime(FormatStyle.SHORT).withLocale(locale)

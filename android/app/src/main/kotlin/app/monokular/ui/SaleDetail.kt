@@ -18,6 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,6 +79,8 @@ fun SaleDetail(
     val header = SaleHeader.of(sale, LocalPointOfSale.current, location)
     val pos = header.pos
     val page = SalePage.of(sale, pos, now = System.currentTimeMillis() / 1000, elsewhere = header.elsewhere)
+    // Folded unless the page has room for its order card open.
+    val room = remember(sale.orderId) { ReceiptRoom() }
     // The time before the place, so a narrow bar's ellipsis takes "this till" first, not the time.
     val subtitle = sale.createdAt.takeIf { it > 0 }?.let { SaleText.time(it) + " · " }.orEmpty() + header.place
     // Its ground is the screen's (SaleScreen), so the live sale it turns from fades over one ground.
@@ -86,7 +89,7 @@ fun SaleDetail(
             Column(Modifier.widthIn(max = 560.dp).fillMaxSize()) {
                 Box(words) { SaleBar(sale, subtitle, actions) }
                 Column(
-                    Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())
+                    Modifier.weight(1f).fillMaxWidth().then(room.window).verticalScroll(rememberScrollState()).then(room.content)
                         .padding(start = 20.dp, end = 20.dp, top = 24.dp, bottom = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(18.dp),
                 ) {
@@ -118,7 +121,7 @@ fun SaleDetail(
                                 .padding(horizontal = 14.dp, vertical = 12.dp),
                         )
                     }
-                    if (page.order) sale.receipt?.let { Box(words) { OrderCard(it, pos, withTime = false) } }
+                    if (page.order) sale.receipt?.let { Box(words) { OrderCard(it, pos, room) } }
                     if (page.facts.isNotEmpty()) Box(words) { Facts(page.facts) }
                 }
                 if (page.actions.isNotEmpty()) {

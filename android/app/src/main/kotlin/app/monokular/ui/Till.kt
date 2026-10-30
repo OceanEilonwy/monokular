@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -56,6 +57,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -90,10 +92,17 @@ import app.monokular.rememberGroundTrack
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.AnimationVector1D
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.constrainHeight
+import androidx.compose.ui.unit.constrainWidth
+import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
 /**
@@ -283,6 +292,8 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
     val header = SaleHeader.of(sale, LocalPointOfSale.current, location)
     // A receipt reaches the till about a second after its sale: its card fades in then, rather than popping (N3).
     val late = remember(sale.orderId) { sale.receipt == null }
+    // Folded unless the page has room for its order card open.
+    val room = remember(sale.orderId) { ReceiptRoom() }
     KeepScreenOn()
     // Its ground is the screen's (SaleScreen), so the page it turns into fades over one ground, not a second.
     Surface(Modifier.fillMaxSize(), color = Color.Transparent, contentColor = mk.ink) {
@@ -305,13 +316,13 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                         Column(
                             // Centred beside the code (which is not in it), it settles to the late card's height rather than jumping.
                             Modifier.widthIn(max = 420.dp).animateContentSize(motion.settle.spec(IntSize.VisibilityThreshold))
-                                .verticalScroll(rememberScrollState()),
+                                .then(room.window).verticalScroll(rememberScrollState()).then(room.content),
                             verticalArrangement = Arrangement.spacedBy(20.dp),
                             horizontalAlignment = Alignment.Start,
                         ) {
                             Box(words) { Amount(sale, actions.onCopyXmr, start = true) }
                             Box(words) { StatusPill(sale, now) }
-                            sale.receipt?.let { Box(orderWords) { Late(late) { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } } }
+                            sale.receipt?.let { Box(orderWords) { Late(late) { OrderCard(it, header.pos, room, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } } }
                             Box(words) { Buttons(sale, header, actions) }
                         }
                     }
@@ -320,7 +331,7 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                     // the order card and buttons don't stretch edge to edge.
                     Column(
                         Modifier.weight(1f).align(Alignment.CenterHorizontally).widthIn(max = PhoneMaxWidth).fillMaxWidth()
-                            .verticalScroll(rememberScrollState())
+                            .then(room.window).verticalScroll(rememberScrollState()).then(room.content)
                             .padding(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 12.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -332,7 +343,7 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                             Code(sale, side, card, ground, footed = true) { actions.onEnlarge(sale.orderId) }
                             Box(words) { StatusFoot(sale, now) }
                         }
-                        sale.receipt?.let { Box(orderWords) { Late(late) { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } } }
+                        sale.receipt?.let { Box(orderWords) { Late(late) { OrderCard(it, header.pos, room, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } } }
                     }
                     Box(
                         Modifier.align(Alignment.CenterHorizontally).widthIn(max = PhoneMaxWidth)
@@ -567,66 +578,147 @@ private fun Buttons(sale: TillSale, header: SaleHeader, actions: TillActions) = 
 }
 
 /**
- * What was bought, from this till's own receipt (decision 63): each line
- * and its price, the tax and the total. On the sale ([onOpen] set) a long
- * order shows three lines and "+N more", and the card opens the whole order
- * (decision 66); a detail page lists every line. [pos] names the receipt
- * ("Clover order …"). On the sale, [shared] is the key it grows into the
- * order page by (M7).
+ * What was bought, from this till's own receipt (decision 63). Folded, one
+ * row says whose receipt it is, how many items and the total; unfolded, each
+ * line and its price, the tax and the total follow under it. The row folds
+ * and unfolds it, its chevron turning as the card's height follows on
+ * [Motion.settle], read in layout. It opens by itself only when the page
+ * with it open needs no scrolling ([room]); a tap is the cashier's and wins
+ * while the page is up. On the sale ([onOpen] set) a long order shows three
+ * lines and "+N more", and the lines open the whole order (decision 66); a
+ * detail page lists every line. [pos] names the receipt ("Clover order …").
+ * On the sale, [shared] is the key it grows into the order page by (M7).
  */
 @Composable
-fun OrderCard(receipt: Receipt, pos: PointOfSale?, withTime: Boolean, onOpen: (() -> Unit)? = null, shared: String? = null) {
+fun OrderCard(receipt: Receipt, pos: PointOfSale?, room: ReceiptRoom, onOpen: (() -> Unit)? = null, shared: String? = null) {
     val (lines, more) = if (onOpen != null) SaleText.shownLines(receipt) else receipt.lineItems to 0
     val open = onOpen.takeIf { more > 0 }
+    val m = motion
+    val id = receipt.receipt.receiptId
+    var tapped by rememberSaveable(id) { mutableStateOf<Boolean?>(null) }
+    val fits = remember(id) { mutableStateOf(false) }
+    val unfolded = tapped ?: fits.value
+    val shown = remember(id) { Animatable(if (unfolded) 1f else 0f) }
+    LaunchedEffect(shown, unfolded, m) { shown.animateTo(if (unfolded) 1f else 0f, m.settle.fraction) }
+    val fold = ReceiptFold(unfolded, shown, onToggle = { tapped = !unfolded }) { now, whole ->
+        // Untapped, the card follows the room: open only when the page with it open needs no scrolling.
+        if (tapped == null) room.fits(now, whole).let { if (it != fits.value) fits.value = it }
+    }
     // On the sale, the card's ground grows into the order page's list (M7) while its three lines fade out and the
     // page's whole list fades in, each at its own size (decisions 185, 188).
     Box(Modifier.fillMaxWidth()) {
         if (shared != null) {
             val ground = rememberGroundTrack(shared)
             Box(Modifier.matchParentSize().sharedGround(shared, Move.OrderGrow, GroundLook(mk.card, CardCorner), ground))
-            OrderLines(receipt, pos, withTime, lines, more, open, Modifier.words(over = Move.OrderGrow, on = ground))
+            OrderLines(receipt, pos, lines, more, open, fold, Modifier.words(over = Move.OrderGrow, on = ground))
         } else {
             Box(Modifier.matchParentSize().clip(CardShape).background(mk.card))
-            OrderLines(receipt, pos, withTime, lines, more, open, Modifier)
+            OrderLines(receipt, pos, lines, more, open, fold, Modifier)
         }
     }
 }
+
+/**
+ * How much of a page shows and how tall all of it is, so its order card
+ * opens by itself only when the page with the card open needs no
+ * scrolling: plain numbers the page's layout writes and the card's
+ * placement, which follows it, reads; never state, so they cost no
+ * recomposition and no frame.
+ */
+class ReceiptRoom {
+    private var shown = Constraints.Infinity
+    private var whole = 0
+
+    /** On the page's scrolling column, before its `verticalScroll`: the height the page shows. */
+    val window: Modifier = Modifier.layout { measurable, constraints ->
+        shown = constraints.maxHeight
+        val placeable = measurable.measure(constraints)
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }
+
+    /**
+     * After its `verticalScroll`: the height of all of the page, the card as it is now. The scroll stretches its
+     * content to the window at least, so the content is measured free of that and laid out at the top of it, as it is.
+     */
+    val content: Modifier = Modifier.layout { measurable, constraints ->
+        val placeable = measurable.measure(constraints.copy(minHeight = 0))
+        whole = placeable.height
+        layout(placeable.width, constraints.constrainHeight(placeable.height)) { placeable.place(0, 0) }
+    }
+
+    /** Whether the page fits with a card [now] px tall shown [open] px tall instead. */
+    fun fits(now: Int, open: Int): Boolean = (shown == Constraints.Infinity || whole - now + open <= shown)
+}
+
+/** An order card's fold: [unfolded] the cashier's or the room's, [shown] how much of its lines show, 0..1. */
+private class ReceiptFold(
+    val unfolded: Boolean,
+    val shown: Animatable<Float, AnimationVector1D>,
+    val onToggle: () -> Unit,
+    /** Told the card's height now and open, in its placement. */
+    val placed: (now: Int, open: Int) -> Unit,
+)
 
 @Composable
 private fun OrderLines(
     receipt: Receipt,
     pos: PointOfSale?,
-    withTime: Boolean,
     lines: List<Receipt.LineItem>,
     more: Int,
     open: (() -> Unit)?,
+    fold: ReceiptFold,
     modifier: Modifier,
 ) {
-    Column(
-        Modifier.fillMaxWidth().then(modifier)
-            .clip(CardShape)
-            .then(if (open != null) Modifier.clickable(onClickLabel = "See the whole order", onClick = open) else Modifier)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("ORDER", fontSize = 12.sp, letterSpacing = 0.6.sp, color = mk.muted, modifier = Modifier.semantics { heading() })
-            Text(
-                SaleText.receiptLabel(receipt, pos, withTime).uppercase(), fontSize = 12.sp, letterSpacing = 0.6.sp, color = mk.muted,
-                textAlign = TextAlign.End, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
-            )
-        }
-        for (line in lines) {
-            Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text(SaleText.line(line), fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                Text(SaleText.plain(line.lineTotal, receipt.currency), fontSize = 14.sp, color = mk.muted, softWrap = false)
+    val shown = fold.shown
+    Layout(
+        content = {
+            // The whole row is the fold's button, 48 dp at least; its words are the card's heading folded or not.
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .clickable(onClickLabel = if (fold.unfolded) "Hide the order's lines" else "Show the order's lines", role = Role.Button, onClick = fold.onToggle)
+                    .semantics {
+                        heading()
+                        stateDescription = if (fold.unfolded) "Expanded" else "Collapsed"
+                    }
+                    .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(SaleText.receiptSummary(receipt, pos), fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Icon(MkIcons.Fold, contentDescription = null, tint = mk.ink, modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = shown.value * 180f })
             }
-        }
-        if (more > 0) Text("+$more more", fontSize = 14.sp, color = mk.link)
-        Box(Modifier.fillMaxWidth().height(1.dp).background(mk.divider))
-        Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(SaleText.tax(receipt) ?: "Total", fontSize = 14.sp, color = mk.muted, modifier = Modifier.weight(1f))
-            Text(SaleText.total(receipt), fontSize = 14.sp, fontWeight = FontWeight.Bold, softWrap = false)
+            Column(
+                Modifier.fillMaxWidth()
+                    .then(if (open != null) Modifier.clickable(onClickLabel = "See the whole order", onClick = open) else Modifier)
+                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                for (line in lines) {
+                    Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text(SaleText.line(line), fontSize = 14.sp, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        Text(SaleText.plain(line.lineTotal, receipt.currency), fontSize = 14.sp, color = mk.muted, softWrap = false)
+                    }
+                }
+                if (more > 0) Text("+$more more", fontSize = 14.sp, color = mk.link)
+                Box(Modifier.fillMaxWidth().height(1.dp).background(mk.divider))
+                Row(Modifier.fillMaxWidth().semantics(mergeDescendants = true) {}, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(SaleText.tax(receipt) ?: "Total", fontSize = 14.sp, color = mk.muted, modifier = Modifier.weight(1f))
+                    Text(SaleText.total(receipt), fontSize = 14.sp, fontWeight = FontWeight.Bold, softWrap = false)
+                }
+            }
+        },
+        modifier = Modifier.fillMaxWidth().then(modifier).clip(CardShape),
+    ) { (row, body), constraints ->
+        // Both are measured whatever the fold, so the room is judged by the card open; the lines are clipped to how
+        // much of them shows (read here, per frame, never in composition) and left unplaced when none does.
+        val head = row.measure(constraints.copy(minHeight = 0))
+        val all = body.measure(constraints.copy(minHeight = 0, maxHeight = Constraints.Infinity))
+        val showing = (all.height * shown.value).roundToInt()
+        val height = constraints.constrainHeight(head.height + showing)
+        layout(constraints.constrainWidth(maxOf(head.width, all.width)), height) {
+            fold.placed(height, head.height + all.height)
+            head.place(0, 0)
+            if (showing > 0) all.place(0, head.height)
         }
     }
 }
