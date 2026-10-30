@@ -193,7 +193,7 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                             is ShiftItem.Row -> {
                                 // Opened by its id alone, so a row whose corners change keeps the one it had and skips.
                                 val id = item.sale.orderId
-                                SaleItem(item, trayFolds, now, moves, focusOn) { actions.onOpen(id) }
+                                SaleItem(item, trayFolds, now, focusOn, moves) { actions.onOpen(id) }
                             }
                         }
                     }
@@ -210,7 +210,7 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
  * In the tray the card sits in its slice of the amber, 4 dp in, so it is concentric with the tray's corners.
  */
 @Composable
-private fun SaleItem(item: ShiftItem.Row, trayFolds: Boolean, now: LongState, moves: Modifier, focusOn: MutableState<String?>, onOpen: () -> Unit) {
+private fun SaleItem(item: ShiftItem.Row, trayFolds: Boolean, now: LongState, focusOn: MutableState<String?>, modifier: Modifier = Modifier, onOpen: () -> Unit) {
     val sale = item.sale
     // Only the row the cashier came back to reads where focus goes, and asks for it once the stage has landed. A row
     // that can be clicked takes no focus in touch mode, so this one row may, for as long as it is the one came back to.
@@ -229,7 +229,7 @@ private fun SaleItem(item: ShiftItem.Row, trayFolds: Boolean, now: LongState, mo
     val bottom = (ends == RowEnds.Last || ends == RowEnds.Only) && !trayFolds
     val slice = if (!item.tray) Modifier else Modifier.background(mk.warnGround, traySlice(top, bottom))
         .padding(start = TrayPadding, end = TrayPadding, top = if (top) TrayPadding else 0.dp, bottom = if (bottom) TrayPadding else 0.dp)
-    Box(moves.padding(horizontal = 16.dp).fillMaxWidth().then(slice)) {
+    Box(modifier.padding(horizontal = 16.dp).fillMaxWidth().then(slice)) {
         Box {
             val ground = rememberGroundTrack("sale/${sale.orderId}")
             Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, rowLook(ends, mk.card), ground))

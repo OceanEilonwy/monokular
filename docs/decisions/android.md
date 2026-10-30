@@ -4188,3 +4188,31 @@ design unchanged.
     once as the Back lands through `LocalScreenReader`, a test seam as
     `LocalGroundTracks` is; `RunningMovesTest` checks the focus with a
     screen reader and no focused row without one.
+288. **Round 2 integrated on `motion-main`: dev2's track replayed first,
+    then dev1's, and what the review changed** (tech lead, round 2
+    integration; 272 to 275, 280 to 287; `docs/motion.md` §13.7). Both
+    tracks replayed onto `ca702e4` by cherry-pick, linear, dev2's eleven
+    commits then dev1's four (§13.7 said dev1 first; the order makes no
+    difference to a linear replay, and dev2's was the branch with the
+    draft PR); only `docs/decisions/android.md` conflicted, both tracks
+    appending, and `SaleText.kt` (dev1's `Bubble.label`, dev2's `follow`)
+    merged clean. The numbers 276 to 279 are unused: dev1's range ended
+    at 275 and dev2's began at 280. The review's one change of its own:
+    `SaleItem`'s `moves: Modifier` is `modifier: Modifier = Modifier`
+    (the item's root takes it), the last `ModifierParameter` warning,
+    so lint is at the manifest's and network config's five warnings
+    only. Read and left as they are: the held arc angle written by the
+    draw into a one-slot array (274: a frame of the chase allocates
+    nothing, and nothing but the draw reads it); the model's `restingOn`
+    nulled by `go` and set only by the stage's landing (282), whose one
+    hole, two `go` calls inside one snapshot ending where the stage
+    already rests, no path in the till takes (every `go` is a tap, a
+    Back, a dwell's end or a sales change, each its own snapshot), so the
+    shift's `landed` report is left as the one writer rather than given
+    a second from `FollowScreen`'s no-move branch that the same
+    coalescing would also miss; Needs action listing the live sales in
+    its tray (280: the canvas puts the tray on that filter); the tick
+    un-drawing over `fadeQuick` as the bubble leaves Paid (the brief's
+    own words); and `keepFoldInPlace` counting the rows going above the
+    fold at the first visible item's height (the rows are one height,
+    and a wrong count is a scroll of a row, not a jump off the screen).
