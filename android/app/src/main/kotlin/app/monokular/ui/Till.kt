@@ -39,12 +39,14 @@ import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.LongState
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -98,6 +100,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.constrainHeight
@@ -293,7 +296,9 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
     // A receipt reaches the till about a second after its sale: its card fades in then, rather than popping (N3).
     val late = remember(sale.orderId) { sale.receipt == null }
     // Folded unless the page has room for its order card open.
-    val room = remember(sale.orderId) { ReceiptRoom() }
+    val room = rememberReceiptRoom(sale.orderId, live = true)
+    // On a wide window, whether the late card has settled into the column beside the code (or there was none to wait for).
+    var grown by remember(sale.orderId) { mutableStateOf(!late) }
     KeepScreenOn()
     // Its ground is the screen's (SaleScreen), so the page it turns into fades over one ground, not a second.
     Surface(Modifier.fillMaxSize(), color = Color.Transparent, contentColor = mk.ink) {
@@ -314,8 +319,10 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                     ) {
                         Code(sale, min(this@BoxWithConstraints.maxHeight - 120.dp, 440.dp), card, ground) { actions.onEnlarge(sale.orderId) }
                         Column(
-                            // Centred beside the code (which is not in it), it settles to the late card's height rather than jumping.
-                            Modifier.widthIn(max = 420.dp).animateContentSize(motion.settle.spec(IntSize.VisibilityThreshold))
+                            // Centred beside the code (which is not in it), it settles to the late card's height rather than
+                            // jumping; then it lets go, so it never chases (nor clips the buttons under) the card's own fold.
+                            Modifier.widthIn(max = 420.dp)
+                                .then(if (grown) Modifier else Modifier.animateContentSize(motion.settle.spec(IntSize.VisibilityThreshold)) { _, _ -> if (sale.receipt != null) grown = true })
                                 .then(room.window).verticalScroll(rememberScrollState()).then(room.content),
                             verticalArrangement = Arrangement.spacedBy(20.dp),
                             horizontalAlignment = Alignment.Start,
@@ -594,16 +601,13 @@ fun OrderCard(receipt: Receipt, pos: PointOfSale?, room: ReceiptRoom, onOpen: ((
     val (lines, more) = if (onOpen != null) SaleText.shownLines(receipt) else receipt.lineItems to 0
     val open = onOpen.takeIf { more > 0 }
     val m = motion
-    val id = receipt.receipt.receiptId
-    var tapped by rememberSaveable(id) { mutableStateOf<Boolean?>(null) }
-    val fits = remember(id) { mutableStateOf(false) }
-    val unfolded = tapped ?: fits.value
-    val shown = remember(id) { Animatable(if (unfolded) 1f else 0f) }
+    val tapped = room.tapped
+    val unfolded = tapped.value ?: room.fits.value
+    // From the fold the sale's page last had, so a page come back to (from its order, its code, a turn) opens as it was.
+    val shown = remember(room) { Animatable(if (unfolded) 1f else 0f) }
     LaunchedEffect(shown, unfolded, m) { shown.animateTo(if (unfolded) 1f else 0f, m.settle.fraction) }
-    val fold = ReceiptFold(unfolded, shown, onToggle = { tapped = !unfolded }) { now, whole ->
-        // Untapped, the card follows the room: open only when the page with it open needs no scrolling.
-        if (tapped == null) room.fits(now, whole).let { if (it != fits.value) fits.value = it }
-    }
+    val window = LocalConfiguration.current.screenHeightDp
+    val fold = ReceiptFold(unfolded, shown, onToggle = { tapped.value = !unfolded }) { now, whole -> room.judge(now, whole, window) }
     // On the sale, the card's ground grows into the order page's list (M7) while its three lines fade out and the
     // page's whole list fades in, each at its own size (decisions 185, 188).
     Box(Modifier.fillMaxWidth()) {
@@ -619,15 +623,55 @@ fun OrderCard(receipt: Receipt, pos: PointOfSale?, room: ReceiptRoom, onOpen: ((
 }
 
 /**
+ * Each sale's order card folds, kept above the till's stage (in the view
+ * model, so a turn keeps them too): a sale's page leaves composition when
+ * its order or its code opens over it, and comes back open or folded as
+ * it was. The last [Kept] sales' only, so the map never grows with a shift.
+ */
+class ReceiptFolds {
+    private val sales = object : LinkedHashMap<String, Pair<ReceiptRoom, ReceiptRoom>>(Kept, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Pair<ReceiptRoom, ReceiptRoom>>) = size > Kept
+    }
+
+    /** [orderId]'s live sale's room, or its page's: one tap for both, so a sale paid on screen keeps the cashier's fold. */
+    fun room(orderId: String, live: Boolean): ReceiptRoom =
+        sales.getOrPut(orderId) { mutableStateOf<Boolean?>(null).let { ReceiptRoom(it) to ReceiptRoom(it) } }
+            .let { if (live) it.first else it.second }
+
+    private companion object {
+        const val Kept = 8
+    }
+}
+
+/** The till's [ReceiptFolds], provided at its root; a screen composed without them keeps its own while it is up. */
+val LocalReceiptFolds = staticCompositionLocalOf<ReceiptFolds?> { null }
+
+/** [orderId]'s room for its live sale's order card or its page's ([live] false), from [LocalReceiptFolds]. */
+@Composable
+fun rememberReceiptRoom(orderId: String, live: Boolean): ReceiptRoom {
+    val folds = LocalReceiptFolds.current
+    return remember(folds, orderId, live) { (folds ?: ReceiptFolds()).room(orderId, live) }
+}
+
+/**
  * How much of a page shows and how tall all of it is, so its order card
  * opens by itself only when the page with the card open needs no
  * scrolling: plain numbers the page's layout writes and the card's
  * placement, which follows it, reads; never state, so they cost no
- * recomposition and no frame.
+ * recomposition and no frame. Judged once, the first time the card is
+ * placed, and again only in a window of another height: a page whose
+ * status wraps or whose buttons change never folds or opens its card by
+ * itself. [tapped] is the cashier's, which wins.
  */
-class ReceiptRoom {
+class ReceiptRoom(internal val tapped: MutableState<Boolean?>) {
     private var shown = Constraints.Infinity
     private var whole = 0
+
+    /** Whether the page fits its card open, as last judged. */
+    internal val fits = mutableStateOf(false)
+
+    /** The window height (dp) [fits] was judged in; -1 not yet. */
+    private var judgedIn = -1
 
     /** On the page's scrolling column, before its `verticalScroll`: the height the page shows. */
     val window: Modifier = Modifier.layout { measurable, constraints ->
@@ -647,7 +691,14 @@ class ReceiptRoom {
     }
 
     /** Whether the page fits with a card [now] px tall shown [open] px tall instead. */
-    fun fits(now: Int, open: Int): Boolean = (shown == Constraints.Infinity || whole - now + open <= shown)
+    private fun fits(now: Int, open: Int): Boolean = (shown == Constraints.Infinity || whole - now + open <= shown)
+
+    /** From the card's placement, a card [now] px tall and [open] px open, in a window [window] dp tall. */
+    internal fun judge(now: Int, open: Int, window: Int) {
+        if (tapped.value != null || judgedIn == window) return
+        judgedIn = window
+        fits(now, open).let { if (it != fits.value) fits.value = it }
+    }
 }
 
 /** An order card's fold: [unfolded] the cashier's or the room's, [shown] how much of its lines show, 0..1. */
