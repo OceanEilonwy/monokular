@@ -50,6 +50,14 @@ command per flow: `ANDROID_SERIAL=emulator-5558 flows.sh all`.
   number is the floor for the Welcome screen only.
 - `uiautomator` doesn't see the overlay windows, so the panel was lowered by
   tapping the bubble again (which toggles it), not the grabber.
+- From round 2 on, `uiautomator dump` times out while a sale waits: the
+  bubble's border chases every frame, and the dump waits for an idle
+  window. Every script that reads the screen through it (`ui.sh nodes`,
+  `tap_text`, the A/B's tray gate, `to_shift`) fails until the sale is
+  paid, expired or closed. Pay or expire the waiting sale before
+  dumping, tap by coordinates, or read the Compose semantics through a
+  device test instead; TalkBack does not wait for idle and is unaffected
+  (`after.md`, round 2 integrated, finding 8).
 
 ## Numbers
 
