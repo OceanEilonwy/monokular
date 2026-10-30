@@ -141,12 +141,14 @@ fun ShiftScreen(
     // The shift is composed afresh by a Back (the stage composes only the screens it shows), its list at the top: a
     // row tapped far down would be off screen, with nothing for the ground to shrink into. So in this same first
     // composition the list is asked to put the row where it was when tapped, laid out on the change's first frame
-    // (decision 296). Asked once, then forgotten; a Back from a sale not left from its row asks nothing.
-    if (cameFrom != null && place.sale != null) {
-        val index = if (place.sale == cameFrom) rowIndex(status, sales, items, cameFrom) else -1
+    // (decision 296). Asked once by this list; the place is forgotten only once the shift has landed, so a back
+    // gesture peeked and cancelled (which composes the shift and leaves it again) leaves it for the Back that follows
+    // (decision 297). A Back from a sale not left from its row asks nothing.
+    if (cameFrom != null && place.sale == cameFrom && place.askedBy !== list) {
+        val index = rowIndex(status, sales, items, cameFrom)
         val offset = place.offset
         SideEffect {
-            place.sale = null
+            place.askedBy = list
             if (index >= 0) list.requestScrollToItem(index, scrollOffset = -offset)
         }
     }
@@ -154,7 +156,11 @@ fun ShiftScreen(
     val context = LocalContext.current
     val screenReader = LocalScreenReader.current
     LaunchedEffect(cameFrom) {
-        if (cameFrom == null) return@LaunchedEffect
+        if (cameFrom == null) {
+            // At rest on the shift (a change onto it landed, or it was there first): the place has been used, if at all.
+            if (stage == null || stage.landed()) place.forget()
+            return@LaunchedEffect
+        }
         // Focus moves for a screen reader only: to a sighted cashier a focused row is a grey row nobody asked for.
         if (screenReader(context)) focusOn.value = cameFrom
     }
@@ -357,13 +363,23 @@ private fun keepFoldInPlace(list: LazyListState, hidden: Int): Boolean {
 /**
  * Where the shift's list was when the cashier left it from a row: that row's sale, and how far below the list's top
  * it sat. The shift leaves composition while a sale is up, its list state with it, so this is kept above the stage
- * (the activity's), and a Back puts the row there again ([ShiftScreen], decision 296). Plain fields: written by a
- * tap, read once by the composition a Back starts; nothing draws or recomposes from them.
+ * (the activity's), and a Back puts the row there again ([ShiftScreen], decisions 296 and 297). Plain fields: written
+ * by a tap, read by the composition a Back starts, forgotten once the shift has landed; nothing draws or recomposes
+ * from them.
  */
 @Stable
 class ShiftPlace {
     internal var sale: String? = null
     internal var offset = 0
+
+    /** The list that has asked for this place: a shift composed afresh (a new list) asks again, the same list never. */
+    internal var askedBy: LazyListState? = null
+
+    /** The shift has landed: this place is used. */
+    internal fun forget() {
+        sale = null
+        askedBy = null
+    }
 
     /** The cashier leaves the shift from [id]'s row: where it is on screen now. */
     internal fun leave(list: LazyListState, id: String) {
