@@ -380,6 +380,8 @@ class ShiftListTest {
         assertEquals("Scan with any Monero wallet · 14:52 left", SaleText.hint(sale("w"), 892))
         assertEquals("Ask the customer to pay the rest to the same code · 9:12 left", SaleText.hint(sale("w", SalePhase.Partial), 552))
         assertEquals("The customer can go: it's being confirmed", SaleText.hint(sale("w", SalePhase.Seen), 0))
+        val paid = sale("w", SalePhase.Paid, paidAt = 990)
+        assertEquals("${SaleText.xmr(paid)} received", SaleText.hint(paid, 0), "paid, the foot says what came in, not the clock")
     }
 
     @Test

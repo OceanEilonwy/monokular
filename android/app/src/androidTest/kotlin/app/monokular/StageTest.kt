@@ -97,11 +97,11 @@ class StageTest {
             sizes += code().fetchSemanticsNode().size
         }
         compose.onAllNodesWithText("This shift", useUnmergedTree = true).assertCountEquals(1)
-        // The sale's pill (spoken as it changes), not the shift's tray header of the same words.
+        // The sale's status (spoken as it changes), not the shift's tray header of the same words.
         compose.onAllNodes(hasText("Waiting for payment") and SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion), useUnmergedTree = true).assertCountEquals(1)
         assertTrue(sizes.all { it == size }, "the code keeps its layout size through the grow: $size, $sizes")
         // SaleScreen's own body (its shared surface) may run as the transition starts and ends; what it shows doesn't.
-        for (name in listOf("QrCode", "SaleRow", "LiveSale", "StatusPill", "ShiftScreen")) {
+        for (name in listOf("QrCode", "SaleRow", "LiveSale", "StatusFoot", "ShiftScreen")) {
             assertEquals(0, recompositions.count("app.monokular.ui.$name"), "$name isn't recomposed by the transition's frames")
         }
 
@@ -186,7 +186,7 @@ class StageTest {
 
         compose.mainClock.advanceTimeBy(1_500)
         compose.onAllNodesWithContentDescription("Payment code, tap to shrink", useUnmergedTree = true).assertCountEquals(0)
-        assertEquals(small, code().fetchSemanticsNode().size, "and lands at its 264 dp card")
+        assertEquals(small, code().fetchSemanticsNode().size, "and lands at its card")
     }
 
     @Test
