@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.geometry.Rect
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
 import app.monokular.core.PointOfSale
@@ -667,6 +668,7 @@ class RunningMovesTest {
     @Test fun backWithASaleWaitingLandsOnTheShiftDark() = backWithSaleWaiting(dark = true)
 
     private fun backWithSaleWaiting(dark: Boolean) {
+        moves.screenReader = true
         moves.shift = listOf(moves.sale, moves.sales[0], moves.sales[2])
         moves.start(Screen.Sale("a1"), dark)
         // z0 and b2 came while the cashier was on a1: the model has seen them, not the cashier.
@@ -679,6 +681,14 @@ class RunningMovesTest {
             listOfNotNull(("the model ends on ${moves.model.screen.value}").takeIf { moves.model.screen.value != Screen.Till }))
         // TalkBack: focus is on the row the cashier came from.
         compose.onNodeWithText(ShiftList.row(moves.sale, PointOfSale.Square, 0).title).assertIsFocused()
+    }
+
+    /** With no screen reader, a Back moves no focus: a sighted cashier gets no grey, focused row. */
+    @Test fun backWithoutAScreenReaderFocusesNoRow() {
+        moves.start(Screen.Sale("a1"), dark = false)
+        moves.run(Screen.Till, groundKey = "sale/a1")
+        repeat(2) { compose.mainClock.advanceTimeByFrame() }
+        compose.onNodeWithText(ShiftList.row(moves.sale, PointOfSale.Square, 0).title).assertIsNotFocused()
     }
 
     /** Back on a sale the folded tray hides (the fourth live one): the tray opens as the change starts, the ground lands in its row. */

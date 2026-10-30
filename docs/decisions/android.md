@@ -4112,3 +4112,13 @@ design unchanged.
     is for that decision to read the stage's progress (a state the
     spring already writes each frame), so the face redraws on the frames
     of a move; it is not made here unseen.
+287. **Focus goes to the row came back to only for a screen reader**
+    (dev2, round 2, S8; amends 282, `docs/motion.md` §12.3's TalkBack).
+    The side-by-side screenshots showed the row a Back landed in drawn
+    grey: a row given input focus shows the clickable's focus state, so
+    every sighted cashier saw a highlighted row the canvas does not
+    have. The shift now moves focus only when the system's
+    accessibility manager says touch exploration is on (TalkBack), read
+    once as the Back lands through `LocalScreenReader`, a test seam as
+    `LocalGroundTracks` is; `RunningMovesTest` checks the focus with a
+    screen reader and no focused row without one.

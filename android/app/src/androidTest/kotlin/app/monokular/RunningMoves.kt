@@ -34,6 +34,7 @@ import app.monokular.ui.HeroTag
 import app.monokular.ui.Motion
 import app.monokular.ui.OrderPage
 import app.monokular.ui.SaleScreen
+import app.monokular.ui.LocalScreenReader
 import app.monokular.ui.ShiftScreen
 import java.io.File
 import kotlin.math.abs
@@ -52,6 +53,9 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
     val sales = listOf(testSale("z0", expiresAt = 1_600), sale, testSale("b2", expiresAt = 1_600))
     val now = mutableLongStateOf(1_000)
     var shown by mutableStateOf(sale)
+
+    /** Whether a screen reader explores by touch, as the shift asks it when a Back lands. */
+    var screenReader = false
 
     /** The shift's sales, newest first, as the shift screen lists them. */
     var shift by mutableStateOf(listOf(sales[0], sale, sales[2]))
@@ -74,7 +78,10 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         }
         compose.setContent {
             Till(motion, dark) {
-                CompositionLocalProvider(LocalGroundTracks provides { key -> GroundTrack(key).also { tracks.getOrPut(key) { mutableListOf() } += it } }) {
+                CompositionLocalProvider(
+                    LocalGroundTracks provides { key -> GroundTrack(key).also { tracks.getOrPut(key) { mutableListOf() } += it } },
+                    LocalScreenReader provides { screenReader },
+                ) {
                 // The activity's window is the theme's ground (decision 181); a test's is white.
                 Box(Modifier.fillMaxSize().background(mk.ground)) {
                 ModelStage(model) { s ->
