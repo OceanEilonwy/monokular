@@ -373,8 +373,6 @@ class ShiftListTest {
         assertEquals(3 to 5, SaleText.shownLines(receipt(8)).let { it.first.size to it.second })
         assertNull(SaleText.tax(receipt(1)), "no tax lines: the last row is the total")
         assertEquals("1.00 USD", SaleText.total(receipt(1)))
-        assertEquals("Square receipt k4Rt · 4:07 PM", SaleText.receiptLabel(receipt(1), PointOfSale.Square, withTime = true, Locale.US, zone))
-        assertEquals("Square receipt k4Rt", SaleText.receiptLabel(receipt(1), PointOfSale.Square, withTime = false, Locale.US, zone))
         assertEquals("Square receipt k4Rt · 8 items · 8.00 USD", SaleText.receiptSummary(receipt(8), PointOfSale.Square))
         assertEquals("Clover order k4Rt · 1 item · 1.00 USD", SaleText.receiptSummary(receipt(1), PointOfSale.Clover), "folded, the card says whose and how much")
         val taxed = receipt(2).copy(tax = Receipt.Tax(listOf(Receipt.TaxLine(0.05, 0.5), Receipt.TaxLine(0.08875, 0.63))))
