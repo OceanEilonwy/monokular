@@ -935,9 +935,10 @@ their sections). Artboards: `Main` (folded, light), `TrayOpen`,
 **What it is.** Under the chips, a section header "Waiting for payment"
 with the count at its end, then an amber tray (`warnGround`) holding a
 white card (`card`) of every live sale: waiting, seen, confirming, part
-paid. More than three live sales fold after the third row into a fold
-row inside the tray, "Show N more waiting"; tapped, the tray opens in
-place and the row reads "Show fewer". Under the tray, an "Earlier" header
+paid. More than three live sales fold after the third row into a stack
+inside the tray: two card edges peek under the third row over a "+N"
+pill (the fixes canvas's board 4); tapped, or pulled down, the tray opens
+in place and the pill reads "Show fewer". Under the tray, an "Earlier" header
 and the rest of the shift as today: paid, closed, expired, refunded and
 other tills' sales. With no live sale there is no tray, no header and no
 "Earlier" header: the list reads exactly as today. Nothing else is
@@ -989,7 +990,7 @@ one-orange-primary rule wants. Row text on the inner card is as today.
 | --- | --- |
 | Tray header | Waiting for payment |
 | Count | the number of live sales, e.g. 21 |
-| Fold, folded | Show N more waiting, N = count − 3 ("Show 1 more waiting") |
+| Fold, folded | +N, N = count − 3 ("+1") |
 | Fold, open | Show fewer |
 | Earlier header | Earlier |
 | Row title | Sale #1257 · $12.00 (unchanged) |
@@ -1020,7 +1021,8 @@ its own, it is its rows:
 | Paid step-back after the dwell | `surface` on `track` | §12.2: the same `RowGrow` reversed into the row at the top of Earlier |
 | Tray opens | `animateItem`: `fadeIn` `fade` · placement `settle` | The N rows fade in where they will sit; Earlier slides down on `settle`. No stagger, no tween of the tray's height: it is the rows |
 | Tray folds | `animateItem`: `fadeOut` `fadeQuick` · placement `settle` | Rows past the third fade out; Earlier slides up. If the fold row would leave the screen, the list scrolls so the fold row stays under the finger |
-| Fold label and chevron | `fade` · chevron rotation `settle` | "Show N more waiting" crossfades to "Show fewer"; the chevron turns 180° (read in `graphicsLayer`) |
+| Fold label and chevron | `fade` · chevron rotation `settle` · pill width `settle` | "+N" fades through to "Show fewer"; the chevron turns 180° (read in `graphicsLayer`) |
+| Stack pulled | the finger · release `flick` with its velocity · fold `settle` | The edges follow the finger down, each taking half the pull, toward a row's height and the card's width (laid out and drawn from the pull, never composed); let go past a third of the reach or flung down, the tray opens, else they settle back. A fold change starts the pull 13 dp off so the pill never jumps as the edges come or go |
 | A sale is paid or ends | `fadeOut` `fadeQuick` · `fadeIn` `fade` · placement `settle` | Its row leaves the tray and arrives at the top of Earlier; the rows around it settle. The last waiting sale gone: the tray and its header fade out (`fadeQuick`) and Earlier slides up |
 | A new sale arrives on a shift that is showing | `fadeIn` `fade` · placement `settle` | Lands at the top of the tray (under the sale rising out of the shift, when it does: §12.1); folded, the third row moves into the fold and the count rises by one |
 | Animations off (`Still`) | snapped · 120 ms fades | Back and the step-back are 120 ms crossfades; open and fold jump; labels swap |
