@@ -120,6 +120,13 @@ class Motion private constructor(
      */
     val tick: Preset = if (still) Snapped else After(FADE_MS, sweep)
 
+    /**
+     * The paid bubble's tick leaving: its trim held where it is for [fadeQuick]'s length while the tick fades out
+     * whole, then rewound to nothing, so a tick leaves by fading, never un-drawn from its tail, and the next paid
+     * draws it in again (decision 293). The same under [Still]: the fade it waits for is the same quick one.
+     */
+    val untick: Preset = After(QUICK_MS, Snapped)
+
     private fun spatial(stiffness: Float, dampingRatio: Float): Preset = if (still) Snapped else Sprung(stiffness, dampingRatio)
 
     private fun loop(turnMs: Int, easing: Easing): InfiniteRepeatableSpec<Float>? =

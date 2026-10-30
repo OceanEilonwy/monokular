@@ -692,6 +692,52 @@ class OverlayFramesTest {
         assertWholeBorder(done, Fixed.Ink, "paid")
     }
 
+    /** How light [pixel] is, 0 to 1. */
+    private fun lightness(pixel: Int): Float =
+        (0.2126f * android.graphics.Color.red(pixel) + 0.7152f * android.graphics.Color.green(pixel) + 0.0722f * android.graphics.Color.blue(pixel)) / 255f
+
+    /**
+     * Paid to Idle, the tick leaves by fading whole (decision 293): on every
+     * frame its three points, start, corner and end, are each as far from
+     * white as the others, lighter than the lens beside them while it is
+     * still most of the way shown, and lighter frame by frame less; no point
+     * goes to the lens while another is still white, as an un-drawn tick's
+     * end would. Gone with the quick fade.
+     */
+    @Test
+    fun paidToIdleFadesTheTickWholeNeverUndrawsIt() {
+        bubble(BubbleLook.Paid)
+        compose.mainClock.advanceTimeBy(1_000)
+        // Along the tick, and beside each, 2.6 units off its line inside the V, the lens with no tick on it.
+        val along = listOf(24.82f to 29.82f, 30.43f to 30.08f, 34.56f to 25.81f)
+        val beside = listOf(26.66f to 27.98f, 28.56f to 28.27f, 32.69f to 24.0f)
+        fun shown(image: Bitmap): List<Float> = along.indices.map { i ->
+            val on = lightness(image.atMark(along[i].first, along[i].second))
+            val off = lightness(image.atMark(beside[i].first, beside[i].second))
+            ((on - off) / (1f - off).coerceAtLeast(0.01f)).coerceIn(0f, 1f)
+        }
+        val whole = shown(mark())
+        assertTrue(whole.all { it > 0.8f }, "paid at rest, the tick is whole and white: $whole")
+        look = BubbleLook.Idle
+        compose.mainClock.advanceTimeByFrame()
+        val start = compose.mainClock.currentTime
+        var last = 1f
+        var i = 0
+        while (compose.mainClock.currentTime - start <= 200) {
+            val t = compose.mainClock.currentTime - start
+            val image = mark()
+            save("bubble-untick", i++, image)
+            val points = shown(image)
+            assertTrue(points.max() - points.min() < 0.25f, "$t ms: the tick fades as one, its points $points")
+            // Over its first 50 ms the 120 ms fade has the tick at least 0.58 shown.
+            if (t <= 50) assertTrue(points.min() > 0.4f, "$t ms: still mostly shown, every point of it is: $points")
+            assertTrue(points.average().toFloat() <= last + 0.05f, "$t ms: it only fades, ${points.average()} after $last")
+            last = points.average().toFloat()
+            compose.mainClock.advanceTimeByFrame()
+        }
+        assertTrue(last < 0.1f, "and is gone after the quick fade: $last")
+    }
+
     /** A payment landing mid-turn holds the arc where it was as it fades into the darkening border: no jump to 12 o'clock. */
     @Test
     fun paidMidTurnFadesTheArcWhereItIs() {

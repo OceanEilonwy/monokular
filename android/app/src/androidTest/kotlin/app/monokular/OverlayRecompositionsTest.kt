@@ -124,4 +124,13 @@ class OverlayRecompositionsTest {
         bubble()
         assertNothingRecomposesMidMove("paid spread", bubbleParts) { look = BubbleLook.Paid }
     }
+
+    /** Paid back to idle, the tick fading whole and the lens spreading to grey, recomposes none of the bubble (decision 293). */
+    @Test
+    fun theBubblesLeavingPaid() {
+        bubble()
+        look = BubbleLook.Paid
+        compose.mainClock.advanceTimeBy(1_000)
+        assertNothingRecomposesMidMove("paid to idle", bubbleParts) { look = BubbleLook.Idle }
+    }
 }
