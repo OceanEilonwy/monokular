@@ -27,6 +27,10 @@ import app.monokular.ui.SaleScreen
 import app.monokular.ui.ShiftScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.semantics.SemanticsProperties
+import app.monokular.core.SalePhase
 import org.junit.After
 import org.junit.Rule
 import org.junit.Test
@@ -93,7 +97,8 @@ class StageTest {
             sizes += code().fetchSemanticsNode().size
         }
         compose.onAllNodesWithText("This shift", useUnmergedTree = true).assertCountEquals(1)
-        compose.onAllNodesWithText("Waiting for payment", useUnmergedTree = true).assertCountEquals(1)
+        // The sale's pill (spoken as it changes), not the shift's tray header of the same words.
+        compose.onAllNodes(hasText("Waiting for payment") and SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion), useUnmergedTree = true).assertCountEquals(1)
         assertTrue(sizes.all { it == size }, "the code keeps its layout size through the grow: $size, $sizes")
         // SaleScreen's own body (its shared surface) may run as the transition starts and ends; what it shows doesn't.
         for (name in listOf("QrCode", "SaleRow", "LiveSale", "StatusPill", "ShiftScreen")) {
@@ -102,7 +107,7 @@ class StageTest {
 
         compose.mainClock.advanceTimeBy(1_500)
         compose.onAllNodesWithText("This shift", useUnmergedTree = true).assertCountEquals(0)
-        compose.onNodeWithText("Waiting for payment", useUnmergedTree = true).assertExists()
+        compose.onNode(hasText("Waiting for payment") and SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion), useUnmergedTree = true).assertExists()
         assertEquals(size, code().fetchSemanticsNode().size, "and lands at the size it was laid out at")
     }
 
@@ -186,7 +191,8 @@ class StageTest {
 
     @Test
     fun backFromTheThirdRowsSaleLandsOnThatRowWithTheRowsAroundItAtRest() {
-        val rows = listOf(testSale("r1", expiresAt = 1_600), testSale("r2", expiresAt = 1_600), testSale("r3", expiresAt = 1_600), testSale("r4", expiresAt = 1_600))
+        // Three live sales fill the tray's three rows, unfolded; the fourth row is a paid one, under Earlier.
+        val rows = listOf(testSale("r1", expiresAt = 1_600), testSale("r2", expiresAt = 1_600), testSale("r3", expiresAt = 1_600), testSale("r4", SalePhase.Paid, paidAt = 990))
         var screen by mutableStateOf<Screen>(Screen.Till)
         val state = SeekableTransitionState<Screen>(Screen.Till)
         compose.setContent {
