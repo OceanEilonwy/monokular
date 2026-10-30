@@ -21,7 +21,7 @@ object Amounts {
         val code = Currency.getInstance(currency.uppercase(Locale.ROOT))
         val digits = code.defaultFractionDigits.coerceAtLeast(0)
         val number = BigDecimal(amount)
-        val narrow = narrow(code) ?: return@runCatching NumberFormat.getNumberInstance(locale).apply {
+        val narrow = narrow(code, locale) ?: return@runCatching NumberFormat.getNumberInstance(locale).apply {
             minimumFractionDigits = digits
             maximumFractionDigits = digits
         }.format(number) + " " + code.currencyCode
@@ -36,22 +36,31 @@ object Amounts {
             }
         }
         format.format(number)
-    }.getOrElse { "$amount $currency" }
+    }.getOrElse { "$amount ${currency.uppercase(Locale.ROOT)}" }
 
     /** International English, whose symbols name the country: "US$", "A$", "CN¥". */
     private val INTERNATIONAL: Locale = Locale.forLanguageTag("en-001")
 
+    /** Symbols that put country letters before a shared sign: "US$" is "$", "CN¥" is "¥". */
+    private val PREFIXED = setOf("US$", "A$", "AU$", "CA$", "HK$", "NZ$", "MX$", "NT$", "CN¥", "JP¥")
+
     /**
-     * The symbol with its country letters taken off ("US$" to "$", "CN¥" to
-     * "¥"), or null when the symbol is only letters ("CHF").
+     * [code]'s narrow symbol: [locale]'s own ("R$" in Brazil, "kr" in
+     * Sweden), or the international one where [locale] writes only the code,
+     * with country letters taken off the shared signs ("US$" to "$"). Null
+     * when neither has a symbol ("CHF").
      */
-    private fun narrow(code: Currency): String? =
-        code.getSymbol(INTERNATIONAL).filterNot { it in 'A'..'Z' || it in 'a'..'z' }.ifEmpty { null }
+    private fun narrow(code: Currency, locale: Locale): String? {
+        val symbol = code.getSymbol(locale).takeIf { it != code.currencyCode }
+            ?: code.getSymbol(INTERNATIONAL).takeIf { it != code.currencyCode }
+            ?: return null
+        return if (symbol in PREFIXED) symbol.filterNot { it in 'A'..'Z' } else symbol
+    }
 
     /** Whether the till's own currency is another one written with the same narrow symbol. */
     private fun clashes(code: Currency, narrow: String, locale: Locale): Boolean {
         val own = runCatching { Currency.getInstance(locale) }.getOrNull() ?: return false
-        return own != code && narrow(own) == narrow
+        return own != code && narrow(own, locale) == narrow
     }
 
     /**
