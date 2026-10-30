@@ -20,6 +20,7 @@ import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -303,8 +304,10 @@ class Overlay(
                 // On a tablet the bubble stays beside the open panel: nothing to call for while it's up.
                 val open by panelOpen.collectAsStateWithLifecycle()
                 val m = LocalMotion.current
+                // The bubble no longer shows the step: its label says it (§12.5).
+                val label = remember(s.look, s.sale) { Bubble.label(s.look, s.sale) }
                 SideEffect {
-                    frame.describe(Bubble.label(s.look))
+                    frame.describe(label)
                     frame.motion = m
                 }
                 // Appearing and going, the circle scales and fades inside its window (M4).
@@ -318,7 +321,7 @@ class Overlay(
                     },
                 ) { BubbleFace(
                         s.look, phase = s.sale?.phase ?: SalePhase.Waiting, panelUp = open,
-                        confirms = PaidBuzz.bubble(s.appVisible), presence = presence,
+                        confirms = PaidBuzz.bubble(s.appVisible), presence = presence, label = label,
                     ) }
             }.apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS },
         )

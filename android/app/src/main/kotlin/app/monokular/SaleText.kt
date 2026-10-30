@@ -268,10 +268,16 @@ object Bubble {
         return sales.firstOrNull { it.live }?.orderId ?: previous
     }
 
-    /** What TalkBack says for it, as the design's aria labels do. */
-    fun label(look: BubbleLook): String = when (look) {
-        BubbleLook.Idle -> "Monokular, waiting for sales"
-        BubbleLook.Lit -> "Monokular, new sale, tap to show the code"
-        BubbleLook.Paid -> "Monokular, paid"
+    /**
+     * What TalkBack says for it, as the design's aria labels do (`docs/motion.md`
+     * §12.5): the bubble no longer shows a sale's step, so its label carries the
+     * amount and the step, in the words the shift and the panel use for it, for
+     * [sale], the one it is about ([focus]).
+     */
+    fun label(look: BubbleLook, sale: TillSale?): String = when {
+        look == BubbleLook.Idle -> "Monokular, nothing waiting"
+        sale == null -> if (look == BubbleLook.Paid) "Monokular, paid" else "Monokular, a sale waiting for payment"
+        look == BubbleLook.Paid -> "Monokular, ${SaleText.amount(sale)} paid"
+        else -> "Monokular, ${SaleText.amount(sale)} " + (if (sale.live) SaleText.status(sale, null) else "Waiting for payment").replaceFirstChar(Char::lowercase)
     }
 }

@@ -139,7 +139,18 @@ class SaleTextTest {
         assertEquals(BubbleLook.Paid, Bubble.look(listOf(sale(phase = SalePhase.Seen)), justPaid = true), "paid shows first, even with another sale waiting")
         assertEquals(BubbleLook.Paid, Bubble.look(listOf(sale(phase = SalePhase.Paid)), justPaid = true))
         assertEquals(BubbleLook.Idle, Bubble.look(listOf(sale(phase = SalePhase.Paid)), justPaid = false))
-        assertEquals("Monokular, new sale, tap to show the code", Bubble.label(BubbleLook.Lit))
+    }
+
+    @Test
+    fun `the bubble's label says the amount and the step it no longer shows`() {
+        val amount = SaleText.amount(sale())
+        assertEquals("Monokular, $amount waiting for payment", Bubble.label(BubbleLook.Lit, sale()))
+        assertEquals("Monokular, $amount part paid", Bubble.label(BubbleLook.Lit, sale(phase = SalePhase.Partial)))
+        assertEquals("Monokular, $amount seen on the network", Bubble.label(BubbleLook.Lit, sale(phase = SalePhase.Seen)))
+        assertEquals("Monokular, $amount confirming", Bubble.label(BubbleLook.Lit, sale(phase = SalePhase.Confirming)))
+        assertEquals("Monokular, $amount paid", Bubble.label(BubbleLook.Paid, sale(phase = SalePhase.Paid)))
+        assertEquals("Monokular, nothing waiting", Bubble.label(BubbleLook.Idle, sale(phase = SalePhase.Paid)))
+        assertEquals("Monokular, nothing waiting", Bubble.label(BubbleLook.Idle, null))
     }
 
     @Test

@@ -24,16 +24,16 @@ fun ringFill(phase: SalePhase): Float = SaleText.step(phase) / 4f
 
 /**
  * The design's phase ring (its Chips and status rows): an open ring whose
- * [fill] arc grows a quarter a step, Waiting to Paid, with a pupil in the
- * middle when [pupil]. Decoration: the words beside it say the phase.
+ * [fill] arc grows a quarter a step, Waiting to Paid. Decoration: the
+ * words beside it say the phase.
  *
  * A step sweeps (`docs/motion.md` M6, `motion.sweep`): the arc grows from
  * where it is, so a second step mid-sweep just carries on, and it closes
- * in [paid] once the sale is paid. The arc's two colours are two strokes,
+ * in the theme's paid green once the sale is paid. The arc's two colours are two strokes,
  * never a blend of them (decision 190): the one going fades out under
  * `motion.fadeQuick` before the one coming fades in (`motion.fadeThrough`),
  * so on the way to paid, or from a paid ring to the next sale's, the ring
- * is only ever [fill], [paid], or one of them fading over the [track].
+ * is only ever [fill], paid, or one of them fading over the [track].
  * The first composition draws the phase's own fill, so a ring that appears
  * at Seen doesn't sweep in. Every animated value is read only in the draw
  * lambda: a step redraws the ring and recomposes nothing, and nothing is
@@ -46,11 +46,9 @@ fun PhaseRing(
     modifier: Modifier = Modifier,
     track: Color = mk.chip,
     fill: Color = mk.accent,
-    pupil: Boolean = false,
-    /** The closed ring's colour: the theme's, or the design's over another app (the bubble). */
-    paid: Color = mk.paid,
 ) {
     val m = motion
+    val paid = mk.paid
     val fraction by animateFloatAsState(ringFill(phase), m.sweep.fraction, label = "ring")
     val closed = phase == SalePhase.Paid
     val fillShown by animateFloatAsState(if (closed) 0f else 1f, (if (closed) m.fadeQuick else m.fadeThrough).fraction, label = "fill")
@@ -63,13 +61,11 @@ fun PhaseRing(
         val topLeft = Offset(inset, inset)
         drawArc(track, 0f, 360f, useCenter = false, topLeft = topLeft, size = arcSize, style = strokes.track)
         val sweep = 360f * fraction
-        val radius = this.size.minDimension * 0.11f
         for (stroke in 0..1) {
             val colour = if (stroke == 0) fill else paid
             val shown = if (stroke == 0) fillShown else paidShown
             if (shown <= 0f) continue
             if (sweep > 0f) drawArc(colour, -90f, sweep, useCenter = false, topLeft = topLeft, size = arcSize, alpha = shown, style = strokes.arc)
-            if (pupil) drawCircle(colour, radius = radius, alpha = shown)
         }
     }
 }
