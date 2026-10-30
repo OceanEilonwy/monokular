@@ -342,9 +342,12 @@ location an encrypted, VAPID-signed Web Push ding that carries no sale data.
 In the app: **Settings › Wake-ups**: "Timer only" (default), "Monokular Bell"
 (the build's `-Pmonokular.bell.url`, `bell.monokulo.com` by default), or "My
 own Bell" with its address. Built on Android (decisions 90–99 and on): picking
-a Bell reads its `/v1/info` and registers for the till's point of sale: a Bell
-without that point of sale refuses the till ("it doesn't ring Clover tills"),
-and if the Bell's application for it differs, the app asks for a new sign-in
+a Bell reads its `/v1/info` and registers for the till's point of sale and
+environment (one Bell may ring Square's production and sandbox at once): a
+Bell without that point of sale refuses the till ("it doesn't ring Clover
+tills"), as does one without the till's environment ("it doesn't ring Square
+sandbox tills"), and if the Bell's application for it there differs, the app
+asks for a new sign-in
 through that application (the working sign-in stands until the new one
 finishes). It subscribes through the UnifiedPush app installed (ntfy, say;
 none installed says so, and the till stays on the timer) for the Bell's VAPID

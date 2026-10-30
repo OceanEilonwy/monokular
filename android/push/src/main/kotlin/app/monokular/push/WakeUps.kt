@@ -36,29 +36,26 @@ sealed interface WakeUpChoice {
     }
 }
 
-/** What a Bell says about itself: `GET /v1/info` (`docs/bell.md`). */
-@Serializable
+/**
+ * What a Bell says about itself: `GET /v1/info` (`docs/bell.md`), as [BellApi] reads it.
+ * One Bell may ring several environments of each point of sale at once (Square's production
+ * and its sandbox, say), each through its own application (decision 147).
+ */
 data class BellInfo(
     /**
-     * The points of sale this Bell rings tills for, by wire name ([PointOfSale.wire]):
-     * one it doesn't run is absent. A name this build doesn't know is kept and never read.
+     * The points of sale this Bell rings tills for, by wire name ([PointOfSale.wire]), each
+     * mapping its environments to the application the till must sign in through for this Bell
+     * to hear its sales there. Square's environments are `production` and `sandbox`; Clover's
+     * `north_america`, `europe`, `latin_america` and `sandbox`. A point of sale the Bell doesn't
+     * run is absent; a name this build doesn't know, of either, is kept and never read.
      */
-    @SerialName("points_of_sale") val pointsOfSale: Map<String, BellPointOfSale>,
+    val pointsOfSale: Map<String, Map<String, String>>,
     /** The key every ding is signed with: what the subscription is made for. */
-    @SerialName("vapid_public_key") val vapidPublicKey: String,
+    val vapidPublicKey: String,
 ) {
-    /** The Bell's entry for [pointOfSale], or null when it doesn't ring that point of sale's tills. */
-    operator fun get(pointOfSale: PointOfSale): BellPointOfSale? = pointsOfSale[pointOfSale.wire]
+    /** The Bell's environments for [pointOfSale], each to its application; null when it doesn't ring that point of sale's tills. */
+    operator fun get(pointOfSale: PointOfSale): Map<String, String>? = pointsOfSale[pointOfSale.wire]
 }
-
-/** One point of sale a Bell runs: the application it hears that point of sale through, and where. */
-@Serializable
-data class BellPointOfSale(
-    /** The application the till must sign in through for this Bell to hear its sales. */
-    @SerialName("application_id") val applicationId: String,
-    /** Square's `production` or `sandbox`; Clover's `sandbox`, `north_america`, `europe` or `latin_america`. */
-    val environment: String,
-)
 
 /** A registration the Bell holds for this till: `POST /v1/register`'s answer and what it was made with. */
 @Serializable
@@ -75,7 +72,17 @@ data class BellRegistration(
      * this process has subscribed, the one an uninstall took away (decision 122).
      */
     val distributor: String,
-)
+    /**
+     * The point of sale ([PointOfSale.wire]) and environment it was made for: a till whose
+     * sign-in moved to another registers again (decision 148). Null in a registration kept
+     * from before a Bell rang several environments, which counts as another.
+     */
+    @SerialName("point_of_sale") val pointOfSale: String? = null,
+    val environment: String? = null,
+) {
+    /** Made for [signIn]'s point of sale and environment. */
+    fun isFor(signIn: PosSignIn): Boolean = pointOfSale == signIn.pointOfSale.wire && environment == signIn.environment
+}
 
 /**
  * What the app knows about the Bell it chose (the acceptance criteria's

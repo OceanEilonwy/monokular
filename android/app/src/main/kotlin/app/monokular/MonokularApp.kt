@@ -131,8 +131,9 @@ class Graph(app: Application) {
                     if (location == null || stores.tokens.load() == null) {
                         null
                     } else {
-                        val environment = if (BuildConfig.SQUARE_SANDBOX) "sandbox" else "production"
-                        PosSignIn(PointOfSale.Square, squareConfig().applicationId, environment, location.id)
+                        // The environment is the application's, the one the till signed in through (decision 147).
+                        val config = squareConfig()
+                        PosSignIn(PointOfSale.Square, config.applicationId, config.environment, location.id)
                     }
                 }
                 // A Clover merchant is its own location (acceptance D1).

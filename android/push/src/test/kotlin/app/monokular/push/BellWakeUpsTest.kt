@@ -38,6 +38,8 @@ data class TestTill(
     val otherApplicationId: String,
     val locationId: String,
     val token: String,
+    /** Why a Bell without the till's environment refuses it, in the cashier's words. */
+    val notRungHere: String,
 )
 
 /**
@@ -55,6 +57,8 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
         val calls = mutableListOf<String>()
         /** The point of sale each POST registered for. */
         val registeredFor = mutableListOf<PointOfSale>()
+        /** The environment each POST registered in. */
+        val registeredIn = mutableListOf<String>()
         val infos = mutableMapOf<BellAddress, () -> BellInfo>()
         var register: () -> BellRegistered = { BellRegistered("br_${++ids}") }
         var unregister: suspend () -> Unit = {}
@@ -68,12 +72,14 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
         override suspend fun register(
             bell: BellAddress,
             pointOfSale: PointOfSale,
+            environment: String,
             accessToken: String,
             locationId: String,
             subscription: PushSubscription,
         ): BellRegistered {
             calls += "POST ${bell.display} $accessToken $locationId ${subscription.endpoint}"
             registeredFor += pointOfSale
+            registeredIn += environment
             return register()
         }
 
@@ -142,7 +148,7 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
 
     /** A Bell's info with an entry for the till's point of sale only. */
     private fun info(app: String = till.applicationId, environment: String = till.environment, key: String = KEY) =
-        { BellInfo(mapOf(till.pointOfSale.wire to BellPointOfSale(app, environment)), key) }
+        { BellInfo(mapOf(till.pointOfSale.wire to mapOf(environment to app)), key) }
 
     init {
         bell.infos[monokular] = info()
@@ -296,12 +302,13 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
     }
 
     @Test
-    fun `a Bell for the other environment is refused for good, with no sign-in and no post (A3_14)`() = runTest {
+    fun `a Bell without the till's environment is refused for good in words naming it, with no sign-in and no post (A3_14)`() = runTest {
         bell.infos[monokular] = info(app = till.otherApplicationId, environment = till.otherEnvironment)
         val wakeUps = start()
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
-        assertEquals(WakeUpStatus.Refused(PosWords.environment(till.pointOfSale, till.otherEnvironment)!!), wakeUps.status.value)
+        assertEquals(WakeUpStatus.Refused(till.notRungHere), wakeUps.status.value)
+        assertEquals(WakeUpStatus.Refused(PosWords.notRung(till.pointOfSale, till.environment)), wakeUps.status.value)
         wait(60.minutes)
         assertEquals(listOf("GET bell.monokulo.com"), bell.calls, "no retry on its own")
         assertEquals(emptyList(), push.calls)
@@ -311,18 +318,80 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
     }
 
     @Test
-    fun `a till signed in elsewhere is refused by a Bell for this environment too`() = runTest {
+    fun `a till signed in elsewhere is refused by a Bell for this environment alone, naming the till's`() = runTest {
         pos.environment = till.otherEnvironment
         val wakeUps = BellWakeUps(push, distributors, bell, store, monokular, pos, backgroundScope, { 0 })
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
-        assertEquals(WakeUpStatus.Refused(PosWords.environment(till.pointOfSale, till.environment)!!), wakeUps.status.value)
+        assertEquals(WakeUpStatus.Refused(PosWords.notRung(till.pointOfSale, till.otherEnvironment)), wakeUps.status.value)
+    }
+
+    @Test
+    fun `a Bell ringing both environments registers the till in its own, through its own application (decision 147)`() = runTest {
+        bell.infos[monokular] = {
+            BellInfo(mapOf(till.pointOfSale.wire to mapOf(till.otherEnvironment to till.otherApplicationId, till.environment to till.applicationId)), KEY)
+        }
+        val wakeUps = start()
+        wakeUps.choose(WakeUpChoice.MonokularBell)
+        runCurrent()
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        assertEquals(listOf(till.environment), bell.registeredIn)
+        assertEquals(till.pointOfSale.wire, store.registration?.pointOfSale)
+        assertEquals(till.environment, store.registration?.environment)
+    }
+
+    @Test
+    fun `a Bell ringing both environments asks for a sign-in through the till's environment's application, not the other's`() = runTest {
+        val bellsOwn = till.otherApplicationId
+        bell.infos[monokular] = {
+            BellInfo(mapOf(till.pointOfSale.wire to mapOf(till.otherEnvironment to "another-environments-app", till.environment to bellsOwn)), KEY)
+        }
+        val wakeUps = start()
+        wakeUps.choose(WakeUpChoice.MonokularBell)
+        runCurrent()
+        assertEquals(WakeUpStatus.SignInNeeded(till.pointOfSale, bellsOwn), wakeUps.status.value)
+        assertFalse(bell.calls.any { it.startsWith("POST") })
+    }
+
+    @Test
+    fun `a till moved to the other environment takes its registration back and registers again in the new one (decision 148)`() = runTest {
+        bell.infos[monokular] = {
+            BellInfo(mapOf(till.pointOfSale.wire to mapOf(till.otherEnvironment to till.otherApplicationId, till.environment to till.applicationId)), KEY)
+        }
+        val wakeUps = connected()
+        pos.environment = till.otherEnvironment
+        pos.applicationId = till.otherApplicationId
+        wakeUps.recheck()
+        runCurrent()
+        assertEquals(
+            listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_1", "POST bell.monokulo.com $posted https://ntfy.sh/up1"),
+            bell.calls,
+        )
+        assertEquals(listOf(till.environment, till.otherEnvironment), bell.registeredIn)
+        assertEquals(till.otherEnvironment, store.registration?.environment)
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+    }
+
+    @Test
+    fun `a registration kept from before registrations named their environment is taken back and made again at the next start (decision 148)`() = runTest {
+        store.choice = WakeUpChoice.MonokularBell
+        store.registration = BellRegistration(monokular, "br_old", KEY, PushSubscription("https://ntfy.sh/up1", "BKey", "auth"), NTFY)
+        val wakeUps = start()
+        assertEquals(
+            listOf("GET bell.monokulo.com", "DELETE bell.monokulo.com br_old", "POST bell.monokulo.com $posted https://ntfy.sh/up1"),
+            bell.calls,
+        )
+        assertEquals(till.environment, store.registration?.environment)
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        wakeUps.recheck()
+        runCurrent()
+        assertEquals(1, bell.calls.count { it.startsWith("DELETE") }, "one made for the till's environment is kept: ${bell.calls}")
     }
 
     @Test
     fun `a Bell that doesn't run the till's point of sale is refused for good, before its environment or application (T5_2)`() = runTest {
         val other = PointOfSale.entries.single { it != till.pointOfSale }
-        bell.infos[monokular] = { BellInfo(mapOf(other.wire to BellPointOfSale("someone-else", "elsewhere")), KEY) }
+        bell.infos[monokular] = { BellInfo(mapOf(other.wire to mapOf("elsewhere" to "someone-else")), KEY) }
         val wakeUps = start()
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
@@ -342,13 +411,16 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
     }
 
     @Test
-    fun `an environment the point of sale doesn't have isn't a Bell's answer`() = runTest {
-        bell.infos[monokular] = info(environment = "staging")
+    fun `an environment this build doesn't know is passed over, beside the till's or alone`() = runTest {
+        bell.infos[monokular] = { BellInfo(mapOf(till.pointOfSale.wire to mapOf("staging" to "staging-app", till.environment to till.applicationId)), KEY) }
         val wakeUps = start()
         wakeUps.choose(WakeUpChoice.MonokularBell)
         runCurrent()
-        assertEquals(WakeUpStatus.Unreachable("it isn't a Bell"), wakeUps.status.value)
-        assertFalse(bell.calls.any { it.startsWith("POST") })
+        assertEquals(WakeUpStatus.Connected(null), wakeUps.status.value)
+        bell.infos[own] = info(environment = "staging")
+        wakeUps.choose(WakeUpChoice.OwnBell(own))
+        runCurrent()
+        assertEquals(WakeUpStatus.Refused(PosWords.notRung(till.pointOfSale, till.environment)), wakeUps.status.value)
     }
 
     @Test
@@ -357,8 +429,8 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
         bell.infos[monokular] = {
             BellInfo(
                 mapOf(
-                    other.wire to BellPointOfSale("someone-else", "elsewhere"),
-                    till.pointOfSale.wire to BellPointOfSale(till.applicationId, till.environment),
+                    other.wire to mapOf("elsewhere" to "someone-else"),
+                    till.pointOfSale.wire to mapOf(till.environment to till.applicationId),
                 ),
                 KEY,
             )
@@ -981,6 +1053,7 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
             otherApplicationId = "sandbox-sq0idb-other",
             locationId = "L1",
             token = "EAAAtoken",
+            notRungHere = "it doesn't ring Square sandbox tills",
         )
         val CLOVER = TestTill(
             pointOfSale = PointOfSale.Clover,
@@ -990,6 +1063,7 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
             otherApplicationId = "OTHERCLOVERAP",
             locationId = "MCLOVERDEV001",
             token = "clv-access-token",
+            notRungHere = "it doesn't ring Clover tills in North America",
         )
         const val KEY = "BOS-key"
         const val NTFY = "io.heckel.ntfy"

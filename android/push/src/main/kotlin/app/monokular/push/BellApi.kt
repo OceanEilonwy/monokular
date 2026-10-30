@@ -6,6 +6,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -30,13 +33,14 @@ interface BellClient {
     suspend fun info(bell: BellAddress): BellInfo
 
     /**
-     * `POST /v1/register` for [pointOfSale]: the one request that carries the point of sale's
-     * token (A9.1). [locationId] is the Square location, or the Clover merchant (a Clover
-     * merchant is its own location: acceptance D1).
+     * `POST /v1/register` for [pointOfSale] in [environment] (decision 147): the one request
+     * that carries the point of sale's token (A9.1). [locationId] is the Square location, or
+     * the Clover merchant (a Clover merchant is its own location: acceptance D1).
      */
     suspend fun register(
         bell: BellAddress,
         pointOfSale: PointOfSale,
+        environment: String,
         accessToken: String,
         locationId: String,
         subscription: PushSubscription,
@@ -72,22 +76,24 @@ class BellApi(http: OkHttpClient, timeout: Duration = 10.seconds) : BellClient {
 
     override suspend fun info(bell: BellAddress): BellInfo = call(Request.Builder().url(bell.route("/v1/info")).get()) { response, text ->
         if (!response.isSuccessful) throw failure(response, text, notABell = response.code < 500)
-        val info = runCatching { json.decodeFromString(BellInfo.serializer(), text) }.getOrNull() ?: throw NotABellException()
-        // Each entry's environment is checked by the till for its own point of sale only (BellWakeUps):
-        // a Bell may run one this build doesn't know.
-        if (info.pointsOfSale.isEmpty() || !isP256Point(info.vapidPublicKey)) throw NotABellException()
-        info
+        val wire = runCatching { json.decodeFromString(Info.serializer(), text) }.getOrNull() ?: throw NotABellException()
+        if (wire.pointsOfSale.isEmpty() || !isP256Point(wire.vapidPublicKey)) throw NotABellException()
+        // The till reads its own point of sale's own environment only (BellWakeUps): a Bell may run a point of
+        // sale or an environment this build doesn't know, in a shape it doesn't know, and that is never read.
+        BellInfo(wire.pointsOfSale.mapValues { (_, environments) -> applications(environments) }, wire.vapidPublicKey)
     }
 
     override suspend fun register(
         bell: BellAddress,
         pointOfSale: PointOfSale,
+        environment: String,
         accessToken: String,
         locationId: String,
         subscription: PushSubscription,
     ): BellRegistered {
         val body = RegisterBody(
             pointOfSale = pointOfSale.wire,
+            environment = environment,
             accessToken = accessToken,
             locationId = locationId,
             subscription = RegisterBody.Subscription(subscription.endpoint, RegisterBody.Keys(subscription.p256dh, subscription.auth)),
@@ -125,10 +131,18 @@ class BellApi(http: OkHttpClient, timeout: Duration = 10.seconds) : BellClient {
         )
     }
 
-    /** One shape for every point of sale (`docs/bell.md`, acceptance D1). */
+    /** `GET /v1/info` as it comes: each point of sale's environments are read by [applications]. */
+    @Serializable
+    private data class Info(
+        @SerialName("points_of_sale") val pointsOfSale: Map<String, JsonElement>,
+        @SerialName("vapid_public_key") val vapidPublicKey: String,
+    )
+
+    /** One shape for every point of sale (`docs/bell.md`, acceptance D1); the Bell refuses a field it doesn't know. */
     @Serializable
     private data class RegisterBody(
         @SerialName("point_of_sale") val pointOfSale: String,
+        val environment: String,
         @SerialName("access_token") val accessToken: String,
         @SerialName("location_id") val locationId: String,
         val subscription: Subscription,
@@ -149,6 +163,12 @@ class BellApi(http: OkHttpClient, timeout: Duration = 10.seconds) : BellClient {
 
     private companion object {
         val JSON = "application/json".toMediaType()
+
+        /** A point of sale's `{environment: {"application_id": …}}` as environment to application; an entry of another shape is left out. */
+        fun applications(environments: JsonElement): Map<String, String> = (environments as? JsonObject).orEmpty().mapNotNull { (environment, entry) ->
+            val id = ((entry as? JsonObject)?.get("application_id") as? JsonPrimitive)?.takeIf { it.isString }?.content
+            id?.let { environment to it }
+        }.toMap()
 
         /** An uncompressed P-256 public point, base64url: 65 bytes, the first 4 (what a VAPID key is). */
         fun isP256Point(key: String): Boolean {
