@@ -59,7 +59,7 @@ class MotionFramesTest {
     val compose = createComposeRule()
 
     private val sale = testSale("a1", expiresAt = 1_600).copy(receipt = sampleReceipt())
-    private val sales = listOf(testSale("z0", expiresAt = 1_600), sale, testSale("b2", expiresAt = 1_600))
+    private var sales by mutableStateOf(listOf(testSale("z0", expiresAt = 1_600), sale, testSale("b2", expiresAt = 1_600)))
     private val now = mutableLongStateOf(1_000)
     private lateinit var scope: CoroutineScope
 
@@ -222,8 +222,16 @@ class MotionFramesTest {
     @Test
     fun aRowGrowsIntoItsSale() = seek(stage(Screen.Till), Screen.Sale("a1"), "row-grow")
 
+    /** A sale that is not live (paid here) has no code to send home: its page shrinks into its row's card, as before board 6. */
     @Test
-    fun aSaleShrinksIntoItsRow() = seek(stage(Screen.Sale("a1")), Screen.Till, "row-shrink")
+    fun aPaidSaleShrinksIntoItsRow() {
+        val paid = sale.copy(phase = SalePhase.Paid, paidAt = 1_100)
+        shown = paid
+        sales = sales.map { if (it.orderId == paid.orderId) paid else it }
+        seek(stage(Screen.Sale("a1")), Screen.Till, "row-shrink") { p, _ ->
+            assertTrue(tracks["sale/a1"].orEmpty().any { it.drawn() != null }, "at $p the paid sale's ground shrinks on its course into the row")
+        }
+    }
 
     /**
      * Seeked, a live sale's code is where the stage's progress puts it on its way home (board 6): one square code,
