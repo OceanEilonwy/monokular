@@ -3969,6 +3969,27 @@ design unchanged.
     ink at least 3:1 on the chase track, the greens darkening toward the
     core. The "206." between 262 and 264 was 263 (a numbering slip in
     65a81c7), relabelled here.
+272. **The bubble's `mark()` takes the arc's start as a plain `Float`,
+    and an arc alpha of 0 is "no arc"** (dev1, round 2; §13.5). §13.5
+    sketched `arcStart: Float?`, null for no arc; a `Float?` read from
+    the chase each frame is a boxed `Float`, one object a frame, so the
+    entry takes `arcStart: Float` and draws no arc at `arcAlpha` 0 (the
+    look's own off, which Still and Idle and Paid already give). The
+    rings, the arc's share and start, the tick's path and the strokes
+    are the mark's own in `MarkGeometry` (pure, so `MarkGeometryTest`
+    holds the 1 + 6 + 12 + 12 rings, each one shade, and the 30 % from
+    12 o'clock on the JVM); a facet's ring comes from its place in the
+    list, its shade from its ring. `LensLook` is a `fun interface` of a
+    ring to its `Color`, so the logo's orange and grey and the paid
+    green are three constant looks and the bubble's is one remembered
+    look reading its four animated colours in the draw. The strokes,
+    made per draw before, are made once with the paths; the facets are
+    walked by index, not an iterator. `MarkOnDeviceTest` counts the
+    objects 100 frames of the mark allocate (lens, border, arc and half
+    a tick) against 100 empty frames, with the counter shown to count,
+    and holds the bubble's entry pixel-identical to `Logo`; the logo
+    and the loading mark (still and at 1234 ms of its glints) were
+    checked pixel-identical before and after the change on 5554.
 280. **The tray's sections are one pure list, and Needs action now lists
     the live sales** (dev2, round 2, S1; `docs/motion.md` §12.3, §12.6
     items 7 and 8). `ShiftList.sections(sales, filter, folded)` returns
