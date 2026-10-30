@@ -20,7 +20,11 @@ Contents: [principles](#1-principles) · [presets](#2-the-motion-presets) ·
 · [rejected](#5-rejected) · [haptics](#6-haptics) · [reduced
 motion](#7-reduced-motion) · [measuring](#8-measuring) · [order of
 work](#9-order-of-work-and-tracks) · [performance rules](#10-performance-rules)
-· [tech lead amendments](#11-tech-lead-amendments).
+· [tech lead amendments](#11-tech-lead-amendments) · [round 2: the
+waiting tray, Back and the logo bubble](#12-round-2-the-waiting-tray-back-and-the-logo-bubble).
+
+Round 2 (2026-10-30, §12) supersedes parts of §4, §8 and §10; each is
+marked where it stands, with the decision that replaced it.
 
 ---
 
@@ -101,6 +105,9 @@ Nothing in a call site reads like `tween(300)`.
 Reduced motion (section 7): `Motion.reduced` (a `CompositionLocal` set
 once, under the theme) turns `surface`, `settle`, `flick` and `sweep` into
 `snap()`, `fade` into `fadeQuick`, and the loops off.
+
+Round 2 adds `Motion.chase` (the bubble's border, a loop) and
+`Motion.spread` (the lens filling ring by ring): §12.5.
 
 ## 3. The spatial model
 
@@ -244,6 +251,11 @@ developer: dev1 is the overlay, dev2 the app's screens; the tech lead owns
 
 **M4. The bubble changes face without changing bubble.** `Faces.kt`
 (`BubbleFace`, `Circle`).
+*Superseded in part by §12.5 (decision 267): the bubble's three faces are
+now one logo mark (B5 c), not the ring with its pupil, the loading mark
+or a tick on `paidGround`; the bubble draws no `PhaseRing` and no
+glints. M4's structure (one circle, alpha and ground in the layer, the
+pulse, the appear and disappear) stands.*
 - Today: three different `Box`es by `look`; idle to lit to paid are hard
   swaps, and the paid look is a different composable with a different
   shadow.
@@ -354,6 +366,9 @@ code's foot, a shift row's badge, the close sheet's "Yes" glyph.
     enter only, the shift fading under it with `fadeQuick`; a slide, not a
     scale, so its code is never smaller than at rest: decision 198); there
     is no row to grow from, and it mustn't look like something the cashier did.
+    *Narrowed by §12.1 (decision 266): a sale comes up by itself only
+    while the shift is on screen; Back never follows a waiting sale (the
+    follow after a leave, decision 258, is superseded).*
   - Sale to code (M8), sale to order page: the order card is the page's
     list card (`sharedBounds("order/$id")`), the rest crossfades.
   - Code or order back to sale, sale back to shift: the reverse of how
@@ -454,7 +469,9 @@ code's foot, a shift row's badge, the close sheet's "Yes" glyph.
 - After `Motion.Dwell.paid` on a paid sale, the page settles into its
   row in the shift (M7's container transform in reverse: the page's
   surface shrinks to the row, which exists now, with the paid tick
-  already in it, so the hero visibly becomes the row's badge).
+  already in it, so the hero visibly becomes the row's badge). *Round 1
+  shipped this as a crossfade (decision 259); §12.2 makes it the row
+  shrink, identical to Back (decision 266).*
 - A close from the sheet: the sheet hides first (as today, decision 83),
   then this.
 - Interruption: a reopen ("Show the code again") is the reverse; a paid
@@ -627,6 +644,11 @@ Pass: no new janky frames over the before run at the 95th percentile on
 the device; PSS at rest within 2 MB of before; APK within 50 KB; zero
 recompositions per animated frame of the named composables.
 
+*The 2 MB rule is superseded (decision 268): the owner accepted the
++4.9 to +5.9 MB step after a trim that decision 253 named. The pass is
+now "no worse": round 2's after-minus-before on the same emulator, same
+flow, trimmed, within the run-to-run noise; §12.7.*
+
 ## 9. Order of work and tracks
 
 dev1 (overlay): M13's presets first (the tech lead lands `Motion.kt`
@@ -678,7 +700,10 @@ memory efficient, no hacky animation code"), in one place so a review says
 7. **Two loops in the app**: the bubble's pulse and the loading mark's
    glints, each only while something is waited for and visible (the pulse:
    the free bubble, a code Waiting or Partial, the panel down). Two loops in
-   one window share one `rememberInfiniteTransition`.
+   one window share one `rememberInfiniteTransition`. *Round 2 (decision
+   267): the bubble's loops are the pulse and the border's chase, in one
+   `rememberInfiniteTransition`, Waiting only; the glints leave the
+   bubble and run only where `LoadingMark` is still used (§12.5).*
 8. **Reduced motion is one switch**: `motion.still` (`Motion.Still` while
    the animator scale is 0, followed live). Loops off, spatial presets
    `snap()`, crossfades `fadeQuick`, predictive back without a preview,
@@ -704,7 +729,8 @@ memory efficient, no hacky animation code"), in one place so a review says
     `apkanalyzer`), compared as counts and ratios; final numbers on a
     device. Pass: no new janky frames at p95 on the device, PSS at rest
     within 2 MB, APK within 50 KB, zero recompositions per animated frame of
-    the composables in rule 1.
+    the composables in rule 1. *"Within 2 MB" is superseded by "no worse
+    than round 1's step" (decision 268, §12.7).*
 
 ## 11. Tech lead amendments
 
@@ -784,3 +810,460 @@ why, each against the section or item it amends. Decisions 154 to 156 in
     `ui/Motion.kt`, `notify/SaleNotifications.kt`, the docs and the
     numbers. A change needed in the other track's file is asked of its
     owner, not made.
+
+## 12. Round 2: the waiting tray, Back, and the logo bubble
+
+The owner's decisions of 2026-10-30, after reading round 1's showcase
+(`docs/reports/motion.md`), and the design the owner approved for them:
+the handoff canvas (claude.ai/artifact/WiZwopcdX7qrCYaAuknYdb), whose
+nine artboards are read here from disk (`Main`, `TrayOpen`, `TrayDark`,
+`TrayFew`, `BackSequence`, `TraySpec`, `BubbleStates`, `BubblePrototype`,
+`BubbleSpec`). The canvas is the source of truth and is matched exactly;
+where it and the code disagree on an *existing* value, the code's value
+wins unless the canvas states a change, and every such call is in §12.6.
+Decisions 266 to 268 in `docs/decisions/android.md` record the round.
+`docs/reports/motion/before-r2/` holds clips of today's behaviour on
+`motion-main` (65a81c7), the ones this section changes.
+
+What this section supersedes from round 1, each marked where it stands:
+the follow after a leave (decision 258; now decision 266, §12.1), the
+paid step-back as a crossfade (259; 266, §12.2), the bubble's ring,
+pupil, loading mark and `paidGround` tick (M4, decision 265 a; 267,
+§12.5), and the 2 MB memory rule (§8, §10 rule 12; 268, §12.7).
+
+The owner's goals are unchanged and every item below is read against
+§10: animated values in draw or layout only, no per-frame allocation or
+recomposition, no `delay()` choreography, presets only (two new ones,
+§12.5), interruptible, one reduced-motion switch, the code never
+animated module by module, colours through `ui/Theme.kt`'s roles or
+`Fixed` for the bubble, no new dependency.
+
+### 12.1 Back lands on the shift, always
+
+`AppViewModel.kt` (`follow`, `back`, `backTarget`), `SaleText.kt`
+(`TillNav.follow`), `MainActivity.kt` (`TillStage`, `StageBack`),
+`ui/Shift.kt`.
+
+- The rule: pressing Back on a sale (button or gesture) lands on the
+  shift, never on another sale, even when one or more sales are waiting
+  unseen. A sale that arrived while the cashier was on another sale (or
+  on Settings, the enlarged code, the order page) waits in the tray
+  (§12.3); its bubble and its notification still call. This replaces
+  decision 258's "a leave lands, then the follow starts": there is no
+  follow on a leave at all.
+- What still comes up by itself: a sale that arrives while the shift is
+  on screen and at rest rises out of it as in M7 (`Move.Rise`, decisions
+  198 and 222). `TillNav.follow(Till, …)` is therefore no longer "the
+  newest live sale not left" but "a sale that arrived while the shift
+  was showing"; a sale the till did not follow when it came is never
+  followed later. The code screen and the order page still give way to
+  the sale's page once it is paid or ends (`follow`'s other arms are
+  unchanged).
+- The move, Back from a live sale into its tray row (`BackSequence`,
+  `Motion.surface` on `Motion.track`, 450 ms; the existing `RowGrow`
+  reversed, landing in the tray instead of the plain list):
+
+  | Time | What the cashier sees |
+  | --- | --- |
+  | 0 ms | The live sale fills the screen. Back starts `RowGrow Sale → Till` toward the sale's row, the first in the tray. |
+  | 90 ms | The sale's words are going (gone by 120 ms, `fadeQuick`); its ground, now an empty white card, is pulled by `surface`; the shift's chrome starts fading through under it. |
+  | 220 ms | The card finds its row: corners from 0 to the row's 20 dp as it shrinks (the first row's top corners; a middle row's are 0, as `rowLook` has them). The tray and its other rows are already in place; nothing else moves. |
+  | 330 ms | Landed within half a pixel of the row. The row's words fade in at their own size (`fade`, 200 ms); they are never drawn scaled (decision 195). |
+  | 450 ms | At rest: the shift, the tray folded at three rows. |
+
+  The code stays drawn on its card, whole, on every frame the ground
+  holds the card (decision 234, with 260 a fixed: §12.4).
+- Back into a folded row: if the sale being left would be folded away
+  (it is the fourth or later live sale), the tray opens as the cashier
+  lands so the sale has a row to shrink into (the rows past the third
+  fade in under the arriving card, `animateItem`'s `fade`), and stays
+  open until "Show fewer" or the shift is left.
+- A second Back while the shift is still arriving (decision 260 c): it
+  lands on the shift, never leaves the app. `StageBack` stays enabled
+  while `screen == Till && stage.currentState != stage.targetState`,
+  with `model.back(Till)` the no-op it is; a stray press must never take
+  the cashier out of the till.
+- Interruption: a tap on a tray row mid-landing is the next target
+  (`RowGrow` forward again from where the stage is, decision 249); a
+  sale that arrives mid-landing goes into the tray under the moving
+  card and does not take the move over.
+- Reduced motion: a 120 ms crossfade, no move; the tray opens with a
+  snap when it must.
+- TalkBack: after Back, focus goes to the row the cashier came from.
+- Tests (`TraySpec`): Back with a waiting unseen sale ends on the shift
+  with the ground in the left sale's tray row (`RunningMovesTest`); Back
+  into a folded row opens the tray first and the ground lands in the
+  row; a second Back while the shift is arriving lands on the shift.
+- Before: `before-r2/back-with-sale-waiting.mp4` (Back on sale #1655
+  with #1656 waiting: #1655's words fade, #1656's code replaces its code
+  in a frame, the shift is never drawn; the second Back is the row
+  shrink into the plain list).
+
+### 12.2 The paid step-back is Back
+
+`ui/Till.kt` (`SaleScreen`), `AppViewModel.kt` (the dwell), `Nav.kt`.
+
+- After `Motion.Dwell.PAID_MS` the paid page leaves exactly as a Back
+  pressed on it would: `RowGrow Sale → Till` with the `sale/<id>` course,
+  the page's ground shrinking into its row, which by then sits at the top
+  of "Earlier" (§12.3), the hero's tick becoming the row's badge (M10's
+  glyph between hero and badge, decision 180), the page's words out under
+  `fadeQuick` and the row's in under `fade`. The owner wants it to feel
+  identical to pressing Back; it is the same move with the same ends,
+  started by the clock instead of the finger.
+- Interruption: Back during the dwell runs the same exit at once; a tap
+  on the page during the step-back is nothing (the page is leaving).
+- Reduced motion: a 120 ms crossfade, as Back is.
+- Test: the step-back's trace carries the course, and lands in the row
+  at the top of Earlier.
+- Before: `before-r2/paid-step-back.mp4` (the fold to paid, the 5 s
+  dwell, then the words fading and the shift's list fading in with no
+  surface moving: decision 259's crossfade).
+
+### 12.3 The waiting tray (A4, opens in place)
+
+`ui/Shift.kt` (`ShiftScreen`, `SaleRow`), `ShiftList.kt` (the rows and
+their sections). Artboards: `Main` (folded, light), `TrayOpen`,
+`TrayDark`, `TrayFew` (two waiting: no fold), `TraySpec`.
+
+**What it is.** Under the chips, a section header "Waiting for payment"
+with the count at its end, then an amber tray (`warnGround`) holding a
+white card (`card`) of every live sale: waiting, seen, confirming, part
+paid. More than three live sales fold after the third row into a fold
+row inside the tray, "Show N more waiting"; tapped, the tray opens in
+place and the row reads "Show fewer". Under the tray, an "Earlier" header
+and the rest of the shift as today: paid, closed, expired, refunded and
+other tills' sales. With no live sale there is no tray, no header and no
+"Earlier" header: the list reads exactly as today. Nothing else is
+added: no "New" tag, no bottom bar, no snackbar, no banner, no stripe,
+no outline. The tint and its header are the separation.
+
+**Layout** (the row itself is unchanged):
+
+| What | Value |
+| --- | --- |
+| Section header row | padding 18 dp top, 24 dp start and end, 8 dp bottom |
+| Header text · count | 14 sp 700 `ink` · 14 sp 600 `muted`, tabular figures |
+| Tray outer margin | 16 dp each side (the rows' margin today) |
+| Tray corner · padding | 24 dp · 4 dp |
+| Inner card corner | 20 dp (24 − 4, so the card sits concentric in the tray; `RowCorner` today) |
+| Sale row | min 64 dp, padding 16/12/12/12 (start, top, end, bottom), as today |
+| Row ring · gap | 36 dp (`RingRowSize`) · 12 dp, as today |
+| Divider | 1 dp `divider`, inset 64 dp, as today |
+| Fold row | 48 dp high (touch ≥ 48), full width of the tray, centred |
+| Fold text · chevron | 15 sp 600 `ink` · 16 dp chevron, 6 dp gap, pointing down folded and up open |
+| Fold threshold | 3 rows shown |
+| Earlier header | padding 22 dp top, 24 dp start and end, 8 dp bottom |
+| Column max width | 640 dp, as today |
+| Tablet, split screen, a phone on its side | the same one layout, the column capped at 640 dp and centred, as the shift is today |
+
+**Colour roles.** Every colour is an existing role in `ui/Theme.kt`; no
+new tokens (the roles test enforces it):
+
+| Part · role | Light | Dark |
+| --- | --- | --- |
+| Tray ground · `warnGround` | #F1E3CF | #3D3320 |
+| Inner card · `card` | #FFFFFF | #2A2825 |
+| Header · `ink` | #1A1917 | #ECE8DF |
+| Count · `muted` | #5A564C | #A8A29A |
+| Fold label and chevron · `ink` | #1A1917 | #ECE8DF |
+| Divider · `divider` | #ECE6DA | #3A3733 |
+| Waiting sub-line · `link` (as today) | #B34700 | #FF8A3D |
+| Ring track · `chip` (as today) | #E4DFD5 | #3A3733 |
+| Ring arc · `accent` (as today) | #FF6600 | #FF6600 |
+
+The fold label is `ink`, not `link`: ink on the tray ground is 13.9:1
+light and 10.1:1 dark, while the link orange measured 4.36:1 on the light
+tint, under 4.5:1; the fold is a neutral button, as the theme's
+one-orange-primary rule wants. Row text on the inner card is as today.
+
+**Copy** (`SaleText`/`ShiftList`):
+
+| Where | Text |
+| --- | --- |
+| Tray header | Waiting for payment |
+| Count | the number of live sales, e.g. 21 |
+| Fold, folded | Show N more waiting, N = count − 3 ("Show 1 more waiting") |
+| Fold, open | Show fewer |
+| Earlier header | Earlier |
+| Row title | Sale #1257 · $12.00 (unchanged) |
+| Row sub-line | Waiting · 4:12 left · Seen on the network · Confirming · Part paid · 3:10 left (unchanged) |
+
+**Behaviour.**
+
+- Order: newest first in both sections, as the shift orders today, so a
+  new sale lands at the top of the tray and a sale just paid at the top
+  of Earlier.
+- Fold state: kept for the shift screen's life (`rememberSaveable`),
+  across rotation; a fresh shift starts folded. Back into a folded row
+  opens it (§12.1).
+- Filters: All shows the tray and Earlier. Needs action shows the tray,
+  unfolded, then the ended-unpaid sales under Earlier. Paid shows Earlier
+  only, and with no tray there is no header, as today.
+- Counts: the header count and the Needs action badge count different
+  things (live sales; everything needing action). Both are shown as they
+  are.
+- The idle shift (no sales at all) is unchanged.
+
+**Motion.** Presets only; no stagger; the tray has no height animation of
+its own, it is its rows:
+
+| What | Preset | Note |
+| --- | --- | --- |
+| Back from a sale into its tray row | `surface` on `track` | §12.1's keyframes: `RowGrow` reversed, now landing in the tray |
+| Paid step-back after the dwell | `surface` on `track` | §12.2: the same `RowGrow` reversed into the row at the top of Earlier |
+| Tray opens | `animateItem`: `fadeIn` `fade` · placement `settle` | The N rows fade in where they will sit; Earlier slides down on `settle`. No stagger, no tween of the tray's height: it is the rows |
+| Tray folds | `animateItem`: `fadeOut` `fadeQuick` · placement `settle` | Rows past the third fade out; Earlier slides up. If the fold row would leave the screen, the list scrolls so the fold row stays under the finger |
+| Fold label and chevron | `fade` · chevron rotation `settle` | "Show N more waiting" crossfades to "Show fewer"; the chevron turns 180° (read in `graphicsLayer`) |
+| A sale is paid or ends | `fadeOut` `fadeQuick` · `fadeIn` `fade` · placement `settle` | Its row leaves the tray and arrives at the top of Earlier; the rows around it settle. The last waiting sale gone: the tray and its header fade out (`fadeQuick`) and Earlier slides up |
+| A new sale arrives on a shift that is showing | `fadeIn` `fade` · placement `settle` | Lands at the top of the tray (under the sale rising out of the shift, when it does: §12.1); folded, the third row moves into the fold and the count rises by one |
+| Animations off (`Still`) | snapped · 120 ms fades | Back and the step-back are 120 ms crossfades; open and fold jump; labels swap |
+
+The rows' `animateItem` is M11's; the tray adds two keyed items (the
+header row and the fold row) and one more (the Earlier header) to the
+same `LazyColumn`, so one placement spec moves everything and nothing is
+measured per frame outside the rows that move.
+
+**TalkBack.**
+
+| Where | Says |
+| --- | --- |
+| Tray header (a heading) | "Waiting for payment, 21 sales" ("1 sale") |
+| Fold row (a button) | "Show 18 more waiting sales", state collapsed; then "Show fewer", state expanded. Focus stays on it |
+| Rows | Unchanged: "Sale #1257, $12.00, waiting, 4 minutes 12 seconds left, show the code" |
+| After Back | Focus goes to the row the cashier came from |
+| Changes | No announcement when a sale joins or leaves the tray; the bubble and the notification already speak |
+
+**Tests to add.** Fold shows 3 rows and "Show N more waiting"; open shows
+all and "Show fewer"; the counts at 4 and 21; two waiting shows no fold
+(`TrayFew`); no live sale shows no tray and no headers; the Needs action
+filter shows the tray unfolded; every tray colour comes from a theme role
+(the existing roles test); and §12.1's and §12.2's.
+
+### 12.4 The frames to tidy (decision 260 a, b, c)
+
+- (a) On a Back from a live sale and on "Close it for now", the code is
+  drawn whole on its card on every frame the row's ground holds the
+  card, including the one or two frames on which that ground covers the
+  whole screen (decision 234's rule, which these two paths broke: a bare
+  ground, luminance 242, no code; `review-r6/phone-back-into-row.webp`,
+  `phone-close-for-now-light.webp`). The shrink into the row never begins
+  with a code-less frame. The code leaves only when the ground no longer
+  holds its rest margin (decision 189), as the other paths already do.
+- (b) In the sale screen's paid fold the tick belongs to the last share
+  of the fold (`crossfadeOnTrack`), as decision 252 has it on the code
+  screen: it is never drawn over the fading code while the card is still
+  four fifths of its size (`review-r6/phone-paid-fold-on-sale.webp`,
+  frames 3 to 6 of 9). One glyph in the card at a time.
+- (c) A second Back while the shift is still arriving lands on the
+  shift: §12.1.
+- Reduced motion: (a) and (b) are about which frames draw what, not
+  motion; under `Still` the crossfade already draws one thing at a time.
+- Tests: a `RunningMovesTest` frame check that the code is drawn on
+  every frame of a Back and a close-for-now until the ground leaves the
+  card; the paid fold's tick alpha is 0 until the last share; the second
+  Back.
+
+### 12.5 The bubble is the logo (B5 c, "the border chases")
+
+`overlay/Faces.kt` (`BubbleFace`, `Circle`), `ui/Mark.kt` (`mark`,
+`MarkPaths`), `ui/Motion.kt` (two presets), `ui/Theme.kt` (`Fixed`).
+Artboards: `BubbleStates` (the three states at 3×, the chase at five
+points of its turn), `BubblePrototype` (the timing, interactive),
+`BubbleSpec`.
+
+**The three states.** One mark, drawn by `mark()` in every state; only
+its colours and its border change.
+
+- Idle: no sale waiting. Grey mark (the mark's greyscale shades), grey
+  border, the whole bubble at 55 %, ground white at 90 %. As today; the
+  only change is that it is drawn by the same `mark()` as the others.
+- Waiting: a code waits for money. A still orange lens, no glints (the
+  loading mark's glints from #18 leave the bubble; `LoadingMark` stays
+  where else it is used). The logo's own border becomes a pale track
+  (#D8D2C7) with a black (#1A1917) segment, 30 % of the border, chasing
+  clockwise round it at constant speed, one turn per 1250 ms, starting at
+  12 o'clock. The pulse rings out behind, as today, Waiting and the panel
+  down only. Seen and Confirming keep chasing: the step is in the panel,
+  the notification and TalkBack, not the bubble.
+- Paid: the glass fills green from the core outwards and a white tick
+  draws over it; the border is whole and black. No spinner, no green
+  ring, no pulse: only the glass and the tick say it. One `CONFIRM`
+  haptic as today (§6). The panel, if up, folds into this bubble as it
+  does now (M9, decision 158). Held `Motion.Dwell.PAID_MS`, then Idle
+  (the green spreading to grey the same way, the border to grey).
+- Ended or closed unpaid: back to Idle on a fade, no red, as today; the
+  shift and the notification say what happened.
+- The bubble no longer draws `PhaseRing` or the pupil; the rows, the
+  chip and the panel keep theirs. The bubble's appear and disappear, its
+  alpha and ground in the layer, and its docking are M4's, unchanged.
+
+**Geometry** (mark units `u` are the SVG's 64-unit box, converted at the
+38 dp logo: 1 u = 38 / 64 × 1.42 dp):
+
+| What | Value |
+| --- | --- |
+| Bubble circle | 56 dp, window padding 16 dp (unchanged) |
+| Elevation | 6 dp shadow (unchanged) |
+| Logo | 38 dp, centred, in every state (the lit face was `LoadingMark` at 40 dp: §12.6) |
+| Lens | 26.6 dp across (r 15.75 u) |
+| Border radius · stroke | 15.2 dp · 3.8 dp (r 18 u · 4.5 u) |
+| Chasing arc | 30 % of the border, round caps (34 of 113.1 u) |
+| Arc start · direction | 12 o'clock · clockwise |
+| Tick | `M23.5 28.5 l4.3 4.3 8.7 -9` (u), inside the lens's clip |
+| Tick stroke | 2.7 dp (3.2 u), round caps and joins |
+| Pulse | `accent` at 55 % to 0, radius +16 dp (unchanged) |
+| Idle alpha | 0.55 for the whole bubble, ground white 90 % (unchanged) |
+
+**Colours.** The bubble sits over another app, so its colours are
+`Fixed`, the same in light and dark. The two lighter greens are new and
+go in `Fixed` beside `Paid`; the idle grey border (#565656, a literal in
+`Faces.kt` today) moves to `Fixed` too.
+
+| Part | Idle | Waiting | Paid |
+| --- | --- | --- | --- |
+| Lens, light facets (shade 0) | #7F7F7F | #FF6600 | #2EA052 |
+| Lens, mid facets (shade 1) | #747474 | #E85D00 | #238A43 |
+| Lens, core (shade 2) | #616161 | #C24E00 | #1A7F37 (`Fixed.Paid`) |
+| Border track | #565656 | #D8D2C7 | #1A1917 (`Fixed.Ink`) |
+| Chasing arc | (none) | #1A1917 | (none: the track is ink) |
+| Tick | — | — | #FFFFFF |
+| Ground | #FFFFFF at 90 % | #FFFFFF | #FFFFFF |
+| Pulse | — | #FF6600 (`Fixed.Accent`) | — |
+
+Contrast: the white tick is 3.4 to 5.1:1 on the three greens and the
+black arc 11.7:1 on its pale track, both above 3:1 for graphics. The Idle
+bubble is decorative at 55 % and says nothing a cashier must read.
+
+**Motion.** Two additions to `Motion`: `chase`, a loop like `pulse`, and
+`spread`, a step. Everything else is an existing preset.
+
+| What | Preset | Note |
+| --- | --- | --- |
+| Idle ↔ Waiting ↔ Paid, the whole bubble | `fade` | Alpha 0.55 ↔ 1 and the ground, read in the layer as today (M4) |
+| Lens colour, grey → orange → green (and back) | `spread`: `fade` per ring, each ring `SPREAD_STEP_MS` (60) after the last | Four rings from the core out: the core; the inner six; the middle twelve with the base circle; the rim twelve (`MarkPaths.facets` in that order). They start at 0, 60, 120 and 180 ms, so the lens is done by 380 ms. Each ring's colour is lerped in the draw from one progress per ring |
+| The chase (Waiting only) | `chase`: a loop, one turn of 1250 ms, `LinearEasing` | The arc's start angle runs 0 → 360° per turn. It starts with Waiting and stops on Paid or Idle; the arc's alpha fades out (`fade`) as the track darkens to ink or grey |
+| Border track colour | `fade` | Grey → pale → ink with the state |
+| The tick | `sweep`, after the core's ring | Trimmed 0 → 1 along its path once the core is green (its spec starts where the core's ring ends, a start in the spec, not a `delay()`); overdamped, so it never overshoots |
+| Pulse | `pulse`, as today | Waiting and the panel down only |
+| Paid hold | `Dwell.PAID_MS` | Then Idle on `fade`; green to grey spreads too |
+| Animations off (`Still`) | no loops · 120 ms fades | No chase: Waiting shows the whole border in ink (#1A1917). No pulse. The lens changes in one 120 ms fade, no spread; the tick appears whole |
+
+`Motion.spread(ring)` is a `Timed` preset, `fade`'s length with a delay of
+`ring × SPREAD_STEP_MS` (as `fadeThrough` has a delay in its spec); under
+`Still` it is `fadeQuick` with no delay. `Motion.chase` is a
+`loop(CHASE_MS, LinearEasing)`, null under `Still`, beside `pulse`.
+
+**Build.**
+
+- One draw, no recomposition: `mark()` in `ui/Mark.kt` takes the lens
+  shades per ring, the spread's progress per ring, the border's track
+  colour, the arc's start angle and alpha, and the tick's trim, all read
+  in the draw phase from `Animatable`s or `Transition` values and one
+  infinite transition. Paths stay the prebuilt `MarkPaths`; the tick is
+  one more prebuilt `Path` measured once (`PathMeasure`) for its trim;
+  nothing allocates per frame. The arc is one `drawArc` with the stroke
+  and round caps, start angle from the loop.
+- Only while seen: the chase's infinite transition exists only in
+  Waiting and only while the bubble's window is shown; Idle and Paid run
+  no loop. The pulse and the chase share the bubble's one
+  `rememberInfiniteTransition` (§10 rule 7).
+- The docked bubble above the panel chases too (it is the same bubble,
+  Waiting); it does not pulse, as today.
+- Interruption: a paid that lands mid-turn stops the chase where it is
+  and fades the arc as the track darkens; a sale that ends mid-spread
+  retargets each ring's colour from where it is (an `Animatable<Color>`
+  per ring, or one `Transition` of the look with per-ring specs).
+- Reduced motion: as the table's last row.
+
+**TalkBack.** The bubble's window carries a label (today `BubbleFace`
+clears its semantics), and it carries the step the bubble no longer
+shows:
+
+| Bubble | Says |
+| --- | --- |
+| Waiting | "Monokular, $12.00 waiting for payment", then "Monokular, $12.00 seen on the network", "Monokular, $12.00 confirming", as the step changes |
+| Paid | "Monokular, $12.00 paid" |
+| Idle | "Monokular, nothing waiting" |
+
+**Tests.** Waiting draws the arc, Idle and Paid draw none (a pixel test
+at three points of the turn); Paid draws the green core, then the rim,
+then the tick, on the test clock; no recomposition across 10 frames of
+the chase (as `OverlayRecompositionsTest`); `Still`: Waiting draws the
+whole ink border and runs no loop; the bubble's label carries the step.
+
+Before: `before-r2/bubble-states.mp4` and `bubble-states-close.mp4` (a
+crop round the bubble, 2×): the grey idle bubble; a sale arriving, the
+lit bubble with the loading mark's glints and the pulse; paid, the
+green ring closing round a tick on `paidGround`; after the dwell, idle.
+
+### 12.6 Where the canvas and the code differ, and ambiguities
+
+Each is a call the designer made; the tech lead may overrule, in a
+decision.
+
+1. **"A third" of the border vs 30 %.** The owner's words say a black
+   third chases; the canvas measures the arc at 30 % (34 of 113.1 u) on
+   every artboard. The canvas is the approved design: 30 %.
+2. **The lit face's size.** The lit bubble draws `LoadingMark` at 40 dp
+   today (#18) and the idle `Logo` at 38 dp; the canvas's geometry says
+   one 38 dp logo. The canvas states the change (the lit face is the
+   same `mark()` as the others), so 38 dp in every state.
+3. **The paid ground.** Today the paid bubble's ground fades to
+   `paidGround` (#DCEFE2) with a green tick; the canvas's colour table
+   has the ground white in every state and the green in the lens. The
+   canvas states the change: the ground stays white, and `paidGround`
+   leaves the bubble.
+4. **The shift's own follow.** The canvas says Back never follows and
+   the tray holds what arrived meanwhile; it says nothing about a sale
+   arriving while the shift itself is on screen, which rises by itself
+   today (M7, decisions 198 and 222, the till's reason to exist). The
+   code's behaviour stands there: §12.1 narrows `follow` to that case.
+   The tray's "a new sale arrives" motion row therefore covers a sale
+   landing in the tray under a running move or while the app is away,
+   not a sale arriving on a resting shift, which still rises.
+5. **The idle border's grey.** #565656 is a literal in `Faces.kt` today
+   and the canvas keeps it; it moves into `Fixed` with the two greens
+   (colours by role, test-enforced), not a new value.
+6. **The tick's start "from 200 ms".** The canvas's "from 200 ms" is the
+   core's ring finishing its `fade`; it is written as the tick's spec
+   starting where the core's ends, driven by the one `Transition`, never
+   a `delay()`.
+7. **`TraySpec`'s "Paid: Earlier only".** Read with "No tray: no header,
+   no Earlier header": under the Paid filter there is no header at all;
+   the list reads as today.
+8. **Tray on the Needs action filter, "unfolded".** The canvas says the
+   tray is unfolded there; it is read as "the fold does not apply" (every
+   live sale is a row, no fold row), not as the fold state being changed.
+9. **The bubble's label.** `BubbleFace` clears its semantics today, so a
+   TalkBack label is new behaviour, not a change to a value; the canvas's
+   strings are taken as written, with `SaleText.amount` for the amount.
+
+### 12.7 Memory: the step is accepted, and is not made worse
+
+Decision 253 named the +4.9 to +5.9 MB PSS step after a trim as the
+shift's motion machinery standing from launch (not a session's growth:
++0.5 MB a session), and the owner accepted it on 2026-10-30 (decision
+268). The 2 MB rule in §8 and §10 rule 12 is superseded by: round 2's
+after-minus-before, measured the same way on the same emulator instance
+in one session (`mem-r6.sh`'s flow, trimmed PSS, pairs alternated), is
+within the run-to-run noise of that instance, with the Java heap's
+object count read as decision 253 read it. No part of this round is
+spent on the step; nothing in it may add a standing cost of its own
+(the tray is three more keyed items in the list the rows already live
+in; the bubble's mark is the same paths with more colours).
+
+### 12.8 Order of work
+
+dev1 (overlay): §12.5 whole, with the two presets agreed with the tech
+lead first (`chase`, `spread`), the `Fixed` colours, `mark()`'s new
+parameters, the bubble's label; then the lint warnings in
+`overlay/Faces.kt`.
+
+dev2 (screens): §12.1 (`follow`, `StageBack`), §12.3 (the tray), §12.2
+(the step-back), §12.4 a and b; `RunningMovesTest.aSaleRisesDark`'s
+guard on `HeldMove` generations.
+
+Tech lead: the presets, `TillStage`'s two `snapshotFlow`s on one
+predicate into one, the measurements of §12.7, decisions 269 on, the
+integration.
