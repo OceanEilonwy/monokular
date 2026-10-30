@@ -4305,3 +4305,31 @@ design unchanged.
     left the slide). `foldingAScrolledTrayKeepsTheFoldRowWhereItIs`
     holds the fold row within a pixel on each of thirty frames; before,
     it was off screen on frame 0.
+
+293. **The paid bubble's tick leaves by fading whole, never un-drawn**
+    (dev1, round 2 review; supersedes 288's "the tick un-drawing over
+    `fadeQuick`"; `docs/motion.md` §12.5). Paid to Idle ran the tick's
+    trim 1 → 0 on `fadeQuick`, so for about 85 ms it read as an eraser
+    wiping the tick from its end while the lens spread to grey; nothing
+    else in the till un-draws a glyph, and the spec's "then Idle on
+    `fade`" means the tick goes as the rest of the paid look does, by
+    fading. `Circle` now has two values for the tick, both read in the
+    draw: its trim, which only grows (`Motion.tick` in, and out the new
+    `Motion.untick`, a `snap()` held for `fadeQuick`'s 120 ms by `After`,
+    so it rewinds to 0 only once the tick is invisible and the next paid
+    draws it in again), and its alpha on `fadeQuick` both ways. A tick
+    left mid-draw keeps the length it had and fades at that length; one
+    paid again mid-fade comes back at its length, already whole. Under
+    Full the alpha is 1 long before the trim starts (120 ms against the
+    core's 200), so the way in is unchanged; under Still the tick, whole
+    at once as before, now comes in on the same 120 ms fade as the
+    lens's colours rather than in one frame, which is what the canvas's
+    "no loops · 120 ms fades" row says for every change. `mark()` takes
+    the alpha as one more argument; the frame still allocates nothing
+    (`MarkOnDeviceTest`, now with a faded half tick), and leaving Paid
+    recomposes nothing (`OverlayRecompositionsTest.theBubblesLeavingPaid`).
+    `OverlayFramesTest.paidToIdleFadesTheTickWholeNeverUndrawsIt` reads
+    the tick's start, corner and end against the lens beside each on
+    every frame of the leave: they fade as one and none drops to the lens
+    while another is still white; the old build fails it at 48 ms with
+    the end at 0.06 of white and the other two at 0.97.

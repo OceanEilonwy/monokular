@@ -399,7 +399,7 @@ private class Rings(private val core: State<Color>, private val inner: State<Col
  * One circle whatever the look (`docs/motion.md` M4, §12.5): its shadow
  * and place stay; one transition of the look moves the bubble's alpha and
  * ground, the border's colour, each ring of the lens (from the core out,
- * [Motion.spread]), the chasing arc's alpha and the tick's trim, and one
+ * [Motion.spread]), the chasing arc's alpha and the tick's trim and alpha, and one
  * infinite transition, only while it is lit (or pulsing), runs the chase
  * and the pulse. Every value is read in the layer or the draw, so a
  * change recomposes nothing per frame. A paid mid-turn holds the arc
@@ -426,9 +426,11 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
     val rim = t.animateColor({ m.spread[3].spec() }, label = "rim") { lensOf(it)[3] }
     val lens = remember(core, inner, middle, rim) { Rings(core, inner, middle, rim) }
     val arcAlpha = t.animateFloat({ m.fade.fraction }, label = "arc") { if (it == BubbleLook.Lit && m.chase != null) 1f else 0f }
-    val tick = t.animateFloat({ (if (targetState == BubbleLook.Paid) m.tick else m.fadeQuick).fraction }, label = "tick") {
+    // The tick is drawn in along its path and leaves by fading whole: its trim only grows, rewound once it is invisible.
+    val tick = t.animateFloat({ (if (targetState == BubbleLook.Paid) m.tick else m.untick).fraction }, label = "tick") {
         if (it == BubbleLook.Paid) 1f else 0f
     }
+    val tickAlpha = t.animateFloat({ m.fadeQuick.fraction }, label = "tick alpha") { if (it == BubbleLook.Paid) 1f else 0f }
     // One infinite transition for the bubble's two loops (§10 rule 7), and only while one runs: none idle or paid.
     val pulseTurn = m.pulse
     val chaseTurn = m.chase
@@ -461,7 +463,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
     ) {
         Canvas(Modifier.size(BubbleMark).testTag(BUBBLE_MARK_TAG)) {
             if (chase != null) heldAt[0] = chase.value
-            mark(lens, border.value, heldAt[0], arcAlpha.value, tick.value)
+            mark(lens, border.value, heldAt[0], arcAlpha.value, tick.value, tickAlpha.value)
         }
     }
 }

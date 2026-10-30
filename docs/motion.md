@@ -98,6 +98,7 @@ is no position to carry. `Spring.StiffnessMedium` is 1500 and
 | `Motion.chase` | `tween(CHASE_MS, LinearEasing)`, repeating (1250 ms) | loop | The waiting bubble's border: an ink segment chasing round the pale track at one speed, 12 o'clock clockwise; null under Still, where the border is whole ink (round 2, §12.5) |
 | `Motion.spread[ring]` | `fade` with `delayMillis = ring × SPREAD_STEP_MS` (60), four rings | 380 ms | The bubble's lens changing colour from the core out: the core, the inner six, the middle twelve with the base, the rim, each a fade a step after the one inside it; under Still each ring is `fadeQuick` with no delay, so the lens changes in one quick fade (round 2, §12.5) |
 | `Motion.tick` | `sweep` held at its start for `fade`'s length (`After`, the spring played from a later start) | 800 ms | The paid bubble's tick trimmed along its path once the core's ring is green: the start is in the spec, never a `delay()`; under Still `snap()`, the tick whole at once (round 2, §12.5) |
+| `Motion.untick` | `snap()` held for `fadeQuick`'s length (`After`) | 120 ms | The paid bubble's tick leaving: its trim held while its alpha fades on `fadeQuick`, then rewound to 0 for the next paid; the same under Still (decision 293) |
 | `Motion.Dwell.paid` | `5_000 ms` | — | How long a paid moment is held before the till moves on: the sale screen stepping back to the shift (`TillNav.PAID_STEP_BACK_MS`), the panel lowering, the bubble staying green and the chip its tick (`Bubble.PAID_MS`, today 4 s; see M9) |
 
 Rules: `visibilityThreshold` is set for every spring on an `IntOffset`,
@@ -1150,7 +1151,7 @@ bubble is decorative at 55 % and says nothing a cashier must read.
 | Border track colour | `fade` | Grey → pale → ink with the state |
 | The tick | `sweep`, after the core's ring | Trimmed 0 → 1 along its path once the core is green (its spec starts where the core's ring ends, a start in the spec, not a `delay()`); overdamped, so it never overshoots |
 | Pulse | `pulse`, as today | Waiting and the panel down only |
-| Paid hold | `Dwell.PAID_MS` | Then Idle on `fade`; green to grey spreads too |
+| Paid hold | `Dwell.PAID_MS` | Then Idle on `fade`; green to grey spreads too. The tick leaves by fading whole on `fadeQuick` (its alpha), never un-drawn: its trim holds and is rewound (`untick`) once it is invisible (decision 293) |
 | Animations off (`Still`) | no loops · 120 ms fades | No chase: Waiting shows the whole border in ink (#1A1917). No pulse. The lens changes in one 120 ms fade, no spread; the tick appears whole |
 
 `Motion.spread(ring)` is a `Timed` preset, `fade`'s length with a delay of
@@ -1441,7 +1442,8 @@ dev1's outright: the only other callers (`Logo`, `LoadingMark` in
   for its ring (grey / orange / green lists); `animateFloat` arc alpha
   (1 in Lit, else 0, `fade`); `animateFloat` tick trim
   (`transitionSpec = { if (targetState == Paid) m.tick.fraction else
-  m.fadeQuick.fraction }`, 1 on Paid). The chase angle is
+  m.untick.fraction }`, 1 on Paid) and tick alpha (`fadeQuick`, 1 on
+  Paid), so the tick draws in and fades out (decision 293). The chase angle is
   `rememberInfiniteTransition` → `animateFloat(0f, 360f, m.chase)` only
   while `look == Lit && m.chase != null`; it is the same infinite
   transition the pulse uses (one `rememberInfiniteTransition` per

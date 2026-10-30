@@ -45,7 +45,7 @@ class MarkOnDeviceTest {
         val scope = CanvasDrawScope()
         val density = Density(3f)
         val size = Size(114f, 114f)
-        val mark: DrawScope.() -> Unit = { mark(LensLook.Orange, Fixed.ChaseTrack, 123f, 0.6f, 0.5f) }
+        val mark: DrawScope.() -> Unit = { mark(LensLook.Orange, Fixed.ChaseTrack, 123f, 0.6f, 0.5f, 0.7f) }
         val empty: DrawScope.() -> Unit = { }
         fun allocations(draw: DrawScope.() -> Unit): Int {
             // Warmed first, so the mark's paths and strokes, made once, are made before the count.
@@ -62,7 +62,7 @@ class MarkOnDeviceTest {
         assertTrue(made >= 100 && sink != null, "the counter sees an array made a frame: $made")
         val base = allocations(empty)
         val drawn = allocations(mark)
-        assertTrue(drawn <= base, "100 frames of the mark (lens, border, arc, half a tick) allocated ${drawn - base} objects more than 100 empty frames")
+        assertTrue(drawn <= base, "100 frames of the mark (lens, border, arc, half a tick, faded) allocated ${drawn - base} objects more than 100 empty frames")
         assertTrue(image.asAndroidBitmap().getPixel(57, 57) != 0, "and the mark was drawn")
     }
 
@@ -72,7 +72,7 @@ class MarkOnDeviceTest {
         compose.setContent {
             Row {
                 Logo(38.dp, Modifier.testTag("logo"), ring = Fixed.IdleBorder, grey = true)
-                Canvas(Modifier.size(38.dp).testTag("mark")) { mark(LensLook.Grey, Fixed.IdleBorder, 0f, 0f, 0f) }
+                Canvas(Modifier.size(38.dp).testTag("mark")) { mark(LensLook.Grey, Fixed.IdleBorder, 0f, 0f, 0f, 0f) }
             }
         }
         val logo = compose.onNodeWithTag("logo").captureToImage().asAndroidBitmap()

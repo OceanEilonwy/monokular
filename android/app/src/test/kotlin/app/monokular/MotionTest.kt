@@ -218,4 +218,22 @@ class MotionTest {
         assertTrue(seenOnItsWay, "the tick is drawn on its way, not only whole")
         assertIs<SnapSpec<Float>>(still.tick.fraction, "under Still the tick is whole at once")
     }
+
+    @Test
+    fun `the tick leaves whole, its trim holds while it fades on fadeQuick, then rewinds, the same under Still`() {
+        val fade = ms(full.fadeQuick.fraction)
+        for (presets in listOf(full, still)) {
+            val untick = presets.untick.fraction.vectorize(Float.VectorConverter)
+            val from = AnimationVector1D(1f)
+            val to = AnimationVector1D(0f)
+            val rest = AnimationVector1D(0f)
+            assertEquals(fade, untick.getDurationNanos(from, to, rest) / 1_000_000, "the trim rewinds as the quick fade ends")
+            var t = 0L
+            while (t < fade * 1_000_000) {
+                assertEquals(1f, untick.getValueFromNanos(t, from, to, rest).value, "at $t ns the tick is still whole: it fades, it is not un-drawn")
+                t += 8_000_000
+            }
+            assertEquals(0f, untick.getValueFromNanos(fade * 1_000_000, from, to, rest).value, "and once invisible it is rewound for the next paid")
+        }
+    }
 }

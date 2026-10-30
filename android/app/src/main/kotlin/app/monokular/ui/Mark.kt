@@ -256,17 +256,18 @@ private fun DrawScope.mark(ring: Color, grey: Boolean, time: Float?) = inMark {
  * [lens]'s colours, ring by ring; the [border] round it; over the border,
  * at [arcAlpha], the ink segment chasing round it, [arcStart] degrees
  * clockwise of 12 o'clock and [MarkGeometry.ARC_SHARE] of the way round;
- * and the white tick over the lens drawn to [tick] of its length. Every
+ * and the white tick over the lens drawn to [tick] of its length at
+ * [tickAlpha], so it comes in along its path and leaves by fading. Every
  * argument is a value read in the caller's draw, so a frame of the chase,
  * the spread or the tick redraws and recomposes nothing, and nothing here
  * allocates: the paths and strokes are made once, and the tick's trim is
  * refilled into one kept path. No arc is drawn at an [arcAlpha] of 0, no
- * tick at a [tick] of 0.
+ * tick at a [tick] or [tickAlpha] of 0.
  */
-fun DrawScope.mark(lens: LensLook, border: Color, arcStart: Float, arcAlpha: Float, tick: Float) = inMark {
+fun DrawScope.mark(lens: LensLook, border: Color, arcStart: Float, arcAlpha: Float, tick: Float, tickAlpha: Float) = inMark {
     clipPath(MarkPaths.lens) {
         lens(lens)
-        if (tick > 0f) drawPath(MarkPaths.tick(tick), Fixed.White, style = MarkPaths.tickStroke)
+        if (tick > 0f && tickAlpha > 0f) drawPath(MarkPaths.tick(tick), Fixed.White, alpha = tickAlpha, style = MarkPaths.tickStroke)
     }
     drawCircle(border, MarkGeometry.BORDER_RADIUS, MarkPaths.centre, style = MarkPaths.border)
     if (arcAlpha > 0f) {
