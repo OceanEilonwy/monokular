@@ -690,7 +690,8 @@ private fun TopRow(status: TillStatus, actions: TillActions) = Row(
     horizontalArrangement = Arrangement.spacedBy(8.dp),
 ) {
     // The word carries what the dot did (the Logos board, B): paid green while watching, danger when disconnected,
-    // else plain muted (the dot's grey outline is too faint for text).
+    // else plain muted (the dot's grey outline is too faint for text). Light paid on ground is 4.50:1, right at the
+    // text bar: a lighter paid or a darker ground in Theme.kt needs this word checked again.
     val (tone, state) = when {
         status.disconnected -> mk.danger to "Disconnected"
         !status.running -> null to "Not watching"

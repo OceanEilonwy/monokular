@@ -261,7 +261,7 @@ private fun PosSection(p: PosState, a: SettingsActions) {
     if (p.connected && chosen != null) {
         Group(
             rows = buildList<@Composable () -> Unit> {
-                add { PosRow(chosen, if (chosen == PointOfSale.Square) p.location?.name else p.merchant) }
+                add { PosRow(chosen) }
                 when (chosen) {
                     PointOfSale.Square -> {
                         val location = p.location ?: return@buildList
@@ -301,18 +301,18 @@ private fun PosSection(p: PosState, a: SettingsActions) {
     }
 }
 
-/** The point of sale signed in to, led by its mark on a tile (the Logos board, A), with where it watches under its name. */
+/**
+ * The point of sale signed in to, led by its mark on a tile (the Logos board, A). The board's place under the name is
+ * left out: the location or merchant row just below says it, and is where the location is changed.
+ */
 @Composable
-private fun PosRow(pos: PointOfSale, place: String?) = Row(
+private fun PosRow(pos: PointOfSale) = Row(
     Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 12.dp).semantics(mergeDescendants = true) {},
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
 ) {
     PosTile(pos)
-    Column {
-        Text(pos.displayName, fontSize = 17.sp)
-        if (!place.isNullOrEmpty()) Muted(place)
-    }
+    Text(pos.displayName, fontSize = 17.sp)
 }
 
 /**
