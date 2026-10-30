@@ -4435,3 +4435,41 @@ design unchanged.
     if the cache shows in Graphics/GL and outlives HWUI's idle purge, the
     likely source is a screen-sized layer kept from the rise's
     `graphicsLayer`, and the fix belongs to the track that owns the rise.
+299. **A card whose ground lets go of its code before the shift's words
+    begin carries the code inside it, whole, for as long as it fits** (dev2,
+    round 2 fix round 2; the designer's back1, back5 and back6, 260 a).
+    A sale that rose by itself with its row two under the fold (the oldest
+    of five waiting) and a Back: the tray opens in place (289) and the
+    ground lands in the row, but the row is low on the screen, so the
+    shrinking ground's top edge passed the code's top at about p 0.3 on
+    the phone (0.5 on the test's window), and `WholeNode.draw` dropped the
+    code there (the `holds` exit: the course was located, the layer's
+    alpha was 1). The sale's words are gone by `fadeOutOnTrack` and the
+    shift's begin at `1 − crossfadeOnTrack`, so nothing of either screen
+    was drawn between: two frames of bare, near-full-screen ground. The
+    two ways the review offered were weighed. Keeping the code drawn while
+    the ground covers it is what it did. Fading it on `1 − crossfadeOnTrack`
+    as 296's no-course path does was tried first: it dimmed the code on
+    every Back into a low row from the first frame (backIntoFoldedRow's
+    "a code wherever the ground holds it" failed on f5 to f7), and still
+    left the code outside its card from the moment the edge passed
+    (backIntoScrolledRow's no-code-off-its-card failed at p 0.38). Instead
+    the card carries its code: when the course says (exactly, from the
+    straight lines, the same answer on every frame) that the ground lets
+    go of the code's box before the shift's words begin, the layer
+    `WholeNode` already places while its move runs moves the code by the
+    least whole-pixel step that keeps it inside the ground, read in the
+    layer block as the alpha is, and it is drawn while that fits. So it is
+    whole, sharp (whole pixels), on its card and at full contrast on every
+    frame until the words are in, and goes when the card is too small to
+    hold it, as every other Back's code does. A Back whose ground holds the
+    code until the words begin (a row higher up, back2 to back4) is not
+    moved at all, and an arriving code is never moved. `codeOffItsCard`
+    now reads only the pixels outside the ground on each frame: inside it
+    the code is on its card wherever it is carried. `RunningMovesTest.backAfterASelfRiseIntoARowUnderTheFoldIsNeverBare`
+    (light, dark: five waiting, a1 the oldest, a self-rise, then Back)
+    checks no bare frame, the ground letting go of the card's laid-out
+    place before the words, the code's ink and white inside the ground on
+    every frame until the words begin, and no code outside it. Before:
+    f8 (p 0.50) no code, light and dark; after, it passes with the rest of
+    `RunningMovesTest` (54) on 5556.

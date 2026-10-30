@@ -49,6 +49,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Size
 import kotlin.math.min
+import kotlin.math.ceil
+import kotlin.math.floor
 import kotlin.math.abs
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.draw.drawBehind
@@ -1312,7 +1314,10 @@ private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Ali
  * card fades out on the stage's own progress, gone as the arriving screen's
  * words begin (the move's last [Motion.crossfadeOnTrack]): never left whole
  * over the arriving screen until the change lands and cut, and never a
- * frame of bare ground between the two screens (decision 296).
+ * frame of bare ground between the two screens (decision 296). A ground
+ * that would let go of it before those words begin (shrinking into a row
+ * low on the screen) carries it instead, whole and inside it, for as long
+ * as it fits (decision 299).
  */
 @Composable
 fun Modifier.wholeOn(ground: GroundTrack, during: Move): Modifier {
@@ -1348,15 +1353,59 @@ private class WholeElement(val stage: Stage, val ground: GroundTrack, val during
 /**
  * [Modifier.wholeOn]'s node: drawn or not per frame by where its ground is, and placed with a layer only while its
  * move is under way (the stage's states are read in placement, so it places again as a move starts and lands, nothing
- * per frame), whose alpha, read per frame, fades a code with no ground to go with.
+ * per frame), whose alpha, read per frame, fades a code with no ground to go with, and whose translation keeps a
+ * code inside a ground that would let go of it early.
  */
 private class WholeNode(var stage: Stage, var ground: GroundTrack, var during: Move, var leaving: Float) :
     Modifier.Node(), LayoutModifierNode, LayoutAwareModifierNode, DrawModifierNode {
     private var placed: LayoutCoordinates? = null
 
+    /** Where [carry] last put the code: how far it is moved inside its ground on this frame, in whole pixels. */
+    private var dx = 0f
+    private var dy = 0f
+
     private val layer: GraphicsLayerScope.() -> Unit = {
-        alpha = if (stage.arriving() || ground.locate()) 1f else stage.throughDuring(during, leaving = leaving, arriving = 1f)
+        val located = ground.locate()
+        alpha = if (stage.arriving() || located) 1f else stage.throughDuring(during, leaving = leaving, arriving = 1f)
+        if (located && carry()) {
+            translationX = dx
+            translationY = dy
+        } else {
+            translationX = 0f
+            translationY = 0f
+        }
         compositingStrategy = CompositingStrategy.ModulateAlpha
+    }
+
+    /**
+     * Leaving, on a ground (located this frame) that lets go of the card before the arriving screen's words begin
+     * (shrinking into a row low on the screen, its edge passes the card early; the designer's back5 and back6): the
+     * card carries its code, kept whole inside it by the least move, in whole pixels so its modules stay sharp, for as
+     * long as it fits; with no words on screen yet, cutting it there left frames of bare ground (decision 299). Its
+     * course is straight lines, so whether it lets go early is known exactly from the move's start and is the same on
+     * every frame of it. False, and nothing moved, otherwise.
+     */
+    private fun carry(): Boolean {
+        dx = 0f
+        dy = 0f
+        val mine = placed ?: return false
+        if (stage.arriving()) return false
+        val at = stage.inOverlay(mine)
+        val r = at.x + mine.size.width
+        val b = at.y + mine.size.height
+        val c = ground.located
+        val held = c.holding(at.x, at.y, r, b)
+        if (Course.heldFrom(held) <= Course.heldUntil(held) && Course.heldUntil(held) >= leaving) return false
+        dx = into(at.x, r, c.left, c.right)
+        dy = into(at.y, b, c.top, c.bottom)
+        return true
+    }
+
+    /** The least whole-pixel move putting [lo]..[hi] inside [from]..[to]: 0 if it is already in. */
+    private fun into(lo: Float, hi: Float, from: Float, to: Float): Float = when {
+        lo < from -> ceil(from - lo)
+        hi > to -> floor(to - hi)
+        else -> 0f
     }
 
     override fun onPlaced(coordinates: LayoutCoordinates) {
@@ -1374,7 +1423,9 @@ private class WholeNode(var stage: Stage, var ground: GroundTrack, var during: M
         val mine = placed
         if (mine == null || !stage.isMoving(during) || !ground.locate()) return drawContent()
         val at = stage.inOverlay(mine)
-        if (ground.located.holds(at.x, at.y, at.x + size.width, at.y + size.height)) drawContent()
+        val x = if (carry()) dx else 0f
+        val y = dy
+        if (ground.located.holds(at.x + x, at.y + y, at.x + x + size.width, at.y + y + size.height)) drawContent()
     }
 }
 

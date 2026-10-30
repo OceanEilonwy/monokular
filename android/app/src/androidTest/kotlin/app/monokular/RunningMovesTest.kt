@@ -730,6 +730,58 @@ class RunningMovesTest {
     }
 
     /**
+     * Back on a sale that rose by itself, its row two under the fold (the oldest of five waiting; the designer's back5
+     * and back6, 260 a): no row was tapped, so no place is asked for, and the tray opens in place with the row low on
+     * the screen. The ground leaves the card early as it shrinks down to it, and the code went with it: about two frames
+     * of nothing but the ground before the shift's words came in. Now no frame is bare and, until the words begin, the
+     * code is on its card on every frame, never off it: carried whole inside it, by the least move (decision 299).
+     */
+    @Test fun backAfterASelfRiseIntoARowUnderTheFoldIsNeverBareLight() = backAfterSelfRiseUnderTheFold(dark = false)
+
+    @Test fun backAfterASelfRiseIntoARowUnderTheFoldIsNeverBareDark() = backAfterSelfRiseUnderTheFold(dark = true)
+
+    private fun backAfterSelfRiseUnderTheFold(dark: Boolean) {
+        moves.shift = listOf(moves.sales[0], testSale("c4", expiresAt = 1_600), moves.sales[2], testSale("c3", expiresAt = 1_600), moves.sale)
+        moves.start(Screen.Till, dark)
+        moves.run(Screen.Sale("a1"), byItself = true)
+        repeat(4) { compose.mainClock.advanceTimeByFrame() }
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1")
+        val failures = landsIn(frames, moves.sale).toMutableList()
+        failures += bareGround(frames)
+        val card = frames.first().leavingCodes.firstOrNull { it.width > 20f }
+        if (card == null) failures += "the sale has no code before the Back"
+        else {
+            val words = 1f - Motion.Full.crossfadeOnTrack
+            var letGo = false
+            for (f in frames.drop(1).dropLast(RunningMoves.SETTLE_FRAMES)) {
+                // Until the shift's words begin, the code is all there is of either screen: it is on its card on every frame.
+                if (f.p >= words) break
+                val g = f.ground ?: continue
+                if (!(g.left <= card.left + 1f && g.top <= card.top + 1f && g.right >= card.right - 1f && g.bottom >= card.bottom - 1f)) letGo = true
+                val on = carried(card, g)
+                if (on == null) {
+                    failures += "f${f.index}: the code is dropped before the shift's words begin (p ${"%.2f".format(f.p)}, ground $g, card $card)"
+                    continue
+                }
+                val (ink, white) = inkAndWhite(f.bitmap, on.deflate(2f))
+                if (ink < CODE_SHARE || white < CODE_SHARE) failures += "f${f.index}: the ground at $g holds the card at $on, but no code is drawn there (p ${"%.2f".format(f.p)})"
+            }
+            // The case this is about: the ground lets go of the card where it was laid out before the words begin.
+            if (!letGo) failures += "the ground holds the card until the shift's words begin: not the designer's back5"
+        }
+        failures += codeOffItsCard(frames)
+        report("back-self-rise-under-fold-${theme(dark)}", frames, failures)
+    }
+
+    /** [card] moved the least way into [g], as the leaving card carries its code (decision 299); null if it can't fit. */
+    private fun carried(card: Rect, g: Rect): Rect? {
+        if (card.width > g.width + 1f || card.height > g.height + 1f) return null
+        val dx = if (card.left < g.left) g.left - card.left else if (card.right > g.right) g.right - card.right else 0f
+        val dy = if (card.top < g.top) g.top - card.top else if (card.bottom > g.bottom) g.bottom - card.bottom else 0f
+        return card.translate(dx, dy)
+    }
+
+    /**
      * Back from a sale with no row on the shift to land in (the filter hides it, or the list has not composed it): the
      * leaving sale is never replaced by the bare ground (260 a's other surface); the code is on its card, or gone with it,
      * faded out over the move, gone as the shift's words come in (decision 296; before, it stayed whole until landing).
@@ -811,9 +863,9 @@ class RunningMovesTest {
 
     /**
      * Frames on which the leaving sale's code shows where the moving ground does not hold its card: the pixels of the
-     * card on the frame before the change that differ from the shift at rest, read on each frame for how much of the
-     * code they still show (a quarter of its contrast or more), on frames whose ground does not cover the whole card;
-     * the shift's words, wherever any frame lays them out, are left out. Only from [from] of the move: a code fading
+     * card on the frame before the change that differ from the shift at rest and lie outside the ground on that frame,
+     * read for how much of the code they still show (a quarter of its contrast or more), on frames whose ground does not
+     * cover the whole card; the shift's words, wherever any frame lays them out, are left out. Only from [from] of the move: a code fading
      * out with no ground to go with is read once it is gone.
      */
     private fun codeOffItsCard(frames: List<RunningMoves.Frame>, from: Float = 0f): List<String> {
@@ -835,14 +887,20 @@ class RunningMovesTest {
             val g = f.ground
             if (g != null && g.left <= card.left + 1f && g.top <= card.top + 1f && g.right >= card.right - 1f && g.bottom >= card.bottom - 1f) return@mapNotNull null
             var shown = 0
+            var off = 0
             for (i in mask) {
                 val x = i % before.width
                 val y = i / before.width
+                // Inside the ground the code is on its card, wherever the card carries it (decision 299): only what
+                // shows outside it is a code with no card round it.
+                if (g != null && g.contains(androidx.compose.ui.geometry.Offset(x.toFloat(), y.toFloat()))) continue
+                off++
                 val a = lum(before.getPixel(x, y))
                 val b = lum(after.getPixel(x, y))
                 if ((lum(f.bitmap.getPixel(x, y)) - b) / (a - b) > CODE_LEFT) shown++
             }
-            val share = shown.toFloat() / mask.size
+            if (off == 0) return@mapNotNull null
+            val share = shown.toFloat() / off
             "f${f.index}: ${"%.2f".format(share)} of the code is drawn with no card round it (ground $g, p ${"%.2f".format(f.p)})".takeIf { share > CODE_OFF_SHARE }
         }
     }
