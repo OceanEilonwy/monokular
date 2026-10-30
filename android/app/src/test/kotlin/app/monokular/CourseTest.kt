@@ -71,6 +71,36 @@ class CourseTest {
     }
 
     /**
+     * A live sale's code flying home on a Back (board 6): its card, a 264 square, scaled as one to its course from the
+     * card to the row's 22 dp glyph, square on every frame, centred, and the glyph's size as it lands.
+     */
+    @Test
+    fun theCodeFlyingHomeIsOneSquareFittedToItsCourse() {
+        val card = floatArrayOf(74f, 180f, 338f, 444f)
+        val glyph = floatArrayOf(366f, 610f, 388f, 632f)
+        for (p in listOf(0f, 0.25f, 0.5f, 0.75f, 1f)) {
+            val c = course(card, glyph, p)
+            val s = c.fit(264f, 264f)
+            assertEquals((c.right - c.left) / 264f, s, 1e-5f)
+            assertEquals(c.left, c.fitLeft(264f, s), 1e-3f)
+            assertEquals(c.top, c.fitTop(264f, s), 1e-3f)
+        }
+        val home = course(card, glyph, 1f)
+        assertEquals(22f / 264f, home.fit(264f, 264f), 1e-6f)
+        assertEquals(1f, course(card, glyph, 0f).fit(264f, 264f))
+    }
+
+    @Test
+    fun aCodeIsNeverSquashedIntoABoxOfAnotherShape() {
+        // A glyph laid out wider than tall: the code is the height's square, centred across it.
+        val c = course(floatArrayOf(0f, 0f, 100f, 100f), floatArrayOf(200f, 200f, 240f, 220f), 1f)
+        val s = c.fit(100f, 100f)
+        assertEquals(0.2f, s, 1e-6f)
+        assertEquals(210f, c.fitLeft(100f, s), 1e-4f)
+        assertEquals(200f, c.fitTop(100f, s), 1e-4f)
+    }
+
+    /**
      * A course (the code's bitmap among what it drew between) lasts only
      * while one of its ends is on a screen: a key is a sale's, so the stage
      * would otherwise hold a course and a code for every sale ever opened,
