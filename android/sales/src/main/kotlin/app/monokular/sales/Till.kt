@@ -292,23 +292,42 @@ class Till(
      */
     fun onStatus(orderId: String, phase: SalePhase, settled: Boolean = false, confirmations: Int? = null, required: Int? = null) {
         val at = now()
+        change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.read(phase, settled, confirmations, required, at) else it }) }
+    }
+
+    /** [order], read again: its phase, whether it's settled and its confirmations. */
+    fun onStatus(order: Order) = onStatus(order.orderId, order.phase, order.isFinal, order.confirmations, order.confirmationsRequired)
+
+    /**
+     * A [followConfirmations] read of [order], kept only while its sale is
+     * still [TillSale.confirming]: a read sent before `sale.paid` that lands
+     * after it would take a paid sale back to confirming, and its paid note
+     * would sound again when the next read closed it.
+     */
+    internal fun onConfirmations(order: Order) {
+        val at = now()
         change { s ->
             s.copy(
                 sales = s.sales.map {
-                    if (it.orderId != orderId) return@map it
-                    val moved = it.moved(phase, at)
-                    moved.copy(
-                        settled = settled,
-                        confirmations = confirmations ?: moved.confirmations,
-                        confirmationsRequired = required ?: moved.confirmationsRequired,
-                    )
+                    if (it.orderId == order.orderId && it.confirming) {
+                        it.read(order.phase, order.isFinal, order.confirmations, order.confirmationsRequired, at)
+                    } else {
+                        it
+                    }
                 },
             )
         }
     }
 
-    /** [order], read again: its phase, whether it's settled and its confirmations. */
-    fun onStatus(order: Order) = onStatus(order.orderId, order.phase, order.isFinal, order.confirmations, order.confirmationsRequired)
+    /** The sale as a read of its order left it: moved to [phase], and its count where the read gave one. */
+    private fun TillSale.read(phase: SalePhase, settled: Boolean, confirmations: Int?, required: Int?, at: Long): TillSale {
+        val moved = moved(phase, at)
+        return moved.copy(
+            settled = settled,
+            confirmations = confirmations ?: moved.confirmations,
+            confirmationsRequired = required ?: moved.confirmationsRequired,
+        )
+    }
 
     /**
      * Reads every sale whose payment is seen or confirming ([TillSale.confirming])
@@ -324,7 +343,7 @@ class Till(
             while (urls.isNotEmpty()) {
                 for (url in urls) {
                     try {
-                        onStatus(monokulo.order(connection, url))
+                        onConfirmations(monokulo.order(connection, url))
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
