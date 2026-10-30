@@ -1605,6 +1605,7 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float, code: Boolean = 
         { if (targetState == EnterExitState.Visible) m.fade.fraction else m.fadeQuick.fraction }, label = "face seen",
     ) { if (it == EnterExitState.Visible || (code && face.transition.targetState == EnterExitState.Visible)) 1f else 0f }
     val clip = remember { RoundClip() }
+    val share = m.crossfadeOnTrack
     val layer = if (code) Layers.GROUND else Layers.HERO
     return with(shared) {
         // Over every clip for as long as its face is changing: a page's hero sits in a scroll, whose clip would cut
@@ -1624,7 +1625,11 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float, code: Boolean = 
             drawPath(clip.around(size, r), Fixed.White)
         }
     }.graphicsLayer {
-        alpha = seen.value
+        // The glyph coming in (the paid page's tick) only over the fold's last share, as the code screen's hero comes in
+        // over its move's (decision 252): one glyph in the card at a time, never the tick over the fading code while the
+        // card is still near its size (260 b). Read per draw from the fold's own progress; no state of its own.
+        val arrivingGlyph = !code && face.transition.targetState == EnterExitState.Visible && face.transition.isRunning
+        alpha = if (arrivingGlyph) min(seen.value, Nav.through(shown.value, isArriving = true, leaving = 1f, arriving = share)) else seen.value
         compositingStrategy = CompositingStrategy.ModulateAlpha
     }.drawWithContent {
         if (!face.transition.isRunning) {
