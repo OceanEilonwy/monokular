@@ -756,6 +756,59 @@ class RunningMovesTest {
         assertTrue(moves.model.stage.currentState == Screen.Sale("a1") && moves.model.stage.targetState == Screen.Sale("a1"), "and it lands")
     }
 
+    /**
+     * The paid step-back after the dwell is the Back (decision 266, §12.2): paid in place on the sale screen, then after
+     * the dwell on the test clock the model leaves the page as the dwell's job does, and the move is the row's grow
+     * reversed with the sale's course, its ground landing in the row at the top of Earlier (20 dp top corners); a Back
+     * on the same paid page then runs the same frames, ground for ground, within half a pixel.
+     */
+    @Test fun thePaidStepBackIsTheBackLight() = paidStepBackIsBack(dark = false)
+
+    @Test fun thePaidStepBackIsTheBackDark() = paidStepBackIsBack(dark = true)
+
+    private fun paidStepBackIsBack(dark: Boolean) {
+        val earlier = testSale("p9", SalePhase.Paid, paidAt = 900)
+        moves.shift = listOf(moves.sales[0], moves.sale, moves.sales[2], earlier)
+        moves.start(Screen.Sale("a1"), dark)
+        val paid = moves.sale.copy(phase = SalePhase.Paid, paidAt = 1_100)
+        moves.runFor(FOLD_MS) {
+            moves.shown = paid
+            moves.shift = listOf(moves.sales[0], paid, moves.sales[2], earlier)
+        }
+        compose.mainClock.advanceTimeBy(Motion.Dwell.PAID_MS - FOLD_MS)
+        val dwell = moves.run(Screen.Till, groundKey = "sale/a1")
+        val failures = landsIn(dwell, paid).toMutableList()
+        val row = rowOf(dwell.last(), paid)
+        val tray = rowOf(dwell.last(), moves.sales[0])
+        val under = rowOf(dwell.last(), earlier)
+        if (row != null && (tray == null || under == null || row.top < tray.bottom || row.bottom > under.top)) failures += "the paid row at $row is not at the top of Earlier (tray row $tray, the one paid before $under)"
+        if (dwell.none { it.ground != null }) failures += "the step-back draws no sale/a1 course"
+        check("paid-step-back-dwell", dark, dwell, Move.RowGrow, glyphs = false, grows = true, bars = failures)
+
+        // The same page, opened again and left by Back: the same move, the same ends, frame for frame.
+        moves.run(Screen.Sale("a1"), groundKey = "sale/a1")
+        val back = moves.run(Screen.Till, groundKey = "sale/a1")
+        val a = dwell.mapNotNull { it.ground }
+        val b = back.mapNotNull { it.ground }
+        assertTrue(a.size == b.size, "the step-back moves its ground on ${a.size} frames, the Back on ${b.size}")
+        for ((n, pair) in a.zip(b).withIndex()) {
+            val (x, y) = pair
+            val off = maxOf(abs(x.left - y.left), abs(x.top - y.top), abs(x.right - y.right), abs(x.bottom - y.bottom))
+            assertTrue(off <= HALF_PIXEL, "frame $n of the move: the step-back's ground at $x, the Back's at $y")
+        }
+    }
+
+    /** Under Still the step-back is the Back's 120 ms crossfade: no surface moves. */
+    @Test fun thePaidStepBackUnderStillIsACrossfade() {
+        moves.shift = listOf(moves.sales[0], moves.sale.copy(phase = SalePhase.Paid, paidAt = 1_100), moves.sales[2])
+        moves.shown = moves.sale.copy(phase = SalePhase.Paid, paidAt = 1_100)
+        moves.start(Screen.Sale("a1"), dark = false, Motion.Still)
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1")
+        assertTrue(frames.all { it.ground == null }, "no ground moves under Still")
+        val landed = frames.indexOfFirst { f -> f.shown[Screen.Sale("a1")]?.let { it == 0f } ?: true }
+        assertTrue(landed in 1..(STILL_FRAMES + 2), "the crossfade is done in ${STILL_FRAMES} frames or so: $landed")
+    }
+
     private companion object {
         /** How close to rest the hero's spring is done: a pixel or two of tail. */
         const val NEAR = 4f
@@ -807,6 +860,12 @@ class RunningMovesTest {
 
         /** Above half shown: readable (decision 188). */
         const val HALF = 0.5f
+
+        /** Half a pixel of the full-size window, in the half-size frames. */
+        const val HALF_PIXEL = 0.5f
+
+        /** 120 ms of 16 ms frames. */
+        const val STILL_FRAMES = 8
 
         /** A frame a loaded host can draw: six of the test clock's. */
         const val SLOW_FRAME_MS = 120L
