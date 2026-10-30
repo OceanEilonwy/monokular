@@ -52,12 +52,15 @@ class LiveStore(
         scope.launch {
             try {
                 // coroutineScope, so a failed read lands in the catch below rather than the scope.
-                state.value = coroutineScope {
+                val read = coroutineScope {
                     val device = async { monokulo.app(connection) }
                     val onion = async { monokulo.onionApi(connection) }
                     StoreNow(monokulo.store(connection), device.await(), onion.await())
                 }
-                onOnionApi(state.value.onionApi)
+                // The connection keeps the onion entry before the read shows as done, so
+                // whoever sees `reading` drop also sees the connection that came with it.
+                onOnionApi(read.onionApi)
+                state.value = read
             } catch (e: MonokuloException) {
                 if (e.status == 401) onDisconnected()
                 state.update { it.copy(reading = false, problem = Problems.say(e)) }
