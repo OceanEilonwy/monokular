@@ -159,19 +159,6 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         return frames
     }
 
-    /** Every frame, with nothing sent, until the stage has landed on [on] and settled: a cancelled back gesture's spring back. */
-    fun settle(on: Screen, groundKey: String? = null): List<Frame> {
-        val frames = mutableListOf(capture(0, on, groundKey))
-        var landed = 0
-        var i = 1
-        while (i < MAX_FRAMES && landed < SETTLE_FRAMES) {
-            compose.mainClock.advanceTimeByFrame()
-            frames += capture(i++, on, groundKey)
-            if (model.stage.currentState == on && model.stage.targetState == on) landed++
-        }
-        return frames
-    }
-
     /** The frame as it is now, arriving on [arriving] (a back gesture holding the stage part way): [ground] is [groundKey]'s. */
     fun now(arriving: Screen, groundKey: String? = null): Frame = capture(-1, arriving, groundKey)
 
