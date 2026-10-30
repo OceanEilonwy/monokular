@@ -4,6 +4,7 @@ import app.monokular.overlay.BubbleMark
 import app.monokular.overlay.BubblePadding
 import app.monokular.overlay.BubbleSize
 import app.monokular.overlay.Panel
+import app.monokular.overlay.haloRadius
 import app.monokular.ui.Fixed
 import app.monokular.ui.LensLook
 import app.monokular.ui.MarkGeometry
@@ -64,7 +65,7 @@ class MarkGeometryTest {
         val rim = BubbleSize.value / 2 - edge
         assertEquals(7f, rim, 0.5f, "the disc round the border is $rim dp")
         assertEquals(Panel.BUBBLE_WINDOW_DP.toFloat(), BubbleSize.value + 2 * BubblePadding.value, "the window is the disc and its padding")
-        val halo = BubbleSize.value / 2 + BubblePadding.value
+        val halo = haloRadius(BubbleSize.value, BubblePadding.value, p = 1f)
         assertEquals(Panel.BUBBLE_WINDOW_DP / 2f, halo, "the halo's widest ring touches the window's edge, unclipped")
     }
 }

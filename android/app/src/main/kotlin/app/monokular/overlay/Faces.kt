@@ -395,6 +395,9 @@ internal class BubbleInks(val disc: Color, val track: Color, val ink: Color, val
     }
 }
 
+/** The pulse's halo [p] of the way out from a disc [disc] across: [padding] past its edge at the widest, so it ends at the window's. */
+internal fun haloRadius(disc: Float, padding: Float, p: Float): Float = disc / 2 + padding * p
+
 /** The lens's look for each of the bubble's. */
 private fun lensOf(look: BubbleLook): LensLook = when (look) {
     BubbleLook.Idle -> LensLook.Grey
@@ -444,6 +447,8 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
     val middle = t.animateColor({ m.spread[2].spec() }, label = "middle") { lensOf(it)[2] }
     val rim = t.animateColor({ m.spread[3].spec() }, label = "rim") { lensOf(it)[3] }
     val lens = remember(core, inner, middle, rim) { Rings(core, inner, middle, rim) }
+    // The arc's ink follows a night-mode switch over the fade, as the track under it does.
+    val arcInk = t.animateColor({ m.fade.spec() }, label = "arc ink") { inks.ink }
     val arcAlpha = t.animateFloat({ m.fade.fraction }, label = "arc") { if (it == BubbleLook.Lit && m.chase != null) 1f else 0f }
     // The tick is drawn in along its path and leaves by fading whole: its trim only grows, rewound once it is invisible.
     val tick = t.animateFloat({ (if (targetState == BubbleLook.Paid) m.tick else m.untick).fraction }, label = "tick") {
@@ -465,7 +470,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
         Modifier.size(BubbleSize)
             .drawBehind {
                 val p = halo?.value ?: return@drawBehind
-                drawCircle(Fixed.Accent.copy(alpha = 0.55f * (1f - p)), radius = size.minDimension / 2 + BubblePadding.toPx() * p)
+                drawCircle(Fixed.Accent.copy(alpha = 0.55f * (1f - p)), radius = haloRadius(size.minDimension, BubblePadding.toPx(), p))
             }
             .graphicsLayer {
                 this.alpha = alpha.value
@@ -482,7 +487,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
     ) {
         Canvas(Modifier.size(BubbleMark).testTag(BUBBLE_MARK_TAG)) {
             if (chase != null) heldAt[0] = chase.value
-            mark(lens, border.value, heldAt[0], arcAlpha.value, tick.value, tickAlpha.value, inks.ink)
+            mark(lens, border.value, heldAt[0], arcAlpha.value, tick.value, tickAlpha.value, arcInk.value)
         }
     }
 }
