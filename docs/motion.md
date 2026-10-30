@@ -1119,7 +1119,7 @@ from 38 dp so the disc round the border is about 7 dp, not 11):
 | Tick | `M23.5 28.5 l4.3 4.3 8.7 -9` (u), inside the lens's clip |
 | Tick stroke | 3.3 dp (3.2 u), round caps and joins |
 | Pulse | `accent` at 55 % to 0, radius +16 dp (unchanged) |
-| Idle alpha | 0.55 for the whole bubble, ground white 90 % (unchanged) |
+| Idle alpha | 0.55 for the whole bubble, ground 90 % (unchanged) |
 
 **Colours.** The bubble sits over another app, so its colours are
 `Fixed`, not the theme's. In night mode (board 7) its disc is
