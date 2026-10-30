@@ -1,0 +1,10 @@
+f0 t=25011027 RowGrow Sale(orderId=order_62382cf3367b4e10a5b742ccdd305c26) -> Till p=0.000 seek=false out=1.00 in=0.00
+f1 t=25011111 RowGrow Sale(orderId=order_62382cf3367b4e10a5b742ccdd305c26) -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_62382cf3367b4e10a5b742ccdd305c26 @0.000 [0,0,1280,2856]
+f2 t=25011127 RowGrow Sale(orderId=order_62382cf3367b4e10a5b742ccdd305c26) -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_62382cf3367b4e10a5b742ccdd305c26 @0.000 [0,0,1280,2856]
+f3 t=25011144 RowGrow Sale(orderId=order_62382cf3367b4e10a5b742ccdd305c26) -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_62382cf3367b4e10a5b742ccdd305c26 @0.000 [0,0,1280,2856]
+f4 t=25011161 RowGrow Sale(orderId=order_62382cf3367b4e10a5b742ccdd305c26) -> Till p=0.041 seek=false out=0.85 in=0.00 | sale/order_62382cf3367b4e10a5b742ccdd305c26 @0.041 [2,31,1278,2780]
+f5 t=25011177 RowGrow Sale(orderId=order_62382cf3367b4e10a5b742ccdd305c26) -> Till p=0.143 seek=false out=0.46 in=0.00 | sale/order_62382cf3367b4e10a5b742ccdd305c26 @0.143 [7,110,1273,2589]
+f6 t=25011311 RowGrow Sale(orderId=order_62382cf3367b4e10a5b742ccdd305c26) -> Till p=0.264 seek=false out=0.01 in=0.00 | sale/order_62382cf3367b4e10a5b742ccdd305c26 @0.264 [13,203,1267,2362]
+f7 t=25011344 RowGrow Sale(orderId=order_62382cf3367b4e10a5b742ccdd305c26) -> Till p=0.936 seek=false out=0.00 in=0.85 | sale/order_62382cf3367b4e10a5b742ccdd305c26 @0.936 [45,719,1235,1108]
+f8 t=25011394 RowGrow Sale(orderId=order_62382cf3367b4e10a5b742ccdd305c26) -> Till p=0.977 seek=false out=0.00 in=0.95 | sale/order_62382cf3367b4e10a5b742ccdd305c26 @0.977 [47,751,1233,1031]
+f9 t=25011561 null Till -> Till p=0.000 seek=false out=1.00 in=0.00 | sale/order_62382cf3367b4e10a5b742ccdd305c26 @1.000 [48,769,1232,988]

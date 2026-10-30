@@ -4058,3 +4058,27 @@ design unchanged.
     the mechanism and on `NavTest`'s JVM test of `HeldMove`, which fails
     before it (a second generation re-reading came-up-by-itself as a
     grow) and passes after; the slow-frame tests stay as regressions.
+285. **The paid step-back already carries the sale's course on the
+    emulator; it is the Back's move with the Back's ends, held so by a
+    test, and what read as a crossfade there is dropped frames** (dev2,
+    round 2, S5; 259, 266, `docs/motion.md` §12.2). Traced before any
+    change on emulator-5556 (`docs/reports/motion/r2-dev2/`): at the
+    round's base (ca702e4) and on this branch the dwell's leave is
+    `RowGrow Sale → Till` with `| sale/<id>` from its second frame, from
+    the whole window to the paid row, the same two ends as a Back on the
+    same page (`[0,0,1280,2856]` to `[48,769,1232,988]`). The difference
+    on this emulator is pacing: two of three dwell step-backs drew four
+    to nine frames with 100 to 150 ms gaps where the Back draws twenty
+    at 16 ms, and a Back pressed during the dwell on the same folded
+    page draws twenty too, so the page is not the cause; moving the
+    service's and the overlay's own `PAID_MS` timers 1.5 s later (a
+    diagnostic build, not kept) did not remove the gaps. The course
+    missing on the owner's phone (259's `trace-paid-shown`) is not
+    reproduced here, and the phone is not used; the likeliest cause
+    there is round 1's `leave` calling `follow` with live sales waiting
+    (258), which this round removed (282). So no second mechanism is
+    added: `RunningMovesTest` pays a sale in place, waits `PAID_MS` on
+    the test clock, leaves as the dwell's job does, and holds the move
+    to the Back's frame for frame within half a pixel, landing in the
+    first Earlier row; Still is the Back's crossfade. Reviewers on the
+    phone should read the dwell's trace for `| sale/<id>` first.
