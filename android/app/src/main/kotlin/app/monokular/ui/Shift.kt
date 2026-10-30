@@ -1,5 +1,7 @@
 package app.monokular.ui
 
+import android.content.Context
+import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateFloatAsState
@@ -44,6 +46,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.LongState
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +65,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -120,9 +124,12 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
     val stage = LocalStage.current
     val cameFrom = stage?.leavingSale
     val focusOn = remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val screenReader = LocalScreenReader.current
     LaunchedEffect(cameFrom) {
         if (cameFrom == null) return@LaunchedEffect
-        focusOn.value = cameFrom
+        // Focus moves for a screen reader only: to a sighted cashier a focused row is a grey row nobody asked for.
+        if (screenReader(context)) focusOn.value = cameFrom
         if (folded && ShiftList.folds(sales, filter, cameFrom)) folded = false
     }
     val arrive = motion.fade.fraction
@@ -335,6 +342,15 @@ private fun traySlice(top: Boolean, bottom: Boolean): Shape = when {
 
 /** The Earlier header's space above it, more than the tray header's: it follows the tray. */
 private val EarlierTop = 22.dp
+
+/**
+ * Whether a screen reader is exploring by touch, asked as a Back lands on the shift: only then does focus go to the
+ * row the cashier came from (§12.3's TalkBack). A test seam, as [app.monokular.LocalGroundTracks] is: the app's reads
+ * the system's accessibility manager; a device test provides its own.
+ */
+val LocalScreenReader = staticCompositionLocalOf<(Context) -> Boolean> {
+    { context -> context.getSystemService(AccessibilityManager::class.java)?.isTouchExplorationEnabled == true }
+}
 
 /** The moves the shift's chrome fades through: a row growing into its sale, and back. */
 private val ShiftThrough = setOf(Move.RowGrow)
