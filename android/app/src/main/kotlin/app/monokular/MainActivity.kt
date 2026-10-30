@@ -113,8 +113,12 @@ class MainActivity : ComponentActivity() {
                 // Step 4 has no Back in setup (as Square's had none), but goes back to Settings when opened from there.
                 val stepFour = screen == Screen.PointOfSale && !model.setupDone
                 FollowScreen(stage, scrub, screenState, onLanded = model::landed)
+                // A second Back while the shift is still arriving lands on the shift, never leaves the app (decision 260 c):
+                // Back stays the stage's until it rests there. Read as a derived state, so the root recomposes as a change
+                // starts and as it lands, never a frame.
+                val arriving by remember { derivedStateOf { stage.currentState != stage.targetState } }
                 StageBack(
-                    enabled = screen != Screen.Welcome && screen != Screen.Till && !stepFour,
+                    enabled = (screen != Screen.Welcome && screen != Screen.Till && !stepFour) || (screen == Screen.Till && arriving),
                     state = stage, scrub = scrub, current = { model.screen.value }, target = model::backTarget, onCommit = model::back,
                 )
                 CompositionLocalProvider(LocalPointOfSale provides pos) {

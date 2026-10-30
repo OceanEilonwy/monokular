@@ -4027,3 +4027,15 @@ design unchanged.
     to (the shift screen's life), the only way a `requestFocus` lands.
     `TestModel` mirrors `follow`, `landed` and `left` so
     `RunningMovesTest` drives the same rules on the stage.
+283. **The second Back is the stage's while the shift is arriving**
+    (dev2, round 2, S4; 260 c, `docs/motion.md` §12.1). `StageBack` is
+    enabled on the shift while the stage's `currentState` and
+    `targetState` differ, read through one `derivedStateOf` at the
+    activity's root (and in `ModelStage`, so the device tests run the
+    same handler); a press then reaches `model.back(Till)`, which does
+    nothing from the shift (`back()` there is `goHome()`, the shift
+    itself), and the stage lands where it was going. On the resting
+    shift the handler is off and Back leaves the app (decision 77).
+    `StageBackTest` presses the second Back half way through the shrink
+    and counts `ModelStage`'s compositions over the move: one to four,
+    not one a frame.
