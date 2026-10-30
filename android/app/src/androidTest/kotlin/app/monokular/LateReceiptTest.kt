@@ -53,8 +53,8 @@ class LateReceiptTest {
         compose.mainClock.advanceTimeByFrame()
         // The arrival itself recomposes what shows the receipt; the fade's frames recompose nothing.
         recompositions.reset()
-        val label = compose.onNodeWithText("ORDER", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
-        // Inside the card, beside its "ORDER" label: the card's own ground once it has faded in.
+        val label = compose.onNodeWithText("receipt k4Rt", substring = true, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        // Inside the card, beside its folded row's words: the card's own ground once it has faded in.
         val x = (label.left - with(compose.density) { 8f * density }).roundToInt()
         val y = label.center.y.roundToInt()
         fun card(): Int = compose.onRoot().captureToImage().asAndroidBitmap().copy(Bitmap.Config.ARGB_8888, false).getPixel(x, y)
