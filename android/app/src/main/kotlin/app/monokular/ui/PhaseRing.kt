@@ -106,7 +106,8 @@ fun PhaseRing(
     val density = LocalDensity.current
     val strokes = remember(size, density) { RingStrokes(with(density) { size.toPx() }) }
     Canvas(modifier.size(size).clearAndSetSemantics {}) {
-        if (spin != null) heldAt[0] = spin.value
+        // Turning, it holds the turn's angle; with animations off, the still arc starts at the top again.
+        if (spin != null) heldAt[0] = spin.value else if (turn == null) heldAt[0] = 0f
         val inset = strokes.inset
         val arcSize = Size(this.size.width - 2 * inset, this.size.height - 2 * inset)
         val topLeft = Offset(inset, inset)
