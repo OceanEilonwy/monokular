@@ -1,5 +1,9 @@
 package app.monokular
 
+import app.monokular.overlay.BubbleMark
+import app.monokular.overlay.BubblePadding
+import app.monokular.overlay.BubbleSize
+import app.monokular.overlay.Panel
 import app.monokular.ui.Fixed
 import app.monokular.ui.LensLook
 import app.monokular.ui.MarkGeometry
@@ -46,5 +50,21 @@ class MarkGeometryTest {
         assertEquals(Fixed.PaidMid, LensLook.Green[1])
         assertEquals(Fixed.PaidLight, LensLook.Green[2])
         assertEquals(Fixed.PaidMid, LensLook.Green[3])
+    }
+
+    /**
+     * The bubble's 56 dp disc round its 46 dp mark: the border's outer edge,
+     * in the mark's 64-unit box scaled 1.42, leaves about 7 dp of the disc
+     * (the design's board 7), and the pulse's halo, 16 dp past the disc at
+     * its widest, still ends inside the bubble's window.
+     */
+    @Test
+    fun `the bubble's rim is about 7 dp and its halo fits its window`() {
+        val edge = BubbleMark.value / 64f * 1.42f * (MarkGeometry.BORDER_RADIUS + MarkGeometry.BORDER_STROKE / 2)
+        val rim = BubbleSize.value / 2 - edge
+        assertEquals(7f, rim, 0.5f, "the disc round the border is $rim dp")
+        assertEquals(Panel.BUBBLE_WINDOW_DP.toFloat(), BubbleSize.value + 2 * BubblePadding.value, "the window is the disc and its padding")
+        val halo = BubbleSize.value / 2 + BubblePadding.value
+        assertEquals(Panel.BUBBLE_WINDOW_DP / 2f, halo, "the halo's widest ring touches the window's edge, unclipped")
     }
 }

@@ -1104,24 +1104,28 @@ its colours and its border change.
   alpha and ground in the layer, and its docking are M4's, unchanged.
 
 **Geometry** (mark units `u` are the SVG's 64-unit box, converted at the
-38 dp logo: 1 u = 38 / 64 × 1.42 dp):
+46 dp logo: 1 u = 46 / 64 × 1.42 dp; board 7 of the fixes canvas grew it
+from 38 dp so the disc round the border is about 7 dp, not 11):
 
 | What | Value |
 | --- | --- |
 | Bubble circle | 56 dp, window padding 16 dp (unchanged) |
 | Elevation | 6 dp shadow (unchanged) |
-| Logo | 38 dp, centred, in every state (the lit face was `LoadingMark` at 40 dp: §12.6) |
-| Lens | 26.6 dp across (r 15.75 u) |
-| Border radius · stroke | 15.2 dp · 3.8 dp (r 18 u · 4.5 u) |
+| Logo | 46 dp, centred, in every state (the lit face was `LoadingMark` at 40 dp: §12.6) |
+| Lens | 32.1 dp across (r 15.75 u) |
+| Border radius · stroke | 18.4 dp · 4.6 dp (r 18 u · 4.5 u); about 7 dp of disc round it |
 | Chasing arc | 30 % of the border, round caps (34 of 113.1 u) |
 | Arc start · direction | 12 o'clock · clockwise |
 | Tick | `M23.5 28.5 l4.3 4.3 8.7 -9` (u), inside the lens's clip |
-| Tick stroke | 2.7 dp (3.2 u), round caps and joins |
+| Tick stroke | 3.3 dp (3.2 u), round caps and joins |
 | Pulse | `accent` at 55 % to 0, radius +16 dp (unchanged) |
 | Idle alpha | 0.55 for the whole bubble, ground white 90 % (unchanged) |
 
 **Colours.** The bubble sits over another app, so its colours are
-`Fixed`, the same in light and dark. The two lighter greens are new and
+`Fixed`, not the theme's. In night mode (board 7) its disc is
+`Fixed.BubbleDark` #2A2825, the track #4A4743, the arc and the whole
+border #ECE8DF and the idle border #8C8577; the lens, the tick, the
+pulse and the alphas are as in the table, which is light mode. The two lighter greens are new and
 go in `Fixed` beside `Paid`; the idle grey border (#565656, a literal in
 `Faces.kt` today) moves to `Fixed` too.
 

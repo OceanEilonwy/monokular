@@ -81,6 +81,14 @@ object Fixed {
     val ChaseTrack = Color(0xFFD8D2C7)
     /** The idle bubble's border, round its grey mark. */
     val IdleBorder = Color(0xFF565656)
+    /** The bubble's disc in dark mode, so it doesn't glare over a dark app: the dark theme's card grey. */
+    val BubbleDark = Color(0xFF2A2825)
+    /** On [BubbleDark]: the waiting border's track, and the light segment ([BubbleDarkInk]) chasing round it. */
+    val BubbleDarkTrack = Color(0xFF4A4743)
+    /** On [BubbleDark], where [Ink] is on white: the chasing segment and the whole border, waiting still or paid. */
+    val BubbleDarkInk = Color(0xFFECE8DF)
+    /** The idle bubble's border on [BubbleDark]. */
+    val BubbleDarkIdleBorder = Color(0xFF8C8577)
     val Track = Color(0xFFE4DFD5)
     val Outline = Color(0xFF8C8577)
     /** The QR card and the enlarged code's screen; a glyph on [Ink]. */

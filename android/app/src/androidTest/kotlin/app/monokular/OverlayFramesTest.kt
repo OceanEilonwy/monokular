@@ -565,12 +565,12 @@ class OverlayFramesTest {
 
     private var look by mutableStateOf(BubbleLook.Idle)
 
-    /** The free bubble over Square's white, in [look] from its first frame, on the test clock. */
-    private fun bubble(from: BubbleLook, presets: Motion = Motion.Full, label: String? = null) {
+    /** The free bubble over Square's white, in [look] from its first frame, on the test clock; light unless [dark]. */
+    private fun bubble(from: BubbleLook, presets: Motion = Motion.Full, label: String? = null, dark: Boolean = false) {
         look = from
         compose.mainClock.autoAdvance = false
         compose.setContent {
-            Till(presets) {
+            Till(presets, dark = dark) {
                 Box(Modifier.background(Fixed.White)) { BubbleFace(look, phase = SalePhase.Waiting, label = label) }
             }
         }
@@ -630,6 +630,26 @@ class OverlayFramesTest {
             assertTrue(near(image.onBorder(start + middle + 180f), Fixed.ChaseTrack), "${to} ms: across from the arc is the pale track")
             assertTrue(near(image.onBorder(start - 40f), Fixed.ChaseTrack), "${to} ms: behind the arc is the track: it chases clockwise")
         }
+    }
+
+    /** In night mode the disc is dark and a light segment chases round a dark track; paid, the border is whole light ink. */
+    @Test
+    fun inDarkModeALightArcChasesRoundADarkDisc() {
+        bubble(BubbleLook.Lit, dark = true)
+        compose.mainClock.advanceTimeBy(Motion.CHASE_MS / 3L)
+        val middle = 360f / 3 + MarkGeometry.ARC_SHARE * 180f
+        val image = mark()
+        save("bubble-dark", 0, image)
+        assertTrue(near(image.onBorder(middle), Fixed.BubbleDarkInk), "the arc's middle is ${Integer.toHexString(image.onBorder(middle))}, not light ink")
+        assertTrue(near(image.onBorder(middle + 180f), Fixed.BubbleDarkTrack), "across from it is the dark track")
+        // Up and right of the lens, past the border's edge and inside the disc.
+        assertTrue(near(image.atMark(46f, 12f), Fixed.BubbleDark), "between the border and the disc's edge is the dark disc, not white")
+        look = BubbleLook.Paid
+        compose.mainClock.advanceTimeBy(1_000)
+        val paid = mark()
+        save("bubble-dark", 1, paid)
+        assertWholeBorder(paid, Fixed.BubbleDarkInk, "dark, paid")
+        assertTrue(near(paid.atMark(34.56f, 25.81f), Fixed.White, 0.15f), "the tick is still white")
     }
 
     @Test
