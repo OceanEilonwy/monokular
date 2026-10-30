@@ -461,6 +461,7 @@ internal fun StatusPill(sale: TillSale, now: LongState) = Row(
             transitionSpec = { (fadeIn(through) togetherWith fadeOut(fadeQuick)).using(null) },
             label = "status words",
         ) { words ->
+            // Polite, so "Confirming · 4 of 10" is said once a block (about every two minutes) while the customer waits, on purpose.
             Text(
                 words, fontSize = 16.sp, fontWeight = FontWeight.Bold,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
