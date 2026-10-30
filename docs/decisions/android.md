@@ -3990,6 +3990,51 @@ design unchanged.
     and holds the bubble's entry pixel-identical to `Logo`; the logo
     and the loading mark (still and at 1234 ms of its glints) were
     checked pixel-identical before and after the change on 5554.
+273. **The bubble's TalkBack label stays on its window, and `BubbleFace`
+    carries the same words** (dev1, round 2; §12.5, 267). The free
+    bubble's window hides its descendants from accessibility and speaks
+    its own `contentDescription` (`BubbleFrame.describe`), so the label
+    TalkBack reads is the window's; it is now `Bubble.label(look, sale)`
+    with the canvas's words: "Monokular, $12.00 waiting for payment",
+    "… part paid", "… seen on the network", "… confirming" (the live
+    status words the shift and panel use, lower-cased), "Monokular,
+    $12.00 paid", "Monokular, nothing waiting". The old "new sale, tap
+    to show the code" goes: the window is a button, so TalkBack already
+    says what a tap does. `BubbleFace` takes the same string as `label`,
+    so the compose node says it too (and a test can read it). The
+    label is null where the bubble is a picture (onboarding) or another
+    node speaks for it (the docked bubble's "Lower to the bubble").
+    `Bubble.label` lives in `SaleText.kt`, a screens-track file. Its
+    one function changed there (and its test line in `SaleTextTest`)
+    rather than a second copy in `overlay/`.
+274. **A paid that lands mid-turn holds the arc where it was; the loop
+    itself ends with the lit look** (dev1, round 2; §12.5 "interruption").
+    The chase's infinite transition is in the composition only while
+    the look is Lit (and motion is Full), so on Paid it is gone with the
+    recomposition that changes the look, and nothing runs a loop
+    behind a paid or idle bubble. The arc's alpha fades on `fade` from
+    the transition; its angle is the last one the draw read, kept in a
+    one-slot `FloatArray` the draw writes (not snapshot state: nothing
+    observes it), so the fading arc stays where the cashier saw it while
+    the track darkens to ink under it rather than jumping to 12 o'clock.
+    The pulse and the chase share the one `rememberInfiniteTransition`,
+    made only while one of them runs.
+275. **What became dead with the bubble's ring, and the tests ported**
+    (dev1, round 2; 267). `PhaseRing`'s `paid` parameter (only the bubble
+    passed it) and its `pupil` parameter (no caller left) go, the closed
+    ring always the theme's `paid`. `PhaseRingOnDeviceTest` now draws in
+    the light theme and reads `LightTokens.paid` where it passed
+    `Fixed.Paid`. No test asserted the old bubble's ring or tick, so
+    none is removed. `OverlayFramesTest` adds the bubble's pixel tests:
+    the chase at 0, ⅓ and ⅔ of a turn, a whole grey border idle, the
+    paid core green by ~200 ms, rim by ~380 ms and the tick only after
+    the core, a paid mid-turn arc held in place, Still's whole ink
+    border, and the label. The loop's absence is read from the
+    composition tracer's `rememberInfiniteTransition` marker, with a lit
+    bubble as the control that the tracer sees it.
+    `OverlayRecompositionsTest` counts `BubbleFace`, `Circle` and the
+    mark's `Canvas` at 0 across ten frames of the chase and of the
+    spread.
 280. **The tray's sections are one pure list, and Needs action now lists
     the live sales** (dev2, round 2, S1; `docs/motion.md` §12.3, §12.6
     items 7 and 8). `ShiftList.sections(sales, filter, folded)` returns

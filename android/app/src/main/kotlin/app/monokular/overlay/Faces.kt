@@ -7,18 +7,18 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.animateColor
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Transition
 import androidx.compose.animation.core.updateTransition
-import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.VisibilityThreshold
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -127,10 +127,8 @@ import app.monokular.sales.standing
 import app.monokular.ui.CodeText
 import app.monokular.ui.confirm
 import app.monokular.ui.Fixed
-import app.monokular.ui.LightTokens
-import app.monokular.ui.LoadingMark
+import app.monokular.ui.LensLook
 import app.monokular.ui.posOf
-import app.monokular.ui.Logo
 import app.monokular.ui.MkIcons
 import app.monokular.ui.Motion
 import app.monokular.ui.OrderContent
@@ -139,6 +137,7 @@ import app.monokular.ui.PhaseRing
 import app.monokular.ui.PrimaryButton
 import app.monokular.ui.QrCode
 import app.monokular.ui.display
+import app.monokular.ui.mark
 import app.monokular.ui.mk
 import app.monokular.ui.motion
 import app.monokular.ui.Countdown
@@ -336,16 +335,20 @@ class PanelActions(
 )
 
 /**
- * The bubble (the design's Bubble part), in each [look]: faded and grey
- * with nothing to do, white with the [phase]'s ring (and a pulse) for a
- * sale, the ring closed in green round the tick on its pale ground once
- * it's paid. Its colours are the design's whatever the theme: it sits over
- * another app. [confirms] is whether a payment landing on it buzzes:
+ * The bubble (the design's Bubble part, B5 c): the Monokular logo in each
+ * [look]. Faded and grey with nothing to do; a still orange lens for a
+ * sale whose code is up, its border a pale track with an ink segment
+ * chasing round it (and a pulse behind); once it's paid, the lens fills
+ * green from the core out and a white tick draws over it, the border
+ * whole ink. Its colours are the design's whatever the theme: it sits
+ * over another app. [confirms] is whether a payment landing on it buzzes:
  * only while Monokular is away ([PaidBuzz], decision 176). [pulse] is false for the bubble docked above the panel,
  * which has nothing left to call for; [panelUp] is the free bubble's word
  * that a panel is up beside it (a tablet's), which stops its pulse too.
  * [presence] is the free bubble's window appearing and going, which the
- * circle's shadow follows (decision 191).
+ * circle's shadow follows (decision 191). [label] is what TalkBack says
+ * for it ([app.monokular.Bubble.label]); null where it is a picture or another node
+ * speaks for it (onboarding, the docked bubble).
  */
 @Composable
 fun BubbleFace(
@@ -355,8 +358,9 @@ fun BubbleFace(
     panelUp: Boolean = false,
     confirms: Boolean = true,
     presence: Presence? = null,
+    label: String? = null,
 ) = Box(
-    Modifier.padding(if (pulse) BubblePadding else DockedPadding).clearAndSetSemantics {},
+    Modifier.padding(if (pulse) BubblePadding else DockedPadding).clearAndSetSemantics { if (label != null) contentDescription = label },
     contentAlignment = Alignment.Center,
 ) { Circle(look, pulse, phase, panelUp, confirms, presence) }
 
@@ -371,33 +375,70 @@ private val BubbleSize = 56.dp
 
 private val BubbleElevation = 6.dp
 
+/** The logo in the bubble, the same size in every look (§12.6 item 2). */
+private val BubbleMark = 38.dp
+
+/** The lens's look for each of the bubble's. */
+private fun lensOf(look: BubbleLook): LensLook = when (look) {
+    BubbleLook.Idle -> LensLook.Grey
+    BubbleLook.Lit -> LensLook.Orange
+    BubbleLook.Paid -> LensLook.Green
+}
+
+/** The lens's four rings' animated colours, as a look the mark reads in its draw. */
+private class Rings(private val core: State<Color>, private val inner: State<Color>, private val middle: State<Color>, private val rim: State<Color>) : LensLook {
+    override fun get(ring: Int): Color = when (ring) {
+        0 -> core.value
+        1 -> inner.value
+        2 -> middle.value
+        else -> rim.value
+    }
+}
+
 /**
- * One circle whatever the look (`docs/motion.md` M4): its shadow and place
- * stay; its alpha and ground fade (read in the layer and in its draw, so
- * a change recomposes nothing per frame), the ring sweeps closed on paid,
- * and only the middle crossfades: the grey logo, the loading mark, the tick.
+ * One circle whatever the look (`docs/motion.md` M4, §12.5): its shadow
+ * and place stay; one transition of the look moves the bubble's alpha and
+ * ground, the border's colour, each ring of the lens (from the core out,
+ * [Motion.spread]), the chasing arc's alpha and the tick's trim, and one
+ * infinite transition, only while it is lit (or pulsing), runs the chase
+ * and the pulse. Every value is read in the layer or the draw, so a
+ * change recomposes nothing per frame. A paid mid-turn holds the arc
+ * where it was while it fades into the darkening border; a look changed
+ * mid-spread turns each ring from where it is.
  */
 @Composable
 private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: Boolean, confirms: Boolean, presence: Presence?) {
     val m = motion
-    val alpha by animateFloatAsState(if (look == BubbleLook.Idle) 0.55f else 1f, m.fade.fraction, label = "bubble")
-    val ground by animateColorAsState(
-        when (look) {
-            BubbleLook.Idle -> Fixed.White.copy(alpha = 0.9f)
-            BubbleLook.Lit -> Fixed.White
-            BubbleLook.Paid -> LightTokens.paidGround
-        },
-        m.fade.spec(),
-        label = "ground",
-    )
-    // The ring closes green round the tick on paid; lit, the loading mark's own ring is the ring (#18).
-    val ringShown by animateFloatAsState(if (look == BubbleLook.Paid) 1f else 0f, m.fade.fraction, label = "ring")
-    val turn = m.pulse
-    val halo = if (turn != null && Panel.pulses(look, phase, panelUp = !pulse || panelUp)) {
-        rememberInfiniteTransition(label = "pulse").animateFloat(0f, 1f, turn, label = "halo")
-    } else {
-        null
+    val t = updateTransition(look, label = "bubble")
+    val alpha = t.animateFloat({ m.fade.fraction }, label = "alpha") { if (it == BubbleLook.Idle) 0.55f else 1f }
+    val ground = t.animateColor({ m.fade.spec() }, label = "ground") { if (it == BubbleLook.Idle) Fixed.White.copy(alpha = 0.9f) else Fixed.White }
+    val border = t.animateColor({ m.fade.spec() }, label = "border") {
+        when (it) {
+            BubbleLook.Idle -> Fixed.IdleBorder
+            // With no chase (Still) the waiting border is whole ink, the arc not drawn.
+            BubbleLook.Lit -> if (m.chase == null) Fixed.Ink else Fixed.ChaseTrack
+            BubbleLook.Paid -> Fixed.Ink
+        }
     }
+    val core = t.animateColor({ m.spread[0].spec() }, label = "core") { lensOf(it)[0] }
+    val inner = t.animateColor({ m.spread[1].spec() }, label = "inner") { lensOf(it)[1] }
+    val middle = t.animateColor({ m.spread[2].spec() }, label = "middle") { lensOf(it)[2] }
+    val rim = t.animateColor({ m.spread[3].spec() }, label = "rim") { lensOf(it)[3] }
+    val lens = remember(core, inner, middle, rim) { Rings(core, inner, middle, rim) }
+    val arcAlpha = t.animateFloat({ m.fade.fraction }, label = "arc") { if (it == BubbleLook.Lit && m.chase != null) 1f else 0f }
+    val tick = t.animateFloat({ (if (targetState == BubbleLook.Paid) m.tick else m.fadeQuick).fraction }, label = "tick") {
+        if (it == BubbleLook.Paid) 1f else 0f
+    }
+    // One infinite transition for the bubble's two loops (§10 rule 7), and only while one runs: none idle or paid.
+    val pulseTurn = m.pulse
+    val chaseTurn = m.chase
+    val pulsing = pulseTurn != null && Panel.pulses(look, phase, panelUp = !pulse || panelUp)
+    val chasing = chaseTurn != null && look == BubbleLook.Lit
+    val loops = if (pulsing || chasing) rememberInfiniteTransition(label = "bubble loops") else null
+    val halo = if (pulsing && loops != null) loops.animateFloat(0f, 1f, pulseTurn!!, label = "halo") else null
+    val chase = if (chasing && loops != null) loops.animateFloat(0f, 360f, chaseTurn!!, label = "chase") else null
+    // Where the arc was when the chase stopped, so it fades out there rather than jumping to 12 o'clock: written by the draw.
+    val heldAt = remember { FloatArray(1) }
     if (confirms) Confirm(look)
     Box(
         Modifier.size(BubbleSize)
@@ -406,7 +447,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
                 drawCircle(Fixed.Accent.copy(alpha = 0.55f * (1f - p)), radius = size.minDimension / 2 + BubblePadding.toPx() * p)
             }
             .graphicsLayer {
-                this.alpha = alpha
+                this.alpha = alpha.value
                 // The window's appear and go fade the circle per draw, which its own shadow doesn't see: it follows here.
                 val shown = presence?.value ?: 1f
                 shadowElevation = BubbleElevation.toPx() * shown
@@ -415,28 +456,18 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
                 shape = CircleShape
                 clip = true
             }
-            .drawBehind { drawCircle(ground) },
+            .drawBehind { drawCircle(ground.value) },
         contentAlignment = Alignment.Center,
     ) {
-        PhaseRing(
-            if (look == BubbleLook.Paid) SalePhase.Paid else phase, 40.dp,
-            Modifier.graphicsLayer { this.alpha = ringShown },
-            track = Fixed.Track, fill = Fixed.Accent, paid = LightTokens.paid,
-        )
-        AnimatedContent(
-            look,
-            transitionSpec = { (fadeIn(m.fade.fraction) togetherWith fadeOut(m.fadeQuick.fraction)).using(null) },
-            contentAlignment = Alignment.Center,
-            label = "face",
-        ) { shown ->
-            when (shown) {
-                BubbleLook.Idle -> Logo(38.dp, ring = Color(0xFF565656), grey = true)
-                BubbleLook.Lit -> LoadingMark(40.dp, label = "New sale", ring = Fixed.Ink)
-                BubbleLook.Paid -> Icon(MkIcons.Tick, contentDescription = null, tint = LightTokens.paid, modifier = Modifier.size(24.dp))
-            }
+        Canvas(Modifier.size(BubbleMark).testTag(BUBBLE_MARK_TAG)) {
+            if (chase != null) heldAt[0] = chase.value
+            mark(lens, border.value, heldAt[0], arcAlpha.value, tick.value)
         }
     }
 }
+
+/** The bubble's mark, for the tests that read its pixels. */
+const val BUBBLE_MARK_TAG = "bubble-mark"
 
 /**
  * One confirming buzz when a payment lands on the bubble the cashier can

@@ -17,6 +17,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import app.monokular.core.SalePhase
 import app.monokular.ui.Fixed
+import app.monokular.ui.LightTokens
 import app.monokular.ui.LocalMotion
 import app.monokular.ui.MonokularTheme
 import app.monokular.ui.Motion
@@ -35,7 +36,8 @@ class PhaseRingOnDeviceTest {
 
     private val track = Fixed.Track
     private val fill = Fixed.Accent
-    private val paid = Fixed.Paid
+    /** The closed ring is the theme's paid green: the light theme's here, which these rings are drawn in. */
+    private val paid = LightTokens.paid
 
     private var phase by mutableStateOf(SalePhase.Waiting)
 
@@ -43,9 +45,9 @@ class PhaseRingOnDeviceTest {
         phase = from
         compose.mainClock.autoAdvance = false
         compose.setContent {
-            MonokularTheme {
+            MonokularTheme(dark = false) {
                 CompositionLocalProvider(LocalMotion provides motion) {
-                    Box(Modifier.testTag("ring").padding(0.dp)) { PhaseRing(phase, 120.dp, track = track, fill = fill, paid = paid) }
+                    Box(Modifier.testTag("ring").padding(0.dp)) { PhaseRing(phase, 120.dp, track = track, fill = fill) }
                 }
             }
         }
