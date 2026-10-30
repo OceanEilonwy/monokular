@@ -6,6 +6,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.test.junit4.createComposeRule
 import app.monokular.core.SalePhase
+import app.monokular.overlay.BubbleFace
 import app.monokular.overlay.PanelActions
 import app.monokular.overlay.PanelMotion
 import app.monokular.overlay.PanelPage
@@ -57,12 +58,12 @@ class OverlayRecompositionsTest {
     }
 
     /** Starts a move, lets its first frames compose what it brings, then counts ten frames of it. */
-    private fun assertNothingRecomposesMidMove(move: String, start: () -> Unit) {
+    private fun assertNothingRecomposesMidMove(move: String, also: List<String> = emptyList(), start: () -> Unit) {
         start()
         repeat(3) { compose.mainClock.advanceTimeByFrame() }
         recompositions.reset()
         repeat(10) { compose.mainClock.advanceTimeByFrame() }
-        for (name in named) assertEquals(0, recompositions.count(name), "$move: $name recomposed mid-move")
+        for (name in named + also) assertEquals(0, recompositions.count(name), "$move: $name recomposed mid-move")
     }
 
     @Test
@@ -93,5 +94,34 @@ class OverlayRecompositionsTest {
     fun theLateOrderLine() {
         panel(raised = 1f)
         assertNothingRecomposesMidMove("late order line") { sale = sale.copy(receipt = sampleReceipt()) }
+    }
+
+    private var look by mutableStateOf(BubbleLook.Lit)
+
+    /** The free bubble alone, lit. */
+    private fun bubble() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent { Till { BubbleFace(look) } }
+        compose.mainClock.advanceTimeBy(100)
+        for (name in bubbleParts) assertTrue(recompositions.count(name) > 0, "the tracer sees $name compose")
+    }
+
+    private val bubbleParts = listOf("app.monokular.overlay.BubbleFace", "app.monokular.overlay.Circle", "androidx.compose.foundation.Canvas")
+
+    /** Ten frames of the border's chase (and the pulse beside it) redraw the mark and recompose none of the bubble. */
+    @Test
+    fun theBubblesChase() {
+        bubble()
+        repeat(3) { compose.mainClock.advanceTimeByFrame() }
+        recompositions.reset()
+        repeat(10) { compose.mainClock.advanceTimeByFrame() }
+        for (name in bubbleParts + named) assertEquals(0, recompositions.count(name), "chase: $name recomposed mid-turn")
+    }
+
+    /** Ten frames of the paid spread and the tick recompose none of the bubble: the look changed once, on its first frame. */
+    @Test
+    fun theBubblesPaidSpread() {
+        bubble()
+        assertNothingRecomposesMidMove("paid spread", bubbleParts) { look = BubbleLook.Paid }
     }
 }

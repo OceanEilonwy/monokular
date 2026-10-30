@@ -36,6 +36,15 @@ import app.monokular.overlay.PhonePanel
 import app.monokular.ui.Fixed
 import app.monokular.ui.Motion
 import app.monokular.ui.mk
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.test.onNodeWithContentDescription
+import app.monokular.overlay.BUBBLE_MARK_TAG
+import app.monokular.overlay.BubbleFace
+import app.monokular.ui.LensLook
+import app.monokular.ui.MarkGeometry
+import kotlin.math.cos
+import kotlin.math.roundToInt
+import kotlin.math.sin
 import org.junit.Rule
 import org.junit.Test
 import java.io.File
@@ -550,5 +559,233 @@ class OverlayFramesTest {
         compose.mainClock.advanceTimeBy(1_500)
         val back = compose.onNodeWithTag(CARD_TAG, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
         assertEquals(rest.top, back.top, 1f, "raised again, the card is at its place")
+    }
+
+    // The bubble as the logo (`docs/motion.md` §12.5, B5 c): its border's chase, the paid spread and tick, Still, its label.
+
+    private var look by mutableStateOf(BubbleLook.Idle)
+
+    /** The free bubble over Square's white, in [look] from its first frame, on the test clock. */
+    private fun bubble(from: BubbleLook, presets: Motion = Motion.Full, label: String? = null) {
+        look = from
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            Till(presets) {
+                Box(Modifier.background(Fixed.White)) { BubbleFace(look, phase = SalePhase.Waiting, label = label) }
+            }
+        }
+        compose.mainClock.advanceTimeByFrame()
+    }
+
+    private fun mark(): Bitmap = compose.onNodeWithTag(BUBBLE_MARK_TAG, useUnmergedTree = true).captureToImage().asAndroidBitmap()
+
+    /** The pixel at mark units ([u], [v]) of the SVG's box, as `mark()` draws it: the lens scaled 1.42 about (30, 28). */
+    private fun Bitmap.atMark(u: Float, v: Float): Int {
+        val unit = width / 64f
+        val x = (unit * (32f + 1.42f * (u - 30f))).roundToInt().coerceIn(0, width - 1)
+        val y = (unit * (32f + 1.42f * (v - 28f))).roundToInt().coerceIn(0, height - 1)
+        return getPixel(x, y)
+    }
+
+    /** The middle of the border's stroke at [degrees] clockwise from 12 o'clock. */
+    private fun Bitmap.onBorder(degrees: Float): Int {
+        val a = Math.toRadians(degrees.toDouble())
+        return atMark(30f + 18f * sin(a).toFloat(), 28f - 18f * cos(a).toFloat())
+    }
+
+    private fun near(pixel: Int, colour: androidx.compose.ui.graphics.Color, within: Float = 0.12f): Boolean =
+        apart(pixel, colour.toArgb()) <= within
+
+    /** Which of [a] and [b] [pixel] is nearer. */
+    private fun nearer(pixel: Int, a: androidx.compose.ui.graphics.Color, b: androidx.compose.ui.graphics.Color): Boolean =
+        apart(pixel, a.toArgb()) < apart(pixel, b.toArgb())
+
+    /** Every tenth degree round the border is one colour, [colour]: no arc on it. */
+    private fun assertWholeBorder(image: Bitmap, colour: androidx.compose.ui.graphics.Color, what: String) {
+        for (d in 0 until 360 step 10) {
+            val p = image.onBorder(d.toFloat())
+            assertTrue(near(p, colour), "$what: the border at $d° is ${Integer.toHexString(p)}, not ${Integer.toHexString(colour.toArgb())}")
+        }
+    }
+
+    /**
+     * Waiting, an ink third chases clockwise round the pale track from 12
+     * o'clock, a turn every [Motion.CHASE_MS]: at three points of the turn
+     * the arc's middle is ink and the border across from it the track.
+     */
+    @Test
+    fun theWaitingBubblesBorderChasesClockwise() {
+        bubble(BubbleLook.Lit)
+        val turn = Motion.CHASE_MS.toFloat()
+        val middle = MarkGeometry.ARC_SHARE * 360f / 2
+        var at = 0L
+        for (third in 0..2) {
+            val to = (turn * third / 3).toLong()
+            compose.mainClock.advanceTimeBy(to - at)
+            at = to
+            val image = mark()
+            val start = 360f * to / turn
+            save("bubble-chase", third, image)
+            assertTrue(near(image.onBorder(start + middle), Fixed.Ink), "${to} ms: the arc's middle at ${start + middle}° is ${Integer.toHexString(image.onBorder(start + middle))}, not ink")
+            assertTrue(near(image.onBorder(start + middle + 180f), Fixed.ChaseTrack), "${to} ms: across from the arc is the pale track")
+            assertTrue(near(image.onBorder(start - 40f), Fixed.ChaseTrack), "${to} ms: behind the arc is the track: it chases clockwise")
+        }
+    }
+
+    @Test
+    fun theIdleBubbleHasAWholeGreyBorderAndNoArc() {
+        bubble(BubbleLook.Idle)
+        repeat(3) {
+            compose.mainClock.advanceTimeBy(Motion.CHASE_MS / 3L)
+            // The whole bubble at 55 % over white: its grey border, faded, the same all round.
+            val image = mark()
+            assertWholeBorder(image, androidx.compose.ui.graphics.lerp(Fixed.White, Fixed.IdleBorder, 0.55f), "idle")
+        }
+    }
+
+    /**
+     * Paid: the lens turns green from the core out, the core first and the
+     * rim last, then a white tick draws along its path over the green; the
+     * border is whole ink, with no arc.
+     */
+    @Test
+    fun paidFillsTheLensFromTheCoreOutThenDrawsTheTick() {
+        bubble(BubbleLook.Lit)
+        compose.mainClock.advanceTimeBy(Motion.CHASE_MS / 3L)
+        look = BubbleLook.Paid
+        compose.mainClock.advanceTimeByFrame()
+        val start = compose.mainClock.currentTime
+        // A point of the core clear of the tick, one of the rim (the twelfth ring's), and three along the tick.
+        fun core(image: Bitmap) = image.atMark(30f, 25f)
+        fun rim(image: Bitmap) = image.atMark(44f, 30f)
+        val tickPoints = listOf(24.82f to 29.82f, 30.43f to 30.08f, 34.56f to 25.81f)
+        fun anyTick(image: Bitmap) = tickPoints.any { (u, v) -> near(image.atMark(u, v), Fixed.White, 0.15f) }
+        fun wholeTick(image: Bitmap) = tickPoints.all { (u, v) -> near(image.atMark(u, v), Fixed.White, 0.15f) }
+        val rimOrange = LensLook.Orange[3]
+        val rimGreen = LensLook.Green[3]
+        var coreGreenAt = -1L
+        var rimGreenAt = -1L
+        var tickAt = -1L
+        var wholeAt = -1L
+        var i = 0
+        while (compose.mainClock.currentTime - start < 1_200) {
+            val t = compose.mainClock.currentTime - start
+            val image = mark()
+            if (t in 0..400 && i % 4 == 0) save("bubble-paid", (t / 16).toInt(), image)
+            i++
+            if (coreGreenAt < 0 && near(core(image), LensLook.Green[0], 0.06f)) coreGreenAt = t
+            if (rimGreenAt < 0 && near(rim(image), rimGreen, 0.06f)) rimGreenAt = t
+            if (tickAt < 0 && anyTick(image)) {
+                tickAt = t
+                assertTrue(near(core(image), LensLook.Green[0], 0.06f), "$t ms: the tick is drawn on a core still turning green")
+            }
+            if (wholeAt < 0 && wholeTick(image)) wholeAt = t
+            if (t in 150..200) assertTrue(nearer(rim(image), rimOrange, rimGreen), "$t ms: the core is green while the rim is still orange")
+            compose.mainClock.advanceTimeByFrame()
+        }
+        assertTrue(coreGreenAt in 150..240, "the core is green as its 200 ms fade ends: $coreGreenAt ms")
+        assertTrue(rimGreenAt in 340..420, "the rim, 180 ms behind it, by 380 ms: $rimGreenAt ms")
+        assertTrue(tickAt >= 200, "the tick waits for the core: first drawn at $tickAt ms")
+        assertTrue(wholeAt in tickAt..800, "and is drawn whole by 800 ms: $wholeAt ms")
+        val done = mark()
+        save("bubble-paid", 99, done)
+        assertWholeBorder(done, Fixed.Ink, "paid")
+    }
+
+    /** A payment landing mid-turn holds the arc where it was as it fades into the darkening border: no jump to 12 o'clock. */
+    @Test
+    fun paidMidTurnFadesTheArcWhereItIs() {
+        bubble(BubbleLook.Lit)
+        val third = Motion.CHASE_MS / 3L
+        compose.mainClock.advanceTimeBy(third)
+        val middle = 360f * third / Motion.CHASE_MS + MarkGeometry.ARC_SHARE * 180f
+        look = BubbleLook.Paid
+        repeat(3) { compose.mainClock.advanceTimeByFrame() }
+        val image = mark()
+        assertTrue(nearer(image.onBorder(middle), Fixed.Ink, Fixed.ChaseTrack), "the arc is still at ${middle}° as it fades")
+        assertTrue(nearer(image.onBorder(middle + 180f), Fixed.ChaseTrack, Fixed.Ink), "and the track across from it is still turning to ink")
+        assertTrue(nearer(image.onBorder(MarkGeometry.ARC_SHARE * 180f), Fixed.ChaseTrack, Fixed.Ink), "and there is no arc back at 12 o'clock")
+    }
+
+    /** Under Still the waiting bubble's border is whole ink, with no chase and no loop, and paid is green with the tick whole after one quick fade. */
+    @Test
+    fun underStillTheWaitingBorderIsWholeInkAndNothingLoops() {
+        val recompositions = Recompositions()
+        try {
+            bubble(BubbleLook.Lit, Motion.Still)
+            compose.mainClock.advanceTimeBy(200)
+            val waiting = mark()
+            save("bubble-still", 0, waiting)
+            assertWholeBorder(waiting, Fixed.Ink, "still, waiting")
+            assertEquals(0, recompositions.count(INFINITE), "no infinite transition is made under Still")
+            look = BubbleLook.Paid
+            compose.mainClock.advanceTimeByFrame()
+            compose.mainClock.advanceTimeBy(140)
+            val paid = mark()
+            save("bubble-still", 1, paid)
+            assertTrue(near(paid.atMark(30f, 25f), LensLook.Green[0], 0.06f) && near(paid.atMark(44f, 30f), LensLook.Green[3], 0.06f), "one quick fade turns the whole lens")
+            assertTrue(near(paid.atMark(34.56f, 25.81f), Fixed.White, 0.15f), "the tick is whole")
+            assertWholeBorder(paid, Fixed.Ink, "still, paid")
+        } finally {
+            recompositions.close()
+        }
+    }
+
+    /** The loops run only while they are seen: lit, the one infinite transition; idle or paid, none. */
+    @Test
+    fun onlyTheLitBubbleRunsALoop() {
+        val recompositions = Recompositions()
+        try {
+            bubble(BubbleLook.Idle)
+            compose.mainClock.advanceTimeBy(500)
+            assertEquals(0, recompositions.count(INFINITE), "idle runs no loop")
+            look = BubbleLook.Lit
+            compose.mainClock.advanceTimeBy(500)
+            assertTrue(recompositions.count(INFINITE) > 0, "lit, the chase's loop is made")
+        } finally {
+            recompositions.close()
+        }
+    }
+
+    @Test
+    fun aPaidBubbleRunsNoLoop() {
+        val recompositions = Recompositions()
+        try {
+            bubble(BubbleLook.Paid)
+            compose.mainClock.advanceTimeBy(500)
+            assertEquals(0, recompositions.count(INFINITE), "paid runs no loop")
+        } finally {
+            recompositions.close()
+        }
+    }
+
+    /** TalkBack hears the step the bubble no longer shows (§12.5). */
+    @Test
+    fun theBubblesLabelSaysTheAmountAndTheStep() {
+        var label by mutableStateOf<String?>(null)
+        compose.mainClock.autoAdvance = false
+        compose.setContent { Till { BubbleFace(look, label = label) } }
+        val amount = SaleText.amount(testSale("l1"))
+        val cases = listOf(
+            Triple(BubbleLook.Lit, SalePhase.Waiting, "Monokular, $amount waiting for payment"),
+            Triple(BubbleLook.Lit, SalePhase.Seen, "Monokular, $amount seen on the network"),
+            Triple(BubbleLook.Lit, SalePhase.Confirming, "Monokular, $amount confirming"),
+            Triple(BubbleLook.Paid, SalePhase.Paid, "Monokular, $amount paid"),
+            Triple(BubbleLook.Idle, SalePhase.Paid, "Monokular, nothing waiting"),
+        )
+        for ((shown, phase, says) in cases) {
+            look = shown
+            label = Bubble.label(shown, testSale("l1", phase, expiresAt = expires))
+            compose.mainClock.advanceTimeByFrame()
+            compose.onNodeWithContentDescription(says).assertExists()
+        }
+        label = null
+        compose.mainClock.advanceTimeByFrame()
+        assertEquals(0, compose.onAllNodesWithContentDescription("Monokular", substring = true).fetchSemanticsNodes().size, "a bubble with no label (onboarding's) says nothing")
+    }
+
+    private companion object {
+        /** The trace name of the bubble's one infinite transition, as [Recompositions] counts it. */
+        const val INFINITE = "androidx.compose.animation.core.rememberInfiniteTransition"
     }
 }
