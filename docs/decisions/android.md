@@ -3983,3 +3983,22 @@ design unchanged.
     is under it (a tray of live sales alone reads as the tray), and with
     no live sale under the filter the items are `rows` as they read
     before, corners counted over the whole list.
+281. **The tray's amber starts at its first row, under the header, as
+    the canvas draws it** (dev2, round 2, S2; `docs/motion.md` §12.3,
+    §13.3). §13.3 gives the header the tray's 24 dp top corners; every
+    artboard (`Main`, `TrayDark`, `TrayFew`) draws "Waiting for payment"
+    and its count on the screen's ground, above an amber box that starts
+    4 dp over the first row. The canvas is the source of truth, so the
+    first tray row's slice carries the 24 dp top corners and the 4 dp
+    top padding, the fold row (or, with no fold, the last row) the
+    bottom ones, and the header no amber. Each slice is a `background`
+    with a shape made once (a `drawBehind` of a cached outline), not a
+    node of its own. Other calls in the tray's build: the fold row's
+    chevron is a new `MkIcons.Fold` (the canvas's `M6 9l6 6 6-6`, 2.2
+    stroke) turned in `graphicsLayer` on `settle`; the row's open lambda
+    captures the sale's id only, so a row whose corners change as the
+    tray opens skips its `SaleRow` (`TrayTest` counts it); and folding
+    an open tray scrolled past its third row asks the list
+    (`requestScrollToItem`) to keep the fold row where it was on screen,
+    counting the kept rows above it at one row's height each, since the
+    item the list anchored on is one of the rows going.
