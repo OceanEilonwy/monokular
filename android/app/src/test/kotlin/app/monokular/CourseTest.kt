@@ -2,6 +2,7 @@ package app.monokular
 
 import org.junit.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 /**
@@ -98,6 +99,49 @@ class CourseTest {
         assertEquals(0.2f, s, 1e-6f)
         assertEquals(210f, c.fitLeft(100f, s), 1e-4f)
         assertEquals(200f, c.fitTop(100f, s), 1e-4f)
+    }
+
+    /**
+     * A flight taken over (a back gesture cancelled 40 % of the way home, then a Back again on the way back) goes on
+     * from where the code was drawn: its course snaps there and runs to the end it now goes to, and how far it is on
+     * its way ([Course.awayAt], what the sale's ground and words fade by) goes on from the same point, so the code's box
+     * is on its first line at that share on every frame and nothing it reads jumps.
+     */
+    @Test
+    fun aFlightTakenOverGoesOnFromWhereTheCodeWasDrawn() {
+        val card = floatArrayOf(74f, 180f, 338f, 444f)
+        val glyph = floatArrayOf(366f, 610f, 388f, 632f)
+        val onSale = End("home/a1", Screen.Sale("a1"), Move.RowGrow)
+        val onShift = End("home/a1", Screen.Till, Move.RowGrow)
+        val c = Course("home/a1")
+        fun go(from: FloatArray, to: FloatArray, p: Float, generation: Long, interrupted: Boolean) = c.place(
+            if (from === card) onSale else onShift, if (to === card) onSale else onShift,
+            from[0], from[1], from[2], from[3], to[0], to[1], to[2], to[3], p, generation, interrupted,
+        )
+        fun assertOnFirstLine(share: Float, at: String) {
+            assertEquals(card[0] + (glyph[0] - card[0]) * share, c.left, 1e-3f, "$at left")
+            assertEquals(card[1] + (glyph[1] - card[1]) * share, c.top, 1e-3f, "$at top")
+            assertEquals(card[2] + (glyph[2] - card[2]) * share, c.right, 1e-3f, "$at right")
+            assertEquals(card[3] + (glyph[3] - card[3]) * share, c.bottom, 1e-3f, "$at bottom")
+        }
+        go(card, glyph, 0.4f, generation = 1, interrupted = false)
+        assertEquals(0.4f, c.awayAt(0.4f, homeward = true), 1e-6f)
+        assertFalse(c.tookOver)
+        // Cancelled: back toward the card from 0 of a new change.
+        c.awayFrom = c.away
+        for (p in listOf(0f, 0.25f, 0.5f)) {
+            go(glyph, card, p, generation = 2, interrupted = true)
+            assertTrue(c.tookOver)
+            assertOnFirstLine(c.awayAt(p, homeward = false), "back at $p")
+        }
+        assertEquals(0.2f, c.away, 1e-6f)
+        // Home again from there.
+        c.awayFrom = c.away
+        for (p in listOf(0f, 0.5f, 1f)) {
+            go(card, glyph, p, generation = 3, interrupted = true)
+            assertOnFirstLine(c.awayAt(p, homeward = true), "home again at $p")
+        }
+        assertEquals(1f, c.away, 1e-6f)
     }
 
     /**
