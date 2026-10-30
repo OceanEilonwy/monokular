@@ -1,7 +1,7 @@
 package app.monokular
 
 import androidx.compose.ui.unit.dp
-import app.monokular.ui.CodeCornerShare
+import app.monokular.ui.codeCornerShare
 import app.monokular.ui.codeSide
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,8 +16,9 @@ class CodeSideTest {
     }
 
     @Test
-    fun `the hero's circle opens from the corners of the card at its full size`() {
-        assertEquals(32f / 372f, CodeCornerShare, 1e-6f)
+    fun `the hero's circle opens from the card's own 32 dp corners at the phone's width`() {
+        assertEquals(32f / 372f, codeCornerShare(412.dp), 1e-6f, "at the cap")
+        assertEquals(32f / 320f, codeCornerShare(360.dp), 1e-6f, "a narrow phone's smaller card has the same corners")
+        assertEquals(32f / 372f, codeCornerShare(0.dp), 1e-6f, "a window not yet measured opens from the cap's")
     }
-
 }

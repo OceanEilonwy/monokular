@@ -1864,10 +1864,13 @@ val LocalFace = staticCompositionLocalOf<AnimatedVisibilityScope?> { null }
  * white stays whole under its code, which is gone by the fold's first
  * [Motion.fadeOutOnTrack] (decision 290), until the hero, drawn over it,
  * has come in over the last [Motion.crossfadeOnTrack]; arriving ("Show the code again") it is opaque from its
- * first frame, the hero fading off it (decision 205).
+ * first frame, the hero fading off it (decision 205). A face whose lower
+ * corners are [bottom] at rest (a footed code card's square ones, joined
+ * to the foot under it) has those go from [bottom] to [other] instead, so
+ * the code and its foot stay joined as the fold begins and as it lands.
  */
 @Composable
-fun Modifier.faceSurface(key: String, corner: Dp, other: Float, code: Boolean = false): Modifier {
+fun Modifier.faceSurface(key: String, corner: Dp, other: Float, code: Boolean = false, bottom: Dp = corner): Modifier {
     val stage = LocalStage.current ?: return this
     val face = LocalFace.current ?: return this
     val m = motion
@@ -1898,7 +1901,8 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float, code: Boolean = 
         if (code && face.transition.isRunning) {
             val side = size.minDimension
             val r = lerp(other * side, corner.toPx(), shown.value).coerceAtMost(side / 2f)
-            drawPath(clip.around(size, r), Fixed.White)
+            val rb = lerp(other * side, bottom.toPx(), shown.value).coerceAtMost(side / 2f)
+            drawPath(clip.around(size, r, rb), Fixed.White)
         }
     }.graphicsLayer {
         // The glyph coming in (the paid page's tick) only over the fold's last share, as the code screen's hero comes in
@@ -1920,7 +1924,8 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float, code: Boolean = 
         } else {
             val side = size.minDimension
             val r = lerp(other * side, corner.toPx(), shown.value).coerceAtMost(side / 2f)
-            clipPath(clip.around(size, r)) { this@drawWithContent.drawContent() }
+            val rb = lerp(other * side, bottom.toPx(), shown.value).coerceAtMost(side / 2f)
+            clipPath(clip.around(size, r, rb)) { this@drawWithContent.drawContent() }
         }
     }
 }
@@ -1931,10 +1936,18 @@ private val ScaledToFit = ResizeMode.scaleToBounds(ContentScale.Fit, Alignment.C
 /** A rounded rectangle the size of what it clips, one path rewound each frame, so a frame allocates nothing. */
 private class RoundClip {
     private val path = Path()
+    private val radii = FloatArray(8)
 
-    fun around(size: Size, r: Float): Path {
+    /** [r] at the top corners and [bottom] at the lower ones. */
+    fun around(size: Size, r: Float, bottom: Float = r): Path {
         path.rewind()
-        path.asAndroidPath().addRoundRect(0f, 0f, size.width, size.height, r, r, android.graphics.Path.Direction.CW)
+        if (bottom == r) {
+            path.asAndroidPath().addRoundRect(0f, 0f, size.width, size.height, r, r, android.graphics.Path.Direction.CW)
+        } else {
+            radii.fill(r, 0, 4)
+            radii.fill(bottom, 4, 8)
+            path.asAndroidPath().addRoundRect(0f, 0f, size.width, size.height, radii, android.graphics.Path.Direction.CW)
+        }
         return path
     }
 }

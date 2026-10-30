@@ -26,6 +26,8 @@ import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -92,8 +94,10 @@ fun SaleDetail(
                         // Paid on the enlarged code, the code's white closes into the hero and the hero fades in over it.
                         val overWhite = if (card == null) Modifier else Modifier.words(through = HeroThrough, lift = HeroThrough, on = card)
                         val whiteEnd = if (card == null) Modifier else Modifier.groundEnd(card, Move.CodeGrow, HeroWhite)
+                        // From the live card's corners, which the window's width sizes.
+                        val share = with(LocalDensity.current) { codeCornerShare(LocalWindowInfo.current.containerSize.width.toDp()) }
                         Box(overWhite.sharedSurface(badgeKey(sale.orderId), Move.RowGrow, CircleShape, layer = Layers.OVER_GROUND)) {
-                            Box(whiteEnd.faceSurface(heroKey(sale.orderId), HeroSize / 2, other = CodeCornerShare).testTag(HeroTag)) {
+                            Box(whiteEnd.faceSurface(heroKey(sale.orderId), HeroSize / 2, other = share).testTag(HeroTag)) {
                                 StateBadge(sale, page.icon, page.ground, HeroSize, 38.dp)
                             }
                         }

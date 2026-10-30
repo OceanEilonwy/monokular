@@ -389,8 +389,13 @@ private val CodeShape = RoundedCornerShape(CodeCorner)
 private val CodeTopShape = RoundedCornerShape(topStart = CodeCorner, topEnd = CodeCorner)
 private val FootShape = RoundedCornerShape(bottomStart = CodeCorner, bottomEnd = CodeCorner)
 
-/** The code card's corners as a share of its side: what the hero's circle opens from, and closes back into. */
-internal val CodeCornerShare: Float get() = CodeCorner / CodeSide
+/**
+ * The code card's corners as a share of its side on a phone window [width]
+ * wide: what the hero's circle opens from, and closes back into. Exact for
+ * the phone's card at any width; a wide window's card, sized by its height,
+ * opens from about the cap's share, as does a window not yet measured.
+ */
+internal fun codeCornerShare(width: Dp): Float = CodeCorner / (codeSide(width).takeIf { it > CodeCorner * 2 } ?: CodeSide)
 
 /** The phone layout's widest, the detail pages' (SaleDetail). */
 private val PhoneMaxWidth = 560.dp
@@ -452,14 +457,16 @@ private fun Code(sale: TillSale, side: Dp, card: GroundTrack, ground: GroundTrac
         // Opening from its row or shrinking back into it, the code and its white are drawn whole or not at all: only on
         // the frames the row's ground holds all of the card (decision 234); on a Back to a row showing its code glyph, the
         // card alone flies there, shrinking into it (board 6). Paid or ended, the card closes into the page's hero (M10).
-        Modifier.wholeOn(ground, Move.RowGrow, homeKey(sale.orderId)).faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle, code = true)
+        Modifier.wholeOn(ground, Move.RowGrow, homeKey(sale.orderId))
+            .faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle, code = true, bottom = if (footed) 0.dp else CodeCorner)
             .clip(if (footed) CodeTopShape else CodeShape)
             .then(if (footed) Modifier.drawBehind { drawRect(Fixed.White, Offset(0f, size.height - CodeCorner.toPx()), Size(size.width, CodeCorner.toPx())) } else Modifier)
             .clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
     ) {
         QrCode(
             sale.code.uri,
-            "Payment code for ${SaleText.amount(sale)}" + if (sale.code.hasReceipt) ", with the receipt in it" else "",
+            "Payment code for ${SaleText.amount(sale)}" + (if (sale.code.hasReceipt) ", with the receipt in it" else "") +
+                if (sale.phase == SalePhase.Paid) ", paid: no need to scan it" else "",
             Modifier.width(side),
             padding = CodeQuiet,
             radius = CodeCorner,
