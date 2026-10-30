@@ -49,9 +49,13 @@ class SquareSource(
         cursor.save(since.toString(), handled)
     }
 
-    override suspend fun receipt(sale: FoundSale): Receipt? {
-        val orderId = sale.orderId ?: return null
-        return SquareReceipts.of(api.order(orderId), location, sale)
+    override suspend fun receipt(sale: FoundSale): Receipt? = order(sale).receipt
+
+    /** The receipt and the order's recipient ([SquareOrder.customerName]), from the one read. */
+    override suspend fun order(sale: FoundSale): SaleOrder {
+        val orderId = sale.orderId ?: return SaleOrder(null)
+        val order = api.order(orderId)
+        return SaleOrder(SquareReceipts.of(order, location, sale), order.customerName)
     }
 
     override val pointOfSale = PointOfSale.Square

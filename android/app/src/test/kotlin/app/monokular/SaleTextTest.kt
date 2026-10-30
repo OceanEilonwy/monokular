@@ -64,6 +64,19 @@ class SaleTextTest {
     }
 
     @Test
+    fun `a sale's page is titled by whom it's for, its number kept on the line under it`() {
+        val named = sale(reference = "m2Qe").copy(customerName = " Ana López ")
+        assertEquals("Ana López", SaleText.heading(named))
+        assertEquals("Sale #m2Qe · Front Counter · this till", SaleText.headingLine(named, "Front Counter · this till"))
+        assertEquals("Sale #m2Qe", SaleText.title(named), "the shift, the bubble and notifications keep the number")
+        for (unnamed in listOf(sale(reference = "m2Qe"), sale(reference = "m2Qe").copy(customerName = "  "))) {
+            assertEquals("Sale #m2Qe", SaleText.heading(unnamed))
+            assertEquals("Front Counter · this till", SaleText.headingLine(unnamed, "Front Counter · this till"))
+        }
+        assertEquals("Monero sale · This till", SaleText.headingLine(sale(reference = null).copy(customerName = "Ana"), "This till"))
+    }
+
+    @Test
     fun `a sale says where it came from`() {
         assertEquals("Front Counter · this till", SaleText.place(sale(), "Front Counter"))
         assertEquals("This till", SaleText.place(sale(), null))

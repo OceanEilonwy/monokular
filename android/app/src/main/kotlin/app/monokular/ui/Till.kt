@@ -401,7 +401,7 @@ internal fun codeCornerShare(width: Dp): Float = CodeCorner / (codeSide(width).t
 private val PhoneMaxWidth = 560.dp
 
 /**
- * A sale's top bar: Back to the shift, the sale and [subtitle], Settings,
+ * A sale's top bar: Back to the shift, the sale ([SaleText.heading]) and [subtitle], Settings,
  * and on a live sale the tinted X that asks whether the customer is paying.
  */
 @Composable
@@ -412,11 +412,11 @@ fun SaleBar(sale: TillSale, subtitle: String, actions: TillActions, onClose: (()
 ) {
     RoundIconButton(MkIcons.Back, "Back to the shift", { actions.onBack(sale.orderId) }, iconSize = 22.dp)
     Column(Modifier.weight(1f).semantics(mergeDescendants = true) { heading() }) {
-        Text(SaleText.title(sale), fontSize = 20.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(SaleText.heading(sale), fontSize = 20.sp, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
         // The till's own words for where the sale is from replace Square's once its receipt is in: they fade through.
         val through = motion.fadeThrough.fraction
         val quick = motion.fadeQuick.fraction
-        AnimatedContent(subtitle, transitionSpec = { (fadeIn(through) togetherWith fadeOut(quick)).using(null) }, label = "sale from") { words ->
+        AnimatedContent(SaleText.headingLine(sale, subtitle), transitionSpec = { (fadeIn(through) togetherWith fadeOut(quick)).using(null) }, label = "sale from") { words ->
             Text(words, fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }

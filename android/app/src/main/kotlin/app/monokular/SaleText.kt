@@ -27,6 +27,23 @@ object SaleText {
         return "Sale " + if (reference.startsWith("#")) reference else "#$reference"
     }
 
+    /**
+     * A sale page's title: whom it's for when the POS's order names them
+     * ([TillSale.customerName]), else [title]. Only the sale's own pages show
+     * it: the shift, the bubble and the notifications (on the lock screen)
+     * keep [title].
+     */
+    fun heading(sale: TillSale): String = customer(sale) ?: title(sale)
+
+    /**
+     * The line under [heading]: [place], led by the sale's [title] when the
+     * heading is the customer's name, so the cashier can still match it to
+     * the POS ("Sale #m2Qe · Front Counter · this till").
+     */
+    fun headingLine(sale: TillSale, place: String): String = if (customer(sale) == null) place else "${title(sale)} · $place"
+
+    private fun customer(sale: TillSale): String? = sale.customerName?.trim()?.takeIf { it.isNotEmpty() }
+
     /** Where it came from: "Front Counter · this till" for this till's, "From Back till" for another's. */
     fun place(sale: TillSale, location: String?): String = when {
         sale.found != null && location != null -> "$location · this till"

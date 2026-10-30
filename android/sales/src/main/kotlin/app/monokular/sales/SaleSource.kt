@@ -26,12 +26,25 @@ interface SaleSource {
     /** The sale's receipt, or null when it can't be read. */
     suspend fun receipt(sale: FoundSale): Receipt?
 
+    /**
+     * The sale's receipt and whom it's for, from one read of its order: the
+     * receipt alone ([receipt]) at a point of sale that names no customer.
+     */
+    suspend fun order(sale: FoundSale): SaleOrder = SaleOrder(receipt(sale))
+
     /** How a sale never paid in Monero is refunded at this point of sale. */
     val refunds: Refunds
 
     /** [sale] has its order: don't give it again. */
     fun handled(sale: FoundSale)
 }
+
+/**
+ * What the till takes from a sale's order at the point of sale: its
+ * receipt, and the customer's name when the point of sale gives one
+ * (Square's fulfillment recipient). Both stay on the device ([TillSale.receipt]).
+ */
+data class SaleOrder(val receipt: Receipt?, val customerName: String? = null)
 
 /**
  * Who refunds a sale never paid in Monero (decision 130). A type rather

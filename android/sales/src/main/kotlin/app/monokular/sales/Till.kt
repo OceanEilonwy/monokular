@@ -51,6 +51,13 @@ data class TillSale(
      * be read.
      */
     val receipt: Receipt? = null,
+    /**
+     * Whom the sale is for, when the POS's order names them
+     * ([SaleOrder.customerName]): the sale page's title. Kept as [receipt]
+     * is, on this till's own screens only: never in the code, never sent to
+     * Monokulo, never logged, never on a notification.
+     */
+    val customerName: String? = null,
     /** The device that made the order, for a sale another till found. */
     val deviceName: String? = null,
     /** Where to read the order again: its `self` link, or its sale event's `mk:order`. */
@@ -207,8 +214,8 @@ class Till(
                 continue
             }
             source.handled(sale)
-            val receipt = runCatching { source.receipt(sale) }.getOrNull()
-            add(order, ReceiptCode.of(order.paymentUri, receipt), receipt, sale)
+            val read = runCatching { source.order(sale) }.getOrNull()
+            add(order, ReceiptCode.of(order.paymentUri, read?.receipt), read, sale)
         }
         change { it.copy(problem = problem, signInAgain = false) }
         lookForRefunds()
@@ -502,7 +509,7 @@ class Till(
         return true
     }
 
-    private fun add(order: Order, code: PaymentCode, receipt: Receipt?, found: FoundSale) {
+    private fun add(order: Order, code: PaymentCode, read: SaleOrder?, found: FoundSale) {
         // Another till may have made this order already, and the store's events
         // may have moved it on (paid, even): keep what they said, and when,
         // else the order's own. Read and replaced in the one change, so a
@@ -522,7 +529,8 @@ class Till(
                 xmr = PaymentUri.xmr(order.piconero),
                 address = order.address,
                 found = found,
-                receipt = receipt,
+                receipt = read?.receipt,
+                customerName = read?.customerName,
                 createdAt = runCatching { Instant.parse(found.createdAt).epochSecond }.getOrElse { now() },
                 seenAt = known?.seenAt,
                 paidAt = known?.paidAt,
