@@ -23,6 +23,13 @@ scratch folder under `measure-ab/<serial>/<before|after>/`.
 The dev stack was shared with the other tills, so the shift held every sale
 rung up during the round, not the baseline's 24.
 
+From round 2 on, a script that reads the screen through `uiautomator
+dump` (`ui.sh`'s `nodes` and `tap_text`, the A/B's tray gate,
+`to_shift`) times out while a code waits: the dump waits for an idle
+window and the bubble's border chases on every frame. Pay or expire the
+waiting sale before dumping, tap by coordinates, or read the Compose
+semantics through a test; see `baseline.md`'s caveats and decision 294.
+
 ## Numbers
 
 ### APK (`apkanalyzer`, the same commit's debug and release builds)
