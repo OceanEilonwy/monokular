@@ -1587,8 +1587,9 @@ val LocalFace = staticCompositionLocalOf<AnimatedVisibilityScope?> { null }
  * circle. The clip is the content's own, so it is where the content is on
  * every frame (decision 196). The [code]'s face (the live sale's card) is
  * the one white surface of the paid fold (decision 225): leaving, its
- * white stays whole under its fading code until the hero, drawn over it,
- * has come in; arriving ("Show the code again") it is opaque from its
+ * white stays whole under its code, which is gone by the fold's first
+ * [Motion.fadeOutOnTrack] (decision 290), until the hero, drawn over it,
+ * has come in over the last [Motion.crossfadeOnTrack]; arriving ("Show the code again") it is opaque from its
  * first frame, the hero fading off it (decision 205).
  */
 @Composable
@@ -1606,6 +1607,7 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float, code: Boolean = 
     ) { if (it == EnterExitState.Visible || (code && face.transition.targetState == EnterExitState.Visible)) 1f else 0f }
     val clip = remember { RoundClip() }
     val share = m.crossfadeOnTrack
+    val leave = m.fadeOutOnTrack
     val layer = if (code) Layers.GROUND else Layers.HERO
     return with(shared) {
         // Over every clip for as long as its face is changing: a page's hero sits in a scroll, whose clip would cut
@@ -1628,8 +1630,15 @@ fun Modifier.faceSurface(key: String, corner: Dp, other: Float, code: Boolean = 
         // The glyph coming in (the paid page's tick) only over the fold's last share, as the code screen's hero comes in
         // over its move's (decision 252): one glyph in the card at a time, never the tick over the fading code while the
         // card is still near its size (260 b). Read per draw from the fold's own progress; no state of its own.
-        val arrivingGlyph = !code && face.transition.targetState == EnterExitState.Visible && face.transition.isRunning
-        alpha = if (arrivingGlyph) min(seen.value, Nav.through(shown.value, isArriving = true, leaving = 1f, arriving = share)) else seen.value
+        // The code going (the live card folding into the hero) on the same progress, gone by its first share, not on
+        // a fade of its own that a late start or a slow frame leaves behind the card (260 b, decision 290).
+        val running = face.transition.isRunning
+        val arriving = face.transition.targetState == EnterExitState.Visible
+        alpha = when {
+            running && arriving && !code -> min(seen.value, Nav.through(shown.value, isArriving = true, leaving = 1f, arriving = share))
+            running && !arriving && code -> Nav.through(1f - shown.value, isArriving = false, leaving = leave, arriving = share)
+            else -> seen.value
+        }
         compositingStrategy = CompositingStrategy.ModulateAlpha
     }.drawWithContent {
         if (!face.transition.isRunning) {
