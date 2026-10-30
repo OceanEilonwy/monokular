@@ -150,7 +150,7 @@ class SquareTest {
         server.enqueue(json(resource("payments.json")))
         val sale = source.newSales().single()
         server.enqueue(json(resource("order.json")))
-        val receipt = assertNotNull(source.receipt(sale))
+        val receipt = assertNotNull(source.order(sale).receipt)
         assertEquals("/v2/orders/ord_sq_1", server.takeRequest().let { server.takeRequest() }.url.encodedPath)
         assertEquals("bP9m", receipt.receipt.receiptId)
         assertEquals("2026-10-22T09:06:41-07:00", receipt.receipt.issueTimestamp)

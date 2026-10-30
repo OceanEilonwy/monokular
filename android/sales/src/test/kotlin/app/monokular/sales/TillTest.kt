@@ -39,7 +39,6 @@ class FakeSource(var sales: List<FoundSale>, private val receipt: Receipt? = nul
     var refusal: String? = null
     override val pointOfSale = PointOfSale.Square
     override suspend fun newSales() = sales.filter { it.id !in handledIds }
-    override suspend fun receipt(sale: FoundSale) = receipt
     override suspend fun order(sale: FoundSale) = SaleOrder(receipt, customerName)
     override val refunds = Refunds.ByTill { sale ->
         refusal?.let { throw SquareException(503, it) }
@@ -61,7 +60,7 @@ class InPosSource(var sales: List<FoundSale>) : SaleSource {
     var down = false
     override val pointOfSale = PointOfSale.Clover
     override suspend fun newSales() = sales.filter { it.id !in handledIds }
-    override suspend fun receipt(sale: FoundSale) = null
+    override suspend fun order(sale: FoundSale) = SaleOrder(null)
     override val refunds = object : Refunds.InPos {
         override suspend fun refunded(sale: FoundSale): Boolean {
             looks++
