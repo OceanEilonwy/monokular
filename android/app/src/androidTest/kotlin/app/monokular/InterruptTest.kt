@@ -117,7 +117,10 @@ class InterruptTest(private val move: Moved, private val interruption: Interrupt
     }
 
     companion object {
-        /** The sale's code image at rest: its 264 dp card less the card's 18 dp of quiet zone each side. */
+        /**
+         * The sale's code image at rest, at the least: its card is the window less 20 dp a side up to 372 dp, so
+         * 264 dp on the narrowest phone (304 dp), less the card's 18 dp of quiet zone each side.
+         */
         val RestCode = 228.dp
 
         @JvmStatic

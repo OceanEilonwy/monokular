@@ -47,7 +47,7 @@ class OneClockTest {
     }
 
     @Test
-    fun aTickRecomposesTheSaleScreensCountdownAndNotThePillOrTheCode() {
+    fun aTickRecomposesTheSaleScreensCountdownAndNotTheFootOrTheCode() {
         val now = mutableLongStateOf(1_000)
         val sale = testSale("a", expiresAt = 1_900)
         compose.setContent { Till { SaleScreen(sale, "Front", refunding = false, refundProblem = null, refundSheet = null, actions = noActions, now = now) } }
@@ -59,8 +59,8 @@ class OneClockTest {
             compose.waitForIdle()
         }
 
-        assertEquals(5, recompositions.count("app.monokular.ui.Countdown"), "the pill's second line, once a tick")
-        for (name in listOf("SaleScreen", "LiveSale", "StatusPill", "QrCode", "PhaseRing")) {
+        assertEquals(5, recompositions.count("app.monokular.ui.Countdown"), "the foot's second line, once a tick")
+        for (name in listOf("SaleScreen", "LiveSale", "StatusFoot", "QrCode", "PhaseRing")) {
             assertEquals(0, recompositions.count("app.monokular.ui.$name"), "$name doesn't tick")
         }
     }

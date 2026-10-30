@@ -81,10 +81,11 @@ object SaleText {
         else -> "Closed · not paid"
     }
 
-    /** The status pill's second line under a live sale's code: what the cashier tells the customer. */
+    /** The status's second line under a live sale's code: what the cashier tells the customer; paid, the XMR it took. */
     fun hint(sale: TillSale, secondsLeft: Long): String = when (sale.phase) {
         SalePhase.Waiting -> "Scan with any Monero wallet · ${clock(secondsLeft)} left"
         SalePhase.Partial -> "Ask the customer to pay the rest to the same code · ${clock(secondsLeft)} left"
+        SalePhase.Paid -> "${xmr(sale)} received"
         else -> "The customer can go: it's being confirmed"
     }
 

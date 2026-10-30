@@ -28,6 +28,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -46,6 +47,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -69,6 +73,7 @@ import app.monokular.SaleHeader
 import app.monokular.Move
 import app.monokular.SaleText
 import app.monokular.core.PointOfSale
+import app.monokular.core.SalePhase
 import app.monokular.StateIcon
 import app.monokular.Tone
 import app.monokular.receipt.Receipt
@@ -86,6 +91,7 @@ import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.graphicsLayer
 import kotlinx.coroutines.delay
@@ -312,7 +318,7 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                     }
                 } else {
                     // As wide as the detail pages at most, so on a 600-839 dp window
-                    // the pill, order card and buttons don't stretch edge to edge.
+                    // the order card and buttons don't stretch edge to edge.
                     Column(
                         Modifier.weight(1f).align(Alignment.CenterHorizontally).widthIn(max = PhoneMaxWidth).fillMaxWidth()
                             .verticalScroll(rememberScrollState())
@@ -321,8 +327,12 @@ private fun LiveSale(sale: TillSale, location: String?, now: LongState, actions:
                         verticalArrangement = Arrangement.spacedBy(14.dp),
                     ) {
                         Box(words) { Amount(sale, actions.onCopyXmr) }
-                        Code(sale, min(this@BoxWithConstraints.maxWidth - 40.dp, CodeSide), card, ground) { actions.onEnlarge(sale.orderId) }
-                        Box(words) { StatusPill(sale, now) }
+                        // The status is the code card's foot (board 8): one white card, the code its own surface above it.
+                        val side = codeSide(this@BoxWithConstraints.maxWidth)
+                        Column(Modifier.width(side)) {
+                            Code(sale, side, card, ground, footed = true) { actions.onEnlarge(sale.orderId) }
+                            Box(words) { StatusFoot(sale, now) }
+                        }
                         sale.receipt?.let { Box(orderWords) { Late(late) { OrderCard(it, header.pos, withTime = true, onOpen = { actions.onShowOrder(sale.orderId) }, shared = "order/${sale.orderId}") } } }
                     }
                     Box(
@@ -361,8 +371,23 @@ private fun Late(late: Boolean, content: @Composable () -> Unit) {
 internal val CardCorner = 20.dp
 internal val CardShape = RoundedCornerShape(CardCorner)
 
-/** The sale's code on a phone: the design's 264 dp, whatever the order beside it. */
-private val CodeSide = 264.dp
+/** The sale's code on a phone at most: the design's 372 dp, a 412 dp phone less 20 dp a side (board 8). */
+private val CodeSide = 372.dp
+
+/** The code card's side on a phone [maxWidth] wide: the window less 20 dp a side, up to [CodeSide]. */
+internal fun codeSide(maxWidth: Dp): Dp = min(maxWidth - 40.dp, CodeSide)
+
+/** The code card's quiet zone, round the code inside its white. */
+private val CodeQuiet = 18.dp
+
+/** How much of the code is left once its sale is paid: the web checkout's spent code, so no one scans it again. */
+internal const val SpentCode = 0.14f
+
+private val CodeShape = RoundedCornerShape(CodeCorner)
+
+/** A footed code card's: its foot has the card's lower corners ([FootShape]). */
+private val CodeTopShape = RoundedCornerShape(topStart = CodeCorner, topEnd = CodeCorner)
+private val FootShape = RoundedCornerShape(bottomStart = CodeCorner, bottomEnd = CodeCorner)
 
 /** The code card's corners as a share of its side: what the hero's circle opens from, and closes back into. */
 internal val CodeCornerShare: Float get() = CodeCorner / CodeSide
@@ -412,46 +437,87 @@ private fun Amount(sale: TillSale, onCopyXmr: (TillSale) -> Unit, start: Boolean
     )
 }
 
-/** The code, which enlarges when tapped (CodeB), with the expand badge on its corner. */
+/**
+ * The code, which enlarges when tapped (CodeB), with the expand badge on
+ * its corner. [footed], the card's foot is under it ([StatusFoot]): its
+ * own lower corners are square, its white filled out to them, so the two
+ * are one card while the code keeps its own bounds for the enlarge and the
+ * paid fold. Paid, the code fades to [SpentCode] under a white veil on
+ * [Motion.fade], read per draw.
+ */
 @Composable
-private fun Code(sale: TillSale, side: Dp, card: GroundTrack, ground: GroundTrack, onEnlarge: () -> Unit) = Box(
-    // Opening from its row or shrinking back into it, the code and its white are drawn whole or not at all: only on
-    // the frames the row's ground holds all of the card (decision 234); on a Back to a row showing its code glyph, the
-    // card alone flies there, shrinking into it (board 6). Paid or ended, the card closes into the page's hero (M10).
-    Modifier.wholeOn(ground, Move.RowGrow, homeKey(sale.orderId)).faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle, code = true)
-        .clip(RoundedCornerShape(CodeCorner)).clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
-) {
-    QrCode(
-        sale.code.uri,
-        "Payment code for ${SaleText.amount(sale)}" + if (sale.code.hasReceipt) ", with the receipt in it" else "",
-        Modifier.width(side),
-        padding = 18.dp,
-        radius = CodeCorner,
-        shared = sale.orderId,
-        ground = card,
-    )
+private fun Code(sale: TillSale, side: Dp, card: GroundTrack, ground: GroundTrack, footed: Boolean = false, onEnlarge: () -> Unit) {
+    val veil by animateFloatAsState(if (sale.phase == SalePhase.Paid) 1f - SpentCode else 0f, motion.fade.fraction, label = "spent code")
     Box(
-        Modifier.align(Alignment.BottomEnd).padding(10.dp).size(32.dp).clip(CircleShape).background(Fixed.Ink),
-        contentAlignment = Alignment.Center,
-    ) { Icon(MkIcons.Expand, contentDescription = null, tint = Fixed.White, modifier = Modifier.size(16.dp)) }
+        // Opening from its row or shrinking back into it, the code and its white are drawn whole or not at all: only on
+        // the frames the row's ground holds all of the card (decision 234); on a Back to a row showing its code glyph, the
+        // card alone flies there, shrinking into it (board 6). Paid or ended, the card closes into the page's hero (M10).
+        Modifier.wholeOn(ground, Move.RowGrow, homeKey(sale.orderId)).faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle, code = true)
+            .clip(if (footed) CodeTopShape else CodeShape)
+            .then(if (footed) Modifier.drawBehind { drawRect(Fixed.White, Offset(0f, size.height - CodeCorner.toPx()), Size(size.width, CodeCorner.toPx())) } else Modifier)
+            .clickable(onClickLabel = "Enlarge the payment code", role = Role.Button, onClick = onEnlarge),
+    ) {
+        QrCode(
+            sale.code.uri,
+            "Payment code for ${SaleText.amount(sale)}" + if (sale.code.hasReceipt) ", with the receipt in it" else "",
+            Modifier.width(side),
+            padding = CodeQuiet,
+            radius = CodeCorner,
+            shared = sale.orderId,
+            ground = card,
+        )
+        // Ink at 14 % on white is white at 86 % over the ink: the same pixels, with no layer on the code and its white kept.
+        Box(Modifier.matchParentSize().padding(CodeQuiet).drawBehind { if (veil > 0f) drawRect(Fixed.White, alpha = veil) })
+        Box(
+            Modifier.align(Alignment.BottomEnd).padding(10.dp).size(32.dp).clip(CircleShape).background(Fixed.Ink),
+            contentAlignment = Alignment.Center,
+        ) { Icon(MkIcons.Expand, contentDescription = null, tint = Fixed.White, modifier = Modifier.size(16.dp)) }
+    }
 }
 
 /**
- * "Waiting for payment" with the phase ring, on its pill; the words, not
- * the countdown, are announced. New words crossfade over the old and the
- * pill settles to their width (M12): a two-text subtree, never anything
- * with the code in it.
+ * "Waiting for payment" with the phase ring, on its pill beside the code
+ * on a wide window; the words, not the countdown, are announced. New words
+ * crossfade over the old and the pill settles to their width (M12): a
+ * two-text subtree, never anything with the code in it.
  */
 @Composable
-internal fun StatusPill(sale: TillSale, now: LongState) = Row(
+internal fun StatusPill(sale: TillSale, now: LongState) = StatusLine(
+    sale, now,
     Modifier.clip(RoundedCornerShape(28.dp)).background(mk.card)
         .animateContentSize(motion.settle.spec(IntSize.VisibilityThreshold))
-        .padding(start = 12.dp, end = 18.dp, top = 10.dp, bottom = 10.dp)
-        .semantics(mergeDescendants = true) {},
+        .padding(start = 12.dp, end = 18.dp, top = 10.dp, bottom = 10.dp),
+)
+
+/**
+ * The status as the code card's foot on a phone (board 8): under a line
+ * across the card, white in every state and theme as the code's card is,
+ * so its words and ring take the light theme's roles; it settles to the
+ * words' height as they change.
+ */
+@Composable
+internal fun StatusFoot(sale: TillSale, now: LongState) = CompositionLocalProvider(LocalTokens provides LightTokens, LocalContentColor provides LightTokens.ink) {
+    Column(Modifier.fillMaxWidth().background(Fixed.White, FootShape)) {
+        Box(Modifier.fillMaxWidth().height(1.dp).background(mk.divider))
+        StatusLine(
+            sale, now,
+            Modifier.fillMaxWidth().animateContentSize(motion.settle.spec(IntSize.VisibilityThreshold))
+                .padding(start = 14.dp, end = 18.dp, top = 12.dp, bottom = 14.dp),
+        )
+    }
+}
+
+/** The ring, the tick in it once paid, and the status words over the hint: the pill's and the foot's. */
+@Composable
+private fun StatusLine(sale: TillSale, now: LongState, modifier: Modifier) = Row(
+    modifier.semantics(mergeDescendants = true) {},
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
 ) {
-    PhaseRing(sale, 30.dp)
+    Box(contentAlignment = Alignment.Center) {
+        PhaseRing(sale, 30.dp)
+        RingTick(sale.phase == SalePhase.Paid)
+    }
     Column {
         val through = motion.fadeThrough.fraction
         val fadeQuick = motion.fadeQuick.fraction
@@ -470,6 +536,20 @@ internal fun StatusPill(sale: TillSale, now: LongState) = Row(
         }
         Countdown(now, sale.expiresAt, fontSize = 13.sp, color = mk.muted) { SaleText.hint(sale, it) }
     }
+}
+
+/** The paid tick inside the closed ring: in as the ring's paid arc comes in, out as it goes, per draw. */
+@Composable
+private fun RingTick(paid: Boolean) {
+    val m = motion
+    val shown by animateFloatAsState(if (paid) 1f else 0f, (if (paid) m.fadeThrough else m.fadeQuick).fraction, label = "ring tick")
+    Icon(
+        MkIcons.Tick, contentDescription = null, tint = mk.paid,
+        modifier = Modifier.size(18.dp).graphicsLayer {
+            alpha = shown
+            compositingStrategy = CompositingStrategy.ModulateAlpha
+        },
+    )
 }
 
 @Composable
