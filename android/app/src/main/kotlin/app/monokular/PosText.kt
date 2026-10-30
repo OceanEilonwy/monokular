@@ -73,11 +73,21 @@ object PosText {
     /** The section over the steps at the point of sale itself. */
     fun atTheTill(pos: PointOfSale): String = when (pos) {
         PointOfSale.Square -> "In Square Point of Sale"
-        PointOfSale.Clover -> "In Clover Register"
+        PointOfSale.Clover -> "On your Clover device"
     }
 
-    /** Clover's steps once the Monero payment type is there (acceptance T3.3). */
-    val CLOVER_STEPS = listOf("Open **Clover Register** on the device", "Ring up a sale and choose **Monero** as the payment")
+    /** The title of Clover's steps card, as Square's names what its steps do. */
+    const val CLOVER_STEPS_TITLE = "Take Monero in Clover Register"
+
+    /** Clover's first step, once the till has the Monero payment type ([added]) or before it has looked. */
+    fun cloverTenderStep(added: Boolean): String =
+        "Monokular ${if (added) "added" else "adds"} a payment type called **Monero** for you"
+
+    /** Clover's steps after the payment type (acceptance T3.3), numbered from 2. */
+    val CLOVER_STEPS = listOf(
+        "Open **Clover Register** on the Station, Mini, Flex or Go",
+        "Ring up a sale, tap **Pay**, then choose **Monero**",
+    )
 
     /** Clover refused to let the till add the payment type (acceptance T3.2, decision 129). */
     const val CLOVER_ADD_TENDER = "Add a payment type called **Monero** in Clover (Setup › Payments, or ask whoever manages your " +
@@ -90,7 +100,16 @@ object PosText {
     /** How a sale never paid is refunded, said before the first one is (decision 130). */
     const val CLOVER_REFUND_NOTE = "A sale never paid in Monero is refunded in Clover's Orders app; Monokular shows you which."
 
-    fun testSaleFound(pos: PointOfSale, amount: String): String = "Test sale found: $amount. Refund it in ${pos.displayName} when you like."
+    /** Step 4's test sale row while it waits: Clover's names where the refund is made, as its card's footnote does. */
+    fun testSaleWaiting(pos: PointOfSale): String = "Waiting for a test sale… " + when (pos) {
+        PointOfSale.Square -> "Any amount, you can refund it after."
+        PointOfSale.Clover -> "Any amount; refund it in ${refundWhere(pos)} after."
+    }
+
+    fun testSaleFound(pos: PointOfSale, amount: String): String = "Test sale found: $amount. Refund it in " + when (pos) {
+        PointOfSale.Square -> pos.displayName
+        PointOfSale.Clover -> refundWhere(pos)
+    } + " when you like."
 
     // Square's locations, a step of its own.
 
