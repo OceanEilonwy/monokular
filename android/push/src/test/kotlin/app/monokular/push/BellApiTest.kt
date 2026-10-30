@@ -59,7 +59,7 @@ class BellApiTest {
     /** A P-256 point, as a Bell's VAPID key is. */
     private val vapid = subscription.p256dh
 
-    /** A Bell ringing both of Square's environments and one of Clover's (decision 147). */
+    /** A Bell ringing both of Square's environments and one of Clover's (decision 305). */
     private val info = """{"points_of_sale":{"square":{"production":{"application_id":"sq0idp-live"},"sandbox":{"application_id":"sandbox-sq0idb-dev"}},
         "clover":{"north_america":{"application_id":"MONOKULARBELL"}}},"vapid_public_key":"$vapid","version":"0.3.0"}"""
 

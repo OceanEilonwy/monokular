@@ -327,7 +327,7 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
     }
 
     @Test
-    fun `a Bell ringing both environments registers the till in its own, through its own application (decision 147)`() = runTest {
+    fun `a Bell ringing both environments registers the till in its own, through its own application (decision 305)`() = runTest {
         bell.infos[monokular] = {
             BellInfo(mapOf(till.pointOfSale.wire to mapOf(till.otherEnvironment to till.otherApplicationId, till.environment to till.applicationId)), KEY)
         }
@@ -354,7 +354,7 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
     }
 
     @Test
-    fun `a till moved to the other environment takes its registration back and registers again in the new one (decision 148)`() = runTest {
+    fun `a till moved to the other environment takes its registration back and registers again in the new one (decision 306)`() = runTest {
         bell.infos[monokular] = {
             BellInfo(mapOf(till.pointOfSale.wire to mapOf(till.otherEnvironment to till.otherApplicationId, till.environment to till.applicationId)), KEY)
         }
@@ -373,7 +373,7 @@ abstract class WakeUpsScenarios(private val till: TestTill) {
     }
 
     @Test
-    fun `a registration kept from before registrations named their environment is taken back and made again at the next start (decision 148)`() = runTest {
+    fun `a registration kept from before registrations named their environment is taken back and made again at the next start (decision 306)`() = runTest {
         store.choice = WakeUpChoice.MonokularBell
         store.registration = BellRegistration(monokular, "br_old", KEY, PushSubscription("https://ntfy.sh/up1", "BKey", "auth"), NTFY)
         val wakeUps = start()

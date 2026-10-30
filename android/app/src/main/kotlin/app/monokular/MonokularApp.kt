@@ -131,7 +131,7 @@ class Graph(app: Application) {
                     if (location == null || stores.tokens.load() == null) {
                         null
                     } else {
-                        // The environment is the application's, the one the till signed in through (decision 147).
+                        // The environment is the application's, the one the till signed in through (decision 305).
                         val config = squareConfig()
                         PosSignIn(PointOfSale.Square, config.applicationId, config.environment, location.id)
                     }

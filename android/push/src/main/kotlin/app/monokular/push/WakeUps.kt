@@ -39,7 +39,7 @@ sealed interface WakeUpChoice {
 /**
  * What a Bell says about itself: `GET /v1/info` (`docs/bell.md`), as [BellApi] reads it.
  * One Bell may ring several environments of each point of sale at once (Square's production
- * and its sandbox, say), each through its own application (decision 147).
+ * and its sandbox, say), each through its own application (decision 305).
  */
 data class BellInfo(
     /**
@@ -74,7 +74,7 @@ data class BellRegistration(
     val distributor: String,
     /**
      * The point of sale ([PointOfSale.wire]) and environment it was made for: a till whose
-     * sign-in moved to another registers again (decision 148). Null in a registration kept
+     * sign-in moved to another registers again (decision 306). Null in a registration kept
      * from before a Bell rang several environments, which counts as another.
      */
     @SerialName("point_of_sale") val pointOfSale: String? = null,

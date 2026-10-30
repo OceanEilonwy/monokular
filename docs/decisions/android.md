@@ -4551,8 +4551,67 @@ design unchanged.
     motion files. `origin/motion-main` already exists at `82ea3c7`, an
     ancestor of this head, so the ship is a fast-forward push. A rebase
     now would need a force-push, which the ship step must not do. The
-    renumbering goes into the merge-time rebase, as decision 265 did for
-    #16 to #22. In one final commit, this branch's 147 to 304 become 151
-    to 308, and every citation in the spec, the reports and the code
-    comments is checked to point at its decision. Then
-    `./gradlew build` runs at every commit (`git rebase -x`).
+    renumbering went into the merge-time rebase instead: the owner had
+    the branch rebased onto `main` and force-pushed to land it at once.
+    #25's four decisions were renumbered rather than this branch's, since
+    they are cited ten times and this branch's 147 to 304 hundreds: #25's
+    147 to 150 are now 305 to 308, below, and its ten citations in the
+    Bell's client, `MonokularApp.kt` and their tests point at the new
+    numbers. This branch's numbers are unchanged.
+
+## App: a Bell for several environments (2026-10-30)
+
+The Bell (monokulo's `crates/monokulo-bell`, `docs/bell.md` there) now
+rings several environments of each point of sale at once: Square's
+production and its sandbox, Clover's regions and its sandbox. Its
+`/v1/info` maps each point of sale to its environments, each to the
+application it hears that environment through, and `POST /v1/register`
+names the environment. Refines 95, 96 and 132.
+
+305. **The till reads its own point of sale's own environment, and nothing
+     else, from `/v1/info`.** `BellInfo.pointsOfSale` is point of sale →
+     environment → application id. In acceptance T5.2's order: the point of
+     sale absent, `Refused("it doesn't ring Clover tills")` as before; the
+     till's environment absent, `Refused` in words naming it ("it doesn't
+     ring Square sandbox tills", "it doesn't ring Clover tills in Europe"),
+     final, as decision 132's "it's for Clover in Europe" was (a Bell for
+     several environments can't be described by one, so the words name the
+     till's instead); that environment's application not the till's,
+     `SignInNeeded` through it, as decision 96 has it, which by
+     construction is the same environment. Environments other than the
+     till's are never read, so one this build doesn't know, or an entry in a
+     shape it doesn't know, is passed over (`BellApi` drops an entry without
+     a string `application_id`) instead of making the Bell "not a Bell" as
+     an unknown environment did before: the Bell may grow environments
+     before the app does. A Bell from before environments
+     (`{"square":{"application_id","environment"}}`) reads as ringing none
+     of the till's environments and refuses it in those words. The till's
+     environment is Square's application's (`SquareConfig.environment`: an
+     id starting `sandbox-` is the sandbox, any other production; the build's
+     `monokular.square.sandbox` still picks Square's hosts) and Clover's
+     build's `monokular.clover.environment` (decision 137).
+306. **A registration remembers its point of sale and environment, and one
+     made for another is taken back before registering.**
+     `BellRegistration.pointOfSale` and `environment` are kept with it; a
+     pass whose sign-in is for another point of sale or environment (a
+     sign-in through another Bell's application, another build) `DELETE`s
+     the old registration and `POST`s again, in the place decision 95 takes
+     back one for an old endpoint, since the Bell keys registrations by
+     endpoint. A registration kept from before this change has neither
+     (both read as null) and counts as made for another, so the first pass
+     after the update re-registers it once, `DELETE` then `POST`. Inferring
+     the environment instead would have kept a registration the Bell may
+     hold under its old, single environment; one extra round trip at one
+     start is cheaper than a till the Bell rings wrongly.
+307. **`POST /v1/register` sends `environment`**, the till's
+     (`PosSignIn.environment`), between `point_of_sale` and the token; the
+     body is still exactly its five fields, as the Bell refuses one it
+     doesn't know. The answer's `environment` and `application_id` are not
+     read: the till keeps the id and what it asked for.
+308. **The contract test's monokulo pin waits for the Bell's change.**
+     `monokulo.sha` stays at `2b200ef2a` in this branch, since the Bell's
+     side isn't merged in monokulo yet; it must move to the monokulo commit
+     that lands the multi-environment Bell once that merges, so the app is
+     checked against the monokulo it ships with. The Bell's own shapes are
+     held here by `BellApiTest` and `BellWakeUpsTest`, written from
+     monokulo's `docs/bell.md` as that change has it.

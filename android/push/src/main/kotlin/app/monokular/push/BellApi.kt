@@ -33,7 +33,7 @@ interface BellClient {
     suspend fun info(bell: BellAddress): BellInfo
 
     /**
-     * `POST /v1/register` for [pointOfSale] in [environment] (decision 147): the one request
+     * `POST /v1/register` for [pointOfSale] in [environment] (decision 305): the one request
      * that carries the point of sale's token (A9.1). [locationId] is the Square location, or
      * the Clover merchant (a Clover merchant is its own location: acceptance D1).
      */

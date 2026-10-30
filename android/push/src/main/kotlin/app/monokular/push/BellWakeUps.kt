@@ -224,7 +224,7 @@ class BellWakeUps(
      * Register with [bell] for [signedIn], stopping at the first thing in the way; the status
      * that leaves. The Bell's entry for the till's point of sale is checked in acceptance
      * T5.2's order: there at all, then the till's environment among its environments, then
-     * that environment's application (decisions 132, 147).
+     * that environment's application (decisions 132, 305).
      */
     private suspend fun register(bell: BellAddress, signedIn: PosSignIn?): WakeUpStatus {
         val info = bells.info(bell)
@@ -269,7 +269,7 @@ class BellWakeUps(
             }
         }
         // The Bell keys a registration by its endpoint: a new one is a new registration (decision 95). So is one
-        // made for another point of sale or environment, or before registrations named theirs (decision 148).
+        // made for another point of sale or environment, or before registrations named theirs (decision 306).
         store.registration?.takeIf { it.subscription.endpoint != subscription.endpoint || !it.isFor(signedIn) }?.let { takeBack(it) }
         val token = pos.accessToken() ?: run {
             release()
