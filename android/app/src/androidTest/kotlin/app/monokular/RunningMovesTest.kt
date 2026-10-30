@@ -2,6 +2,7 @@ package app.monokular
 
 import android.graphics.Bitmap
 import androidx.compose.ui.geometry.Rect
+import androidx.activity.BackEventCompat
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
@@ -753,7 +754,14 @@ class RunningMovesTest {
 
     @Test fun backIntoARowScrolledFarDownTheTrayLandsInItDark() = backIntoScrolledRow(dark = true)
 
-    private fun backIntoScrolledRow(dark: Boolean) {
+    /**
+     * The same Back after a back gesture peeked at the shift and was cancelled: the peek composes the shift (and asks
+     * the list for the row) and then leaves it, so the Back that follows composes it afresh and must find the row's
+     * place again (decision 297; before, the peek had used the place up and the Back came back at the list's top).
+     */
+    @Test fun backAfterACancelledPeekStillLandsInTheRowScrolledFarDown() = backIntoScrolledRow(dark = false, peekFirst = true)
+
+    private fun backIntoScrolledRow(dark: Boolean, peekFirst: Boolean = false) {
         moves.shift = List(20) { testSale("w${20 - it}", expiresAt = 1_600) } + moves.sale
         moves.start(Screen.Till, dark)
         compose.mainClock.autoAdvance = true
@@ -767,6 +775,15 @@ class RunningMovesTest {
         compose.mainClock.autoAdvance = false
         moves.run(Screen.Sale("a1"), groundKey = "sale/a1")
         repeat(4) { compose.mainClock.advanceTimeByFrame() }
+        if (peekFirst) {
+            val back = compose.activity.onBackPressedDispatcher
+            compose.runOnUiThread { back.dispatchOnBackStarted(BackEventCompat(10f, 1000f, 0f, BackEventCompat.EDGE_LEFT)) }
+            repeat(4) { compose.mainClock.advanceTimeByFrame() }
+            compose.runOnUiThread { back.dispatchOnBackProgressed(BackEventCompat(10f, 1000f, 0.3f, BackEventCompat.EDGE_LEFT)) }
+            repeat(4) { compose.mainClock.advanceTimeByFrame() }
+            compose.runOnUiThread { back.dispatchOnBackCancelled() }
+            compose.mainClock.advanceTimeBy(1_500)
+        }
         val frames = moves.run(Screen.Till, groundKey = "sale/a1")
         val failures = landsIn(frames, moves.sale).toMutableList()
         val moving = frames.drop(1).filter { it.moves.any { m -> m == Move.RowGrow } && it.p < 1f }
@@ -789,7 +806,7 @@ class RunningMovesTest {
             }
         }
         failures += codeOffItsCard(frames)
-        report("back-scrolled-row-${theme(dark)}", frames, failures)
+        report("back-scrolled-row-${theme(dark)}${if (peekFirst) "-peeked" else ""}", frames, failures)
     }
 
     /**

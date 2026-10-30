@@ -4406,3 +4406,22 @@ design unchanged.
     whole code on every frame to landing, light and dark; after, none. The
     full `connectedDebugAndroidTest` on 5556: 219 tests, 0 failures. The no-row test now
     also fails a code still drawn past `1 − crossfadeOnTrack`.
+297. **A back gesture peeked and cancelled leaves the shift's place for
+    the Back that follows** (the lead, round 2 review 2; 296). 296 forgot
+    the place in the `SideEffect` of the first composition that asked for
+    it. A back gesture seeks the stage to the shift as it starts
+    (`StageBack`'s `seekTo(0f, to)`), so a peek composes the shift, asks
+    for the row and forgets the place; cancelled, the shift leaves
+    composition, and the real Back composed it afresh at the list's top:
+    no ground end on any frame and the code whole over the rows until its
+    296 fade. Now the place is asked for once per list (`ShiftPlace.askedBy`,
+    the list that asked; a shift composed afresh has a new one) and
+    forgotten only once the stage has landed on the shift (the
+    `LaunchedEffect(cameFrom)` that already runs as the change lands, when
+    `stage.landed()`); a cancelled peek has not landed, so the place stays.
+    A Back from a sale not left from its row still asks nothing (the sale
+    must match), and a place can't outlive a landing, so an old one is
+    never used later. `RunningMovesTest.backAfterACancelledPeekStillLandsInTheRowScrolledFarDown`
+    peeks to 0.3 and cancels before 296's flow: before, no ground end and
+    the whole code on f1 to f7 at least; after, it passes with the rest of
+    `RunningMovesTest` (52) on 5558.
