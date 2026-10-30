@@ -38,7 +38,9 @@ class CustomerNameTitleTest {
     private fun titled(sale: app.monokular.sales.TillSale) {
         compose.setContent { Till { SaleScreen(sale, "Front", refunding = false, refundProblem = null, refundSheet = null, actions = noActions) } }
         compose.onNodeWithText("Ana López", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText("Sale #m2Qe · Front · this till", substring = true, useUnmergedTree = true).assertExists()
+        // The number leads the line under it; a detail page puts the time before the place ("Sale #m2Qe · 4:00 PM · Front · this till").
+        compose.onNodeWithText("Sale #m2Qe · ", substring = true, useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("Front · this till", substring = true, useUnmergedTree = true).assertExists()
         compose.onAllNodesWithText("Sale #m2Qe", useUnmergedTree = true).assertCountEquals(0)
         // The bar is one heading for TalkBack: the name, then the number and where it's from.
         val heading = compose.onNodeWithText("Ana López", substring = true).fetchSemanticsNode()
