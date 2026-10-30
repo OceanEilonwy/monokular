@@ -26,6 +26,26 @@ enum class StateIcon { Ring, Clock, Warning, Tick, Refund, Close }
 /** Which of its corners a shift row rounds: the rows make one card, rounded at its two ends. */
 enum class RowEnds { Only, First, Middle, Last }
 
+/**
+ * One item of the shift's list under its chips (the design's A4): the
+ * waiting tray's header, a sale's row (in the tray or under Earlier), the
+ * tray's fold row, and the Earlier header. The screen keys each, so a row
+ * leaving the tray for Earlier is the same item moving.
+ */
+sealed interface ShiftItem {
+    /** "Waiting for payment" over the tray, with how many sales are live. */
+    data class TrayHeader(val count: Int) : ShiftItem
+
+    /** A sale's row, its corners [ends] counted within its section; [tray] when it sits in the waiting tray. */
+    data class Row(val sale: TillSale, val ends: RowEnds, val tray: Boolean) : ShiftItem
+
+    /** The tray's fold row: "Show [hidden] more waiting" folded, "Show fewer" [open]. */
+    data class Fold(val hidden: Int, val open: Boolean) : ShiftItem
+
+    /** The header over the sales that are no longer live, under the tray. */
+    data object Earlier : ShiftItem
+}
+
 /** One shift row, in words and roles: what the screen draws for a sale. */
 data class ShiftRow(
     val title: String,
@@ -48,6 +68,54 @@ object ShiftList {
         ShiftFilter.NeedsAction -> sales.filter { it.needsAction }
         ShiftFilter.Paid -> sales.filter { it.standing is Standing.Paid }
     }
+
+    /** How many live sales the folded tray shows before its fold row. */
+    const val FOLD_AFTER = 3
+
+    /**
+     * The shift's list under its chips (A4): with a live sale under [filter], the
+     * tray's header, every live sale newest first (only the first [FOLD_AFTER]
+     * and the fold row while [folded] and there are more), then the Earlier
+     * header and the rest newest first. With none, [rows] as they always read:
+     * no header, no fold, no Earlier. Needs action shows the tray whole, with
+     * no fold (a filter for what needs the cashier hides none of it), then the
+     * sales ended unpaid; Paid has no live sale, so no header.
+     */
+    fun sections(sales: List<TillSale>, filter: ShiftFilter, folded: Boolean): List<ShiftItem> {
+        val live = if (filter == ShiftFilter.Paid) emptyList() else sales.filter { it.standing is Standing.Live }
+        val rest = rows(sales, filter).filter { it.standing !is Standing.Live }
+        if (live.isEmpty()) return section(rest, tray = false)
+        val folds = filter != ShiftFilter.NeedsAction && live.size > FOLD_AFTER
+        val shown = if (folds && folded) live.take(FOLD_AFTER) else live
+        val items = ArrayList<ShiftItem>(live.size + rest.size + 3)
+        items += ShiftItem.TrayHeader(live.size)
+        items += section(shown, tray = true)
+        if (folds) items += ShiftItem.Fold(hidden = live.size - FOLD_AFTER, open = !folded)
+        if (rest.isNotEmpty()) {
+            items += ShiftItem.Earlier
+            items += section(rest, tray = false)
+        }
+        return items
+    }
+
+    private fun section(sales: List<TillSale>, tray: Boolean): List<ShiftItem.Row> =
+        sales.mapIndexed { i, sale -> ShiftItem.Row(sale, ends(i, sales.lastIndex), tray) }
+
+    /** The tray's header. */
+    const val TRAY_HEADER = "Waiting for payment"
+
+    /** The header over what is no longer live. */
+    const val EARLIER = "Earlier"
+
+    /** The fold row's words: how many more there are folded, else "Show fewer". */
+    fun foldLabel(fold: ShiftItem.Fold): String = if (fold.open) "Show fewer" else "Show ${fold.hidden} more waiting"
+
+    /** What TalkBack says for the tray's header. */
+    fun trayHeaderSaid(count: Int): String = "$TRAY_HEADER, $count ${if (count == 1) "sale" else "sales"}"
+
+    /** What TalkBack says for the fold row (its state, collapsed or expanded, is said beside it). */
+    fun foldSaid(fold: ShiftItem.Fold): String =
+        if (fold.open) "Show fewer" else "Show ${fold.hidden} more waiting ${if (fold.hidden == 1) "sale" else "sales"}"
 
     /** What a new shift keeps of the last one's [sales]: those that still need the cashier (decision 86). */
     fun carried(sales: List<TillSale>): List<TillSale> = sales.filter { it.needsAction }

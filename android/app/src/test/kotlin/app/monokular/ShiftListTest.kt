@@ -407,4 +407,99 @@ class ShiftListTest {
             "ended unpaid is no payment",
         )
     }
+
+    /** [n] live sales, newest first, then [ended] that aren't: as the till keeps a busy shift. */
+    private fun busy(n: Int, ended: List<TillSale> = listOf(sale("paid", SalePhase.Paid, paidAt = at), sale("expired", SalePhase.Expired, endedAt = at))) =
+        List(n) { sale("w${n - it}") } + ended
+
+    /** The items in words, so a test reads as the list does. */
+    private fun read(items: List<ShiftItem>) = items.map {
+        when (it) {
+            is ShiftItem.TrayHeader -> "header ${it.count}"
+            is ShiftItem.Row -> (if (it.tray) "tray " else "") + it.sale.orderId + " " + it.ends
+            is ShiftItem.Fold -> ShiftList.foldLabel(it)
+            ShiftItem.Earlier -> "earlier"
+        }
+    }
+
+    @Test
+    fun theTrayFoldsAfterThreeRowsAndSaysHowManyMoreWait() {
+        assertEquals(
+            listOf("header 4", "tray w4 First", "tray w3 Middle", "tray w2 Last", "Show 1 more waiting", "earlier", "paid First", "expired Last"),
+            read(ShiftList.sections(busy(4), ShiftFilter.All, folded = true)),
+        )
+        val many = ShiftList.sections(busy(21), ShiftFilter.All, folded = true)
+        assertEquals(ShiftItem.TrayHeader(21), many.first(), "the header counts every live sale, folded ones too")
+        assertEquals(3, many.count { it is ShiftItem.Row && it.tray })
+        assertEquals("Show 18 more waiting", ShiftList.foldLabel(many.filterIsInstance<ShiftItem.Fold>().single()))
+    }
+
+    @Test
+    fun theTrayOpensInPlaceAndSaysShowFewer() {
+        val open = ShiftList.sections(busy(21), ShiftFilter.All, folded = false)
+        val tray = open.filterIsInstance<ShiftItem.Row>().filter { it.tray }
+        assertEquals((21 downTo 1).map { "w$it" }, tray.map { it.sale.orderId }, "every live sale, newest first")
+        assertEquals(listOf(RowEnds.First) + List(19) { RowEnds.Middle } + RowEnds.Last, tray.map { it.ends })
+        val fold = open.filterIsInstance<ShiftItem.Fold>().single()
+        assertEquals(ShiftItem.Fold(hidden = 18, open = true), fold)
+        assertEquals("Show fewer", ShiftList.foldLabel(fold))
+        assertEquals(open.indexOf(tray.last()) + 1, open.indexOf(fold), "the fold row closes the tray")
+    }
+
+    @Test
+    fun twoWaitingSalesHaveNoFold() {
+        assertEquals(
+            listOf("header 2", "tray w2 First", "tray w1 Last", "earlier", "paid First", "expired Last"),
+            read(ShiftList.sections(busy(2), ShiftFilter.All, folded = true)),
+        )
+        assertEquals(listOf("header 3", "tray w3 First", "tray w2 Middle", "tray w1 Last"), read(ShiftList.sections(busy(3, ended = emptyList()), ShiftFilter.All, folded = true)))
+        assertEquals(listOf("header 1", "tray w1 Only"), read(ShiftList.sections(busy(1, ended = emptyList()), ShiftFilter.All, folded = true)), "and no Earlier with nothing under it")
+    }
+
+    @Test
+    fun withNoLiveSaleTheListReadsAsItAlwaysHas() {
+        val ended = shift.drop(1)
+        for (filter in ShiftFilter.entries) {
+            val items = ShiftList.sections(ended, filter, folded = true)
+            assertTrue(items.all { it is ShiftItem.Row && !it.tray }, "$filter: no header, fold or Earlier")
+            val rows = ShiftList.rows(ended, filter)
+            assertEquals(rows.mapIndexed { i, s -> ShiftItem.Row(s, ShiftList.ends(i, rows.lastIndex), tray = false) }, items)
+        }
+        assertEquals(emptyList(), ShiftList.sections(emptyList(), ShiftFilter.All, folded = true))
+    }
+
+    @Test
+    fun needsActionShowsTheWholeTrayThenWhatEndedUnpaid() {
+        val items = ShiftList.sections(busy(5), ShiftFilter.NeedsAction, folded = true)
+        assertEquals(
+            listOf("header 5", "tray w5 First", "tray w4 Middle", "tray w3 Middle", "tray w2 Middle", "tray w1 Last", "earlier", "expired Only"),
+            read(items),
+            "unfolded, with no fold row, whatever the fold's state; the paid sale isn't one that needs action",
+        )
+        assertEquals(read(items), read(ShiftList.sections(busy(5), ShiftFilter.NeedsAction, folded = false)))
+    }
+
+    @Test
+    fun paidHasNoTrayAndNoHeaders() {
+        assertEquals(listOf("paid Only"), read(ShiftList.sections(busy(5), ShiftFilter.Paid, folded = true)))
+    }
+
+    @Test
+    fun bothSectionsKeepTheShiftsOrderNewestFirst() {
+        // The till keeps the shift newest first; a sale paid since lands at the top of Earlier, a new one at the top of the tray.
+        val sales = listOf(sale("new"), sale("justPaid", SalePhase.Paid, paidAt = at), sale("old"), sale("expired", SalePhase.Expired, endedAt = at))
+        assertEquals(
+            listOf("header 2", "tray new First", "tray old Last", "earlier", "justPaid First", "expired Last"),
+            read(ShiftList.sections(sales, ShiftFilter.All, folded = true)),
+        )
+    }
+
+    @Test
+    fun talkBackCountsTheTrayAndTheFoldInWords() {
+        assertEquals("Waiting for payment, 1 sale", ShiftList.trayHeaderSaid(1))
+        assertEquals("Waiting for payment, 21 sales", ShiftList.trayHeaderSaid(21))
+        assertEquals("Show 1 more waiting sale", ShiftList.foldSaid(ShiftItem.Fold(1, open = false)))
+        assertEquals("Show 18 more waiting sales", ShiftList.foldSaid(ShiftItem.Fold(18, open = false)))
+        assertEquals("Show fewer", ShiftList.foldSaid(ShiftItem.Fold(18, open = true)))
+    }
 }
