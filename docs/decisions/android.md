@@ -4539,3 +4539,20 @@ design unchanged.
     The step-back clip shows only four frames of the move on the
     emulator, the two stalls already on the phone list. The report says
     so and points at the test that holds the move frame for frame.
+
+304. **The round-2 PR is opened on `16dee74` and is not rebased onto the
+    newer `main` before review** (the tech lead, ship step). Since
+    `16dee74`, `main` has merged one more PR, #25 (`c14b7b3`, the Bell's
+    environments). A trial `git merge-tree origin/main motion-main`
+    conflicts in one file only, `docs/decisions/android.md`. #25 numbers
+    its new decisions 147 to 150, and this branch numbers its own 147 to
+    304 after the same 146. No code conflicts. #25 touches the Bell's
+    client, `MonokularApp.kt` and `SquareConfig.kt`, and none of the
+    motion files. `origin/motion-main` already exists at `82ea3c7`, an
+    ancestor of this head, so the ship is a fast-forward push. A rebase
+    now would need a force-push, which the ship step must not do. The
+    renumbering goes into the merge-time rebase, as decision 265 did for
+    #16 to #22. In one final commit, this branch's 147 to 304 become 151
+    to 308, and every citation in the spec, the reports and the code
+    comments is checked to point at its decision. Then
+    `./gradlew build` runs at every commit (`git rebase -x`).
