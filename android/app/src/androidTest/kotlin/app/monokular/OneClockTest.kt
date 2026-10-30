@@ -60,7 +60,7 @@ class OneClockTest {
         }
 
         assertEquals(5, recompositions.count("app.monokular.ui.Countdown"), "the foot's second line, once a tick")
-        for (name in listOf("SaleScreen", "LiveSale", "StatusFoot", "QrCode", "PhaseRing")) {
+        for (name in listOf("SaleScreen", "LiveSale", "StatusFoot", "StatusLine", "RingTick", "QrCode", "PhaseRing")) {
             assertEquals(0, recompositions.count("app.monokular.ui.$name"), "$name doesn't tick")
         }
     }
