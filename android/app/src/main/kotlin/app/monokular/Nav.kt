@@ -1307,22 +1307,29 @@ private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Ali
  * A payment code on a screen whose [ground] is moving by [during] is drawn
  * whole or not at all: only on the frames whose ground holds all of it, so
  * a moving edge never cuts a code (decision 234). Its white goes with it:
- * the code is never drawn without the ground it needs to scan.
+ * the code is never drawn without the ground it needs to scan. Leaving with
+ * no ground to go with (its row not laid out on the screen arriving), its
+ * card fades out on the stage's own progress, gone as the arriving screen's
+ * words begin (the move's last [Motion.crossfadeOnTrack]): never left whole
+ * over the arriving screen until the change lands and cut, and never a
+ * frame of bare ground between the two screens (decision 296).
  */
 @Composable
 fun Modifier.wholeOn(ground: GroundTrack, during: Move): Modifier {
     val stage = LocalStage.current ?: return this
-    if (motion.still) return this
-    return this.then(WholeElement(stage, ground, during))
+    val m = motion
+    if (m.still) return this
+    return this.then(WholeElement(stage, ground, during, 1f - m.crossfadeOnTrack))
 }
 
-private class WholeElement(val stage: Stage, val ground: GroundTrack, val during: Move) : ModifierNodeElement<WholeNode>() {
-    override fun create() = WholeNode(stage, ground, during)
+private class WholeElement(val stage: Stage, val ground: GroundTrack, val during: Move, val leaving: Float) : ModifierNodeElement<WholeNode>() {
+    override fun create() = WholeNode(stage, ground, during, leaving)
 
     override fun update(node: WholeNode) {
         node.stage = stage
         node.ground = ground
         node.during = during
+        node.leaving = leaving
         node.invalidateDraw()
     }
 
@@ -1332,16 +1339,35 @@ private class WholeElement(val stage: Stage, val ground: GroundTrack, val during
         properties["during"] = during
     }
 
-    override fun equals(other: Any?): Boolean = other is WholeElement && other.stage === stage && other.ground === ground && other.during == during
+    override fun equals(other: Any?): Boolean =
+        other is WholeElement && other.stage === stage && other.ground === ground && other.during == during && other.leaving == leaving
 
     override fun hashCode(): Int = System.identityHashCode(ground) * 31 + during.hashCode()
 }
 
-private class WholeNode(var stage: Stage, var ground: GroundTrack, var during: Move) : Modifier.Node(), LayoutAwareModifierNode, DrawModifierNode {
+/**
+ * [Modifier.wholeOn]'s node: drawn or not per frame by where its ground is, and placed with a layer only while its
+ * move is under way (the stage's states are read in placement, so it places again as a move starts and lands, nothing
+ * per frame), whose alpha, read per frame, fades a code with no ground to go with.
+ */
+private class WholeNode(var stage: Stage, var ground: GroundTrack, var during: Move, var leaving: Float) :
+    Modifier.Node(), LayoutModifierNode, LayoutAwareModifierNode, DrawModifierNode {
     private var placed: LayoutCoordinates? = null
+
+    private val layer: GraphicsLayerScope.() -> Unit = {
+        alpha = if (stage.arriving() || ground.locate()) 1f else stage.throughDuring(during, leaving = leaving, arriving = 1f)
+        compositingStrategy = CompositingStrategy.ModulateAlpha
+    }
 
     override fun onPlaced(coordinates: LayoutCoordinates) {
         placed = coordinates
+    }
+
+    override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
+        val placeable = measurable.measure(constraints)
+        return layout(placeable.width, placeable.height) {
+            if (stage.isMoving(during)) placeable.placeWithLayer(0, 0, layerBlock = layer) else placeable.place(0, 0)
+        }
     }
 
     override fun ContentDrawScope.draw() {

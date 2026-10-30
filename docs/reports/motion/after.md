@@ -1784,3 +1784,25 @@ and for the phone: the first paid frame per process, the step-back's two
 stalls (both builds), the 20-sale tray's first open, `restingOn`'s
 same-snapshot gap (288), "Show fewer" during a landing (finding 2), and
 the purgeable cache after a rise. Shippable as it stands.
+
+## Round 2 fix round 1, screens track (dev2, emulator-5556)
+
+- **The code over the shift on a Back from a row far down the tray**
+  (major; decision 296): the shift is composed afresh by a Back, so the
+  list was at its top and the tapped row off screen; the code, with no
+  ground to go with, stayed whole until landing. The list now comes back
+  where the row was tapped (`ShiftPlace`, kept above the stage), and a
+  code with no row fades out over the move, gone as the shift's words
+  arrive (not with the sale's words: that left two bare frames, which
+  `backWithNoRowToLandInNeverDrawsTheBareGround` catches).
+  `backIntoARowScrolledFarDownTheTrayLandsInIt` (light, dark) fails before
+  on every frame, passes after. Full device suite on 5556: 219 tests, 0
+  failures. Checked by the device tests' frames only, no recording: the
+  owner asked for the visual review to be pared back to a sample of the
+  main pages.
+- **The filter after a kept fold** (295): already fixed by the lead in
+  `e460568`, with its test; nothing more here.
+- **"Show fewer" during a landing** (finding 2): left as recorded.
+- **The phone-only minors** (the step-back's two stalls, the first paid
+  frame, the 20-sale tray's first open, 288's gap, the purgeable cache):
+  the coordinator's, on the phone; nothing changed here.

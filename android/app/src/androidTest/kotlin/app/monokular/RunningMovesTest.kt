@@ -7,6 +7,10 @@ import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.hasScrollToIndexAction
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToKey
 import app.monokular.core.PointOfSale
 import app.monokular.sales.TillSale
 import app.monokular.RunningMoves.Companion.flashes
@@ -726,13 +730,104 @@ class RunningMovesTest {
 
     /**
      * Back from a sale with no row on the shift to land in (the filter hides it, or the list has not composed it): the
-     * leaving sale is never replaced by the bare ground (260 a's other surface); the code is on its card, or gone with it.
+     * leaving sale is never replaced by the bare ground (260 a's other surface); the code is on its card, or gone with it,
+     * faded out over the move, gone as the shift's words come in (decision 296; before, it stayed whole until landing).
      */
     @Test fun backWithNoRowToLandInNeverDrawsTheBareGround() {
         moves.shift = listOf(moves.sales[0], moves.sales[2])
         moves.start(Screen.Sale("a1"), dark = false)
         val frames = moves.run(Screen.Till, groundKey = "sale/a1")
-        report("back-no-row-light", frames, bareGround(frames))
+        // With no row its card fades out over the move, gone as the shift's words come in: never whole over the shift
+        // and then cut, and never a bare frame between the two (296).
+        report("back-no-row-light", frames, bareGround(frames) + codeOffItsCard(frames, from = 1f - Motion.Full.crossfadeOnTrack))
+    }
+
+    /**
+     * Back from a sale tapped far down an open tray (the canvas's Main: 21 waiting, the last row tapped after scrolling
+     * to the end; the lead's backfold, decision 296): the shift comes back scrolled where the cashier left it, so the
+     * row is laid out, on screen, from the change's first frame and the ground lands in it; and on no frame is the
+     * code drawn where the shrinking ground does not hold its card (backfold: the code over the rows for 300 ms, then
+     * cut).
+     */
+    @Test fun backIntoARowScrolledFarDownTheTrayLandsInItLight() = backIntoScrolledRow(dark = false)
+
+    @Test fun backIntoARowScrolledFarDownTheTrayLandsInItDark() = backIntoScrolledRow(dark = true)
+
+    private fun backIntoScrolledRow(dark: Boolean) {
+        moves.shift = List(20) { testSale("w${20 - it}", expiresAt = 1_600) } + moves.sale
+        moves.start(Screen.Till, dark)
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithContentDescription("Show 18 more waiting sales").performClick()
+        compose.waitForIdle()
+        compose.onNode(hasScrollToIndexAction()).performScrollToKey("end")
+        compose.waitForIdle()
+        val title = ShiftList.row(moves.sale, PointOfSale.Square, 0).title
+        compose.onNodeWithText(title).performClick()
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        moves.run(Screen.Sale("a1"), groundKey = "sale/a1")
+        repeat(4) { compose.mainClock.advanceTimeByFrame() }
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1")
+        val failures = landsIn(frames, moves.sale).toMutableList()
+        val moving = frames.drop(1).filter { it.moves.any { m -> m == Move.RowGrow } && it.p < 1f }
+        if (moving.isEmpty()) failures += "the Back never moves by RowGrow"
+        val firstMoving = moving.firstOrNull()
+        if (firstMoving != null && firstMoving.groundEnd == null) failures += "f${firstMoving.index}: the Back's first frame has no row to land in"
+        val end = moving.lastOrNull()?.groundEnd
+        val row = rowOf(frames.last(), moves.sale)
+        val window = frames.last().bitmap
+        if (end == null) {
+            failures += "the ground has no end on the Back's last moving frame"
+        } else {
+            if (end.top < 0f || end.bottom > window.height) failures += "the ground lands at $end, off the ${window.height} px screen"
+            if (row != null && !end.contains(row.center)) failures += "the ground lands at $end, not in a1's row at $row"
+            // Every frame goes toward the same end, to half a pixel: the row does not move under the ground.
+            for (f in moving) {
+                val e = f.groundEnd ?: continue
+                val off = maxOf(abs(e.left - end.left), abs(e.top - end.top), abs(e.right - end.right), abs(e.bottom - end.bottom))
+                if (off > HALF_PIXEL) failures += "f${f.index}: the ground goes to $e, not $end where it lands"
+            }
+        }
+        failures += codeOffItsCard(frames)
+        report("back-scrolled-row-${theme(dark)}", frames, failures)
+    }
+
+    /**
+     * Frames on which the leaving sale's code shows where the moving ground does not hold its card: the pixels of the
+     * card on the frame before the change that differ from the shift at rest, read on each frame for how much of the
+     * code they still show (a quarter of its contrast or more), on frames whose ground does not cover the whole card;
+     * the shift's words, wherever any frame lays them out, are left out. Only from [from] of the move: a code fading
+     * out with no ground to go with is read once it is gone.
+     */
+    private fun codeOffItsCard(frames: List<RunningMoves.Frame>, from: Float = 0f): List<String> {
+        val card = frames.first().leavingCodes.firstOrNull { it.width > 20f } ?: return listOf("the sale has no code before the Back")
+        val before = frames.first().bitmap
+        val after = frames.last().bitmap
+        val xs = card.left.toInt().coerceAtLeast(0) until card.right.toInt().coerceAtMost(before.width)
+        val ys = card.top.toInt().coerceAtLeast(0) until card.bottom.toInt().coerceAtMost(before.height)
+        // Not where the shift's own words are: they fade in through the move, toward neither end.
+        val words = frames.flatMap { it.words[Screen.Till].orEmpty().map { w -> w.second } }
+        val mask = ArrayList<Int>()
+        for (y in ys step 2) for (x in xs step 2) {
+            if (words.any { it.contains(androidx.compose.ui.geometry.Offset(x.toFloat(), y.toFloat())) }) continue
+            if (abs(lum(before.getPixel(x, y)) - lum(after.getPixel(x, y))) > INK) mask += y * before.width + x
+        }
+        if (mask.isEmpty()) return listOf("the code's card at $card looks like the shift at rest")
+        return frames.drop(1).mapNotNull { f ->
+            if (f.p < from) return@mapNotNull null
+            val g = f.ground
+            if (g != null && g.left <= card.left + 1f && g.top <= card.top + 1f && g.right >= card.right - 1f && g.bottom >= card.bottom - 1f) return@mapNotNull null
+            var shown = 0
+            for (i in mask) {
+                val x = i % before.width
+                val y = i / before.width
+                val a = lum(before.getPixel(x, y))
+                val b = lum(after.getPixel(x, y))
+                if ((lum(f.bitmap.getPixel(x, y)) - b) / (a - b) > CODE_LEFT) shown++
+            }
+            val share = shown.toFloat() / mask.size
+            "f${f.index}: ${"%.2f".format(share)} of the code is drawn with no card round it (ground $g, p ${"%.2f".format(f.p)})".takeIf { share > CODE_OFF_SHARE }
+        }
     }
 
     /** Under Still the Back into a folded row is one cut onto the open tray: never the folded tray first, then a jump open. */
@@ -1061,6 +1156,12 @@ class RunningMovesTest {
 
         /** A code's module. */
         const val MODULE = 60f
+
+        /** A pixel showing this much of the code's contrast against the shift is the code, drawn. */
+        const val CODE_LEFT = 0.25f
+
+        /** More of the card than this showing the code is the code drawn: a row's glyphs passing are far less. */
+        const val CODE_OFF_SHARE = 0.05f
 
         /** A region with this much of both modules and white has a code in it. */
         const val CODE_SHARE = 0.05f

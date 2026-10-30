@@ -51,7 +51,9 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -108,10 +110,17 @@ import kotlinx.coroutines.flow.first
  * till is doing, this shift's summary, the filter chips and one row per
  * sale, newest first. Rows have no buttons: a live sale's row opens its
  * code, any other its page. [now] is the screen's clock: only the live
- * rows read it.
+ * rows read it. [place] is where the list was when a row was tapped, kept
+ * over the stage (the activity's) so a Back comes back to it.
  */
 @Composable
-fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions, now: LongState = rememberNowSeconds()) {
+fun ShiftScreen(
+    status: TillStatus,
+    sales: List<TillSale>,
+    actions: TillActions,
+    now: LongState = rememberNowSeconds(),
+    place: ShiftPlace = rememberShiftPlace(),
+) {
     var filter by rememberSaveable { mutableStateOf(ShiftFilter.All) }
     // The tray's fold, for the shift screen's life and across a rotation; a fresh shift starts folded (A4).
     var folded by rememberSaveable { mutableStateOf(true) }
@@ -129,6 +138,18 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
     val items = remember(sales, filter, shownFolded) { ShiftList.sections(sales, filter, shownFolded) }
     val trayFolds = remember(items) { items.any { it is ShiftItem.Fold } }
     val list = rememberLazyListState()
+    // The shift is composed afresh by a Back (the stage composes only the screens it shows), its list at the top: a
+    // row tapped far down would be off screen, with nothing for the ground to shrink into. So in this same first
+    // composition the list is asked to put the row where it was when tapped, laid out on the change's first frame
+    // (decision 296). Asked once, then forgotten; a Back from a sale not left from its row asks nothing.
+    if (cameFrom != null && place.sale != null) {
+        val index = if (place.sale == cameFrom) rowIndex(status, sales, items, cameFrom) else -1
+        val offset = place.offset
+        SideEffect {
+            place.sale = null
+            if (index >= 0) list.requestScrollToItem(index, scrollOffset = -offset)
+        }
+    }
     val focusOn = remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val screenReader = LocalScreenReader.current
@@ -213,7 +234,10 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                             is ShiftItem.Row -> {
                                 // Opened by its id alone, so a row whose corners change keeps the one it had and skips.
                                 val id = item.sale.orderId
-                                SaleItem(item, trayFolds, now, focusOn, moves) { actions.onOpen(id) }
+                                SaleItem(item, trayFolds, now, focusOn, moves) {
+                                    place.leave(list, id)
+                                    actions.onOpen(id)
+                                }
                             }
                         }
                     }
@@ -329,6 +353,49 @@ private fun keepFoldInPlace(list: LazyListState, hidden: Int): Boolean {
     list.requestScrollToItem(after, scrollOffset = -at.offset)
     return true
 }
+
+/**
+ * Where the shift's list was when the cashier left it from a row: that row's sale, and how far below the list's top
+ * it sat. The shift leaves composition while a sale is up, its list state with it, so this is kept above the stage
+ * (the activity's), and a Back puts the row there again ([ShiftScreen], decision 296). Plain fields: written by a
+ * tap, read once by the composition a Back starts; nothing draws or recomposes from them.
+ */
+@Stable
+class ShiftPlace {
+    internal var sale: String? = null
+    internal var offset = 0
+
+    /** The cashier leaves the shift from [id]'s row: where it is on screen now. */
+    internal fun leave(list: LazyListState, id: String) {
+        val at = list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == id }
+        sale = at?.let { id }
+        offset = at?.offset ?: 0
+    }
+}
+
+/** A [ShiftPlace] kept across a rotation. */
+@Composable
+fun rememberShiftPlace(): ShiftPlace = rememberSaveable(saver = ShiftPlaceSaver) { ShiftPlace() }
+
+private val ShiftPlaceSaver = listSaver<ShiftPlace, Any>(
+    save = { p -> p.sale?.let { listOf(it, p.offset) }.orEmpty() },
+    restore = { l -> ShiftPlace().apply { sale = l.getOrNull(0) as String?; offset = l.getOrNull(1) as Int? ?: 0 } },
+)
+
+/**
+ * [id]'s row's index in the shift's list, -1 if it has none: after the list's own items above the rows, as
+ * [ShiftScreen] lays them out (the top row, the notice, the summary, "Not watching" or nothing yet, the chips).
+ */
+private fun rowIndex(status: TillStatus, sales: List<TillSale>, items: List<ShiftItem>, id: String): Int {
+    if (status.disconnected || sales.isEmpty()) return -1
+    val at = items.indexOfFirst { it is ShiftItem.Row && it.sale.orderId == id }
+    if (at < 0) return -1
+    val idle = if (!status.running) 1 else 0
+    return HEAD_ITEMS + idle + at
+}
+
+/** The list's items above the tray in every shift with sales: the top row, the notice, the summary and the chips. */
+private const val HEAD_ITEMS = 4
 
 /** A list item's key: the tray's three parts by name, a row by its sale, so a row keeps its item between sections. */
 private fun itemKey(item: ShiftItem): Any = when (item) {
