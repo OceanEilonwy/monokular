@@ -51,7 +51,6 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.Stable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -363,11 +362,11 @@ private fun keepFoldInPlace(list: LazyListState, hidden: Int): Boolean {
 /**
  * Where the shift's list was when the cashier left it from a row: that row's sale, how far below the list's top it
  * sat, and the list's own place. The shift leaves composition while a sale is up, its list state with it, so this is
- * kept above the stage (the activity's), and a Back puts the list there again ([ShiftScreen], decisions 296, 297, 300). Plain fields: written
- * by a tap, read by the composition a Back starts, forgotten once the shift has landed; nothing draws or recomposes
- * from them.
+ * kept above the stage (the activity's), and a Back puts the list there again ([ShiftScreen], decisions 296, 297, 300).
+ * Plain fields: written by a tap, read by the composition a Back starts, forgotten once the shift has landed; nothing
+ * draws or recomposes from them. Not marked stable, since it is not (decision 302): one instance for the activity's
+ * life, so a screen taking it still skips under strong skipping, which compares it by identity.
  */
-@Stable
 class ShiftPlace {
     internal var sale: String? = null
     internal var offset = 0

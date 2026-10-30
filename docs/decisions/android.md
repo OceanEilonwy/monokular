@@ -4512,3 +4512,11 @@ design unchanged.
     its size. Remembered on the three facts it reads, so it is made once
     per change of them, not per composition. No change on screen; the
     scrolled-row and step-back tests in `RunningMovesTest` (55) pass on 5556.
+302. **`ShiftPlace` is not marked `@Stable`** (dev2, round 2 fix round 2;
+    the lead's minor on 296). It holds plain mutable fields that a tap
+    writes and no snapshot sees, so the annotation promised what the class
+    does not keep (that a change would be observed). It is dropped rather
+    than the fields made states: nothing should recompose when they
+    change, and the one instance lives for the activity, so with Kotlin
+    2.4's strong skipping a composable taking it compares it by identity
+    and still skips.
