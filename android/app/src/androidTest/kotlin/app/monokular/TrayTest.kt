@@ -11,12 +11,14 @@ import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assert
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performScrollToKey
+import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -234,6 +236,31 @@ class TrayTest {
         compose.mainClock.advanceTimeByFrame()
         compose.mainClock.advanceTimeByFrame()
         assertTrue(shows(sales[3]) && exists("Show fewer"))
+    }
+
+    /**
+     * Folding a 21-row tray scrolled past its third row keeps the fold row under the finger, to the pixel, on every
+     * frame (the lead's fold21: a 28 dp hop on the phone, 18 on the tablet).
+     */
+    @Test
+    fun foldingAScrolledTrayKeepsTheFoldRowWhereItIs() {
+        // A shift long enough under the tray that the list can hold the fold row anywhere: the paid sales of the day.
+        show(busy(21) + List(15) { testSale("q$it", SalePhase.Paid, paidAt = 800L - it) })
+        compose.onNodeWithContentDescription("Show 18 more waiting sales").performClick()
+        compose.waitForIdle()
+        compose.onNode(hasScrollToIndexAction()).performScrollToKey("w6")
+        compose.waitForIdle()
+        fun foldTop() = compose.onNodeWithContentDescription("Show", substring = true).fetchSemanticsNode().boundsInRoot.top
+        val before = foldTop()
+        val screen = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        assertTrue(before > screen.height / 4 && before < screen.height * 3 / 4, "the fold row is mid-screen: $before of ${screen.height}")
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithContentDescription("Show fewer").performClick()
+        repeat(30) {
+            compose.mainClock.advanceTimeByFrame()
+            assertEquals(before, foldTop(), 1f, "frame $it: the fold row stays under the finger")
+        }
+        assertTrue(exists("Show 18 more waiting"), "folded")
     }
 
     /**

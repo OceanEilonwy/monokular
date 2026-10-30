@@ -140,6 +140,13 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
     val arrive = motion.fade.fraction
     val leave = motion.fadeQuick.fraction
     val placement = motion.settle.spec(IntOffset.VisibilityThreshold)
+    // A fold kept under the finger moves no item: the list is asked to hold the fold row where it is, and the rows
+    // that stay above it come in from off screen, where the list would otherwise slide them in from its edge (and the
+    // fold row with them). So a scrolled tray folded is placed with no placement move, for as long as it shows that
+    // fold of those sales: the next change of either (a sale paid, the tray opened) moves its rows as ever. The rows
+    // compose in the list's measure, after this composition, so the flag is a fact about what is shown, not a frame.
+    var keptFor by remember { mutableStateOf<List<TillSale>?>(null) }
+    val keeping = shownFolded && keptFor === sales
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
             // The shift's own words, its chrome as much as its rows, fade through a row's grow and shrink at their own
@@ -187,12 +194,12 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                     // tray to the top of Earlier, so the rows' own three specs move everything (M11) and the tray, which
                     // has no node of its own, is its items' amber slices: its height is its rows'.
                     items(items, key = ::itemKey, contentType = ::itemType) { item ->
-                        val moves = Modifier.animateItem(fadeInSpec = arrive, placementSpec = placement, fadeOutSpec = leave)
+                        val moves = Modifier.animateItem(fadeInSpec = arrive, placementSpec = if (keeping) null else placement, fadeOutSpec = leave)
                         when (item) {
                             is ShiftItem.TrayHeader -> TrayHeader(item.count, moves.then(chrome))
                             ShiftItem.Earlier -> SectionHeader(ShiftList.EARLIER, EarlierTop, moves.then(chrome))
                             is ShiftItem.Fold -> FoldRow(item, moves.padding(horizontal = 16.dp).fillMaxWidth().background(mk.warnGround, TrayBottom), chrome) {
-                                if (item.open) keepFoldInPlace(list, items.indexOf(item), item.hidden)
+                                keptFor = if (item.open && keepFoldInPlace(list, item.hidden)) sales else null
                                 folded = !folded
                             }
                             is ShiftItem.Row -> {
@@ -300,25 +307,25 @@ private fun FoldRow(fold: ShiftItem.Fold, modifier: Modifier, words: Modifier, o
 /**
  * Folding an open tray scrolled down past its third row: the rows above the fold row go, and with them the item the
  * list keeps its place by, so the fold row would jump off the top of the screen. The list is asked instead to put it
- * where it is now, under the finger: [fold] is its index before the fold, [hidden] the rows going.
+ * where it is now, under the finger, to the pixel. Found by its key among the items on screen (the list's indices
+ * count the items above the tray too), with [hidden] rows going it is the item [hidden] earlier after the fold, asked
+ * to sit as far below the list's top as it does now: a negative offset, so the list lays out the rows that stay above
+ * it, whatever their heights. Whether it asked: the change is then placed with no placement move.
  */
-private fun keepFoldInPlace(list: LazyListState, fold: Int, hidden: Int) {
-    val after = fold - hidden
+private fun keepFoldInPlace(list: LazyListState, hidden: Int): Boolean {
     val visible = list.layoutInfo.visibleItemsInfo
-    val first = visible.firstOrNull() ?: return
+    val at = visible.firstOrNull { it.key == FoldKey } ?: return false
+    val after = at.index - hidden
     // Anchored on an item that stays (the third row or above), the list keeps its place by itself.
-    if (first.index < after) return
-    val y = visible.firstOrNull { it.index == fold }?.offset ?: 0
-    val row = first.size.coerceAtLeast(1)
-    // The kept rows go above it, one row's height each (the rows are one height), as many as reach where it is.
-    val above = ((y + row - 1) / row).coerceIn(0, ShiftList.FOLD_AFTER)
-    list.requestScrollToItem(after - above, scrollOffset = (above * row - y).coerceAtLeast(0))
+    if (visible.first().index < after) return false
+    list.requestScrollToItem(after, scrollOffset = -at.offset)
+    return true
 }
 
 /** A list item's key: the tray's three parts by name, a row by its sale, so a row keeps its item between sections. */
 private fun itemKey(item: ShiftItem): Any = when (item) {
     is ShiftItem.TrayHeader -> "tray"
-    is ShiftItem.Fold -> "fold"
+    is ShiftItem.Fold -> FoldKey
     ShiftItem.Earlier -> "earlier"
     is ShiftItem.Row -> item.sale.orderId
 }
@@ -329,6 +336,9 @@ private fun itemType(item: ShiftItem): Any = when (item) {
     ShiftItem.Earlier -> 2
     is ShiftItem.Row -> 3
 }
+
+/** The fold row's key, by which [keepFoldInPlace] finds it on screen. */
+private const val FoldKey = "fold"
 
 /** The chevron's turn is in degrees: a tenth of one is still. */
 private const val FoldTurnThreshold = 0.1f

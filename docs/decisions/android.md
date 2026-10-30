@@ -4279,3 +4279,29 @@ design unchanged.
     change; with the plain fade it found 6425 pixels where the labels
     alone draw 5664 and 3397, with the fade through no more than the
     longer label.
+292. **Folding a scrolled tray holds the fold row to the pixel: found by
+    its key, placed by a negative offset, and moved by nothing** (dev2,
+    round 2 review; 269, 288's reading of `keepFoldInPlace`, TraySpec
+    "the list scrolls so the fold row stays where the finger was"). The
+    lead measured a 28 dp hop on the phone and 18 on the tablet. Two
+    causes, both found by logging the list's layout under a new
+    `TrayTest`: `keepFoldInPlace` took the fold's index in the tray's
+    items (`items.indexOf`), four short of its index in the list (the
+    top row, the notice, the summary and the chips come first), so it
+    measured some row's offset, not the fold row's; and the list's item
+    animator, with the item it kept its place by gone, slid the fold row
+    and everything under it in from the list's far edge (`movingInFromEndBound`),
+    from 2901 px to its place. Now the fold row is found among the items
+    on screen by its key, the list is asked to put item `index − hidden`
+    at minus its present offset (the list lays out the rows that stay
+    above it, whatever their heights: no rounding to a row's height, so
+    288's "a wrong count is a scroll of a row" no longer applies), and
+    while the shift shows the fold so made, of those same sales, the
+    items' placement spec is null, so no item slides; the next change
+    (the tray opened, a sale paid or come) moves rows as ever. The flag
+    is a fact about what is shown, not a frame: the rows compose in the
+    list's measure, after the screen's composition, so a flag reset in a
+    `SideEffect` was already false when they read it (tried first, it
+    left the slide). `foldingAScrolledTrayKeepsTheFoldRowWhereItIs`
+    holds the fold row within a pixel on each of thirty frames; before,
+    it was off screen on frame 0.
