@@ -80,6 +80,11 @@ class RunningMovesTest {
 
     @Test fun closeForNowLeavesWithItsCodeDark() = leavesWithItsCode("close-for-now", dark = true) { it.copy(closedAt = 1_100) }
 
+    /** Back from a live sale (260 a): the code is drawn whole on its card on every frame the row's ground holds it. */
+    @Test fun backFromALiveSaleLeavesWithItsCodeLight() = leavesWithItsCode("back-live", dark = false) { it }
+
+    @Test fun backFromALiveSaleLeavesWithItsCodeDark() = leavesWithItsCode("back-live", dark = true) { it }
+
     @Test fun aSaleExpiringAsItIsLeftLeavesWithItsCode() = leavesWithItsCode("expired-left", dark = false) { it.copy(phase = SalePhase.Expired, endedAt = 1_100) }
 
     @Test fun aSaleRefundedAsItIsLeftLeavesWithItsCode() = leavesWithItsCode("refunded-left", dark = true) { it.copy(refundedAt = 1_100, closedAt = 1_100) }
@@ -809,6 +814,51 @@ class RunningMovesTest {
         assertTrue(landed in 1..(STILL_FRAMES + 2), "the crossfade is done in ${STILL_FRAMES} frames or so: $landed")
     }
 
+    /**
+     * The sale screen's paid fold draws one glyph in the card at a time (260 b, decision 252): the tick is not drawn
+     * while the card is closing over its first share, only over the fold's last [Motion.crossfadeOnTrack], as the code
+     * screen's hero comes in; at rest, the tick and no code.
+     */
+    @Test fun thePaidFoldDrawsTheTickOnlyInItsLastShareLight() = tickInLastShare(dark = false)
+
+    @Test fun thePaidFoldDrawsTheTickOnlyInItsLastShareDark() = tickInLastShare(dark = true)
+
+    private fun tickInLastShare(dark: Boolean) {
+        moves.start(Screen.Sale("a1"), dark)
+        val frames = moves.runFor(FOLD_MS) { moves.shown = moves.sale.copy(phase = SalePhase.Paid, paidAt = 1_100) }
+        val card = frames.first().codes.first()
+        val rest = frames.last().hero ?: error("no hero at rest")
+        val failures = mutableListOf<String>()
+        val early = 1f - Motion.Full.crossfadeOnTrack - SHARE_SLACK
+        for (f in frames.drop(1)) {
+            val h = f.hero ?: continue
+            // How far the card has closed toward the hero, by its width: the fold's own progress.
+            val closed = ((card.width - h.width) / (card.width - rest.width)).coerceIn(0f, 1f)
+            if (closed < early && tickShare(f.bitmap, h) > TICK_SHARE) failures += "f${f.index}: the tick is drawn with the card ${"%.2f".format(closed)} closed (its last share starts at ${"%.2f".format(1f - Motion.Full.crossfadeOnTrack)})"
+        }
+        val last = frames.last()
+        if (tickShare(last.bitmap, rest) <= TICK_SHARE) failures += "at rest the hero shows no tick"
+        if (last.codes.any { it.width > 20f }) failures += "at rest a code is still laid out"
+        report("tick-last-share-${theme(dark)}", frames, failures)
+    }
+
+    /** How much of [r] in [b] is the paid tick's green (a code is only ink and white; the hero's ground is a pale green). */
+    private fun tickShare(b: Bitmap, r: Rect): Float {
+        var n = 0
+        var green = 0
+        for (y in r.top.toInt().coerceAtLeast(0) until r.bottom.toInt().coerceAtMost(b.height)) {
+            for (x in r.left.toInt().coerceAtLeast(0) until r.right.toInt().coerceAtMost(b.width)) {
+                val c = b.getPixel(x, y)
+                val red = c shr 16 and 0xff
+                val g = c shr 8 and 0xff
+                val blue = c and 0xff
+                if (g - red > TICK_GREEN && g - blue > TICK_GREEN / 2) green++
+                n++
+            }
+        }
+        return if (n == 0) 0f else green.toFloat() / n
+    }
+
     private companion object {
         /** How close to rest the hero's spring is done: a pixel or two of tail. */
         const val NEAR = 4f
@@ -860,6 +910,15 @@ class RunningMovesTest {
 
         /** Above half shown: readable (decision 188). */
         const val HALF = 0.5f
+
+        /** More of the hero than this is the tick's green: its stroke is a few percent of the circle. */
+        const val TICK_SHARE = 0.004f
+
+        /** How much greener than red a pixel is to be the paid hero's, even faint: no code or white card is green at all. */
+        const val TICK_GREEN = 16
+
+        /** The card's width reads the fold's progress to a frame or so. */
+        const val SHARE_SLACK = 0.05f
 
         /** Half a pixel of the full-size window, in the half-size frames. */
         const val HALF_PIXEL = 0.5f

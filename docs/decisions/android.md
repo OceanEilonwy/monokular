@@ -4082,3 +4082,33 @@ design unchanged.
     to the Back's frame for frame within half a pixel, landing in the
     first Earlier row; Still is the Back's crossfade. Reviewers on the
     phone should read the dwell's trace for `| sale/<id>` first.
+286. **The paid fold's tick comes in over the fold's last share; the
+    code-less full-screen frames of 260 a are not reproduced here and
+    get regressions, not a speculative change** (dev2, round 2, S6;
+    260 a, b, 234, 252). (b) `faceSurface`'s arriving glyph (the paid
+    page's hero coming in over the live code card) takes the lesser of
+    its fade and `Nav.through` over the fold's own progress with
+    `crossfadeOnTrack` as the arriving share, read per draw from the
+    `shown` value the surface already animates, so the tick is never
+    drawn while the card is still closing over its first share: one
+    glyph in the card at a time, as the code screen's hero has it.
+    `RunningMovesTest` reads the hero's green against how far the card
+    has closed: before the change it found the tick at 0.00, 0.09, 0.24
+    and 0.39 closed (f4 to f7, light and dark), after it none before
+    0.56. (a) The bare ground (luminance 242, no code) on a Back from a
+    live sale and on "Close it for now" does not show in the test's
+    frames (a new `backFromALiveSaleLeavesWithItsCode`, light and dark,
+    beside the close-for-now one: the code is on its card on every frame
+    the ground holds it) nor in five screen recordings of a Back on
+    5556 (the code on its card from the first frame until the ground
+    reaches the row). A reading for the lead to check on the phone: the
+    test draws each frame to a software canvas, re-running every draw,
+    while the device redraws a node only when something it read in draw
+    changed; the sale face's lift into the stage's overlay is decided in
+    draw from plain fields (the held move, the course's place), so a
+    frame on which the ground starts being drawn in the overlay, over
+    both screens, could replay the face's last recording in place,
+    under it, until the face next draws. If the phone shows it, the fix
+    is for that decision to read the stage's progress (a state the
+    spring already writes each frame), so the face redraws on the frames
+    of a move; it is not made here unseen.
