@@ -62,6 +62,9 @@ class MotionTest {
         assertEquals(1600, pulse.durationMillis)
         val glints = assertIs<TweenSpec<Float>>(full.glints!!.animation)
         assertEquals(GLINT_MS, glints.durationMillis, "one turn of the glints is the mark's own")
+        val spin = assertIs<TweenSpec<Float>>(full.spin!!.animation)
+        assertEquals(1600, spin.durationMillis, "the ring's arc turns a lap in 1.6 s")
+        assertEquals(0.5f, spin.easing.transform(0.5f), "at one speed")
     }
 
     @Test
@@ -107,6 +110,7 @@ class MotionTest {
         assertEquals(120, assertIs<TweenSpec<Float>>(still.fadeQuick.fraction).durationMillis)
         assertNull(still.pulse)
         assertNull(still.glints)
+        assertNull(still.spin, "the ring's arc stands still")
         assertNull(still.thrown, "nothing is carried past a release")
         assertNotNull(full.thrown)
         assertSame(Motion.Full, full, "one instance each, so a window reads the same presets as the next")

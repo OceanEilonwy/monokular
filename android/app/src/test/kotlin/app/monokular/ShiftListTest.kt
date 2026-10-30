@@ -118,8 +118,10 @@ class ShiftListTest {
     fun `each row says how its sale stands, in its state's colour`() {
         fun row(sale: TillSale) = ShiftList.row(sale, PointOfSale.Square, secondsLeft = 552, Locale.US, zone).let { Triple(it.sub, it.tone, it.icon) }
         assertEquals(Triple("Waiting · 9:12 left", Tone.Link, StateIcon.Ring), row(sale("w")))
-        assertEquals(Triple("Seen on the network", Tone.Link, StateIcon.Ring), row(sale("w", SalePhase.Seen)))
-        assertEquals(Triple("Confirming", Tone.Link, StateIcon.Ring), row(sale("w", SalePhase.Confirming)))
+        assertEquals(Triple("Seen on the network", Tone.Paid, StateIcon.Ring), row(sale("w", SalePhase.Seen)), "the money on its way is green")
+        assertEquals(Triple("Confirming", Tone.Paid, StateIcon.Ring), row(sale("w", SalePhase.Confirming)), "until Monokulo says how many")
+        val counted = sale("w", SalePhase.Confirming).copy(confirmations = 4, confirmationsRequired = 10)
+        assertEquals(Triple("Confirming · 4 of 10", Tone.Paid, StateIcon.Ring), row(counted))
         assertEquals(Triple("Part paid · 9:12 left", Tone.Link, StateIcon.Ring), row(sale("w", SalePhase.Partial)))
         val rows = shift.associate { it.orderId to row(it) }
         assertEquals(Triple("Closed · not paid · refund it in Square", Tone.Warn, StateIcon.Clock), rows["closedHere"])

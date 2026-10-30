@@ -124,7 +124,7 @@ fun CodeScreen(sale: TillSale, onBack: () -> Unit) {
                 }
                 Column(Modifier.words(over = Move.CodeGrow, on = ground), horizontalAlignment = Alignment.CenterHorizontally) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                        PhaseRing(sale.phase, 26.dp, track = Fixed.Track, fill = Fixed.Accent)
+                        PhaseRing(sale, 26.dp, track = Fixed.Track, fill = Fixed.Accent, paid = Fixed.Paid)
                         Text("Scan with any Monero wallet", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = ink)
                     }
                     Text("Tap anywhere to shrink", fontSize = 13.sp, color = muted, modifier = Modifier.padding(top = 6.dp))

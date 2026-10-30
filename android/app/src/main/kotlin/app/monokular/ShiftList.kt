@@ -161,15 +161,13 @@ object ShiftList {
         val other = sale.deviceName ?: "another till"
         val standing = sale.standing
         val (sub, tone, icon) = when (standing) {
-            is Standing.Live -> Triple(
-                when (standing.phase) {
-                    SalePhase.Partial -> "Part paid$left"
-                    SalePhase.Seen -> "Seen on the network"
-                    SalePhase.Confirming -> "Confirming"
-                    else -> "Waiting$left"
-                },
-                Tone.Link, StateIcon.Ring,
-            )
+            // The money on its way is the paid green, as its ring is (Board 5); still waiting for it, the link's.
+            is Standing.Live -> when (standing.phase) {
+                SalePhase.Partial -> Triple("Part paid$left", Tone.Link, StateIcon.Ring)
+                SalePhase.Seen -> Triple("Seen on the network", Tone.Paid, StateIcon.Ring)
+                SalePhase.Confirming -> Triple(SaleText.confirming(sale), Tone.Paid, StateIcon.Ring)
+                else -> Triple("Waiting$left", Tone.Link, StateIcon.Ring)
+            }
             is Standing.Paid -> Triple(
                 SaleText.status(sale, till) + at(sale.paidAt),
                 when {

@@ -105,7 +105,7 @@ private fun Answer(
     when (choice) {
         CloseChoice.RefundIt -> Glyph(mk.dangerGround) { Icon(MkIcons.Refund, null, tint = mk.danger, modifier = Modifier.size(20.dp)) }
         CloseChoice.CloseForNow -> Glyph(mk.chip) { Icon(MkIcons.Tray, null, tint = mk.ink, modifier = Modifier.size(18.dp)) }
-        CloseChoice.KeepUp -> Glyph(mk.warnGround) { PhaseRing(sale.phase, 22.dp, track = mk.edge) }
+        CloseChoice.KeepUp -> Glyph(mk.warnGround) { PhaseRing(sale, 22.dp, track = mk.edge) }
     }
     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
         Text(Closing.title(choice, sale, pos), fontSize = 16.sp, fontWeight = FontWeight.Bold)

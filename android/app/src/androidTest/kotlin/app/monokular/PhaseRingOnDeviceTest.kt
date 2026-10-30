@@ -40,14 +40,19 @@ class PhaseRingOnDeviceTest {
     private val paid = LightTokens.paid
 
     private var phase by mutableStateOf(SalePhase.Waiting)
+    private var confirmations by mutableStateOf<Int?>(null)
+    private val required = 10
 
-    private fun ring(motion: Motion, from: SalePhase) {
+    private fun ring(motion: Motion, from: SalePhase, have: Int? = null) {
         phase = from
+        confirmations = have
         compose.mainClock.autoAdvance = false
         compose.setContent {
             MonokularTheme(dark = false) {
                 CompositionLocalProvider(LocalMotion provides motion) {
-                    Box(Modifier.testTag("ring").padding(0.dp)) { PhaseRing(phase, 120.dp, track = track, fill = fill) }
+                    Box(Modifier.testTag("ring").padding(0.dp)) {
+                        PhaseRing(phase, 120.dp, track = track, fill = fill, confirmations = confirmations, required = required.takeIf { confirmations != null })
+                    }
                 }
             }
         }
@@ -73,47 +78,49 @@ class PhaseRingOnDeviceTest {
     }
 
     @Test
-    fun aRingThatAppearsAtSeenIsAlreadyHalfFull() {
-        ring(Motion.Full, SalePhase.Seen)
+    fun aRingThatAppearsAtSeenIsAlreadyItsShortGreenArc() {
+        ring(Motion.Full, SalePhase.Seen, have = 0)
         val image = frame()
-        assertColour(fill, image.at(170.0), "the half is drawn on the first frame")
-        assertColour(track, image.at(200.0), "and no more")
+        assertColour(paid, image.at(20.0), "0.12 of the ring, green, on the first frame")
+        assertColour(track, image.at(90.0), "and no more")
     }
 
     @Test
-    fun aStepSweepsTheNextQuarterAndNeverPassesIt() {
+    fun waitingIsAStillOrangeQuarter() {
         ring(Motion.Full, SalePhase.Waiting)
-        assertColour(track, frame().at(135.0), "Waiting fills the first quarter only")
-        phase = SalePhase.Seen
-        compose.mainClock.advanceTimeBy(100)
-        val early = frame()
-        assertColour(fill, early.at(105.0), "a tenth of a second in, the arc has started into the second quarter")
-        assertColour(track, early.at(160.0), "but is still on its way")
-        repeat(20) {
-            compose.mainClock.advanceTimeBy(100)
-            assertColour(track, frame().at(196.0), "the sweep never passes the half")
-        }
-        val settled = frame()
-        assertColour(fill, settled.at(170.0), "it reaches the half")
+        val first = frame()
+        assertColour(fill, first.at(60.0), "the quarter in the fill")
+        compose.mainClock.advanceTimeBy(800)
+        val later = frame()
+        assertColour(fill, later.at(60.0), "still there")
+        assertColour(track, later.at(135.0), "and it hasn't moved on")
     }
 
     @Test
-    fun aSecondStepMidSweepCarriesOnFromWhereTheArcIs() {
-        ring(Motion.Full, SalePhase.Waiting)
-        phase = SalePhase.Seen
-        compose.mainClock.advanceTimeBy(100)
-        phase = SalePhase.Confirming
-        compose.mainClock.advanceTimeByFrame()
-        assertColour(fill, frame().at(105.0), "the arc doesn't go back to retarget")
-        compose.mainClock.advanceTimeBy(2_000)
+    fun aConfirmationLengthensTheArcOnTheSweep() {
+        ring(Motion.Full, SalePhase.Confirming, have = 1)
+        confirmations = 4
+        // A whole turn: the arc is back at the top, and the 600 ms sweep long done.
+        compose.mainClock.advanceTimeBy(Motion.SPIN_MS.toLong())
         val settled = frame()
-        assertColour(fill, settled.at(260.0), "three quarters")
-        assertColour(track, settled.at(286.0), "and no more")
+        assertColour(paid, settled.at(140.0), "4 of 10 is 0.47 of the ring")
+        assertColour(track, settled.at(220.0), "and no more")
     }
 
     @Test
-    fun paidClosesTheRingInThePaidColour() {
-        ring(Motion.Full, SalePhase.Confirming)
+    fun theArcTurnsWhileConfirming() {
+        ring(Motion.Full, SalePhase.Confirming, have = 4)
+        assertColour(paid, frame().at(90.0), "from the top to 170 degrees")
+        compose.mainClock.advanceTimeBy(Motion.SPIN_MS / 2L)
+        val half = frame()
+        assertColour(track, half.at(90.0), "half a turn later the top right is empty")
+        assertColour(paid, half.at(270.0), "and the arc is on the other side")
+    }
+
+    @Test
+    fun paidClosesTheRingInThePaidColourAndStops() {
+        ring(Motion.Full, SalePhase.Confirming, have = 9)
+        compose.mainClock.advanceTimeBy(300)
         phase = SalePhase.Paid
         compose.mainClock.advanceTimeBy(2_000)
         val image = frame()
@@ -139,22 +146,30 @@ class PhaseRingOnDeviceTest {
     }
 
     @Test
-    fun paidAndTheNextSaleNeverDrawTheRingInAMixOfTheirColours() {
-        ring(Motion.Full, SalePhase.Confirming)
+    fun seenAndTheNextSaleNeverDrawTheRingInAMixOfTheirColours() {
+        ring(Motion.Full, SalePhase.Waiting)
+        phase = SalePhase.Confirming
+        confirmations = 1
+        assertNoMixedHue("turning green on the way")
         phase = SalePhase.Paid
         assertNoMixedHue("closing on paid")
         assertColour(paid, frame().at(45.0), "closed in the paid colour")
         phase = SalePhase.Waiting
+        confirmations = null
         assertNoMixedHue("the next sale's ring")
         assertColour(fill, frame().at(45.0), "back to the fill")
     }
 
     @Test
-    fun underStillMotionAStepIsDrawnOnTheNextFrame() {
-        ring(Motion.Still, SalePhase.Waiting)
-        phase = SalePhase.Seen
+    fun underStillMotionTheArcNeverTurnsAndALengthIsDrawnOnTheNextFrame() {
+        ring(Motion.Still, SalePhase.Confirming, have = 1)
+        confirmations = 4
         compose.mainClock.advanceTimeByFrame()
         compose.mainClock.advanceTimeByFrame()
-        assertColour(fill, frame().at(170.0), "snapped to the half")
+        assertColour(paid, frame().at(140.0), "snapped to 4 of 10")
+        compose.mainClock.advanceTimeBy(Motion.SPIN_MS / 2L)
+        val later = frame()
+        assertColour(paid, later.at(90.0), "still from the top")
+        assertColour(track, later.at(220.0), "and no further")
     }
 }

@@ -51,7 +51,7 @@ object SaleText {
         is Standing.Live -> when (standing.phase) {
             SalePhase.Partial -> "Part paid"
             SalePhase.Seen -> "Seen on the network"
-            SalePhase.Confirming -> "Confirming"
+            SalePhase.Confirming -> confirming(sale)
             else -> "Waiting for payment"
         }
         is Standing.Paid -> when {
@@ -64,6 +64,13 @@ object SaleText {
         Standing.Expired, Standing.Reversed, Standing.OtherTill -> ended(sale.phase)
         Standing.Refunded -> PosText.refundedIn(till)
         Standing.RefundInPos -> "Not paid · " + PosText.refundItIn(till)
+    }
+
+    /** "Confirming · 4 of 10": its payment's confirmations of the store's threshold, or "Confirming" until Monokulo says. */
+    fun confirming(sale: TillSale): String {
+        val have = sale.confirmations ?: return "Confirming"
+        val need = sale.confirmationsRequired?.takeIf { it > 0 } ?: return "Confirming"
+        return "Confirming · ${have.coerceIn(0, need)} of $need"
     }
 
     /** How a sale that isn't live ended, or that it was closed here while still waiting. */
