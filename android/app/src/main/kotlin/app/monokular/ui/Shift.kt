@@ -17,13 +17,16 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitHorizontalTouchSlopOrCancellation
 import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.horizontalDrag
 import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.indication
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -33,10 +36,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.LazyListState
@@ -74,6 +80,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -82,6 +89,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawscope.clipRect
@@ -90,12 +98,17 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.input.pointer.util.addPointerInputChange
+import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.role
@@ -104,11 +117,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.monokular.CloseOutcome
+import app.monokular.Closing
 import app.monokular.FoldStack
 import app.monokular.Ground
 import app.monokular.GroundLook
@@ -123,6 +140,7 @@ import app.monokular.PosText
 import app.monokular.ShiftList
 import app.monokular.StateIcon
 import app.monokular.rememberGroundTrack
+import app.monokular.RowSwipe
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
 import app.monokular.sharedGround
@@ -205,6 +223,9 @@ fun ShiftScreen(
     // rows compose in the list's measure, after this composition, so the flag is a fact about what is shown, not a frame.
     var keptFor by remember { mutableStateOf<List<TillSale>?>(null) }
     val keeping = shownFolded && keptFor === sales
+    // The sale whose row was swiped to the start (or given TalkBack's "Close sale"): its X's sheet is up, for as long
+    // as the sale still has the X. Kept here, not on the row, so the sheet stays up as the row moves in the list.
+    var asking by rememberSaveable { mutableStateOf<String?>(null) }
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
             // The shift's own words, its chrome as much as its rows, fade through a row's grow and shrink at their own
@@ -268,7 +289,8 @@ fun ShiftScreen(
                             is ShiftItem.Row -> {
                                 // Opened by its id alone, so a row whose corners change keeps the one it had and skips.
                                 val id = item.sale.orderId
-                                SaleItem(item, trayFolds, now, focusOn, moves) {
+                                val ask = if (RowSwipe.swipes(item.sale)) ({ asking = id }) else null
+                                SaleItem(item, trayFolds, now, focusOn, moves, ask) {
                                     place.leave(list, id)
                                     actions.onOpen(id)
                                 }
@@ -280,6 +302,25 @@ fun ShiftScreen(
             }
         }
     }
+    // The sale page's X's sheet, the same answers doing the same (decisions 62, 70). Paid or ended meanwhile, the sale
+    // has no X: the sheet goes and nothing is asked. "No: refund it" stays on the sale there, so here it opens the
+    // sale, whose page shows the refund and asks for the cashier's word when the point of sale refunds it.
+    val asked = asking?.let { id -> sales.firstOrNull { it.orderId == id } }?.takeIf(RowSwipe::swipes)
+    if (asking != null && asked == null) SideEffect { asking = null }
+    if (asked != null) {
+        val id = asked.orderId
+        CloseSheet(
+            asked, actions.source, now,
+            onChoice = { choice ->
+                actions.onClose(id, choice)
+                if (Closing.outcome(choice).then == CloseOutcome.Then.Sale) {
+                    place.leave(list, id)
+                    actions.onOpen(id)
+                }
+            },
+            onDismiss = { asking = null },
+        )
+    }
 }
 
 /**
@@ -288,7 +329,15 @@ fun ShiftScreen(
  * In the tray the card sits in its slice of the amber, 4 dp in, so it is concentric with the tray's corners.
  */
 @Composable
-private fun SaleItem(item: ShiftItem.Row, trayFolds: Boolean, now: LongState, focusOn: MutableState<String?>, modifier: Modifier = Modifier, onOpen: () -> Unit) {
+private fun SaleItem(
+    item: ShiftItem.Row,
+    trayFolds: Boolean,
+    now: LongState,
+    focusOn: MutableState<String?>,
+    modifier: Modifier = Modifier,
+    onAsk: (() -> Unit)? = null,
+    onOpen: () -> Unit,
+) {
     val sale = item.sale
     // Only the row the cashier came back to reads where focus goes, and asks for it once the stage has landed. A row
     // that can be clicked takes no focus in touch mode, so this one row may, for as long as it is the one came back to.
@@ -307,15 +356,111 @@ private fun SaleItem(item: ShiftItem.Row, trayFolds: Boolean, now: LongState, fo
     val bottom = (ends == RowEnds.Last || ends == RowEnds.Only) && !trayFolds
     val slice = if (!item.tray) Modifier else Modifier.background(mk.warnGround, traySlice(top, bottom))
         .padding(start = TrayPadding, end = TrayPadding, top = if (top) TrayPadding else 0.dp, bottom = if (bottom) TrayPadding else 0.dp)
+    // A row whose sale has the X swipes to the start over the X's ground ([RowSwipe]): the card and its words move as
+    // one, by a pull in dp held and settled as the fold's stack's is.
+    val pull = if (onAsk != null) remember { StackPull() } else null
     Box(modifier.padding(horizontal = 16.dp).fillMaxWidth().then(slice)) {
-        Box {
-            val ground = rememberGroundTrack("sale/${sale.orderId}")
-            Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, rowLook(ends, mk.card), ground))
-            Column(Modifier.fillMaxWidth().words(over = Move.RowGrow, on = ground).clip(shape)) {
-                if (ends == RowEnds.Middle || ends == RowEnds.Last) Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(mk.divider))
-                SaleRow(sale, now, if (focus != null) Modifier.focusRequester(focus).focusProperties { canFocus = true } else Modifier, onOpen)
+        Box(if (pull != null && onAsk != null) Modifier.swipesToAsk(pull, onAsk) else Modifier) {
+            if (pull != null) SwipeBacking(pull.dp, shape)
+            Box(if (pull != null) Modifier.offset { IntOffset(pull.dp.floatValue.dp.roundToPx(), 0) } else Modifier) {
+                val ground = rememberGroundTrack("sale/${sale.orderId}")
+                Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, rowLook(ends, mk.card), ground))
+                Column(Modifier.fillMaxWidth().words(over = Move.RowGrow, on = ground).clip(shape)) {
+                    if (ends == RowEnds.Middle || ends == RowEnds.Last) Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(mk.divider))
+                    SaleRow(sale, now, if (focus != null) Modifier.focusRequester(focus).focusProperties { canFocus = true } else Modifier, onAsk, onOpen)
+                }
             }
         }
+    }
+}
+
+/**
+ * A row swiped to the start ([RowSwipe]): horizontal only, so the list's scroll and the fold's pull down keep theirs,
+ * and not from inside the system's gesture zones, where a swipe in from the edge is Back. The row follows the finger
+ * on [pull] (still under reduced motion), and let go it settles back on [Motion.settle] with the finger's speed; past
+ * the reach or flung, [onAsk] too. A new touch catches it where it is.
+ */
+@Composable
+private fun Modifier.swipesToAsk(pull: StackPull, onAsk: () -> Unit): Modifier {
+    val m = motion
+    val scope = rememberCoroutineScope()
+    val ask by rememberUpdatedState(onAsk)
+    val zones = WindowInsets.systemGestures
+    val placed = remember { Placed() }
+    return onPlaced { placed.at = it }.pointerInput(pull, m) {
+        val back = m.settle.spec<Float>(StackThreshold)
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            if (placed.inZone(down.position, zones, this)) return@awaitEachGesture
+            var raw = 0f
+            // To the start only: a swipe to the end is nobody's, one up or down the list's.
+            val start = awaitHorizontalTouchSlopOrCancellation(down.id) { change, over ->
+                if (over < 0f) {
+                    change.consume()
+                    raw = over
+                }
+            } ?: return@awaitEachGesture
+            val width = size.width / density
+            // Caught settling, the row goes on from where it is, not from its rest.
+            val from = pull.dp.floatValue
+            pull.hold(if (m.still) 0f else RowSwipe.pulled(from + raw / density, width))
+            // Cut off under the finger (the system took it for Back, the row left the list), the row still settles.
+            var let = false
+            try {
+                val tracker = VelocityTracker()
+                tracker.addPointerInputChange(start)
+                val ended = horizontalDrag(start.id) { change ->
+                    raw += change.positionChange().x
+                    change.consume()
+                    tracker.addPointerInputChange(change)
+                    if (!m.still) pull.hold(RowSwipe.pulled(from + raw / density, width))
+                }
+                val velocity = tracker.calculateVelocity().x / density
+                let = true
+                pull.settle(scope, pull.dp.floatValue, back, velocity)
+                if (ended && RowSwipe.asks(RowSwipe.pulled(from + raw / density, width), width, velocity)) ask()
+            } finally {
+                if (!let) pull.settle(scope, pull.dp.floatValue, back)
+            }
+        }
+    }
+}
+
+/** Where a swiping row is in its window, kept as it is placed and read only as a touch lands. */
+private class Placed {
+    var at: LayoutCoordinates? = null
+
+    /** Whether [position], on the row, is inside the system's gesture zones at the window's sides (left and right as drawn). */
+    fun inZone(position: Offset, zones: WindowInsets, density: Density): Boolean {
+        val at = at?.takeIf { it.isAttached } ?: return false
+        val x = at.localToWindow(position).x
+        val window = at.findRootCoordinates().size.width
+        return x < zones.getLeft(density, LayoutDirection.Ltr) || x > window - zones.getRight(density, LayoutDirection.Ltr)
+    }
+}
+
+/**
+ * What a swiped row uncovers: the X's danger ground in the row's [shape], its X at the end, drawn only in the strip
+ * the card has moved off ([pull], read per draw), so nothing is drawn at rest and nothing shows round the card.
+ */
+@Composable
+private fun BoxScope.SwipeBacking(pull: FloatState, shape: Shape) {
+    val ground = mk.dangerGround
+    Box(
+        Modifier.matchParentSize().drawWithCache {
+            val outline = shape.createOutline(size, layoutDirection, this)
+            onDrawWithContent {
+                val shown = -pull.floatValue.dp.toPx()
+                if (shown <= 0f) return@onDrawWithContent
+                clipRect(left = size.width - shown) {
+                    drawOutline(outline, ground)
+                    this@onDrawWithContent.drawContent()
+                }
+            }
+        },
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        Icon(MkIcons.Close, contentDescription = null, tint = mk.danger, modifier = Modifier.padding(end = 24.dp).size(16.dp))
     }
 }
 
@@ -820,14 +965,17 @@ private fun badgeGround(icon: StateIcon): Ground = when (icon) {
 
 /** One sale: its state's icon, "Sale #m2Qe · $8.40", how it stands, and where a tap goes. */
 @Composable
-private fun SaleRow(sale: TillSale, now: LongState, modifier: Modifier, onOpen: () -> Unit) {
+private fun SaleRow(sale: TillSale, now: LongState, modifier: Modifier, onAsk: (() -> Unit)?, onOpen: () -> Unit) {
     // Only a live row reads the clock, and only its own second: the shift above it doesn't tick.
     val seconds by remember(sale) { derivedStateOf { if (sale.live) secondsLeft(sale.expiresAt, now.longValue) else 0L } }
     val pos = posOf(sale)
     val row = remember(sale, pos, seconds) { ShiftList.row(sale, pos, seconds) }
+    // The swipe's way for TalkBack: the X's own words, on the row.
+    val asks = onAsk?.let { remember(it) { listOf(CustomAccessibilityAction("Close sale") { it(); true }) } }
     Row(
         modifier.fillMaxWidth().heightIn(min = 64.dp)
             .clickable(onClickLabel = if (row.opens == RowOpens.Code) "Show the code" else "Open the details", role = Role.Button, onClick = onOpen)
+            .then(if (asks != null) Modifier.semantics { customActions = asks } else Modifier)
             .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
