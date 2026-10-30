@@ -4473,3 +4473,31 @@ design unchanged.
     every frame until the words begin, and no code outside it. Before:
     f8 (p 0.50) no code, light and dark; after, it passes with the rest of
     `RunningMovesTest` (54) on 5556.
+300. **A Back puts the shift's list back where it was, and the row under
+    the finger only when it would otherwise be off screen** (dev2, round
+    2 fix round 2; the designer's stepback; amends 296). With the list at
+    its top and five waiting, the first tray row tapped and the sale paid,
+    the step-back came back scrolled about 400 px: the title, the chips,
+    "Waiting for payment" and the tray's first waiting sale above the
+    screen. 296 asked for the tapped sale's row at its tap offset, but a
+    paid sale has moved from the tray to the top of Earlier, so keeping
+    that row under the finger scrolls the whole list by the rows now above
+    it. `ShiftPlace` now also keeps the list's own place when the row is
+    tapped (`firstVisibleItemIndex`, its scroll offset, and the last item
+    shown whole), and the Back's first composition puts the list back
+    there when the row's index now falls inside that window; only a row
+    that would then be off screen (or cut at the top) is put under the
+    finger as 296 did. Judged by item indices, not measured heights: the
+    composition that asks has no layout yet, and a row that moved within
+    the shown window lands within a row's height of where the window was.
+    296's far-down case (21 waiting, scrolled to the end, the last row
+    tapped) keeps its index and is restored by the list's place, so
+    `backIntoARowScrolledFarDownTheTrayLandsInIt` and the peeked variant
+    still pass. The place survives a rotation (the saver keeps the three
+    new numbers). `RunningMovesTest.thePaidStepBackFromTheFirstTrayRowKeepsTheListAtItsTop`
+    (five waiting, 18 paid so the list can scroll, the first tray row
+    tapped, paid, the step-back): the title at its place before the tap,
+    the tray's first waiting sale on screen, the paid row under it and on
+    screen, the ground landing in it. Before: the title gone and the tray's
+    first row at -7 px; after, it passes with RunningMovesTest (55) and
+    TrayTest (15) on 5556.

@@ -144,12 +144,14 @@ fun ShiftScreen(
     // (decision 296). Asked once by this list; the place is forgotten only once the shift has landed, so a back
     // gesture peeked and cancelled (which composes the shift and leaves it again) leaves it for the Back that follows
     // (decision 297). A Back from a sale not left from its row asks nothing.
+    // The list is put back where it was first (decision 300): a sale paid meanwhile has moved from the tray to the top
+    // of Earlier, and holding its row under the finger would scroll the whole list, the tray's waiting sales off the
+    // top. Only a row that would then be off screen is put back under the finger instead.
     if (cameFrom != null && place.sale == cameFrom && place.askedBy !== list) {
         val index = rowIndex(status, sales, items, cameFrom)
-        val offset = place.offset
         SideEffect {
             place.askedBy = list
-            if (index >= 0) list.requestScrollToItem(index, scrollOffset = -offset)
+            if (index >= 0) place.restore(list, index)
         }
     }
     val focusOn = remember { mutableStateOf<String?>(null) }
@@ -361,9 +363,9 @@ private fun keepFoldInPlace(list: LazyListState, hidden: Int): Boolean {
 }
 
 /**
- * Where the shift's list was when the cashier left it from a row: that row's sale, and how far below the list's top
- * it sat. The shift leaves composition while a sale is up, its list state with it, so this is kept above the stage
- * (the activity's), and a Back puts the row there again ([ShiftScreen], decisions 296 and 297). Plain fields: written
+ * Where the shift's list was when the cashier left it from a row: that row's sale, how far below the list's top it
+ * sat, and the list's own place. The shift leaves composition while a sale is up, its list state with it, so this is
+ * kept above the stage (the activity's), and a Back puts the list there again ([ShiftScreen], decisions 296, 297, 300). Plain fields: written
  * by a tap, read by the composition a Back starts, forgotten once the shift has landed; nothing draws or recomposes
  * from them.
  */
@@ -371,6 +373,11 @@ private fun keepFoldInPlace(list: LazyListState, hidden: Int): Boolean {
 class ShiftPlace {
     internal var sale: String? = null
     internal var offset = 0
+
+    /** The list's own place when the row was tapped: its first item shown, how far that is scrolled, and the last item shown whole. */
+    internal var first = 0
+    internal var firstOffset = 0
+    internal var lastWhole = -1
 
     /** The list that has asked for this place: a shift composed afresh (a new list) asks again, the same list never. */
     internal var askedBy: LazyListState? = null
@@ -381,11 +388,26 @@ class ShiftPlace {
         askedBy = null
     }
 
-    /** The cashier leaves the shift from [id]'s row: where it is on screen now. */
+    /** The cashier leaves the shift from [id]'s row: where it is on screen now, and where the list is. */
     internal fun leave(list: LazyListState, id: String) {
-        val at = list.layoutInfo.visibleItemsInfo.firstOrNull { it.key == id }
+        val info = list.layoutInfo
+        val visible = info.visibleItemsInfo
+        val at = visible.firstOrNull { it.key == id }
         sale = at?.let { id }
         offset = at?.offset ?: 0
+        first = list.firstVisibleItemIndex
+        firstOffset = list.firstVisibleItemScrollOffset
+        lastWhole = visible.lastOrNull { it.offset + it.size <= info.viewportEndOffset }?.index ?: -1
+    }
+
+    /**
+     * Puts [list], composed afresh by a Back, where it was when the row was tapped, if the row (now at [index], the sale
+     * may have moved from the tray to Earlier) is shown whole there; otherwise puts the row where it was, under the
+     * finger. Either way the row is laid out on the change's first frame for the ground to land in.
+     */
+    internal fun restore(list: LazyListState, index: Int) {
+        val shown = (index > first || (index == first && firstOffset == 0)) && index <= lastWhole
+        if (shown) list.requestScrollToItem(first, firstOffset) else list.requestScrollToItem(index, scrollOffset = -offset)
     }
 }
 
@@ -394,8 +416,16 @@ class ShiftPlace {
 fun rememberShiftPlace(): ShiftPlace = rememberSaveable(saver = ShiftPlaceSaver) { ShiftPlace() }
 
 private val ShiftPlaceSaver = listSaver<ShiftPlace, Any>(
-    save = { p -> p.sale?.let { listOf(it, p.offset) }.orEmpty() },
-    restore = { l -> ShiftPlace().apply { sale = l.getOrNull(0) as String?; offset = l.getOrNull(1) as Int? ?: 0 } },
+    save = { p -> p.sale?.let { listOf(it, p.offset, p.first, p.firstOffset, p.lastWhole) }.orEmpty() },
+    restore = { l ->
+        ShiftPlace().apply {
+            sale = l.getOrNull(0) as String?
+            offset = l.getOrNull(1) as Int? ?: 0
+            first = l.getOrNull(2) as Int? ?: 0
+            firstOffset = l.getOrNull(3) as Int? ?: 0
+            lastWhole = l.getOrNull(4) as Int? ?: -1
+        }
+    },
 )
 
 /**
