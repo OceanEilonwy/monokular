@@ -22,6 +22,10 @@ data class Order(
     val currency: String? = null,
     @SerialName("merchant_order_id") val merchantOrderId: String? = null,
     @SerialName("expires_at") val expiresAt: Long,
+    /** Confirmations its payment has; null from a Monokulo that doesn't say. */
+    val confirmations: Int? = null,
+    /** Confirmations it needs to count as paid: the store's threshold for its amount. Null from a Monokulo that doesn't say. */
+    @SerialName("confirmations_required") val confirmationsRequired: Int? = null,
     /** Its `self` link, absolute: where to read it again. */
     @Transient val url: String = "",
 ) {

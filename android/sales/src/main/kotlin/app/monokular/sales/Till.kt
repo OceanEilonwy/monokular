@@ -83,9 +83,20 @@ data class TillSale(
      * the refund.
      */
     val refundPendingAt: Long? = null,
+    /**
+     * How many confirmations its payment has, of the [confirmationsRequired]
+     * the store asks for its amount: what a seen or confirming sale's ring
+     * grows by and its "Confirming · 4 of 10" counts. Null until Monokulo
+     * says, when the ring fills by step instead.
+     */
+    val confirmations: Int? = null,
+    val confirmationsRequired: Int? = null,
 ) {
     /** Worth reading again: Monokulo may still move it on. */
     val open: Boolean get() = !settled && phase != SalePhase.Paid
+
+    /** Its payment is on the network and not yet paid: its confirmations are worth following ([Till.followConfirmations]). */
+    val confirming: Boolean get() = open && (phase == SalePhase.Seen || phase == SalePhase.Confirming)
 
     val refunded: Boolean get() = refundedAt != null
 }
@@ -274,20 +285,71 @@ class Till(
         }
     }
 
-    /** An order's phase, from its status, and whether it's [TillSale.settled] (after the stream reconnects). */
-    fun onStatus(orderId: String, phase: SalePhase, settled: Boolean = false) {
+    /**
+     * An order's phase, from its status, whether it's [TillSale.settled], and
+     * its confirmations of those it needs when Monokulo said (a read of the
+     * order: after the stream reconnects, or [followConfirmations]).
+     */
+    fun onStatus(orderId: String, phase: SalePhase, settled: Boolean = false, confirmations: Int? = null, required: Int? = null) {
         val at = now()
-        change { s -> s.copy(sales = s.sales.map { if (it.orderId == orderId) it.moved(phase, at).copy(settled = settled) else it }) }
+        change { s ->
+            s.copy(
+                sales = s.sales.map {
+                    if (it.orderId != orderId) return@map it
+                    val moved = it.moved(phase, at)
+                    moved.copy(
+                        settled = settled,
+                        confirmations = confirmations ?: moved.confirmations,
+                        confirmationsRequired = required ?: moved.confirmationsRequired,
+                    )
+                },
+            )
+        }
+    }
+
+    /** [order], read again: its phase, whether it's settled and its confirmations. */
+    fun onStatus(order: Order) = onStatus(order.orderId, order.phase, order.isFinal, order.confirmations, order.confirmationsRequired)
+
+    /**
+     * Reads every sale whose payment is seen or confirming ([TillSale.confirming])
+     * at once and then each [CONFIRMATIONS_READ_MS], so its ring and its "4 of
+     * 10" follow the blocks: the store's event stream says when a payment is
+     * seen and when it's first in a block, never each confirmation after. One
+     * wait, started again whenever which sales those are changes (a sale paid,
+     * a new one seen); nothing is read while there are none. A read that fails
+     * waits for the next.
+     */
+    suspend fun followConfirmations() {
+        sales.map { s -> s.sales.mapNotNull { sale -> sale.url?.takeIf { sale.confirming } } }.distinctUntilChanged().collectLatest { urls ->
+            while (urls.isNotEmpty()) {
+                for (url in urls) {
+                    try {
+                        onStatus(monokulo.order(connection, url))
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                    }
+                }
+                delay(CONFIRMATIONS_READ_MS)
+            }
+        }
     }
 
     /**
      * The sale moved on to [to], the time of its first step there kept: seen when
      * its payment first showed, paid, or ended unpaid. A step already timed
-     * keeps its time (a resync says what, not when).
+     * keeps its time (a resync says what, not when). Seen, its payment has no
+     * confirmation yet; confirming, at least the one block it's in, until a
+     * read of the order says how many.
      */
     private fun TillSale.moved(to: SalePhase, at: Long): TillSale = after(to).let { phase ->
         copy(
             phase = phase,
+            confirmations = when (phase) {
+                SalePhase.Seen -> 0
+                SalePhase.Confirming -> (confirmations ?: 1).coerceAtLeast(1)
+                else -> confirmations
+            },
             seenAt = seenAt ?: at.takeIf { phase == SalePhase.Seen || phase == SalePhase.Confirming || phase == SalePhase.Partial },
             paidAt = paidAt ?: at.takeIf { phase == SalePhase.Paid },
             endedAt = endedAt ?: at.takeIf { phase.isUnpaid },
@@ -449,6 +511,8 @@ class Till(
                 closedAt = known?.closedAt,
                 refundedAt = known?.refundedAt,
                 refundPendingAt = known?.refundPendingAt,
+                confirmations = known?.confirmations ?: order.confirmations,
+                confirmationsRequired = order.confirmationsRequired ?: known?.confirmationsRequired,
             )
             s.copy(sales = listOf(sale) + s.sales.filterNot { it.orderId == order.orderId })
         }
@@ -475,6 +539,13 @@ class Till(
 
         /** The timer asks the POS about pending refunds at most this often, in seconds (decision 130). */
         const val REFUND_LOOK_SECONDS = 30L
+
+        /**
+         * How often [followConfirmations] reads a seen or confirming sale again: a
+         * Monero block comes about every two minutes, so a confirmation shows within
+         * a sixth of one, for a request a sale every 20 s while it's on its way.
+         */
+        const val CONFIRMATIONS_READ_MS = 20_000L
 
         /** How long [lapseOnTime] waits to try again when the clock it lapsed by hadn't reached a code's end yet. */
         const val LAPSE_RETRY_MS = 1_000L

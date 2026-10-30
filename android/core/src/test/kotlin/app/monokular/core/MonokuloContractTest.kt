@@ -226,6 +226,16 @@ class MonokuloContractTest {
     }
 
     @Test
+    fun `an order says how many confirmations its payment has of the store's threshold`() = runBlocking {
+        val made = api.createOrder(connection(), "24.50", "USD", "#1042", "sq:abc")
+        val read = api.order(connection(), made.url)
+        for (order in listOf(made, read)) {
+            assertEquals(0, order.confirmations, "nothing paid yet")
+            assertTrue((order.confirmationsRequired ?: 0) > 0, "the threshold the ring and \"4 of 10\" count to: ${order.confirmationsRequired}")
+        }
+    }
+
+    @Test
     fun `making an order hears its recorded problems by name, with their detail`() = runBlocking {
         for ((name, status) in listOf("rates-unavailable" to 503, "engine-unavailable" to 503, "idempotency-conflict" to 409)) {
             problems["POST /api/v1/orders"] = name

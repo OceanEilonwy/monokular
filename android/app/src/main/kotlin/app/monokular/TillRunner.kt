@@ -101,6 +101,7 @@ class TillRunner(private val graph: Graph) {
             // The Bell's dings, while this shift runs; outside one nothing collects them, so they go nowhere (decision 93).
             launch { graph.push.dings.collect { shift.wake(WakeCause.Ding) } }
             launch { till.lapseOnTime() }
+            launch { till.followConfirmations() }
         }
         // A shift starting registers again, so a registration the Bell dropped comes back (decision 95).
         wakeUps.recheck()
@@ -230,7 +231,7 @@ class TillRunner(private val graph: Graph) {
         for (sale in till.sales.value.sales.filter { it.open }) {
             val url = sale.url ?: continue
             runCatching { graph.monokulo.order(connection, url) }
-                .onSuccess { till.onStatus(sale.orderId, it.phase, it.isFinal) }
+                .onSuccess(till::onStatus)
         }
     }
 }
