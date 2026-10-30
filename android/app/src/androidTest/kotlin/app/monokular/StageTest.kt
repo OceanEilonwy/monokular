@@ -101,7 +101,7 @@ class StageTest {
         compose.onAllNodes(hasText("Waiting for payment") and SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion), useUnmergedTree = true).assertCountEquals(1)
         assertTrue(sizes.all { it == size }, "the code keeps its layout size through the grow: $size, $sizes")
         // SaleScreen's own body (its shared surface) may run as the transition starts and ends; what it shows doesn't.
-        for (name in listOf("QrCode", "SaleRow", "LiveSale", "StatusFoot", "ShiftScreen")) {
+        for (name in listOf("QrCode", "SaleRow", "LiveSale", "StatusFoot", "StatusLine", "RingTick", "ShiftScreen")) {
             assertEquals(0, recompositions.count("app.monokular.ui.$name"), "$name isn't recomposed by the transition's frames")
         }
 

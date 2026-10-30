@@ -66,7 +66,7 @@ class LateReceiptTest {
 
         assertTrue(far(start, end), "the card isn't there at once: ${hex(start)} -> ${hex(end)}")
         assertTrue(far(mid, start) && far(mid, end), "halfway it is fading in: ${hex(start)}, ${hex(mid)}, ${hex(end)}")
-        for (name in listOf("QrCode", "StatusFoot", "PhaseRing")) {
+        for (name in listOf("QrCode", "StatusFoot", "StatusLine", "RingTick", "PhaseRing")) {
             assertEquals(0, recompositions.count("app.monokular.ui.$name"), "$name isn't recomposed by the fade")
         }
         compose.onNodeWithText("Front · this till").assertExists()
