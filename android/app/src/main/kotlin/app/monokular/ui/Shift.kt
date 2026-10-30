@@ -375,16 +375,23 @@ private fun FoldRow(fold: ShiftItem.Fold, modifier: Modifier, words: Modifier, o
                 }
             } ?: return@awaitEachGesture
             pull.hold(FoldStack.pulled(raw / density))
-            val tracker = VelocityTracker()
-            tracker.addPointerInputChange(start)
-            val ended = verticalDrag(start.id) { change ->
-                raw += change.positionChange().y
-                change.consume()
-                tracker.addPointerInputChange(change)
-                pull.hold(FoldStack.pulled(raw / density))
+            // Cut off under the finger (reduced motion switched, the tray opened another way), the stack still settles.
+            var let = false
+            try {
+                val tracker = VelocityTracker()
+                tracker.addPointerInputChange(start)
+                val ended = verticalDrag(start.id) { change ->
+                    raw += change.positionChange().y
+                    change.consume()
+                    tracker.addPointerInputChange(change)
+                    pull.hold(FoldStack.pulled(raw / density))
+                }
+                val velocity = tracker.calculateVelocity().y / density
+                let = true
+                if (ended && FoldStack.opens(pull.dp.floatValue, velocity)) toggleNow() else pull.settle(scope, pull.dp.floatValue, back, velocity)
+            } finally {
+                if (!let) pull.settle(scope, pull.dp.floatValue, back)
             }
-            val velocity = tracker.calculateVelocity().y / density
-            if (ended && FoldStack.opens(pull.dp.floatValue, velocity)) toggleNow() else pull.settle(scope, pull.dp.floatValue, back, velocity)
         }
     }
     Column(
@@ -397,22 +404,24 @@ private fun FoldRow(fold: ShiftItem.Fold, modifier: Modifier, words: Modifier, o
                 onClick { toggle(); true }
             },
     ) {
-        Column(words.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Spacer(Modifier.fillMaxWidth().stackEdges(fold.open, pull.dp, tones))
             Row(
-                Modifier.padding(top = if (fold.open) 10.dp else 8.dp, bottom = 10.dp).height(28.dp)
+                Modifier.padding(top = if (fold.open) 10.dp else 8.dp, bottom = 10.dp).heightIn(min = 28.dp)
                     .animateContentSize(m.settle.spec(IntSize.VisibilityThreshold))
                     .clip(PillShape).background(mk.card).indication(source, ripple())
                     .padding(horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                // Two different words, so through, not across: the old out quickly, the new in once it has gone (decision
-                // 188; the canvas's "crossfades", decision 291).
-                AnimatedContent(targetState = ShiftList.foldLabel(fold), transitionSpec = { (fadeIn(through) togetherWith fadeOut(quick)).using(null) }, label = "fold label") { label ->
-                    Text(label, fontFamily = Manrope, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = mk.ink, maxLines = 1)
+                // Only the words fade with the screen ([words]): the edges and the pill's card are ground, and stay.
+                Row(words, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // Two different words, so through, not across: the old out quickly, the new in once it has gone
+                    // (decision 188; the canvas's "crossfades", decision 291).
+                    AnimatedContent(targetState = ShiftList.foldLabel(fold), transitionSpec = { (fadeIn(through) togetherWith fadeOut(quick)).using(null) }, label = "fold label") { label ->
+                        Text(label, fontFamily = Manrope, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = mk.ink, maxLines = 1)
+                    }
+                    Icon(MkIcons.Fold, contentDescription = null, tint = mk.ink, modifier = Modifier.size(14.dp).graphicsLayer { rotationZ = turn })
                 }
-                Icon(MkIcons.Fold, contentDescription = null, tint = mk.ink, modifier = Modifier.size(14.dp).graphicsLayer { rotationZ = turn })
             }
         }
     }
