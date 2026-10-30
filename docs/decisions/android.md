@@ -4425,3 +4425,13 @@ design unchanged.
     peeks to 0.3 and cancels before 296's flow: before, no ground end and
     the whole code on f1 to f7 at least; after, it passes with the rest of
     `RunningMovesTest` (52) on 5558.
+298. **The 17 MB of purgeable HWUI cache after a self-rise is left for
+    the owner to read on his phone** (the lead, round 2 review 2; dev1's
+    report). The emulators don't count it in PSS and the only real phone
+    attached is the owner's, off limits to the team; PSS after a trim is
+    level between r8 and r9 and inside the accepted step. On the phone:
+    `mem-r8c.sh`'s flow (ten self-rises and Backs, 10 s at rest,
+    `RUNNING_CRITICAL`), then `dumpsys meminfo` and `dumpsys gfxinfo`;
+    if the cache shows in Graphics/GL and outlives HWUI's idle purge, the
+    likely source is a screen-sized layer kept from the rise's
+    `graphicsLayer`, and the fix belongs to the track that owns the rise.
