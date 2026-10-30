@@ -1,5 +1,6 @@
 package app.monokular
 
+import androidx.annotation.DrawableRes
 import app.monokular.core.PointOfSale
 import app.monokular.sales.TillSale
 
@@ -12,6 +13,19 @@ import app.monokular.sales.TillSale
  * `PosTextTest`, and through the screens' own texts.
  */
 object PosText {
+    /** The point of sale's mark beside its name (`res/drawable/ic_pos_*`, each brand's own art), drawn by [app.monokular.ui.PosMark]. */
+    @DrawableRes
+    fun mark(pos: PointOfSale): Int = when (pos) {
+        PointOfSale.Square -> R.drawable.ic_pos_square
+        PointOfSale.Clover -> R.drawable.ic_pos_clover
+    }
+
+    /** Whether [pos]'s mark is drawn in the theme's ink: Square's is one colour, black or white; Clover's keeps its green. */
+    fun markInInk(pos: PointOfSale): Boolean = when (pos) {
+        PointOfSale.Square -> true
+        PointOfSale.Clover -> false
+    }
+
     /** "Square", "Clover", or "your point of sale" with none. */
     fun name(pos: PointOfSale?): String = pos?.displayName ?: "your point of sale"
 

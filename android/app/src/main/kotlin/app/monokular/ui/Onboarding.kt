@@ -389,21 +389,22 @@ fun PointOfSaleScreen(s: PosSetup, a: PosSetupActions) = Page(
     Spacer(Modifier.height(16.dp))
 }
 
-/** Square and Clover as one radio group (T1.1): a row each, at least 48 dp, the tick decorative. */
+/** Square and Clover as one radio group (T1.1): a row each, at least 48 dp, led by its mark on a tile; the mark and tick decorative. */
 @Composable
 fun PosChoices(chosen: PointOfSale?, enabled: Boolean = true, onChoose: (PointOfSale) -> Unit) = Group(
     Modifier.selectableGroup(),
     rows = PointOfSale.entries.map { pos ->
-        { ChoiceRow(pos.displayName, chosen == pos, { if (enabled) onChoose(pos) }, PosText.choiceDetail(pos)) }
+        { ChoiceRow(pos.displayName, chosen == pos, { if (enabled) onChoose(pos) }, PosText.choiceDetail(pos)) { PosTile(pos) } }
     },
 )
 
-/** The heading and lead of a point of sale's card. */
+/** The heading and lead of a point of sale's card, under Monokular's mark linked to the point of sale's. */
 @Composable
 private fun CardTop(pos: PointOfSale) = Column(
     Modifier.padding(start = 20.dp, end = 20.dp, top = 24.dp),
     verticalArrangement = Arrangement.spacedBy(10.dp),
 ) {
+    LinkedMarks(pos)
     Heading(PosText.connect(pos), size = 24)
     Lead(PosText.lead(pos), size = 17)
 }

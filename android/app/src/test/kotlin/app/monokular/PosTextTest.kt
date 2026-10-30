@@ -61,6 +61,12 @@ class PosTextTest {
     }
 
     @Test
+    fun `each point of sale has its own mark, Square's in the theme's ink and Clover's in its green`() {
+        assertEquals(listOf(R.drawable.ic_pos_square, R.drawable.ic_pos_clover), PointOfSale.entries.map(PosText::mark))
+        assertEquals(listOf(true, false), PointOfSale.entries.map(PosText::markInInk))
+    }
+
+    @Test
     fun `the bubble floats over Square's app, and over other apps beside a Clover device`() {
         assertEquals("Float over Square", PosText.floatHeading(square))
         assertEquals("Float over other apps", PosText.floatHeading(clover))

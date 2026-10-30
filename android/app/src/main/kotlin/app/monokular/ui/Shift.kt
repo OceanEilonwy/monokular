@@ -682,18 +682,20 @@ private fun rowShape(ends: RowEnds): Shape = when (ends) {
     RowEnds.Last -> LastRow
 }
 
-/** The dot, the store, this till and whether it's watching; Settings. */
+/** The point of sale's mark, the store, this till and whether it's watching, the word in the dot's old colour; Settings. */
 @Composable
 private fun TopRow(status: TillStatus, actions: TillActions) = Row(
     Modifier.fillMaxWidth().height(64.dp).padding(start = 24.dp, end = 16.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(8.dp),
 ) {
-    val (dot, state) = when {
+    // The word carries what the dot did (the Logos board, B): paid green while watching, danger when disconnected,
+    // else plain muted (the dot's grey outline is too faint for text).
+    val (tone, state) = when {
         status.disconnected -> mk.danger to "Disconnected"
-        !status.running -> mk.outline to "Not watching"
+        !status.running -> null to "Not watching"
         status.live -> mk.paid to "Watching"
-        else -> mk.outline to "Reconnecting…"
+        else -> null to "Reconnecting…"
     }
     // A Clover merchant is often named as the store is: said once.
     val place = listOfNotNull(status.store, status.location).distinct()
@@ -702,14 +704,18 @@ private fun TopRow(status: TillStatus, actions: TillActions) = Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Box(Modifier.size(8.dp).clip(CircleShape).background(dot))
+        PosBadge(LocalPointOfSale.current)
         // The state word is what the cashier reads this row for: the store and location give way first at large font sizes.
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (place.isNotEmpty()) Text(
                 place.joinToString(" · "), fontSize = 13.sp, color = mk.muted, maxLines = 1,
                 overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false),
             )
-            Text(if (place.isEmpty()) state else " · $state", fontSize = 13.sp, color = mk.muted, maxLines = 1, softWrap = false)
+            if (place.isNotEmpty()) Text(" · ", fontSize = 13.sp, color = mk.muted, maxLines = 1, softWrap = false)
+            Text(
+                state, fontSize = 13.sp, color = tone ?: mk.muted, fontWeight = tone?.let { FontWeight.Medium },
+                maxLines = 1, softWrap = false,
+            )
         }
     }
     CircleButton(MkIcons.Settings, "Settings", actions.onSettings, ground = mk.chip, tint = mk.ink, iconSize = 20.dp)
