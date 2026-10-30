@@ -4349,3 +4349,16 @@ design unchanged.
     waiting sale before dumping, tap by coordinates, or read the Compose
     semantics through a test. The scripts themselves live in the lead's
     scratch folder, outside the repo, so their own notes are the lead's.
+295. **A filter chosen after a kept fold moves its rows: the kept fold's
+    held placement is cleared by the chip** (tech lead, round 2 final
+    review; 292). Decision 292 places a fold kept under the finger with no
+    placement move for as long as the shift shows that fold of the same
+    `sales` list, so the next sales change moves rows again. A filter is
+    the other input of the items, and it did not clear the flag: after a
+    scrolled tray was folded, choosing Needs action or Paid jumped every
+    row to its new place in one frame instead of settling there on
+    `settle`, as a filter does everywhere else. The chip's handler now
+    clears the kept fold as it sets the filter; the fold itself is
+    unchanged. `TrayTest.aFilterChosenAfterAKeptFoldStillMovesItsRows`
+    reads Paid's first row over the change: before, at its end on the
+    first frame (1936 to 805 px in one step); after, between the two.
