@@ -50,6 +50,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -114,15 +115,20 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
     var filter by rememberSaveable { mutableStateOf(ShiftFilter.All) }
     // The tray's fold, for the shift screen's life and across a rotation; a fresh shift starts folded (A4).
     var folded by rememberSaveable { mutableStateOf(true) }
-    val items = remember(sales, filter, folded) { ShiftList.sections(sales, filter, folded) }
-    val trayFolds = remember(items) { items.any { it is ShiftItem.Fold } }
-    val list = rememberLazyListState()
     // Back from a sale (or a paid one stepping back): the sale the stage is leaving, read once as the change starts
     // and once as it lands, never a frame. Its row must be there for the ground to shrink into, so a row the fold
     // would hide opens the tray as the change starts (the rows past the third fade in under the arriving card), and it
-    // stays open until Show fewer or the shift is left (decision 269). Once landed, focus goes to that row.
+    // stays open until Show fewer or the shift is left (decision 269). Opened in this composition, the change's first:
+    // a frame later the stage already moves and the row it shrinks into isn't there (260 a, decision 289). Once landed,
+    // focus goes to that row.
     val stage = LocalStage.current
     val cameFrom = stage?.leavingSale
+    val opens = folded && cameFrom != null && ShiftList.folds(sales, filter, cameFrom)
+    if (opens) SideEffect { folded = false }
+    val shownFolded = folded && !opens
+    val items = remember(sales, filter, shownFolded) { ShiftList.sections(sales, filter, shownFolded) }
+    val trayFolds = remember(items) { items.any { it is ShiftItem.Fold } }
+    val list = rememberLazyListState()
     val focusOn = remember { mutableStateOf<String?>(null) }
     val context = LocalContext.current
     val screenReader = LocalScreenReader.current
@@ -130,7 +136,6 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
         if (cameFrom == null) return@LaunchedEffect
         // Focus moves for a screen reader only: to a sighted cashier a focused row is a grey row nobody asked for.
         if (screenReader(context)) focusOn.value = cameFrom
-        if (folded && ShiftList.folds(sales, filter, cameFrom)) folded = false
     }
     val arrive = motion.fade.fraction
     val leave = motion.fadeQuick.fraction

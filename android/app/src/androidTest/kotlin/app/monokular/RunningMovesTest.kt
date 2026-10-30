@@ -691,15 +691,83 @@ class RunningMovesTest {
         compose.onNodeWithText(ShiftList.row(moves.sale, PointOfSale.Square, 0).title).assertIsNotFocused()
     }
 
-    /** Back on a sale the folded tray hides (the fourth live one): the tray opens as the change starts, the ground lands in its row. */
-    @Test fun backIntoAFoldedRowOpensTheTray() {
+    /**
+     * Back on a sale the folded tray hides (the fourth live one, 260 a): the tray is open on the change's first frame,
+     * so the row the ground shrinks into is there from the start; on no frame does the bare ground cover the window
+     * (the lead's recordings: three frames of nothing but the ground before the sale was redrawn); the code is on its
+     * card wherever the ground holds it; and the ground lands in its row.
+     */
+    @Test fun backIntoAFoldedRowOpensTheTrayLight() = backIntoFoldedRow(dark = false)
+
+    @Test fun backIntoAFoldedRowOpensTheTrayDark() = backIntoFoldedRow(dark = true)
+
+    private fun backIntoFoldedRow(dark: Boolean) {
         val c3 = testSale("c3", expiresAt = 1_600)
         moves.shift = listOf(moves.sales[0], moves.sales[2], c3, moves.sale)
-        moves.start(Screen.Sale("a1"), dark = false)
+        moves.start(Screen.Sale("a1"), dark)
         val frames = moves.run(Screen.Till, groundKey = "sale/a1")
         val failures = landsIn(frames, moves.sale).toMutableList()
+        val title = ShiftList.row(moves.sale, PointOfSale.Square, 0).title
+        val first = frames.drop(1).firstOrNull { f -> f.words[Screen.Till].orEmpty().isNotEmpty() }
+        if (first == null) failures += "the shift is never composed"
+        else if (first.words[Screen.Till].orEmpty().none { it.first == title }) failures += "f${first.index}: the shift's first frame has no row for a1 (the tray still folded)"
         if (frames.last().words[Screen.Till].orEmpty().none { it.first == "Show fewer" }) failures += "the tray is not open at the end"
-        check("back-into-folded-row", dark = false, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures)
+        failures += bareGround(frames)
+        val card = frames.first().leavingCodes.firstOrNull { it.width > 20f }
+        if (card != null) for (f in frames.drop(1).dropLast(RunningMoves.SETTLE_FRAMES)) {
+            if (f.p >= 1f) continue
+            val g = f.ground ?: continue
+            val holds = g.left <= card.left + 1f && g.top <= card.top + 1f && g.right >= card.right - 1f && g.bottom >= card.bottom - 1f
+            val (ink, white) = inkAndWhite(f.bitmap, card)
+            if (holds && (ink < CODE_SHARE || white < CODE_SHARE)) failures += "f${f.index}: the row's ground at $g holds the card at $card, but no code is drawn there"
+        }
+        check("back-into-folded-row", dark, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures)
+    }
+
+    /**
+     * Back from a sale with no row on the shift to land in (the filter hides it, or the list has not composed it): the
+     * leaving sale is never replaced by the bare ground (260 a's other surface); the code is on its card, or gone with it.
+     */
+    @Test fun backWithNoRowToLandInNeverDrawsTheBareGround() {
+        moves.shift = listOf(moves.sales[0], moves.sales[2])
+        moves.start(Screen.Sale("a1"), dark = false)
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1")
+        report("back-no-row-light", frames, bareGround(frames))
+    }
+
+    /** Under Still the Back into a folded row is one cut onto the open tray: never the folded tray first, then a jump open. */
+    @Test fun backIntoAFoldedRowUnderStillCutsToTheOpenTray() {
+        val c3 = testSale("c3", expiresAt = 1_600)
+        moves.shift = listOf(moves.sales[0], moves.sales[2], c3, moves.sale)
+        moves.start(Screen.Sale("a1"), dark = false, Motion.Still)
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1")
+        val title = ShiftList.row(moves.sale, PointOfSale.Square, 0).title
+        val shifts = frames.drop(1).filter { f -> f.words[Screen.Till].orEmpty().isNotEmpty() }
+        assertTrue(shifts.isNotEmpty(), "the shift is composed")
+        for (f in shifts) {
+            val words = f.words[Screen.Till].orEmpty()
+            assertTrue(words.any { it.first == title } && words.any { it.first == "Show fewer" }, "f${f.index}: the tray is open from the cut's first frame: ${words.map { it.first }}")
+        }
+    }
+
+    /**
+     * Frames on which the screen's bare ground covers the window (more than [BARE_SHARE] of a grid of points are its
+     * colour, read from the corner of the frame before the change): no code, no card, no words.
+     */
+    private fun bareGround(frames: List<RunningMoves.Frame>): List<String> {
+        val before = frames.first().bitmap
+        val ground = before.getPixel(1, before.height - 2)
+        return frames.drop(1).mapNotNull { f ->
+            val b = f.bitmap
+            var same = 0
+            var all = 0
+            for (y in 0 until GRID) for (x in 0 until GRID) {
+                val c = b.getPixel(x * (b.width - 1) / (GRID - 1), y * (b.height - 1) / (GRID - 1))
+                all++
+                if (abs(lum(c) - lum(ground)) < 2f && abs((c shr 16 and 0xff) - (ground shr 16 and 0xff)) < 3) same++
+            }
+            "f${f.index}: the bare ground covers ${100 * same / all}% of the window".takeIf { same.toFloat() / all > BARE_SHARE }
+        }
     }
 
     /**
@@ -898,6 +966,12 @@ class RunningMovesTest {
     private companion object {
         /** How close to rest the hero's spring is done: a pixel or two of tail. */
         const val NEAR = 4f
+
+        /** A window that is more than this share bare ground is drawing nothing on it. */
+        const val BARE_SHARE = 0.98f
+
+        /** The points across and down a frame the bare-ground check reads. */
+        const val GRID = 40
 
         /** A region whose mean luminance moved this much from the move's first frame has something new in it. */
         const val CHANGED = 6f
