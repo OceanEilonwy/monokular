@@ -34,6 +34,12 @@ on a phone. The frame timings are in the performance section; the
 feel of the moves on a real screen is still the owner's phone to
 judge (open items).
 
+To rerun the clips' scripts on round 2's build: `uiautomator dump`,
+which the screen-reading steps use, times out while the bubble's border
+chases (a code waiting keeps the window from going idle), so pay or
+expire the waiting sale before a step that reads the screen, or tap by
+coordinates (`motion/baseline.md`, emulator caveats; decision 294).
+
 | | Before | After |
 | --- | --- | --- |
 | The paid moment in the panel | [panel-paid-next-sale](motion/before/panel-paid-next-sale.mp4) | [panel-paid](motion/after/panel-paid.mp4), [panel-paid-next-sale](motion/after/panel-paid-next-sale.mp4) |

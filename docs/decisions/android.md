@@ -4333,3 +4333,19 @@ design unchanged.
     every frame of the leave: they fade as one and none drops to the lens
     while another is still white; the old build fails it at 48 ms with
     the end at 0.06 of white and the other two at 0.97.
+294. **A chasing bubble keeps `uiautomator dump` from ever seeing an idle
+    window; the scripts work round it, the bubble does not change** (dev1,
+    round 2 review; 274, `after.md` round 2 finding 8). The dump waits
+    for the window to go idle, and the waiting bubble's border chases on
+    every frame by design (one turn per 1250 ms, the owner's decision 6),
+    so every screen-reading script step times out until the sale is paid
+    or has expired. Pausing the chase for a dump would need a test hook
+    in production code, and TalkBack, the one real reader, does not wait
+    for idle and hears the bubble's label throughout
+    (`OverlayFramesTest.theBubblesLabelSaysTheAmountAndTheStep`). So it is
+    written down where a script author looks: `motion/baseline.md`'s
+    emulator caveats (where `ui.sh` is described), `after.md`'s method,
+    and the showcase report's notes on its clips: pay or expire the
+    waiting sale before dumping, tap by coordinates, or read the Compose
+    semantics through a test. The scripts themselves live in the lead's
+    scratch folder, outside the repo, so their own notes are the lead's.
