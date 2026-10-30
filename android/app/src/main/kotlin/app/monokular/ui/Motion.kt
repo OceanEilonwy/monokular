@@ -5,6 +5,7 @@ import android.database.ContentObserver
 import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
+import androidx.compose.animation.core.AnimationVector
 import androidx.compose.animation.core.DecayAnimationSpec
 import androidx.compose.animation.core.Easing
 import androidx.compose.animation.core.FiniteAnimationSpec
@@ -12,6 +13,8 @@ import androidx.compose.animation.core.InfiniteRepeatableSpec
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.TwoWayConverter
+import androidx.compose.animation.core.VectorizedFiniteAnimationSpec
 import androidx.compose.animation.core.exponentialDecay
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.snap
@@ -98,6 +101,25 @@ class Motion private constructor(
     /** The loading mark's glints, one turn of [GLINT_MS]; null when loops don't run. */
     val glints: InfiniteRepeatableSpec<Float>? = loop(GLINT_MS, LinearEasing)
 
+    /**
+     * The waiting bubble's border: its ink segment chasing round the pale track at one speed, a turn of [CHASE_MS]
+     * (`docs/motion.md` §12.5, decision 267); null when loops don't run, where the border is whole ink instead.
+     */
+    val chase: InfiniteRepeatableSpec<Float>? = loop(CHASE_MS, LinearEasing)
+
+    /**
+     * The bubble's lens changing colour from the core out: ring `i` of the mark's [SPREAD_RINGS] (the core, the inner
+     * six, the middle twelve with the base, the rim) is a [fade] starting [SPREAD_STEP_MS] after the ring inside it, so
+     * the lens is done by `fade + 3 × step`. Under [Still] every ring is the one quick fade, no steps.
+     */
+    val spread: List<Preset> = List(SPREAD_RINGS) { ring -> if (still) fadeQuick else Timed(FADE_MS, delayMs = ring * SPREAD_STEP_MS) }
+
+    /**
+     * The paid bubble's tick drawn along its path: a [sweep] that starts where the core's ring of [spread] ends, so it
+     * is never drawn on a lens still turning green; the start is in the spec, not a delay. Under [Still] it is whole at once.
+     */
+    val tick: Preset = if (still) Snapped else After(FADE_MS, sweep)
+
     private fun spatial(stiffness: Float, dampingRatio: Float): Preset = if (still) Snapped else Sprung(stiffness, dampingRatio)
 
     private fun loop(turnMs: Int, easing: Easing): InfiniteRepeatableSpec<Float>? =
@@ -116,6 +138,15 @@ class Motion private constructor(
         private const val FADE_MS = 200
         private const val QUICK_MS = 120
         private const val PULSE_MS = 1600
+
+        /** One turn of the waiting bubble's border. */
+        const val CHASE_MS = 1250
+
+        /** The lens's rings, core to rim, that [spread] colours one after another. */
+        const val SPREAD_RINGS = 4
+
+        /** How long after its inner neighbour a ring of [spread] starts. */
+        const val SPREAD_STEP_MS = 60
 
         /** About as long as [surface] takes to settle, so a screen change takes as long whether seeked or not. */
         private const val TRACK_MS = 450
@@ -155,6 +186,32 @@ private class Timed(private val durationMs: Int, private val delayMs: Int = 0) :
 
 private object Snapped : Preset {
     override fun <T> spec(visibilityThreshold: T?): FiniteAnimationSpec<T> = snap()
+}
+
+/** [inner] started [delayMs] later: a spring carries no delay of its own, so it is played from a later start. */
+private class After(private val delayMs: Int, private val inner: Preset) : Preset {
+    override fun <T> spec(visibilityThreshold: T?): FiniteAnimationSpec<T> = Delayed(delayMs * 1_000_000L, inner.spec(visibilityThreshold))
+}
+
+/**
+ * [inner] held at its start for [delayNanos], then run whole: what a
+ * tween's `delayMillis` does, for any finite spec. Retargeted mid-hold it
+ * starts again from where it stands, as the spec it wraps would.
+ */
+private class Delayed<T>(private val delayNanos: Long, private val inner: FiniteAnimationSpec<T>) : FiniteAnimationSpec<T> {
+    override fun <V : AnimationVector> vectorize(converter: TwoWayConverter<T, V>): VectorizedFiniteAnimationSpec<V> {
+        val run = inner.vectorize(converter)
+        return object : VectorizedFiniteAnimationSpec<V> {
+            override fun getDurationNanos(initialValue: V, targetValue: V, initialVelocity: V): Long =
+                delayNanos + run.getDurationNanos(initialValue, targetValue, initialVelocity)
+
+            override fun getValueFromNanos(playTimeNanos: Long, initialValue: V, targetValue: V, initialVelocity: V): V =
+                if (playTimeNanos < delayNanos) initialValue else run.getValueFromNanos(playTimeNanos - delayNanos, initialValue, targetValue, initialVelocity)
+
+            override fun getVelocityFromNanos(playTimeNanos: Long, initialValue: V, targetValue: V, initialVelocity: V): V =
+                run.getVelocityFromNanos((playTimeNanos - delayNanos).coerceAtLeast(0L), initialValue, targetValue, initialVelocity)
+        }
+    }
 }
 
 val LocalMotion = staticCompositionLocalOf { Motion.Full }

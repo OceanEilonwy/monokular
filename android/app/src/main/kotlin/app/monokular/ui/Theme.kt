@@ -74,6 +74,13 @@ object Fixed {
     val Ground = Color(0xFFF4F1EA)
     val Muted = Color(0xFF5A564C)
     val Paid = Color(0xFF1A7F37)
+    /** The paid bubble's lens: its lightest facets, [PaidMid] its middle ones, [Paid] its core (decision 267). */
+    val PaidLight = Color(0xFF2EA052)
+    val PaidMid = Color(0xFF238A43)
+    /** The waiting bubble's border: the pale track an [Ink] segment chases round. */
+    val ChaseTrack = Color(0xFFD8D2C7)
+    /** The idle bubble's border, round its grey mark. */
+    val IdleBorder = Color(0xFF565656)
     val Track = Color(0xFFE4DFD5)
     val Outline = Color(0xFF8C8577)
     /** The QR card and the enlarged code's screen; a glyph on [Ink]. */

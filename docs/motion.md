@@ -21,7 +21,8 @@ Contents: [principles](#1-principles) · [presets](#2-the-motion-presets) ·
 motion](#7-reduced-motion) · [measuring](#8-measuring) · [order of
 work](#9-order-of-work-and-tracks) · [performance rules](#10-performance-rules)
 · [tech lead amendments](#11-tech-lead-amendments) · [round 2: the
-waiting tray, Back and the logo bubble](#12-round-2-the-waiting-tray-back-and-the-logo-bubble).
+waiting tray, Back and the logo bubble](#12-round-2-the-waiting-tray-back-and-the-logo-bubble)
+· [round 2 build](#13-round-2-build).
 
 Round 2 (2026-10-30, §12) supersedes parts of §4, §8 and §10; each is
 marked where it stands, with the decision that replaced it.
@@ -94,6 +95,9 @@ is no position to carry. `Spring.StiffnessMedium` is 1500 and
 | `Motion.fadeThrough` | `tween(200, delayMillis = 120, LinearEasing)` (120 ms, still after its 120 ms wait, under Still: decision 141) | 320 ms | An entrance in the place of a different thing leaving under `fadeQuick`: the panel's buttons and words when its face changes ("Copy address" to "Done"), so two labels are never drawn over each other (added in round 2, decision 115) |
 | `Motion.pulse` | `tween(1600, LinearOutSlowInEasing)`, repeating | loop | The lit bubble's pulse, only while a code waits and the panel is down |
 | `Motion.glints` | `tween(GLINT_MS, LinearEasing)`, repeating | loop | The loading mark (unchanged) |
+| `Motion.chase` | `tween(CHASE_MS, LinearEasing)`, repeating (1250 ms) | loop | The waiting bubble's border: an ink segment chasing round the pale track at one speed, 12 o'clock clockwise; null under Still, where the border is whole ink (round 2, §12.5) |
+| `Motion.spread[ring]` | `fade` with `delayMillis = ring × SPREAD_STEP_MS` (60), four rings | 380 ms | The bubble's lens changing colour from the core out: the core, the inner six, the middle twelve with the base, the rim, each a fade a step after the one inside it; under Still each ring is `fadeQuick` with no delay, so the lens changes in one quick fade (round 2, §12.5) |
+| `Motion.tick` | `sweep` held at its start for `fade`'s length (`After`, the spring played from a later start) | 800 ms | The paid bubble's tick trimmed along its path once the core's ring is green: the start is in the spec, never a `delay()`; under Still `snap()`, the tick whole at once (round 2, §12.5) |
 | `Motion.Dwell.paid` | `5_000 ms` | — | How long a paid moment is held before the till moves on: the sale screen stepping back to the shift (`TillNav.PAID_STEP_BACK_MS`), the panel lowering, the bubble staying green and the chip its tick (`Bubble.PAID_MS`, today 4 s; see M9) |
 
 Rules: `visibilityThreshold` is set for every spring on an `IntOffset`,
@@ -1267,3 +1271,234 @@ guard on `HeldMove` generations.
 Tech lead: the presets, `TillStage`'s two `snapshotFlow`s on one
 predicate into one, the measurements of §12.7, decisions 269 on, the
 integration.
+
+## 13. Round 2 build
+
+The tech lead's architecture for §12, written before the tracks start
+and binding on both; decisions 269 to 271 in `docs/decisions/android.md`
+record the calls. The foundation this section names as "here" is
+committed on `motion-main` with this section, `./gradlew build` green,
+and both track branches start from it.
+
+### 13.1 The shape of the round
+
+Two tracks, no shared files between them:
+
+| Track | Owns this round | Touches nothing in |
+| --- | --- | --- |
+| Overlay (dev1) | `overlay/Faces.kt`, `ui/Mark.kt`, `TillService.kt`, `overlay/*`, their tests (`BubbleOnDeviceTest`, `OverlayFramesTest`, `OverlayRecompositionsTest`, `PanelTest`) | `ui/Shift.kt`, `Nav.kt`, `AppViewModel.kt`, `ui/Motion.kt`, `ui/Theme.kt` |
+| Screens (dev2) | `ui/Shift.kt`, `ShiftList.kt`, `SaleText.kt` (`TillNav`), `AppViewModel.kt`, `MainActivity.kt`, `Nav.kt`, `ui/Till.kt`, `ui/SaleDetail.kt`, their tests (`RunningMoves*`, `StageBackTest`, `ShiftListTest`, `ShiftRowsTest`, `MotionFramesTest`, `ModelStage.kt`) | `overlay/*`, `ui/Mark.kt`, `ui/Motion.kt`, `ui/Theme.kt` |
+| Tech lead | `ui/Motion.kt`, `ui/Theme.kt` (`Fixed`), the docs, the measurements, the integration | |
+
+A change a track needs in the lead's files is asked for in its PR
+description, not made. `ui/Mark.kt` moves from "shared, dev1's" to
+dev1's outright: the only other callers (`Logo`, `LoadingMark` in
+`Onboarding.kt`) keep their signatures.
+
+### 13.2 The foundation, here
+
+- `Motion.chase`: a loop beside `pulse`, `tween(CHASE_MS = 1250,
+  LinearEasing)` repeating, null under `Still`.
+- `Motion.spread`: a `List<Preset>` of `SPREAD_RINGS = 4`, ring `i` a
+  `fade` with `delayMillis = i × SPREAD_STEP_MS` (60), so the rim is done
+  at 380 ms; under `Still` every ring is `fadeQuick` with no delay. Rings
+  are the mark's: 0 the core, 1 the inner six, 2 the middle twelve with
+  the base circle, 3 the rim twelve, in `MarkPaths.facets`'s order (the
+  list is 1 + 6 + 12 + 12).
+- `Motion.tick`: `sweep` held at its start for `fade`'s length (`After`,
+  a `Preset` whose spec plays the spring from a later start; the one way
+  a spring carries a start, as a tween carries `delayMillis`), `snap()`
+  under `Still`.
+- `Fixed.PaidLight` #2EA052, `Fixed.PaidMid` #238A43 (the lens's two
+  lighter greens; `Fixed.Paid` is the core), `Fixed.ChaseTrack` #D8D2C7,
+  `Fixed.IdleBorder` #565656 (out of `Faces.kt`). The mark's orange and
+  grey shades stay `Mark.kt`'s own lists, as the SVG's; the green list is
+  built there from these three.
+- Tests: `MotionTest` (the chase's turn and constant speed; the spread's
+  four rings, steps and `Still` form; the tick's wait, its identity with
+  the sweep after it, no overshoot, `Still` snap) and `BubbleColoursTest`
+  (the white tick ≥ 3:1 on every green, ink ≥ 3:1 on the chase track,
+  the greens darkening toward the core).
+
+### 13.3 The tray: items in the one list
+
+- `ShiftList.sections(sales, filter, folded): List<ShiftItem>` is a pure
+  function beside `rows`, tested on the JVM (`ShiftListTest`): `ShiftItem.
+  TrayHeader(count)`, `ShiftItem.Row(sale, ends, tray: Boolean)`,
+  `ShiftItem.Fold(hidden: Int, open: Boolean)`, `ShiftItem.Earlier`, in
+  list order. Live sales (`Standing.Live`) newest first in the tray, the
+  rest newest first under Earlier; with no live sale under the filter,
+  no header, no fold, no Earlier (the list is `rows` as today). Folded
+  with more than three live sales: three rows, then the fold with
+  `hidden = count − 3`. `NeedsAction` shows every live row, no fold item
+  (§12.6 item 8). `Paid` has no live rows, so no headers (item 7).
+- `ShiftScreen` puts the items in the existing `LazyColumn` with
+  `items(sections, key = …)`: keys `"tray"`, `"fold"`, `"earlier"` and
+  `sale.orderId` for rows, so a row that leaves the tray for Earlier is
+  the same keyed item and `animateItem` moves it (M11's three specs,
+  nothing new). The tray has no node of its own: each tray item draws its
+  slice of the amber ground behind itself (`drawBehind`, `warnGround`,
+  24 dp corners on the tray's top for the header and bottom for the fold
+  row, or for the last row when there is no fold; 4 dp padding inside),
+  and the row's white card stays the `sharedGround` it is today with
+  `rowLook(ends)` (20 dp = 24 − 4, concentric). Tray rows' `ends` are
+  counted within the tray, Earlier's within Earlier.
+- The fold is `rememberSaveable { mutableStateOf(true) }` in
+  `ShiftScreen` (folded), beside `filter`. The fold row is a `Role.Button`
+  with `stateDescription` collapsed/expanded, 48 dp, label `ink`, a 16 dp
+  chevron turned by `graphicsLayer { rotationZ }` on `settle`; the label
+  crossfades on `fade` (`AnimatedContent`, as `RowBadge` does). Folding
+  with the fold row about to leave the screen: `LazyListState.
+  requestScrollToItem` on the fold's index, so it stays under the finger.
+- Header words are the shift's chrome (`words(through = ShiftThrough)`),
+  so they fade through a Back like the rest of the chrome; the amber
+  slices and the rows' cards are not chrome: they are in place under the
+  arriving card by 220 ms (`BackSequence`), as the rows' grounds are
+  today.
+- Back into a folded row: the shift reads the stage once per change, at
+  composition, not per frame: `LocalStage.current?.transition?.
+  currentState as? Screen.Sale` is the sale a running `RowGrow Sale →
+  Till` is leaving. If that sale would be hidden by the fold, a
+  `LaunchedEffect` keyed on its id sets `folded = false` as the change
+  starts, so its row exists for the ground to land in; it stays open
+  until "Show fewer" or the shift is left. The tray opens at the start of
+  the Back, not on landing: a row must be there for the card to shrink
+  into.
+- Focus after Back: the row the cashier came from asks for focus when
+  the stage lands on the shift (`snapshotFlow` on the transition's
+  `currentState`, the one flow the shift adds, running only while a
+  change does); `FocusRequester` per row is not kept: one requester on
+  the arriving row, found by its key.
+
+### 13.4 Back and the step-back: one path
+
+- `AppViewModel.leave(orderId)` is the one path into the stage for both:
+  `back()` on a sale calls it (today), and the dwell's job calls it
+  (today). Nothing new is added between the model and the stage; what
+  changes is `follow`.
+- `TillNav.follow(Screen.Till, …)` narrows to "a sale that arrived while
+  the shift was showing, at rest": it takes the live ids the till knew at
+  its last look (`AppViewModel.liveBefore`, kept today) and whether the
+  stage rests on the shift, and brings up only a live sale that is new
+  since that look, not left, and only while the shift is at rest. A sale
+  that arrives on Settings, on another sale, on the enlarged code or the
+  order page, or mid-Back, is known by the next look and never rises
+  later: it is in the tray. `leave` and `openShift` make no `follow`
+  call after `go(Screen.Till)` (the `follow(graph.runner.state.value.
+  till.sales)` line in `leave` goes); `closeSettings` and `backTarget`
+  go to `beforeSettings` itself, no follow (what arrived meanwhile
+  waits in the tray). The other arms of `follow` (the code screen and
+  the order page giving way once the sale is not live) are unchanged.
+- "At rest" is the stage's word, reported to the model as the panel's
+  collapse is reported to the bubble (decision 258's mechanism, kept for
+  this one reason): `FollowScreen` gets `onLanded: (Screen) -> Unit`,
+  called when `state.currentState == state.targetState == screen.value`;
+  the model keeps `restingOn: Screen?` (set there, cleared in `go`), and
+  `follow` rises a new sale only while `restingOn == Screen.Till`. So a
+  sale that arrives mid-Back lands in the tray under the moving card
+  and does not take the move over (§12.1), while a sale arriving on the
+  resting shift still rises (§12.6 item 4). `TestModel` gets the same
+  `landed` so `RunningMovesTest` drives it.
+- The second Back (260 c): `MainActivity` enables `StageBack` while
+  `screen == Screen.Till && stage.currentState != stage.targetState`
+  (a `derivedStateOf`, two recompositions of the root per change, none
+  per frame); `model.back(Till)` stays the no-op it is. `ModelStage.kt`
+  mirrors it so `RunningMovesTest` sees the same handler.
+- The paid step-back (259 → §12.2): the move is already `RowGrow Sale →
+  Till`; what is missing is the course `sale/<id>` in the trace, which a
+  Back on the same page carries. Find the difference with the stage
+  trace (`StageTrace`, decision 237) before changing anything: the
+  suspects are the paid page's `End` (its `sharedGround` is registered
+  under `Move.RowGrow` on the live face's `Box`; the paid face is
+  `SaleDetail` inside the `AnimatedContent`, so check which `End`s the
+  course has at the dwell's end) and `keptWhileLeaving`. The fix gives
+  the dwell's leave the same two ends the Back has; no second mechanism.
+- 260 a: the row's ground holding the whole screen with no code is the
+  frame on which `paintCodes` has no partner for the code's white (the
+  `End.white` arm) while the ground still holds the card's rest margin;
+  the rule (decision 234, 189) is drawn whole until the ground no longer
+  holds the margin. 260 b: the paid fold's tick alpha is 0 until the last
+  `crossfadeOnTrack` share, as `CodeScreen`'s is (decision 252): same
+  `faceSurface` arm, read per draw.
+
+### 13.5 The bubble: one mark, read in draw
+
+- `ui/Mark.kt`: `mark()` grows to `mark(lens: LensLook, border: Color,
+  arcStart: Float?, arcAlpha: Float, tick: Float)` where `LensLook` is
+  four `Color`s, one per ring, read per draw (`Color` is an inline
+  value: no allocation). `MarkPaths` gains `ring` per facet and the
+  tick's `Path` (`M23.5 28.5 l4.3 4.3 8.7 -9`), measured once by a
+  `PathMeasure` kept beside it; the trimmed segment is drawn into one
+  reused `Path` (`rewind()` then `getSegment`), the only mutable object,
+  allocated once. The arc is one `drawArc(sweep = 0.30 × 360°, start =
+  −90° + arcStart, round caps, 4.5 u stroke)` over the track circle. The
+  glint and core-alpha code stays for `LoadingMark`.
+- `overlay/Faces.kt` `Circle`: `AnimatedContent(look)` is replaced by
+  `updateTransition(look)` with: `animateFloat` alpha (0.55 / 1,
+  `fade`); `animateColor` border track (`IdleBorder` / `ChaseTrack` /
+  `Ink`, `fade`); four `animateColor` ring colours, ring `i`'s
+  `transitionSpec = { m.spread[i].spec() }` targeting the look's shade
+  for its ring (grey / orange / green lists); `animateFloat` arc alpha
+  (1 in Lit, else 0, `fade`); `animateFloat` tick trim
+  (`transitionSpec = { if (targetState == Paid) m.tick.fraction else
+  m.fadeQuick.fraction }`, 1 on Paid). The chase angle is
+  `rememberInfiniteTransition` → `animateFloat(0f, 360f, m.chase)` only
+  while `look == Lit && m.chase != null`; it is the same infinite
+  transition the pulse uses (one `rememberInfiniteTransition` per
+  bubble, §10 rule 7); Idle and Paid run no loop. Everything is read in
+  `Canvas`'s draw; nothing above the draw recomposes per frame
+  (`OverlayRecompositionsTest` adds `BubbleFace` across ten frames of
+  the chase and of the spread).
+- `PhaseRing`, the pupil, `LoadingMark`, `LightTokens.paid`/`paidGround`
+  and `MkIcons.Tick` leave `Circle`; `BubblePadding`, the halo, the
+  layer's alpha and shadow, `Confirm(look)` and the docking are
+  unchanged. `BubbleFace` sets `contentDescription` from the look, the
+  sale's phase and `SaleText.amount` (§12.5's strings) in place of
+  `clearAndSetSemantics {}`; the overlay passes the sale it already has.
+- `Still`: `m.chase == null` draws the whole border in `Ink` when Lit
+  (the arc is not drawn; the track colour is `Ink` in Lit under Still,
+  a `when` on `m.still` at the colour's choice, not a second code path).
+
+### 13.6 Tests and checks per track
+
+Both: `./gradlew build` green (lint included: the four
+`ModifierParameter` warnings in `Faces.kt` go in dev1's first commit);
+`connectedDebugAndroidTest` on the track's own emulator, every test
+green, before the PR; no `delay()`, `Handler`, reflection or
+`LaunchedEffect` frame loop in the diff; presets only, colours only via
+roles or `Fixed`; the QR code whole on every frame it is drawn
+(`RunningMovesTest`'s frame checks stay green).
+
+Overlay: `OverlayFramesTest` pixel tests at three points of the turn
+(Lit draws the arc, Idle and Paid none), Paid's core green before its
+rim before the tick on the test clock, `Still` whole ink border and no
+loop (`m.chase` null means no infinite transition is created: count via
+`Recompositions` or a `rememberInfiniteTransition` label), the label
+carrying the step; `OverlayRecompositionsTest` ten frames of the chase.
+
+Screens: `ShiftListTest` for `sections` (fold at 4 and 21, no fold at
+2, `NeedsAction` unfolded, `Paid` headerless, order); `ShiftRowsTest` or
+a new `TrayTest` for the fold row's label, state and the count's
+semantics; `RunningMovesTest`: Back with a waiting unseen sale lands on
+the shift with the ground in the left sale's tray row; Back into a
+folded row opens the tray first; the step-back's trace carries the
+course and lands in the row at the top of Earlier; the code drawn on
+every frame of a Back and a close-for-now until the ground leaves the
+card (260 a); the paid fold's tick alpha 0 until the last share (260 b);
+`StageBackTest`: a second Back while the shift is arriving lands on the
+shift; a slow-frame `aSaleRises*` (a 100 ms+ `mainClock` advance mid-
+rise) with the `HeldMove` guard as the regression (§12.8).
+
+Memory (§12.7): the lead measures after integration on 5558 with
+`mem-r6.sh`'s flow; the tracks add no standing cost (the tray is three
+keyed items in the list the rows already live in; the bubble's mark is
+the same paths with four more colours and one small `Path`).
+
+### 13.7 Order
+
+dev1 and dev2 start from `motion-main` at this commit, on
+`motion-main-dev1` and `motion-main-dev2`, each with a draft PR against
+`motion-main`. The lead integrates dev1 first (its diff is contained),
+then dev2, re-runs both suites on 5558 and 5560, measures §12.7, and
+writes the showcase clips under `docs/reports/motion/` beside the
+`before-r2/` ones.
