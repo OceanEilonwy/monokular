@@ -18,6 +18,8 @@ import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performScrollToKey
+import androidx.compose.ui.test.performScrollToIndex
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.hasScrollToIndexAction
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.createComposeRule
@@ -261,6 +263,38 @@ class TrayTest {
             assertEquals(before, foldTop(), 1f, "frame $it: the fold row stays under the finger")
         }
         assertTrue(exists("Show 18 more waiting"), "folded")
+    }
+
+    /**
+     * A filter chosen after a fold kept under the finger moves its rows as any filter does (decision 295): the kept
+     * fold's held placement is for that fold of those sales only, so Paid's rows settle up to the chips on `settle`
+     * rather than jumping there in a frame.
+     */
+    @Test
+    fun aFilterChosenAfterAKeptFoldStillMovesItsRows() {
+        val sales = busy(21) + List(15) { testSale("q$it", SalePhase.Paid, paidAt = 800L - it) }
+        show(sales)
+        compose.onNodeWithContentDescription("Show 18 more waiting sales").performClick()
+        compose.waitForIdle()
+        compose.onNode(hasScrollToIndexAction()).performScrollToKey("w6")
+        compose.waitForIdle()
+        compose.onNodeWithContentDescription("Show fewer").performClick()
+        compose.waitForIdle()
+        compose.onNode(hasScrollToIndexAction()).performScrollToIndex(0)
+        compose.waitForIdle()
+        val paid = sales[21]
+        val from = top(paid)
+        compose.mainClock.autoAdvance = false
+        compose.onNode(hasText("Paid") and SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected)).performClick()
+        val tops = List(12) {
+            compose.mainClock.advanceTimeByFrame()
+            top(paid)
+        }
+        compose.mainClock.autoAdvance = true
+        compose.waitForIdle()
+        val to = top(paid)
+        assertTrue(to < from - 48f, "Paid's first row goes up to the chips: $from to $to")
+        assertTrue(tops.any { it > to + 2f && it < from - 2f }, "and settles there, not in one frame: $tops ($from to $to)")
     }
 
     /**

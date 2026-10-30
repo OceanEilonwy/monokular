@@ -143,8 +143,8 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
     // A fold kept under the finger moves no item: the list is asked to hold the fold row where it is, and the rows
     // that stay above it come in from off screen, where the list would otherwise slide them in from its edge (and the
     // fold row with them). So a scrolled tray folded is placed with no placement move, for as long as it shows that
-    // fold of those sales: the next change of either (a sale paid, the tray opened) moves its rows as ever. The rows
-    // compose in the list's measure, after this composition, so the flag is a fact about what is shown, not a frame.
+    // fold of those sales: the next change (a sale paid, the tray opened, a filter chosen) moves its rows as ever. The
+    // rows compose in the list's measure, after this composition, so the flag is a fact about what is shown, not a frame.
     var keptFor by remember { mutableStateOf<List<TillSale>?>(null) }
     val keeping = shownFolded && keptFor === sales
     Surface(Modifier.fillMaxSize(), color = mk.ground, contentColor = mk.ink) {
@@ -181,7 +181,15 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                 }
                 if (!status.running || sales.isEmpty()) item(key = "idle") { Idle(status.running, actions) }
                 if (sales.isNotEmpty()) {
-                    item(key = "chips") { Box(chrome) { Chips(filter, ShiftList.needsAction(sales)) { filter = it } } }
+                    // A filter chosen is a change of what is shown: its rows move as ever, even over a fold kept under the finger.
+                    item(key = "chips") {
+                        Box(chrome) {
+                            Chips(filter, ShiftList.needsAction(sales)) {
+                                filter = it
+                                keptFor = null
+                            }
+                        }
+                    }
                     if (items.isEmpty()) {
                         item(key = "empty") {
                             Text(
