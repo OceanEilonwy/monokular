@@ -4216,3 +4216,28 @@ design unchanged.
     own words); and `keepFoldInPlace` counting the rows going above the
     fold at the first visible item's height (the rows are one height,
     and a wrong count is a scroll of a row, not a jump off the screen).
+289. **The tray opens for a Back in the composition that starts the
+    change, not an effect after it** (dev2, round 2 review; 260 a, 269,
+    286, 235). The lead caught the bare ground (luminance 242, no code,
+    no card) for three frames on a Back from the fourth waiting sale on
+    both emulators; `RunningMovesTest` then caught it too once its Back
+    started from a folded row (`backIntoAFoldedRowOpensTheTray`, light
+    and dark: f2 and f3 100% ground, the code gone from its card). The
+    cause was the fold, not a stale recording: `ShiftScreen` opened it in
+    `LaunchedEffect(cameFrom)`, a frame after the change's first, so the
+    stage's held RowGrow ran with a course whose shift end (the row) did
+    not exist yet; the sale's ground drew whole and its code, which hides
+    while its course moves, was nowhere. The shift now derives the shown
+    fold in composition (`folded && !opens`, `opens` when the stage
+    leaves a sale the folded tray would hide) and writes the saveable
+    only in a `SideEffect`, so the row is composed on the very frame the
+    change is. Decision 286's reading (the face's lift replaying a stale
+    recording) is not the mechanism and is not acted on: with the row
+    there from the first frame no bare frame shows, and a Back with no
+    row at all (`backWithNoRowToLandInNeverDrawsTheBareGround`) never
+    showed one. Under Still the same fix makes the cut land on the open
+    tray, not the folded one and a jump (`...UnderStillCutsToTheOpenTray`).
+    All three new tests fail before the change and pass after. The
+    tablet's one "Close it for now" frame (lead's `closenow` f30) is not
+    the fold (a closed sale is not live, so it never folds) and is not
+    reproduced here; it is left for the lead's phone reading.
