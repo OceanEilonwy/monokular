@@ -261,7 +261,7 @@ private fun PosSection(p: PosState, a: SettingsActions) {
     if (p.connected && chosen != null) {
         Group(
             rows = buildList<@Composable () -> Unit> {
-                add { FactRow(PosText.POINT_OF_SALE, chosen.displayName) }
+                add { PosRow(chosen, if (chosen == PointOfSale.Square) p.location?.name else p.merchant) }
                 when (chosen) {
                     PointOfSale.Square -> {
                         val location = p.location ?: return@buildList
@@ -298,6 +298,20 @@ private fun PosSection(p: PosState, a: SettingsActions) {
             Group(rows = listOf({ ActionRow(PosText.signIn(chosen), a.onSignIn, mk.link) }))
         }
         Footnote(PosText.withoutFootnote(chosen))
+    }
+}
+
+/** The point of sale signed in to, led by its mark on a tile (the Logos board, A), with where it watches under its name. */
+@Composable
+private fun PosRow(pos: PointOfSale, place: String?) = Row(
+    Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(horizontal = 16.dp, vertical = 12.dp).semantics(mergeDescendants = true) {},
+    verticalAlignment = Alignment.CenterVertically,
+    horizontalArrangement = Arrangement.spacedBy(12.dp),
+) {
+    PosTile(pos)
+    Column {
+        Text(pos.displayName, fontSize = 17.sp)
+        if (!place.isNullOrEmpty()) Muted(place)
     }
 }
 

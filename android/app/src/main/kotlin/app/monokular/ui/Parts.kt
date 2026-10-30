@@ -275,17 +275,19 @@ fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit, enab
 /**
  * One of a group's choices (Settings › Wake-ups): the whole row picks it,
  * and the chosen one has a tick at its end. A radio button to TalkBack,
- * read with its [detail]; put the rows in a `Group` with
+ * read with its [detail]; [leading], decoration, goes before the label
+ * (a point of sale's mark). Put the rows in a `Group` with
  * `Modifier.selectableGroup()`.
  */
 @Composable
-fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit, detail: String? = null) = Row(
+fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit, detail: String? = null, leading: (@Composable () -> Unit)? = null) = Row(
     Modifier.fillMaxWidth().heightIn(min = 48.dp)
         .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
         .padding(horizontal = 16.dp, vertical = 8.dp),
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
 ) {
+    leading?.invoke()
     Column(Modifier.weight(1f)) {
         Text(label, fontSize = 17.sp)
         if (detail != null) Muted(detail)
