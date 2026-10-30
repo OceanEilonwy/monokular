@@ -59,7 +59,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.LayoutCoordinates
-import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.node.LayoutModifierNode
 import androidx.compose.ui.node.LayoutAwareModifierNode
@@ -634,15 +633,12 @@ internal class StageGeometry(
 
     /**
      * [key]'s code flying home on this change, null if it doesn't: a Back from a live sale, from rest (a Back that takes
-     * over a grow shrinks into the row as before), with its row's code glyph laid out and wholly inside the shift's
-     * list. Then only the code moves, on the straight line from its card to the glyph at the stage's progress, and the
-     * sale's ground and words fade in place (the designer's board 6). Decided once a change, on the first frame both
-     * ends are laid out (at 0, where the two ways look the same), so nothing turns from one into the other half way; a
-     * glyph that goes after that (its sale paid as the row came in) leaves the code to fade where it got to
-     * ([Modifier.wholeOn]). A change that takes over a flight (a back gesture cancelled, or the row tapped as the code
-     * comes in) keeps it one, turned round from where the code was drawn last (its course snaps there), the ground and
-     * words fading back as they went ([homeFade]). Sales that are not live have no code card, so no way home: they keep
-     * the row's grow reversed. Read in draw or layout.
+     * over a grow shrinks into the row as before), with its row's code glyph laid out. Then only the code moves, on the
+     * straight line from its card to the glyph at the stage's progress, and the sale's ground and words fade in place
+     * (the designer's board 6). Decided once a change, on the first frame both ends are laid out (at 0, where the two
+     * ways look the same), so nothing turns from one into the other half way; a glyph that goes after that (its sale
+     * paid as the row came in) leaves the code to fade where it got to ([Modifier.wholeOn]). Sales that are not live
+     * have no code card, so no way home: they keep the row's grow reversed. Read in draw or layout.
      */
     fun homing(key: String): Course? {
         val c = courses.find(key) ?: return null
@@ -650,43 +646,21 @@ internal class StageGeometry(
         val to = transition.targetState
         if (held.during(from, to) != Move.RowGrow) return null
         if (c.decided != held.generation) {
-            val placed = locate(c, Move.RowGrow)
-            val back = from is Screen.Sale && to == Screen.Till
-            val turned = placed && held.interrupted && c.flies && c.decided == held.generation - 1 && c.tookOver &&
-                (back || (from == Screen.Till && to is Screen.Sale))
+            val back = !held.interrupted && from is Screen.Sale && to == Screen.Till
             when {
-                turned -> c.awayFrom = c.away
-                held.interrupted || !back -> c.flies = false
-                placed && whole(c.endOn(Screen.Till)) -> {
-                    c.flies = true
-                    c.awayFrom = 0f
-                }
+                !back -> c.flies = false
+                locate(c, Move.RowGrow) -> c.flies = true
                 // Not laid out yet on a frame still at 0: asked again on the next.
                 progress() <= 0f -> return null
                 else -> c.flies = false
             }
             c.decided = held.generation
         }
-        if (!c.flies) return null
-        c.awayAt(progress(), homeward = to == Screen.Till)
-        return c
+        return if (c.flies) c else null
     }
 
-    /** Whether [glyph] is drawn whole: not cut by the shift list's edge (a row scrolled half off has no home to land in). */
-    private fun whole(glyph: End?): Boolean {
-        val g = glyph?.coordinates ?: return false
-        val b = g.boundsInRoot()
-        return b.width >= g.size.width - 1f && b.height >= g.size.height - 1f
-    }
-
-    /**
-     * A live sale's ground ([Motion.crossfadeOnTrack]) or words ([Motion.fadeOutOnTrack]) while its code flies [home]:
-     * fading out in place over the first [share] of its way, and back in the same way as it turns back.
-     */
-    fun homeFade(home: Course, share: Float = crossfade): Float = Nav.through(home.away, isArriving = false, leaving = share, arriving = 1f)
-
-    /** The way home of the code on [ground]'s end on [screen] (a live sale's), while it flies; null otherwise. */
-    fun homeOn(ground: String, screen: Screen): Course? = courses.find(ground)?.endOn(screen)?.home?.let { homing(it) }
+    /** A live sale's ground while its code flies home: fading out in place, over the move's first [Motion.crossfadeOnTrack]. */
+    fun homeFade(): Float = Nav.through(progress(), isArriving = false, leaving = crossfade, arriving = 1f)
 
     internal fun size(): Int = courses.size()
 
@@ -706,7 +680,7 @@ internal class StageGeometry(
         val to = transition.targetState
         if (held.during(from, to) != during) return course.lost()
         // A live sale's ground whose code is flying home has no course: it fades where it is ([homing]).
-        val home = course.home
+        val home = course.endOn(from)?.home
         if (home != null && homing(home) != null) return course.lost()
         // Placed already on this frame (an end node, the words on it, the stage's painter all ask): the same place.
         val p = progress()
@@ -832,32 +806,6 @@ internal class Course(val key: String) {
     /** A code's way home: the change whether it [flies] was decided for, -1 before any ([StageGeometry.homing]). */
     var decided = -1L
     var flies = false
-
-    /** How far its code was on its way home on the last frame drawn, and where this change took it over from. */
-    var away = 0f
-    var awayFrom = 0f
-
-    /**
-     * How far its code is on its way from its card to the glyph at [p] of this change, 0 to 1, going [homeward] or back
-     * to its card: from rest, [p]; on a change that turned it, on from [awayFrom], where it had got to, so the fades
-     * read by it go on from where they were, as the snapped course does ([place]). Kept in [away], which they read, and
-     * which the change that may take this one over starts from.
-     */
-    fun awayAt(p: Float, homeward: Boolean): Float {
-        val a = if (homeward) awayFrom + (1f - awayFrom) * p else awayFrom * (1f - p)
-        away = a
-        return a
-    }
-
-    /** Whether this change took over another mid-move and starts from where the surface was drawn last ([place]). */
-    val tookOver: Boolean get() = snapped
-
-    /** A live sale's ground: its code's way home, from whichever end is the sale's ([End.home]). */
-    val home: String?
-        get() {
-            for (i in ends.indices) ends[i].home?.let { return it }
-            return null
-        }
 
     fun add(end: End) {
         ends += end
@@ -1203,10 +1151,10 @@ private class GroundNode(
             // end draws itself (decision 232).
             track.locate() -> Unit
             // No partner (a sale whose row is off the shift): it fades with its screen, the one under it showing through;
-            // a live sale's whose code is flying home, in place by how far the code is on its way, as its words go.
+            // a live sale's whose code is flying home, in place over the move's first fade share, as its words go.
             else -> {
-                val home = end.home?.let { geometry.homing(it) }
-                val seen = if (home != null) geometry.homeFade(home) else stage.shown()
+                val home = end.home
+                val seen = if (home != null && geometry.homing(home) != null) geometry.homeFade() else stage.shown()
                 with(painter) { paint(own.color.copy(alpha = own.color.alpha * seen), own.top.toPx(), own.bottom.toPx()) }
             }
         }
@@ -1774,8 +1722,6 @@ private class FadeThroughNode(
     private fun alpha(): Float {
         val move = stage.moving()
         if (!fades(move)) return 1f
-        // On a live sale whose code is flying home: in place, by how far it is on its way, whichever way it goes.
-        on?.let { g -> stage.geometry.homeOn(g.key, stage.screen)?.let { return stage.geometry.homeFade(it, leaving) } }
         val arrivingHere = stage.arriving()
         // The plain shares of the move: out over its first [leaving], in over its last [arriving] (decision 188).
         var start = 1f - arriving
