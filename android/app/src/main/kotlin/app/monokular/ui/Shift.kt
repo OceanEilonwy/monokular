@@ -3,7 +3,10 @@ package app.monokular.ui
 import android.content.Context
 import android.view.accessibility.AccessibilityManager
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.AnimationSpec
 import androidx.compose.animation.core.VisibilityThreshold
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -12,7 +15,13 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitVerticalTouchSlopOrCancellation
+import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.indication
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,7 +50,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.FloatState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.LongState
 import androidx.compose.runtime.MutableState
@@ -51,7 +62,10 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -59,13 +73,23 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.drawscope.clipRect
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.util.addPointerInputChange
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -82,8 +106,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.monokular.FoldStack
 import app.monokular.Ground
 import app.monokular.GroundLook
 import app.monokular.Layers
@@ -102,7 +128,10 @@ import app.monokular.sales.live
 import app.monokular.sharedGround
 import app.monokular.sharedSurface
 import app.monokular.words
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 
 /**
  * The shift (the design's ShiftList; decisions 60, 64, 72): what this
@@ -309,8 +338,12 @@ private fun SectionHeader(text: String, top: Dp, modifier: Modifier) = Text(
 )
 
 /**
- * The tray's last slice: "Show N more waiting" folded, "Show fewer" open, in ink (a neutral button: the link orange is
- * under 4.5:1 on the tint), the chevron turning over as it changes. Focus stays on it as the rows come and go.
+ * The tray's last slice (the fixes canvas's board 4): folded, the hidden sales peek as two card edges under the third
+ * row over a "+N" pill; open, the pill reads "Show fewer". In ink on the card (a neutral button: the link orange is
+ * under 4.5:1 on the tint), the chevron turning over as it changes. The whole slice is the button, at least 48 dp
+ * tall, its press shown on the pill. Folded, the stack can be pulled down: it follows the finger and, let go far
+ * enough or flung, opens the tray ([FoldStack]); else it settles back. The pull is read only in layout and draw.
+ * Focus stays on it as the rows come and go.
  */
 @Composable
 private fun FoldRow(fold: ShiftItem.Fold, modifier: Modifier, words: Modifier, onToggle: () -> Unit) {
@@ -318,28 +351,130 @@ private fun FoldRow(fold: ShiftItem.Fold, modifier: Modifier, words: Modifier, o
     val through = m.fadeThrough.fraction
     val quick = m.fadeQuick.fraction
     val turn by animateFloatAsState(if (fold.open) 180f else 0f, m.settle.spec(FoldTurnThreshold), label = "fold chevron")
-    Row(
-        modifier.height(48.dp)
-            .clickable(role = Role.Button, onClick = onToggle)
+    val pull = remember { StackPull() }
+    val scope = rememberCoroutineScope()
+    val toggle = {
+        // The edges come or go at once; the pull starts a gap off and settles, so the pill stays where it was.
+        if (m.still) pull.hold(0f) else pull.settle(scope, if (fold.open) -FoldStack.GAP_DP else pull.dp.floatValue + FoldStack.GAP_DP, m.settle.spec(StackThreshold))
+        onToggle()
+    }
+    val toggleNow by rememberUpdatedState(toggle)
+    val source = remember { MutableInteractionSource() }
+    val t = mk
+    val tones = remember(t) { StackTones.of(t) }
+    val drag = if (fold.open) Modifier else Modifier.pointerInput(pull, m) {
+        val back = m.flick.spec<Float>(StackThreshold)
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            var raw = 0f
+            // Down only: a drag up from the stack is the list's, to scroll.
+            val start = awaitVerticalTouchSlopOrCancellation(down.id) { change, over ->
+                if (over > 0f) {
+                    change.consume()
+                    raw = over
+                }
+            } ?: return@awaitEachGesture
+            pull.hold(FoldStack.pulled(raw / density))
+            val tracker = VelocityTracker()
+            tracker.addPointerInputChange(start)
+            val ended = verticalDrag(start.id) { change ->
+                raw += change.positionChange().y
+                change.consume()
+                tracker.addPointerInputChange(change)
+                pull.hold(FoldStack.pulled(raw / density))
+            }
+            val velocity = tracker.calculateVelocity().y / density
+            if (ended && FoldStack.opens(pull.dp.floatValue, velocity)) toggleNow() else pull.settle(scope, pull.dp.floatValue, back, velocity)
+        }
+    }
+    Column(
+        modifier.then(drag)
+            .clickable(interactionSource = source, indication = null, role = Role.Button, onClick = toggle)
             .clearAndSetSemantics {
                 role = Role.Button
                 contentDescription = ShiftList.foldSaid(fold)
                 stateDescription = if (fold.open) "Expanded" else "Collapsed"
-                onClick { onToggle(); true }
+                onClick { toggle(); true }
             },
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.Center,
     ) {
-        Row(words, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            // Two different words, so through, not across: the old out quickly, the new in once it has gone (decision
-            // 188; the canvas's "crossfades", decision 291).
-            AnimatedContent(targetState = ShiftList.foldLabel(fold), transitionSpec = { (fadeIn(through) togetherWith fadeOut(quick)).using(null) }, label = "fold label") { label ->
-                Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = mk.ink, maxLines = 1)
+        Column(words.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+            Spacer(Modifier.fillMaxWidth().stackEdges(fold.open, pull.dp, tones))
+            Row(
+                Modifier.padding(top = if (fold.open) 10.dp else 8.dp, bottom = 10.dp).height(28.dp)
+                    .animateContentSize(m.settle.spec(IntSize.VisibilityThreshold))
+                    .clip(PillShape).background(mk.card).indication(source, ripple())
+                    .padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                // Two different words, so through, not across: the old out quickly, the new in once it has gone (decision
+                // 188; the canvas's "crossfades", decision 291).
+                AnimatedContent(targetState = ShiftList.foldLabel(fold), transitionSpec = { (fadeIn(through) togetherWith fadeOut(quick)).using(null) }, label = "fold label") { label ->
+                    Text(label, fontFamily = Manrope, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = mk.ink, maxLines = 1)
+                }
+                Icon(MkIcons.Fold, contentDescription = null, tint = mk.ink, modifier = Modifier.size(14.dp).graphicsLayer { rotationZ = turn })
             }
-            Icon(MkIcons.Fold, contentDescription = null, tint = mk.ink, modifier = Modifier.size(16.dp).graphicsLayer { rotationZ = turn })
         }
     }
 }
+
+/**
+ * How far the fold's stack is pulled past its rest, in dp: held by the finger, or settling back to rest on a preset.
+ * A new hold stops a settle where it is, so a finger catches the stack mid-way. Read only in layout and draw.
+ */
+private class StackPull {
+    val dp = mutableFloatStateOf(0f)
+    private var settling: Job? = null
+
+    fun hold(at: Float) {
+        settling?.cancel()
+        settling = null
+        dp.floatValue = at
+    }
+
+    fun settle(scope: CoroutineScope, from: Float, spec: AnimationSpec<Float>, velocity: Float = 0f) {
+        hold(from)
+        settling = scope.launch { animate(from, 0f, velocity, spec) { v, _ -> dp.floatValue = v } }
+    }
+}
+
+/** The stack's two edges, from the card toward the tray's amber, and the line under each, the amber toward its ink. */
+private class StackTones(val near: Color, val far: Color, val line: Color) {
+    fun edge(i: Int) = if (i == 0) near else far
+
+    companion object {
+        fun of(t: Tokens) = StackTones(lerp(t.card, t.warnGround, 0.2f), lerp(t.card, t.warnGround, 0.6f), lerp(t.warnGround, t.warn, 0.1f))
+    }
+}
+
+/**
+ * The stack's edges, as tall as [pull] makes them (none open, past the pull a settle has left), laid out and drawn
+ * from it, never composed: under the card's 4 dp of tray each side, square at the top, rounded at the bottom, the
+ * lower first so the upper's line lies over it.
+ */
+private fun Modifier.stackEdges(open: Boolean, pull: FloatState, tones: StackTones): Modifier =
+    layout { measurable, constraints ->
+        val p = pull.floatValue
+        val h = (if (open) p.coerceAtLeast(0f) else FoldStack.area(p)).dp.roundToPx()
+        val placeable = measurable.measure(constraints.copy(minHeight = h, maxHeight = h))
+        layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+    }.drawBehind {
+        if (open) return@drawBehind
+        val p = pull.floatValue
+        val line = 1.dp.toPx()
+        for (i in FoldStack.EDGES - 1 downTo 0) {
+            val h = FoldStack.height(i, p).dp.toPx()
+            if (h <= 0f) continue
+            val top = FoldStack.top(i, p).dp.toPx()
+            val x = (TrayPadding + FoldStack.inset(i, p).dp).toPx()
+            val r = FoldStack.corner(i).dp.toPx()
+            // A rounded rect reaching a corner above the edge, clipped there: square at the top, round at the bottom.
+            clipRect(top = top) {
+                drawRoundRect(tones.line, Offset(x, top - r + line), Size(size.width - 2 * x, h + r), CornerRadius(r))
+                drawRoundRect(tones.edge(i), Offset(x, top - r), Size(size.width - 2 * x, h + r), CornerRadius(r))
+            }
+        }
+    }
 
 /**
  * Folding an open tray scrolled down past its third row: the rows above the fold row go, and with them the item the
@@ -478,6 +613,12 @@ private const val FoldKey = "fold"
 
 /** The chevron's turn is in degrees: a tenth of one is still. */
 private const val FoldTurnThreshold = 0.1f
+
+/** The stack's pull is in dp: a tenth of one is still. */
+private const val StackThreshold = 0.1f
+
+/** The fold's pill: 28 dp tall, round at its ends. */
+private val PillShape = RoundedCornerShape(14.dp)
 
 /** The tray: its corners, and how far inside them the rows' card sits (24 − 4 is the card's 20). */
 private val TrayCorner = 24.dp

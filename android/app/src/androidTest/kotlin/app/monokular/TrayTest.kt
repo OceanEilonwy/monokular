@@ -12,6 +12,7 @@ import androidx.compose.ui.test.assert
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasClickAction
@@ -26,6 +27,10 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.unit.dp
 import app.monokular.OneClockTest.Companion.noActions
 import app.monokular.OneClockTest.Companion.status
 import app.monokular.core.PointOfSale
@@ -84,7 +89,7 @@ class TrayTest {
         val sales = busy(4)
         show(sales)
         assertEquals(listOf(true, true, true, false), sales.take(4).map(::shows), "three rows, the fourth folded away")
-        assertTrue(exists("Show 1 more waiting"))
+        assertTrue(exists("+1"))
         assertTrue(shows(sales[4]) && exists(ShiftList.EARLIER), "the paid sale under Earlier")
         compose.onNodeWithContentDescription("Show 1 more waiting sale").performClick()
         compose.waitForIdle()
@@ -93,14 +98,14 @@ class TrayTest {
         assertTrue(top(sales[3]) < top(sales[4]), "the fourth opens in place, in the tray above Earlier")
         compose.onNodeWithContentDescription("Show fewer").performClick()
         compose.waitForIdle()
-        assertTrue(!shows(sales[3]) && exists("Show 1 more waiting"), "and folds again")
+        assertTrue(!shows(sales[3]) && exists("+1"), "and folds again")
     }
 
     @Test
     fun twentyOneWaitingCountAndFoldEighteen() {
         show(busy(21))
         assertTrue(exists("Waiting for payment, 21 sales"))
-        assertTrue(exists("Show 18 more waiting"))
+        assertTrue(exists("+18"))
         compose.onNodeWithContentDescription("Show 18 more waiting sales").performClick()
         compose.waitForIdle()
         assertTrue(exists("Show fewer"), "the fold row's words change at once; the rows open under it")
@@ -211,7 +216,7 @@ class TrayTest {
         compose.mainClock.advanceTimeByFrame()
         compose.mainClock.advanceTimeBy(1_000)
         assertEquals(first, top(new), 0.5f, "at the tray's top")
-        assertTrue(!shows(start[2]) && exists("Show 1 more waiting"), "the third row moved into the fold")
+        assertTrue(!shows(start[2]) && exists("+1"), "the third row moved into the fold")
         assertTrue(exists("Waiting for payment, 4 sales"))
     }
 
@@ -240,6 +245,68 @@ class TrayTest {
         assertTrue(shows(sales[3]) && exists("Show fewer"))
     }
 
+    /** The stack pulled down past a third of its reach and let go slowly opens the tray (the fixes canvas's board 4). */
+    @Test
+    fun pullingTheStackDownOpensTheTray() {
+        val sales = busy(4)
+        show(sales)
+        val half = with(compose.density) { (FoldStack.REACH_DP / 2f).dp.toPx() }
+        compose.onNodeWithContentDescription("Show 1 more waiting sale").performTouchInput {
+            swipeDown(centerY, centerY + viewConfiguration.touchSlop + half, durationMillis = 1_000)
+        }
+        compose.waitForIdle()
+        assertTrue(shows(sales[3]) && exists("Show fewer"), "open")
+    }
+
+    /** A short pull let go settles back: still folded, the stack its rest height again. */
+    @Test
+    fun aShortPullSettlesBack() {
+        show(busy(4))
+        val fold = compose.onNodeWithContentDescription("Show 1 more waiting sale")
+        val rest = fold.fetchSemanticsNode().boundsInRoot.height
+        val short = with(compose.density) { 12.dp.toPx() }
+        fold.performTouchInput { swipeDown(centerY, centerY + viewConfiguration.touchSlop + short, durationMillis = 1_000) }
+        compose.waitForIdle()
+        assertTrue(!shows(busy(4)[3]) && exists("+1"), "still folded")
+        assertEquals(rest, fold.fetchSemanticsNode().boundsInRoot.height, 0.5f, "settled back to rest")
+    }
+
+    /** Held, the stack follows the finger to the pixel, laid out from the pull with no recomposition. */
+    @Test
+    fun theStackFollowsTheFingerWithoutRecomposing() {
+        show(busy(4))
+        val fold = compose.onNodeWithContentDescription("Show 1 more waiting sale")
+        val rest = fold.fetchSemanticsNode().boundsInRoot.height
+        assertTrue(rest >= with(compose.density) { 48.dp.toPx() }, "a touch target of 48 dp or more: $rest")
+        fold.performTouchInput { down(center); moveBy(Offset(0f, viewConfiguration.touchSlop)) }
+        compose.waitForIdle()
+        val held = fold.fetchSemanticsNode().boundsInRoot.height
+        recompositions.reset()
+        val step = with(compose.density) { 10.dp.toPx() }
+        repeat(3) {
+            fold.performTouchInput { moveBy(Offset(0f, step)) }
+            compose.waitForIdle()
+        }
+        assertEquals(held + 3 * step, fold.fetchSemanticsNode().boundsInRoot.height, 1f, "the stack is as much taller as the finger went")
+        assertEquals(0, recompositions.count("app.monokular.ui.FoldRow"), "and nothing recomposed for it")
+        fold.performTouchInput { up() }
+        compose.waitForIdle()
+        assertTrue(exists("+1"), "30 dp is under a third of the reach: it settles back")
+    }
+
+    /** A drag up that starts on the stack is the list's: it scrolls, and the tray stays folded. */
+    @Test
+    fun aDragUpFromTheStackScrollsTheList() {
+        val sales = busy(4)
+        show(sales + List(15) { testSale("q$it", SalePhase.Paid, paidAt = 800L - it) })
+        val from = top(sales[0])
+        val far = with(compose.density) { 120.dp.toPx() }
+        compose.onNodeWithContentDescription("Show 1 more waiting sale").performTouchInput { swipeUp(centerY, centerY - far, durationMillis = 500) }
+        compose.waitForIdle()
+        assertTrue(top(sales[0]) < from - 48f, "the list scrolled: $from to ${top(sales[0])}")
+        assertTrue(exists("+1"), "still folded")
+    }
+
     /**
      * Folding a 21-row tray scrolled past its third row keeps the fold row under the finger, to the pixel, on every
      * frame (the lead's fold21: a 28 dp hop on the phone, 18 on the tablet).
@@ -262,7 +329,7 @@ class TrayTest {
             compose.mainClock.advanceTimeByFrame()
             assertEquals(before, foldTop(), 1f, "frame $it: the fold row stays under the finger")
         }
-        assertTrue(exists("Show 18 more waiting"), "folded")
+        assertTrue(exists("+18"), "folded")
     }
 
     /**

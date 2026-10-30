@@ -39,7 +39,7 @@ sealed interface ShiftItem {
     /** A sale's row, its corners [ends] counted within its section; [tray] when it sits in the waiting tray. */
     data class Row(val sale: TillSale, val ends: RowEnds, val tray: Boolean) : ShiftItem
 
-    /** The tray's fold row: "Show [hidden] more waiting" folded, "Show fewer" [open]. */
+    /** The tray's fold: a stack and "+[hidden]" folded, "Show fewer" [open]. */
     data class Fold(val hidden: Int, val open: Boolean) : ShiftItem
 
     /** The header over the sales that are no longer live, under the tray. */
@@ -113,8 +113,8 @@ object ShiftList {
     /** The header over what is no longer live. */
     const val EARLIER = "Earlier"
 
-    /** The fold row's words: how many more there are folded, else "Show fewer". */
-    fun foldLabel(fold: ShiftItem.Fold): String = if (fold.open) "Show fewer" else "Show ${fold.hidden} more waiting"
+    /** The fold's pill: how many more there are folded ("+18"), else "Show fewer". */
+    fun foldLabel(fold: ShiftItem.Fold): String = if (fold.open) "Show fewer" else "+${fold.hidden}"
 
     /** What TalkBack says for the tray's header. */
     fun trayHeaderSaid(count: Int): String = "$TRAY_HEADER, $count ${if (count == 1) "sale" else "sales"}"

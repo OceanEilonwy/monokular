@@ -430,13 +430,13 @@ class ShiftListTest {
     @Test
     fun theTrayFoldsAfterThreeRowsAndSaysHowManyMoreWait() {
         assertEquals(
-            listOf("header 4", "tray w4 First", "tray w3 Middle", "tray w2 Last", "Show 1 more waiting", "earlier", "paid First", "expired Last"),
+            listOf("header 4", "tray w4 First", "tray w3 Middle", "tray w2 Last", "+1", "earlier", "paid First", "expired Last"),
             read(ShiftList.sections(busy(4), ShiftFilter.All, folded = true)),
         )
         val many = ShiftList.sections(busy(21), ShiftFilter.All, folded = true)
         assertEquals(ShiftItem.TrayHeader(21), many.first(), "the header counts every live sale, folded ones too")
         assertEquals(3, many.count { it is ShiftItem.Row && it.tray })
-        assertEquals("Show 18 more waiting", ShiftList.foldLabel(many.filterIsInstance<ShiftItem.Fold>().single()))
+        assertEquals("+18", ShiftList.foldLabel(many.filterIsInstance<ShiftItem.Fold>().single()))
     }
 
     @Test
