@@ -999,6 +999,22 @@ class TillTest {
     }
 
     @Test
+    fun `a confirmations read that lands after sale paid leaves the sale paid, so its paid note sounds once`() = runBlocking {
+        val till = Till(FakeSource(listOf(sale)), monokulo, connection)
+        server.enqueue(read("pending", 0, code = 201))
+        till.check()
+        till.onEvent(event("sale.confirming"))
+        // The read left while the sale was confirming; sale.paid came in before it landed.
+        server.enqueue(read("confirming", 9))
+        val late = monokulo.order(connection, till.sales.value.sales.single().url!!)
+        till.onEvent(event("sale.paid"))
+        val paid = till.sales.value.sales.single()
+        assertEquals(SalePhase.Paid, paid.phase)
+        till.onConfirmations(late)
+        assertEquals(paid, till.sales.value.sales.single(), "a read of a sale no longer on its way changes nothing")
+    }
+
+    @Test
     fun `a confirming sale is read again at once and then every 20 s, until it's paid`() = runTest {
         val till = Till(FakeSource(listOf(sale)), monokulo, connection)
         server.enqueue(order())
