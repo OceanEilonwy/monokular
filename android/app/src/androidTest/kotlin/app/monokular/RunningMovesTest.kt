@@ -265,7 +265,9 @@ class RunningMovesTest {
 
     /**
      * A back gesture holds the code part way home, as far along as the finger (decision 169), with the sale's ground
-     * fading in place; cancelled, the code is back on its card on the sale; and the Back that follows flies it home.
+     * fading in place; cancelled, the code goes back along its line from where the finger left it, on every frame of
+     * the spring back, the sale's ground still fading in place (no grow from the row), and is back on its card on the
+     * sale; and the Back that follows flies it home.
      */
     @Test fun aBackGestureSeeksTheCodeHomeAndACancelPutsItBack() {
         moves.start(Screen.Sale("a1"), dark = false)
@@ -290,6 +292,7 @@ class RunningMovesTest {
             if (c == null || !g.inflate(1f).contains(c.center) || c.width > g.width) failures += "the code at $c is not on its card at $g"
         }
         compose.runOnUiThread { back.dispatchOnBackCancelled() }
+        failures += turnsBack(moves.settle(Screen.Sale("a1"), groundKey = homeKey("a1")), g, rest)
         compose.mainClock.advanceTimeBy(1_500)
         val after = moves.now(Screen.Sale("a1")).codes.firstOrNull { it.width > 20f }
         if (after == null || abs(after.left - rest.left) > 1f || abs(after.top - rest.top) > 1f || abs(after.width - rest.width) > 1f) failures += "cancelled, the code is at $after, not back at $rest"
@@ -297,6 +300,43 @@ class RunningMovesTest {
         val frames = moves.run(Screen.Till, groundKey = homeKey("a1"))
         failures += fliesHome(frames) + landsHome(frames, moves.sale)
         report("code-home-gesture", frames, failures)
+    }
+
+    /**
+     * A cancelled flight's spring back, frame by frame: the code never leaves its line or its card, which starts where
+     * the gesture held it ([held]) and grows back, whole and square with its quiet zone, to its place on the sale
+     * ([rest]); the sale's ground has no course of its own on any of them (it fades back in place).
+     */
+    private fun turnsBack(frames: List<RunningMoves.Frame>, held: Rect?, rest: Rect): List<String> {
+        val out = mutableListOf<String>()
+        val moving = frames.drop(1).filter { f -> f.p < 1f && f.moves.any { it == Move.RowGrow } }
+        if (moving.size < 3) return listOf("the cancelled code springs back on ${moving.size} frames")
+        var last = held
+        for (f in moving) {
+            f.saleGround?.let { out += "f${f.index}: the sale's ground grows back from the row, at $it, where it should fade in place" }
+            val g = f.ground
+            if (g == null) {
+                out += "f${f.index}: the cancelled code has left its line (p ${"%.2f".format(f.p)})"
+                continue
+            }
+            val prev = last
+            if (prev != null && (abs(g.left - prev.left) > JUMP || abs(g.top - prev.top) > JUMP || g.width < prev.width - 1f)) {
+                out += "f${f.index}: the cancelled code's card jumps from $prev to $g"
+            }
+            last = g
+            val c = f.codes.maxByOrNull { it.width }
+            if (c == null) {
+                out += "f${f.index}: no code is drawn as it springs back"
+                continue
+            }
+            if (abs(c.width - c.height) > SQUARE_SLACK) out += "f${f.index}: the code at $c is not square"
+            val quiet = g.width * QUIET * QUIET_KEPT - 1f
+            if (c.left - g.left < quiet || c.top - g.top < quiet || g.right - c.right < quiet || g.bottom - c.bottom < quiet) {
+                out += "f${f.index}: the code at $c has lost its quiet zone in its card at $g"
+            }
+            if (c.width > rest.width + 1f) out += "f${f.index}: the code at $c is larger than at rest, $rest"
+        }
+        return out
     }
 
     /**
@@ -1365,6 +1405,9 @@ class RunningMovesTest {
 
         /** Frames a change is drawn at 0 before its spring starts: the arriving screen's first composition (decision 235). */
         const val PRIMED = 2
+
+        /** The most a card on its line moves in a frame of the half-size frames: more is a jump, not the spring. */
+        const val JUMP = 40f
 
         /** A margin may round a pixel of the half-size frame below the smaller rest margin. */
         const val MARGIN_SLACK = 1f
