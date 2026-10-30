@@ -450,7 +450,7 @@ internal fun StatusPill(sale: TillSale, now: LongState) = Row(
     verticalAlignment = Alignment.CenterVertically,
     horizontalArrangement = Arrangement.spacedBy(12.dp),
 ) {
-    PhaseRing(sale.phase, 30.dp)
+    PhaseRing(sale, 30.dp)
     Column {
         val through = motion.fadeThrough.fraction
         val fadeQuick = motion.fadeQuick.fraction
@@ -556,7 +556,7 @@ val HeroSize = 72.dp
 @Composable
 fun StateBadge(sale: TillSale, icon: StateIcon, ground: Ground, size: Dp, glyph: Dp, quiet: Boolean = false) {
     if (icon == StateIcon.Ring) {
-        PhaseRing(sale.phase, size)
+        PhaseRing(sale, size)
         return
     }
     val (vector, tint) = when (icon) {

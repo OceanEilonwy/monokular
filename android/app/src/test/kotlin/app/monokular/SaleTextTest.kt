@@ -85,6 +85,12 @@ class SaleTextTest {
     fun `a sale's status follows where it stands on this till`() {
         assertEquals("Waiting for payment", SaleText.status(sale(), PointOfSale.Square))
         assertEquals("Seen on the network", SaleText.status(sale(phase = SalePhase.Seen), PointOfSale.Square))
+        assertEquals("Confirming", SaleText.status(sale(phase = SalePhase.Confirming), PointOfSale.Square), "until Monokulo says how many")
+        assertEquals("Confirming · 4 of 10", SaleText.status(sale(phase = SalePhase.Confirming).copy(confirmations = 4, confirmationsRequired = 10), PointOfSale.Square))
+        assertEquals(
+            "Seen on the network", SaleText.status(sale(phase = SalePhase.Seen).copy(confirmations = 0, confirmationsRequired = 10), PointOfSale.Square),
+            "seen has no count to give",
+        )
         assertEquals("Part paid", SaleText.status(sale(phase = SalePhase.Partial), PointOfSale.Square))
         assertEquals("Paid", SaleText.status(sale(phase = SalePhase.Paid), PointOfSale.Square))
         assertEquals("Paid after you closed it", SaleText.status(sale(phase = SalePhase.Paid, closedAt = 1), PointOfSale.Square))
@@ -179,5 +185,15 @@ class SaleTextTest {
         assertEquals(552, secondsLeft(expiresAt = 1_000_552, now = 1_000_000))
         assertEquals(0, secondsLeft(expiresAt = 1_000_000, now = 1_000_000))
         assertEquals(0, secondsLeft(expiresAt = 1_000_000, now = 1_000_009), "a code past its end shows 0:00, not a negative time")
+    }
+
+    @Test
+    fun `confirming counts up to the store's threshold and no further`() {
+        fun words(have: Int?, need: Int?) = SaleText.confirming(sale(phase = SalePhase.Confirming).copy(confirmations = have, confirmationsRequired = need))
+        assertEquals("Confirming · 1 of 10", words(1, 10))
+        assertEquals("Confirming · 10 of 10", words(12, 10), "a read just before it turns paid never says more than it needs")
+        assertEquals("Confirming", words(4, null), "with no threshold there is nothing to count to")
+        assertEquals("Confirming", words(null, 10))
+        assertEquals("Confirming", words(0, 0), "a store that takes no confirmation is paid on sight")
     }
 }

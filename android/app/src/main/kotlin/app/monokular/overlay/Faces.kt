@@ -994,7 +994,7 @@ private fun StatusRow(sale: TillSale, now: LongState) = Row(
     horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally),
 ) {
     val m = motion
-    PhaseRing(sale.phase, 26.dp)
+    PhaseRing(sale, 26.dp)
     AnimatedContent(
         SaleText.status(sale, posOf(sale)),
         // Through, not across: "Payment seen" never drawn over "Waiting for payment" (decision 225).

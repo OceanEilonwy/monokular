@@ -108,6 +108,12 @@ class Motion private constructor(
     val chase: InfiniteRepeatableSpec<Float>? = loop(CHASE_MS, LinearEasing)
 
     /**
+     * The phase ring's arc turning while the payment is seen or confirming: a turn of [SPIN_MS] at one speed
+     * (Board 5), read in the ring's draw; null when loops don't run, where the arc stands still and only its length steps.
+     */
+    val spin: InfiniteRepeatableSpec<Float>? = loop(SPIN_MS, LinearEasing)
+
+    /**
      * The bubble's lens changing colour from the core out: ring `i` of the mark's [SPREAD_RINGS] (the core, the inner
      * six, the middle twelve with the base, the rim) is a [fade] starting [SPREAD_STEP_MS] after the ring inside it, so
      * the lens is done by `fade + 3 × step`. Under [Still] every ring is the one quick fade, no steps.
@@ -148,6 +154,9 @@ class Motion private constructor(
 
         /** One turn of the waiting bubble's border. */
         const val CHASE_MS = 1250
+
+        /** One turn of the phase ring's arc while a payment is on its way. */
+        const val SPIN_MS = 1600
 
         /** The lens's rings, core to rim, that [spread] colours one after another. */
         const val SPREAD_RINGS = 4
