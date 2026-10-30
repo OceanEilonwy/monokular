@@ -340,8 +340,9 @@ class PanelActions(
  * sale whose code is up, its border a pale track with an ink segment
  * chasing round it (and a pulse behind); once it's paid, the lens fills
  * green from the core out and a white tick draws over it, the border
- * whole ink. Its colours are the design's whatever the theme: it sits
- * over another app. [confirms] is whether a payment landing on it buzzes:
+ * whole ink. Its colours are the design's own ([BubbleInks]), not the
+ * theme's: it sits over another app, on a white disc, or a dark one when
+ * the device is in night mode. [confirms] is whether a payment landing on it buzzes:
  * only while Monokular is away ([PaidBuzz], decision 176). [pulse] is false for the bubble docked above the panel,
  * which has nothing left to call for; [panelUp] is the free bubble's word
  * that a panel is up beside it (a tablet's), which stops its pulse too.
@@ -371,12 +372,28 @@ val BubblePadding = 16.dp
 private val DockedPadding = 12.dp
 
 /** The bubble's circle: its window, with [BubblePadding] each side, is [Panel.BUBBLE_WINDOW_DP]. */
-private val BubbleSize = 56.dp
+internal val BubbleSize = 56.dp
 
 private val BubbleElevation = 6.dp
 
-/** The logo in the bubble, the same size in every look (§12.6 item 2). */
-private val BubbleMark = 38.dp
+/** The logo in the bubble, the same size in every look (§12.6 item 2): its border's edge leaves about 7 dp of the disc round it. */
+internal val BubbleMark = 46.dp
+
+/**
+ * The bubble's colours in light and dark mode: its [disc], the waiting
+ * border's [track], the [ink] chasing round it (and the whole border,
+ * waiting under Still or paid) and the [idle] border. The lens and the
+ * paid tick are the same in both.
+ */
+@Immutable
+internal class BubbleInks(val disc: Color, val track: Color, val ink: Color, val idle: Color) {
+    companion object {
+        val Light = BubbleInks(Fixed.White, Fixed.ChaseTrack, Fixed.Ink, Fixed.IdleBorder)
+        val Dark = BubbleInks(Fixed.BubbleDark, Fixed.BubbleDarkTrack, Fixed.BubbleDarkInk, Fixed.BubbleDarkIdleBorder)
+
+        fun of(dark: Boolean): BubbleInks = if (dark) Dark else Light
+    }
+}
 
 /** The lens's look for each of the bubble's. */
 private fun lensOf(look: BubbleLook): LensLook = when (look) {
@@ -409,15 +426,17 @@ private class Rings(private val core: State<Color>, private val inner: State<Col
 @Composable
 private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: Boolean, confirms: Boolean, presence: Presence?) {
     val m = motion
+    // The theme follows the device's night mode, and the overlay's windows are themed: so does the bubble.
+    val inks = BubbleInks.of(mk.dark)
     val t = updateTransition(look, label = "bubble")
     val alpha = t.animateFloat({ m.fade.fraction }, label = "alpha") { if (it == BubbleLook.Idle) 0.55f else 1f }
-    val ground = t.animateColor({ m.fade.spec() }, label = "ground") { if (it == BubbleLook.Idle) Fixed.White.copy(alpha = 0.9f) else Fixed.White }
+    val ground = t.animateColor({ m.fade.spec() }, label = "ground") { if (it == BubbleLook.Idle) inks.disc.copy(alpha = 0.9f) else inks.disc }
     val border = t.animateColor({ m.fade.spec() }, label = "border") {
         when (it) {
-            BubbleLook.Idle -> Fixed.IdleBorder
+            BubbleLook.Idle -> inks.idle
             // With no chase (Still) the waiting border is whole ink, the arc not drawn.
-            BubbleLook.Lit -> if (m.chase == null) Fixed.Ink else Fixed.ChaseTrack
-            BubbleLook.Paid -> Fixed.Ink
+            BubbleLook.Lit -> if (m.chase == null) inks.ink else inks.track
+            BubbleLook.Paid -> inks.ink
         }
     }
     val core = t.animateColor({ m.spread[0].spec() }, label = "core") { lensOf(it)[0] }
@@ -463,7 +482,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
     ) {
         Canvas(Modifier.size(BubbleMark).testTag(BUBBLE_MARK_TAG)) {
             if (chase != null) heldAt[0] = chase.value
-            mark(lens, border.value, heldAt[0], arcAlpha.value, tick.value, tickAlpha.value)
+            mark(lens, border.value, heldAt[0], arcAlpha.value, tick.value, tickAlpha.value, inks.ink)
         }
     }
 }
