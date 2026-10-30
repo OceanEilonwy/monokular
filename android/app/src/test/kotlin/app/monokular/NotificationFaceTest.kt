@@ -27,7 +27,7 @@ class NotificationFaceTest {
         currency = "USD",
     )
 
-    /** "$13.88" in this machine's locale ("US$13.88" in some). */
+    /** "$13.88" in this machine's locale ("US$13.88" where the own dollar is another). */
     private val amount = SaleText.amount(sale())
 
     private fun sale(

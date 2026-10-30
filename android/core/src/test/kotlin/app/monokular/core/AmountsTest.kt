@@ -24,7 +24,8 @@ class AmountsTest {
         assertEquals("¥1,200", Amounts.fiat("1200", "JPY", australia))
         assertEquals("€8.00", Amounts.fiat("8", "EUR", australia))
         assertEquals("$6.80", Amounts.fiat("6.8", "AUD", australia))
-        assertEquals("¥1,200", Amounts.fiat("1200", "JPY", japan))
+        // Japan writes its own yen full width.
+        assertEquals("\uFFE51,200", Amounts.fiat("1200", "JPY", japan))
         assertEquals("$4.50", Amounts.fiat("4.5", "USD", japan))
         assertEquals("€8.00", Amounts.fiat("8", "EUR", japan))
         assertEquals("4,50\u00A0$", Amounts.fiat("4.5", "USD", germany))
@@ -51,6 +52,20 @@ class AmountsTest {
     }
 
     @Test
+    fun `a currency at home keeps the symbol its own locale writes`() {
+        assertEquals("R$\u00A04,50", Amounts.fiat("4.5", "BRL", Locale.forLanguageTag("pt-BR")))
+        assertEquals("R4,50", Amounts.fiat("4.5", "ZAR", Locale.forLanguageTag("en-ZA")))
+        assertEquals("4,50\u00A0kr", Amounts.fiat("4.5", "SEK", Locale.forLanguageTag("sv-SE")))
+        assertEquals("$4.50", Amounts.fiat("4.5", "SGD", Locale.forLanguageTag("en-SG")))
+        assertEquals("4,50\u00A0zł", Amounts.fiat("4.5", "PLN", Locale.forLanguageTag("pl-PL")))
+    }
+
+    @Test
+    fun `a symbol whose letters are the symbol keeps them abroad`() {
+        assertEquals("R$4.50", Amounts.fiat("4.5", "BRL", Locale.US))
+    }
+
+    @Test
     fun `fraction digits follow the currency`() {
         assertEquals("¥1,201", Amounts.fiat("1200.6", "JPY", Locale.US))
         assertEquals("$0.10", Amounts.fiat("0.1", "USD", Locale.US))
@@ -67,5 +82,6 @@ class AmountsTest {
         assertEquals("4.5 XMR", Amounts.fiat("4.5", "XMR", Locale.US))
         assertEquals("lots XYZ", Amounts.fiat("lots", "XYZ", Locale.US))
         assertEquals("12 ???", Amounts.fiat("12", "???", Locale.US))
+        assertEquals("4.5 XMR", Amounts.fiat("4.5", "xmr", Locale.US))
     }
 }
