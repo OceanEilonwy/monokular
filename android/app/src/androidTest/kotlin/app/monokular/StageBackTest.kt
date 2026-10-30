@@ -149,7 +149,9 @@ class StageBackTest {
         fun top(id: String) =
             compose.onNodeWithText(ShiftList.row(sales.first { it.orderId == id }, PointOfSale.Square, 0).title, substring = true, useUnmergedTree = true)
                 .fetchSemanticsNode().boundsInRoot.top
-        val rest = sales.map { top(it.orderId) }
+        // The rows on screen: four live sales fill the folded tray's three rows and its fold, the fourth (b2) folded.
+        val shown = sales.filter { it.orderId != "b2" }
+        val rest = shown.map { top(it.orderId) }
         compose.mainClock.autoAdvance = false
         model.go(Screen.Sale("a1"))
         compose.mainClock.advanceTimeBy(1_500)
@@ -161,9 +163,9 @@ class StageBackTest {
         compose.mainClock.advanceTimeBy(1_500)
         assertAgree(model, "landed")
         assertEquals(Screen.Till, model.stage.currentState)
-        assertEquals(rest, sales.map { top(it.orderId) }, "landed, every row is where it was")
+        assertEquals(rest, shown.map { top(it.orderId) }, "landed, every row is where it was")
         compose.mainClock.advanceTimeBy(100)
-        assertEquals(rest, sales.map { top(it.orderId) }, "and stays there")
+        assertEquals(rest, shown.map { top(it.orderId) }, "and stays there")
     }
 
     @Test
@@ -259,5 +261,43 @@ class StageBackTest {
         compose.mainClock.advanceTimeBy(1_500)
         assertEquals(Screen.Sale("a1"), model.screen.value)
         assertAgree(model, "after the release")
+    }
+
+    /**
+     * A second Back while the shift is still arriving (decision 260 c): the stage's handler takes it, the model's
+     * Back from the shift does nothing, and the stage lands on the shift; no second move starts, and the app is not
+     * left. Once the shift rests, Back is not the stage's (decision 77: Back on the shift leaves the app).
+     */
+    @Test
+    fun aSecondBackWhileTheShiftArrivesLandsOnTheShift() {
+        val model = TestModel(Screen.Sale("a1"))
+        stage(model)
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        Recompositions().use { counts ->
+            compose.runOnUiThread { dispatcher.onBackPressed() }
+            var frames = 0
+            while (model.stage.fraction < 0.5f && frames++ < 60) compose.mainClock.advanceTimeByFrame()
+            assertTrue(model.stage.currentState != model.stage.targetState, "the shrink into the row is half way: ${model.stage.fraction}")
+            var handled = false
+            compose.runOnUiThread { handled = dispatcher.hasEnabledCallbacks(); dispatcher.onBackPressed() }
+            assertTrue(handled, "the stage still takes Back while the shift arrives")
+            var landedAt = 0
+            while (model.stage.currentState != model.stage.targetState && landedAt++ < 90) {
+                assertEquals(Screen.Till, model.stage.targetState, "no second move starts")
+                compose.mainClock.advanceTimeByFrame()
+            }
+            compose.mainClock.advanceTimeBy(200)
+            assertEquals(listOf(Screen.Sale("a1"), Screen.Till), model.commits, "the second Back reached the model, from the shift, as a no-op")
+            assertEquals(Screen.Till, model.screen.value)
+            assertAgree(model, "landed")
+            // The handler's enablement is read off the stage as a derived state: the stage's root composes as the
+            // change starts and as it lands, never once a frame.
+            val roots = counts.count("app.monokular.ModelStage")
+            assertTrue(roots in 1..4, "the root recomposed $roots times over ${frames + landedAt} frames")
+        }
+        var handled = true
+        compose.runOnUiThread { handled = dispatcher.hasEnabledCallbacks() }
+        assertTrue(!handled, "on the resting shift Back is not the stage's: it leaves the app")
     }
 }
