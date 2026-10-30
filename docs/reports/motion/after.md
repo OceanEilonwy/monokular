@@ -1806,3 +1806,83 @@ the purgeable cache after a rise. Shippable as it stands.
 - **The phone-only minors** (the step-back's two stalls, the first paid
   frame, the 20-sale tray's first open, 288's gap, the purgeable cache):
   the coordinator's, on the phone; nothing changed here.
+
+## Round 2, final (motion-main at 63855a4), review 2, by the lead
+
+Integrated: dev2's `0a73a56` (decision 296) fast-forwarded onto
+`7a78964`; dev1 had no change (its minor, the purgeable cache after a
+rise, needs a real phone and the only one attached is the owner's). The
+lead's `63855a4` (decision 297) on top. `./gradlew build` is green at
+the head. Visual review pared back to a sample of the main pages, as the
+owner asked: the shift folded, the tray open, folded again and after ten
+Backs into it, phone and tablet, both builds (`measure-r9/`), all as the
+canvas's Main and TrayOpen (no "New" tag, no bottom bar, the fold label in
+ink).
+
+**Device tests.** The full `connectedDebugAndroidTest` on emulator-5558:
+at `0a73a56`, **219 tests, 0 failures**; at `63855a4`, **220 tests, 0
+failures, 0 skipped** (15 min, the host shared with the tablet's flows).
+The recomposition counts the suite holds (the bubble's states and chase,
+a Back into the tray none of the rows, `ModelStage` over a double Back)
+all pass.
+
+**Review of 296.** Right: `ShiftPlace` is a few plain fields above the
+stage, written by a tap and read by the composition a Back starts, so
+nothing draws or recomposes from it; `requestScrollToItem` in that
+composition's `SideEffect` lays the row out on the change's first frame;
+`wholeOn`'s node places with a layer only while its move runs (its
+placement reads the stage, so it re-places as a move starts and lands,
+never per frame) and its alpha is read in the layer block. The fade by
+`1 − crossfadeOnTrack` rather than the review's `fadeOutOnTrack` is the
+better call: the test it keeps green is the one that caught the bare
+frames. One bug, fixed here (297): the place was forgotten by the first
+composition that asked for it, and a back gesture composes the shift as
+it starts, so a peek cancelled used it up and the Back after came back at
+the list's top, the code whole over the rows (the new
+`backAfterACancelledPeekStillLandsInTheRowScrolledFarDown` failed on every
+frame; passes now). Left as minors: `rowIndex`'s `HEAD_ITEMS = 4`
+mirrors the `LazyColumn`'s items by hand (the test catches a drift, but a
+new header item must update both); `ShiftPlace` is `@Stable` with plain
+fields (true in effect, as the instance never changes and nothing reads
+them for recomposition).
+
+**Frames** (`final-r9.sh`, final-r8's flows; before = r8 `b692f01`, after
+= r9 `63855a4`; one pass each, host load 1 to 7; `MainActivity`, last 120
+frames, p50 / p90 / p99 / max ms (frames over 33.4 ms)):
+
+| | phone before | phone after | tablet before | tablet after |
+| --- | --- | --- | --- | --- |
+| Shift scroll, full tray | 33.5 / 49.5 / 52.2 / 52.2 (64) | 16.3 / 30.0 / 33.5 / 33.5 (10) | 10.9 / 16.8 / 19.1 / 26.2 (0) | 18.8 / 19.8 / 30.5 / 33.6 (1) |
+| Tray opened and folded x5 | 11.5 / 19.6 / 53.3 / 53.7 (8) | 10.5 / 16.8 / 44.7 / 44.9 (4) | 16.8 / 26.5 / 45.7 / 50.1 (8) | 11.7 / 16.8 / 47.1 / 47.8 (3) |
+| Row to sale and Back into the tray x10 | 13.5 / 33.4 / 83.9 / 85.3 (12) | 16.8 / 26.6 / 77.9 / 88.8 (10) | 12.2 / 26.1 / 76.3 / 85.9 (9) | 18.9 / 37.0 / 83.4 / 92.7 (16) |
+| Paid step-back, two: frames, p50, max | 12, 136, 186 · 12, 102, 210 | 12, 84, 174 · 12, 118, 234 | 9, 87, 282 · 16, 52, 83 | 9, 99, 300 · 17, 36, 81 |
+| Cold start, median of 3 (ms) | 1 484 | 1 521 | 1 673 | 1 691 |
+
+Level with round 2's final table above, pass for pass: the scroll's
+spread is the emulator's (r8's own passes ran 9.6 to 33.5 ms p50), the
+open and fold and the Back into the tray have the same p99 band (45 to
+53, 76 to 84), the step-back the same two stalls. **The bubble**, both
+builds, both emulators: waiting 302 frames in 5 s, p99 16 to 22 ms; paid
+and the dwell 138 to 143 frames, p50 5 ms, p99 200 ms (the first paid per
+process, finding 4); idle **0 frames**.
+
+**Memory after a trim** (`mem-r9.sh`, one pass, base `f274ad7` / r8 /
+r9; PSS kB, Java / native heap):
+
+| | base | r8 | r9 |
+| --- | --- | --- | --- |
+| Phone 5558 | 91 524 (14 824 / 12 496) | 102 037 (15 568 / 13 952) | 101 806 (15 560 / 13 848) |
+| Tablet 5560 | 97 121 (16 380 / 12 072) | 107 608 (17 184 / 13 344) | 108 375 (17 248 / 13 968) |
+| HWUI GPU cache (purgeable), phone | 2.47 MB (0.37) | 19.14 MB (17.03) | 19.15 MB (17.05) |
+
+r9 over r8: **−0.23 MB** on the phone, **+0.77 MB** on the tablet (one
+pass each; round 2's passes moved ±0.3 MB on the phone, and nothing this
+review added holds more than a sale id, an int and a reference). The step
+over base is r8's (+10.5 MB in this flow, as before): it has not grown.
+
+**Verdict.** 296 is correct and tested; its one hole (a cancelled peek)
+is fixed with a test (297). Frames and memory level with round 2's final.
+Open, as before, for the phone: the first paid frame per process, the
+step-back's two stalls, the 20-sale tray's first open, 288's gap,
+"Show fewer" during a landing, and the 17 MB purgeable cache after a rise
+(left for the owner to read on his phone, dev1's flow above). Shippable.
