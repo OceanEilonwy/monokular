@@ -78,7 +78,8 @@ fun SaleDetail(
     val header = SaleHeader.of(sale, LocalPointOfSale.current, location)
     val pos = header.pos
     val page = SalePage.of(sale, pos, now = System.currentTimeMillis() / 1000, elsewhere = header.elsewhere)
-    val subtitle = header.place + sale.createdAt.takeIf { it > 0 }?.let { " · " + SaleText.time(it) }.orEmpty()
+    // The time before the place, so a narrow bar's ellipsis takes "this till" first, not the time.
+    val subtitle = sale.createdAt.takeIf { it > 0 }?.let { SaleText.time(it) + " · " }.orEmpty() + header.place
     // Its ground is the screen's (SaleScreen), so the live sale it turns from fades over one ground.
     Surface(Modifier.fillMaxSize(), color = Color.Transparent, contentColor = mk.ink) {
         Box(Modifier.fillMaxSize().safeDrawingPadding(), contentAlignment = Alignment.TopCenter) {
