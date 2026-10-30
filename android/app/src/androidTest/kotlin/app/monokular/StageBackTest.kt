@@ -26,7 +26,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * The back gesture over the stage (decision 112), driven the way Android
+ * The back gesture over the stage (decision 169), driven the way Android
  * drives it, through the activity's back dispatcher: the finger's progress
  * is how far every part has moved, and where it goes is read as it starts.
  */
@@ -212,7 +212,7 @@ class StageBackTest {
         stage(model)
         compose.waitForIdle()
         compose.mainClock.autoAdvance = false
-        // The cashier taps the code and presses Back before it has landed (decision 129).
+        // The cashier taps the code and presses Back before it has landed (decision 186).
         model.go(Screen.Code("a1"))
         compose.mainClock.advanceTimeBy(96)
         assertTrue(model.stage.currentState != model.stage.targetState, "the grow is still running")
@@ -230,7 +230,7 @@ class StageBackTest {
 
     /**
      * A back gesture on the enlarged code shrinks the code toward its card as the finger moves, not only the words
-     * (decision 166): half across, the code is drawn half way between its two rest places; released, it lands on the
+     * (decision 223): half across, the code is drawn half way between its two rest places; released, it lands on the
      * card from there.
      */
     @Test

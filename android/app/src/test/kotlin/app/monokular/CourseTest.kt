@@ -5,10 +5,10 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * A shared surface's course over a move (decision 175): where it is at a
+ * A shared surface's course over a move (decision 232): where it is at a
  * point of the move, and the parts of the move over which it holds or has
  * cleared a text run, which is when words on it or under it may show
- * (decision 176).
+ * (decision 233).
  */
 class CourseTest {
     private val row = floatArrayOf(0f, 100f, 100f, 120f)

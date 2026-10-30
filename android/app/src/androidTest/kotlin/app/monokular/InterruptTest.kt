@@ -32,7 +32,7 @@ import kotlin.test.assertTrue
  * out, and by a new sale coming up. In every cell the stage and the model
  * agree once it has settled, Back still works from there, and on the frame
  * of the interruption any live code on screen is square and no smaller
- * than at rest (decision 129).
+ * than at rest (decision 186).
  */
 @RunWith(Parameterized::class)
 class InterruptTest(private val move: Moved, private val interruption: Interruption, private val at: Float) {

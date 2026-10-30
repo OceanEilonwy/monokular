@@ -20,7 +20,7 @@ import kotlin.test.assertTrue
 /**
  * Every screen change run as the device runs it (frame by frame under the
  * one driver, [RunningMoves]), in light and dark, both ways, and checked on
- * every frame (decisions 146 to 149): one move from the first frame to the
+ * every frame (decisions 203 to 206): one move from the first frame to the
  * last on both screens; the code at full alpha on its white; no glyph cut by
  * a ground's edge; and in the dark theme no flash. The seeked frames
  * ([MotionFramesTest]) hold the stage, the match and the overlay in one
@@ -88,7 +88,7 @@ class RunningMovesTest {
 
     /**
      * A sale that stops being live in the update that leaves its screen (closed from the sheet, expired, refunded)
-     * leaves as an untouched one does (decision 185): the change's first frame is the frame before it, the leaving
+     * leaves as an untouched one does (decision 242): the change's first frame is the frame before it, the leaving
      * screen keeps its code card on the live layout, and on every frame the row's ground still holds the card's place
      * the code is drawn there, whole; then the row's shrink takes it.
      */
@@ -117,7 +117,7 @@ class RunningMovesTest {
     }
 
     /**
-     * A payment landing on the enlarged code (decision 184): one white surface from the whole screen to the paid
+     * A payment landing on the enlarged code (decision 241): one white surface from the whole screen to the paid
      * page's hero on every frame of the move, never smaller than the hero; the code never drawn outside its white;
      * the code screen's words ("Scan with any Monero wallet") and the page's ("Paid") never both readable.
      */
@@ -160,7 +160,7 @@ class RunningMovesTest {
     }
 
     /**
-     * A sale rising while a committed Back is still at 0 (decision 188): the takeover composes its first frame at 0
+     * A sale rising while a committed Back is still at 0 (decision 245): the takeover composes its first frame at 0
      * before its spring starts, as a change from rest does, then moves at once, from 0 and not a quarter of the way.
      */
     private fun riseOverBack() {
@@ -200,7 +200,7 @@ class RunningMovesTest {
     }
 
     /**
-     * The code and its white are one surface (decision 163): on every frame of the move the code is inside its white,
+     * The code and its white are one surface (decision 220): on every frame of the move the code is inside its white,
      * and its margin on each side is never below the smaller of that side's margins at the move's two ends (the two
      * run on one line, so the margin runs straight from one to the other).
      */
@@ -223,7 +223,7 @@ class RunningMovesTest {
     }
 
     /**
-     * Back from a sale that came up by itself, with its row on the shift (decision 165): the row it came from takes it
+     * Back from a sale that came up by itself, with its row on the shift (decision 222): the row it came from takes it
      * back, the same move as a sale the cashier opened, the code whole on its white or not drawn at all on every frame.
      */
     private fun backAfterRise(dark: Boolean) {
@@ -280,7 +280,7 @@ class RunningMovesTest {
 
     /**
      * The paid fold: the hero's centre travels from the card's centre to the page's hero without standing still
-     * while the fold runs, and the page's words come in only once it is past halfway (decision 131).
+     * while the fold runs, and the page's words come in only once it is past halfway (decision 188).
      */
     private fun paidFold(dark: Boolean) {
         moves.start(Screen.Sale("a1"), dark)
@@ -320,7 +320,7 @@ class RunningMovesTest {
     }
 
     /**
-     * The fold is one surface closing from the card into the hero (decision 168): the hero is drawn at three or more
+     * The fold is one surface closing from the card into the hero (decision 225): the hero is drawn at three or more
      * sizes on its way, and in the dark theme, where the card's white, the hero's ground and the screen's are three
      * different lights, inside the hero's bounds there is never the screen's ground showing through on any frame
      * (the card's white gone before the hero came in).
@@ -356,7 +356,7 @@ class RunningMovesTest {
             }
         }
         // The ground is drawn through its clip on every frame of its move but the first and the last, where the match
-        // may not be made yet, or already gone (decisions 146, 149): it never gives up half way.
+        // may not be made yet, or already gone (decisions 203, 206): it never gives up half way.
         if (grows) {
             val shaped = moving.indices.filter { moving[it].ground != null }
             if (shaped.isEmpty()) failures += "the moving ground never has a shape"
@@ -374,8 +374,8 @@ class RunningMovesTest {
 
     /**
      * The moving ground has a shape from the change's first frame, and travels within [PRIMED] frames more: the
-     * arriving screen's first frame is drawn at 0 before the spring's clock starts (decision 178), and then it goes,
-     * with no hold while the leaving screen's words go (decision 167).
+     * arriving screen's first frame is drawn at 0 before the spring's clock starts (decision 235), and then it goes,
+     * with no hold while the leaving screen's words go (decision 224).
      */
     private fun startsAtOnce(moving: List<RunningMoves.Frame>): List<String> {
         val first = moving.indexOfFirst { it.ground != null }
@@ -390,7 +390,7 @@ class RunningMovesTest {
     }
 
     /**
-     * On a row's grow and shrink, the sale's code is drawn whole or not at all (decision 167): where the ground holds
+     * On a row's grow and shrink, the sale's code is drawn whole or not at all (decision 224): where the ground holds
      * its card, the code's darkest modules are there; where it doesn't, none of its modules show inside the ground.
      */
     private fun codeWholeOrNone(f: RunningMoves.Frame): List<String> {
@@ -424,7 +424,7 @@ class RunningMovesTest {
     }
 
     /**
-     * Two screens' words are never both readable on one frame (decisions 131, 164). How much of a text run shows on a
+     * Two screens' words are never both readable on one frame (decisions 188, 221). How much of a text run shows on a
      * frame is read from the picture: the slope of its region's pixels against the same region at rest (the move's
      * first frame for the screen leaving, its last for the one arriving), which is its alpha whatever ground it is
      * drawn over and whatever else crosses it. No frame has a leaving and an arriving run both above half.
@@ -513,7 +513,7 @@ class RunningMovesTest {
 
     /**
      * The enlarge's white on [f], where its track says it is drawn (the code moves in the overlay, away from where
-     * either side laid it out): white just inside each edge (the ground is drawn where its bounds are, decision 146),
+     * either side laid it out): white just inside each edge (the ground is drawn where its bounds are, decision 203),
      * and nothing grey inside it (the code on it whole, never through a fade or two codes through each other).
      */
     private fun codeOnWhite(f: RunningMoves.Frame): List<String> {
@@ -542,14 +542,14 @@ class RunningMovesTest {
         return if (n == 0) null else grey.toFloat() / n
     }
 
-    /** The arriving screen's code on [f], where it is laid out: never grey, as a code drawn through a fade is (decision 148). */
+    /** The arriving screen's code on [f], where it is laid out: never grey, as a code drawn through a fade is (decision 205). */
     private fun codeNotGrey(f: RunningMoves.Frame): List<String> = f.codes.filter { it.width > 20f }.mapNotNull { code ->
         greyShare(f.bitmap, code)?.takeIf { it > GREY_SHARE }?.let { "f${f.index}: the code at $code is grey, drawn below full alpha (${(100 * it).toInt()} % grey)" }
     }
 
     /**
      * No arriving text run on [f] half under the moving ground's edge: ink on the side away from the ground and none
-     * under it (decision 147). Words on the ground, clipped to it, are the other way about, and stay.
+     * under it (decision 204). Words on the ground, clipped to it, are the other way about, and stay.
      */
     private fun cutGlyphs(f: RunningMoves.Frame, first: Bitmap, last: Bitmap): List<String> {
         val g = f.ground ?: return emptyList()
@@ -558,7 +558,7 @@ class RunningMovesTest {
             if (t.width < 4f || t.height < 4f || !t.overlaps(g)) continue
             val (under, beside) = split(t, g) ?: continue
             // The ink beside the edge is this text's (the picture there is more its rest picture than the first frame's),
-            // not a leaving word's going under the ground there (decision 155).
+            // not a leaving word's going under the ground there (decision 212).
             if (ink(f.bitmap, beside) && changed(f.bitmap, first, beside) && shows(f.bitmap, last, first, beside) > HALF && !ink(f.bitmap, under)) out += "f${f.index}: \"$text\" at $t is cut by the ground's edge at $g"
         }
         return out
@@ -602,7 +602,7 @@ class RunningMovesTest {
      * The moving ground goes from its first size to its last without turning back or standing still on the way:
      * its area only grows on a grow and only shrinks on a shrink, and no two frames running leave it where it was
      * while it is still short of its place (a ground that gives up for a frame, a dissolve that restarts, a hold
-     * then a jump: decisions 146, 149 and round 3's review).
+     * then a jump: decisions 203, 206 and round 3's review).
      */
     private fun groundTravels(frames: List<RunningMoves.Frame>): List<String> {
         val areas = frames.mapNotNull { f -> f.ground?.let { f.index to it.width * it.height } }
@@ -662,7 +662,7 @@ class RunningMovesTest {
         /** Darker than the dark theme's paid ground (51) over the card's white or alone: the screen's ground (27) showing through. */
         const val SCREEN_GROUND_DARK = 48f
 
-        /** Frames a change is drawn at 0 before its spring starts: the arriving screen's first composition (decision 178). */
+        /** Frames a change is drawn at 0 before its spring starts: the arriving screen's first composition (decision 235). */
         const val PRIMED = 2
 
         /** A margin may round a pixel of the half-size frame below the smaller rest margin. */
@@ -677,7 +677,7 @@ class RunningMovesTest {
         /** A text run with this much spread of luminance in its region has ink in it to be read. */
         const val INK_SPREAD = 12f
 
-        /** Above half shown: readable (decision 131). */
+        /** Above half shown: readable (decision 188). */
         const val HALF = 0.5f
 
         /** Where the stage's spring is after one 16 ms frame from 0, with room: not a quarter of the way. */

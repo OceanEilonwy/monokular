@@ -1593,7 +1593,7 @@ away. The owner's brief: no animation for its own sake, blazing fast and
 memory efficient, no hacky animation code, the code always scannable, the
 design unchanged.
 
-90. **Motion is specified once, in `docs/motion.md`, and what it rejects
+147. **Motion is specified once, in `docs/motion.md`, and what it rejects
     stays rejected.** The spec names the principles, the presets (one
     `ui/Motion.kt`, springs and durations by purpose, no numbers at call
     sites), the spatial model (where each surface comes from and goes
@@ -1612,7 +1612,7 @@ design unchanged.
     reaches 16 dp past the circle), and on a tablet the floating panel
     can cover the free bubble when the bubble sits at the end edge at
     the panel's height.
-91. **The motion presets are one `@Immutable` value under the theme, and
+148. **The motion presets are one `@Immutable` value under the theme, and
     reduced motion is its `Still` twin.** `ui/Motion.kt` (beside
     `Theme.kt`) holds `class Motion` with the specs `docs/motion.md` §2
     names (`surface`, `settle`, `flick`, `sweep`, `fade`, `fadeQuick`,
@@ -1635,7 +1635,7 @@ design unchanged.
     crossfade instead of a transform, and whether a loop runs, which a
     scale can't say. Springs for anything with a position (they retarget
     from the current value and velocity); tweens only for opacity.
-92. **Overlay windows are made per open, and all their motion runs inside
+149. **Overlay windows are made per open, and all their motion runs inside
     the window.** Measured on the base commit (`docs/reports/motion/
     baseline.md`): the panel window costs about 2 MB PSS and one
     `ViewRootImpl` while it's up and gives both back when lowered;
@@ -1661,7 +1661,7 @@ design unchanged.
     Square's touches outside the strip, at the cost of owning the taps
     between them; left as the option to take if the corner pivot reads
     wrong on the device.
-93. **Screens change inside one `SharedTransitionLayout` and one
+150. **Screens change inside one `SharedTransitionLayout` and one
     `AnimatedContent`, and predictive back seeks the same transition.**
     `MainActivity`'s `when (screen)` becomes `AnimatedContent(targetState
     = screen)` with a `contentKey` that makes `Sale(a)` to `Sale(b)` and
@@ -1688,7 +1688,7 @@ design unchanged.
     own controller ramps a window override, and a hand ramp is a relayout
     per step; the lead checks the ramp on a device and only a visible
     jump earns at most six steps over the transition (M8).
-94. **One paid dwell, 5 s, everywhere.** `Bubble.PAID_MS` (4 s: the green
+151. **One paid dwell, 5 s, everywhere.** `Bubble.PAID_MS` (4 s: the green
     bubble and the chip's tick), the panel's `delay(5_000)` before it
     lowers and `TillNav.PAID_STEP_BACK_MS` (the sale screen stepping back)
     become one `Motion.Dwell.paid` of 5 s, the acceptance criteria's
@@ -1698,7 +1698,7 @@ design unchanged.
     moves on (`before-overlay2.mp4` at 0:24). Done and Back end the dwell
     early and run the same exit. The dwell is reading time, so reduced
     motion leaves it alone.
-95. **Motion is tested on the JVM where it is a rule and on the emulator
+152. **Motion is tested on the JVM where it is a rule and on the emulator
     where it is a frame.** The rules (`Panel.lowers`, the collapse's
     velocity seeding, the ring's sweep target, which spec `Motion.Still`
     substitutes for which) are pure functions in `Motion`, `Panel` and
@@ -1720,7 +1720,7 @@ design unchanged.
     session, compared as counts and ratios, never as milliseconds
     against a phone (`baseline.md`'s caveats), and the final numbers on
     a physical device.
-96. **Six performance fixes ride with the motion work, each owned by the
+153. **Six performance fixes ride with the motion work, each owned by the
     track that touches the file.** From `docs/reports/motion/baseline.md`:
     the lit bubble's pulse redraws its window at ~56 fps for as long as a
     sale is live, in two windows when the panel is up (dev1, with M4: the
@@ -1741,8 +1741,8 @@ design unchanged.
     `libjnidispatch.so` ships for four ABIs the app doesn't build for,
     about 0.5 MB of the release APK, an `abiFilters` line for another
     day.
-97. **A preset is generic over what moves, and its thresholds are its
-    own** (refines 91). A Compose spec is typed by its value
+154. **A preset is generic over what moves, and its thresholds are its
+    own** (refines 148). A Compose spec is typed by its value
     (`FiniteAnimationSpec<Float>` for a progress, `<IntOffset>` for a
     row's placement, `<IntSize>` for a pill's size, `<Rect>` for a shared
     bounds transform, `<Color>` for a ground), and `SpringSpec` has no
@@ -1763,9 +1763,9 @@ design unchanged.
     times (a fade quicker than a move, a row before a window, a window
     before the ring's sweep, the sweep under a second), that the sweep
     never passes a quarter mark on its way, and `Still`'s substitutions.
-98. **The foundation carries what both tracks need, so neither waits.**
+155. **The foundation carries what both tracks need, so neither waits.**
     `codeBitmap(text)` in `ui/Qr.kt`, the last four codes as one
-    `ImageBitmap` each (96's cache, moved from dev2 to the foundation
+    `ImageBitmap` each (153's cache, moved from dev2 to the foundation
     because dev1's panel container and dev2's enlarge both share the
     element); the instrumented test harness (`ui-test-junit4`,
     `ui-test-manifest`, `AndroidJUnitRunner`, with `androidx.test:runner`
@@ -1776,9 +1776,9 @@ design unchanged.
     for, and one code is one bitmap); explicit `compose-foundation`
     and `compose-animation` dependencies from the same BOM, which the
     tracks' `AnimatedContent`, `SharedTransitionLayout` and `animateItem`
-    import; and the lead's own fix from 96, the notification's large-icon
+    import; and the lead's own fix from 153, the notification's large-icon
     code encoded off the main thread.
-99. **Shared files have one owner each, and the other track asks.** dev1
+156. **Shared files have one owner each, and the other track asks.** dev1
     (overlay): `overlay/*`, `ui/PhaseRing.kt` (M6 is used by every
     surface but lives in one file; the overlay track has less on its
     list), `ui/Mark.kt` (PR #18's file), `TillService.kt`. dev2 (screens):
@@ -1788,8 +1788,8 @@ design unchanged.
     integration branch. A change wanted in the other track's file is a
     message to its owner; the integration branch takes each track's PR by
     rebase, dev1 first.
-100. **The phone's panel grows once it has drawn, and the free bubble
-    comes back only where the collapse landed** (refines 92 and amendment
+157. **The phone's panel grows once it has drawn, and the free bubble
+    comes back only where the collapse landed** (refines 149 and amendment
     6; dev1). The panel window goes up at progress 0 with its docked
     bubble placed exactly over the free one (hidden until its slot is
     placed, so its first frame isn't a second bubble somewhere else); the
@@ -1810,8 +1810,8 @@ design unchanged.
     `Handoff.next`) tested on the JVM; "drawn" is a pre-draw listener that
     asks for one more frame once the slot is placed, so reduced motion,
     which asks for no frames, still hands over.
-101. **The overlay owns the paid moment, and the collapse ends it** (M9's
-    overlay half; refines 94; dev1). One `Job` in `Overlay` holds the
+158. **The overlay owns the paid moment, and the collapse ends it** (M9's
+    overlay half; refines 151; dev1). One `Job` in `Overlay` holds the
     dwell (`Motion.Dwell.PAID_MS`); the panel's own `delay` in `SalePanel`
     is gone, so there is one timer in `overlay/`. A pure `PaidMoment`
     (`None`, `Held`, `Lowering`; `overlay/Windows.kt`, tested on the JVM)
@@ -1829,7 +1829,7 @@ design unchanged.
     live) no longer lowers itself after five seconds; it stays until Done,
     as any panel the cashier raised does. The dwell is for a payment that
     lands, not for looking back at one.
-102. **The panel's code folds into its hero in place; the order crossfades
+159. **The panel's code folds into its hero in place; the order crossfades
     in for now** (M5, dev1, round 1). Live to paid or ended, the code's
     slot stays: its height follows one `motion.surface` progress in a
     layout lambda, the white card scales down into the 88 dp circle at the
@@ -1846,7 +1846,7 @@ design unchanged.
     one container whose bounds are animated in layout, which reshapes
     `PhonePanel` more than a round allows next to M1's handoff, and a
     crossfade already says "the same panel, another face".
-103. **A screen's clock is a `LongState`, and a countdown is its own
+160. **A screen's clock is a `LongState`, and a countdown is its own
      composable** (dev2, M12, amendment 10). `rememberNowSeconds()` at a
      screen's root ticks one `mutableLongStateOf` on each second's
      boundary and is handed down as `LongState`, not `State<Long>`:
@@ -1858,14 +1858,14 @@ design unchanged.
      Still the status words swap with the quick fade, not a snap: section
      7 makes every crossfade `fadeQuick`, and a snap between "Waiting" and
      "Seen" is the hard cut it exists to avoid.
-104. **Recompositions are counted in the instrumented tests, by the
+161. **Recompositions are counted in the instrumented tests, by the
      compiler's trace markers** (dev2). `Composer.setTracer` in
      `androidTest/Recompositions.kt` counts each composable body that
      runs (a skipped one doesn't), so "the shift doesn't tick", "the code
      isn't recomposed by the grow" are assertions that fail in CI on the
      emulator, not a Layout Inspector session someone has to repeat. Test
      code only; it opts in to `InternalComposeTracingApi`.
-105. **A shared surface is enabled only during its own move, and the
+162. **A shared surface is enabled only during its own move, and the
      grow moves don't fade whole screens** (dev2, M7, M8). `Nav.move` is
      a pure rule from the pair of screens (and whether the till, not the
      cashier, changed it); `Modifier.sharedSurface(key, during)` passes a
@@ -1885,7 +1885,7 @@ design unchanged.
      on every frame. Settings' fade-through overlaps (exit `fadeQuick`,
      enter `fade` from 0.96) rather than waiting for the exit: a "then"
      would be a delay.
-106. **Back is the activity's, so the gesture can preview it** (dev2,
+163. **Back is the activity's, so the gesture can preview it** (dev2,
      M7, decision 77 unchanged). The enlarged code's and the order page's
      own `BackHandler`s moved to the root, which calls the same `back()`.
      From a sale, its code, its order page and Settings, a
@@ -1894,7 +1894,7 @@ design unchanged.
      side effects), springs back from wherever it is on cancel, and calls
      `back(from)` only after the commit animation lands. Under Still it is
      the plain `BackHandler`.
-107. **The emulator can't pass "no frame over twice the old p95" for a
+164. **The emulator can't pass "no frame over twice the old p95" for a
      full-screen container transform, and that isn't a regression to fix
      there** (dev2, measured on emulator-5556, SwiftShader, host load
      20–50). A cut draws one or two frames a switch; a grow draws ten to
@@ -1907,14 +1907,14 @@ design unchanged.
      (+1.3 MB over ten more round trips): on SwiftShader the transition's
      layers are native memory. Both are to be measured on a device before
      anything is changed for them.
-108. **Round 1 is integrated by rebase, dev1 first, and the screens track's
+165. **Round 1 is integrated by rebase, dev1 first, and the screens track's
     decisions are renumbered 103–107** (lead). Both tracks wrote decisions
     from 100 in their own worktrees; the integration branch keeps dev1's
     100–102 as written (its code comments cite them) and carries dev2's
-    five after them, so dev2's "100" is 103, its "104" is 107. Nothing
+    five after them, so dev2's "100" is 160, its "104" is 164. Nothing
     else conflicted: the two tracks touched no file in common.
-109. **The tablet's free bubble stops pulsing while the panel is up beside
-    it** (lead, review of O3; refines 92's pulse rule). `Panel.pulses`
+166. **The tablet's free bubble stops pulsing while the panel is up beside
+    it** (lead, review of O3; refines 149's pulse rule). `Panel.pulses`
     already said "not with the panel up", but every free bubble was handed
     `panelUp = false`: on a phone that bubble is gone while the panel is up,
     on a tablet it stays beside the floating panel and redrew its window
@@ -1923,7 +1923,7 @@ design unchanged.
     `BubbleFace(panelUp)`; the docked bubble's `pulse = false` is the same
     rule from the other side. A device test holds a Lit, Waiting bubble with
     the panel up to no halo.
-110. **An overlay window's coroutines end with the window** (lead, review
+167. **An overlay window's coroutines end with the window** (lead, review
     of O6). `BubbleFrame`'s edge snap runs in the overlay's scope (it moves
     the window's own layout params, which the window's composition can't
     outlive), so a bubble removed mid-snap kept animating a detached view,
@@ -1932,7 +1932,7 @@ design unchanged.
     `onDetachedFromWindow`. The rule for the rest of `overlay/`: a job that
     moves a window is cancelled where the window goes, and anything in a
     `Presence` already dies with its composition.
-111. **After numbers come from before and after run alternately on one
+168. **After numbers come from before and after run alternately on one
     emulator in one session** (lead, measurement). The host's load ran
     from 20 to 170 during the round (three other emulators, Gradle, a Rust
     build), so a number taken at one hour against the baseline's taken at
@@ -1942,7 +1942,7 @@ design unchanged.
     and the baseline's files are left as they were. A flow that draws more
     frames because it now animates (a grow where there was a cut) is read
     by its per-frame cost and its longest frame, not by its frame count.
-112. **A back scrub is linear in distance; the spring belongs to the
+169. **A back scrub is linear in distance; the spring belongs to the
     release** (designer, round 1 review of M7). The gesture seeks the
     stage's transition by a fraction of its duration, and the surface's
     bounds move on `Motion.surface`, a spring that covers most of its
@@ -1958,7 +1958,7 @@ design unchanged.
     uninterrupted move drives the same linear track with the same spring
     on its fraction, so the two paths cannot drift apart. Frames in
     `docs/reports/motion/review-r1/phone-back-scrub-hold.png`.
-113. **The code's own surface is above every ground, and the ground
+170. **The code's own surface is above every ground, and the ground
     carries no code** (designer, round 1 review of M8; sharpens
     principle 3). On both emulators, light and dark, the first frames of
     the enlarge show the enlarged screen's layout scaled into the card's
@@ -1975,7 +1975,7 @@ design unchanged.
     square on the first frame. A device test seeks the transition to a
     quarter, a half and three quarters and checks the code's node is
     square, un-clipped by its ground and no smaller than at rest.
-114. **Overlay timing is read from framestats and screencaps, never from a
+171. **Overlay timing is read from framestats and screencaps, never from a
     recording on the software emulator** (designer, measurement). Every
     `screenrecord` of the phone and the tablet showed the panel appearing
     0.8–1.2 s after the tap, yet `dumpsys gfxinfo framestats` put the
@@ -1985,7 +1985,7 @@ design unchanged.
     layers by up to a second and the in-app layers by less, so a
     recording can order events but not time them; it is used for what
     moves, and `framestats` for when.
-115. **The panel's face is one `Transition`, and each side of it keeps
+172. **The panel's face is one `Transition`, and each side of it keeps
      the sale it showed** (dev1, round 2 review of M5). The fold, the
      code's and the hero's fades, the words and the buttons all follow one
      `updateTransition` of the face and its sale, keyed by the face, so
@@ -2003,8 +2003,8 @@ design unchanged.
      one clock (`rememberNowSeconds` at its card), so the last caller of
      the per-text `secondsLeft(expiresAt)` timer went, and the timer with
      it.
-116. **A phone's order grows out of the panel's card, a clip in its draw**
-     (dev1, round 2; completes M5, replaces the crossfade of 102). The
+173. **A phone's order grows out of the panel's card, a clip in its draw**
+     (dev1, round 2; completes M5, replaces the crossfade of 159). The
      order is laid out once at the window's size and drawn inside a
      container that is a rounded rectangle from the code card's bounds
      (corners 32 dp) at 0 to the whole window (square) at 1, on one
@@ -2019,8 +2019,8 @@ design unchanged.
      frame). The container has no shadow: it starts exactly over the card,
      whose own shadow fades with the code under it. Under Still the
      progress snaps and the two crossfade (`fadeQuick`). The tablet keeps
-     102's card whose height settles to the order's.
-117. **A code whose time ran out is ended by the clock** (dev1, round 2
+     159's card whose height settles to the order's.
+174. **A code whose time ran out is ended by the clock** (dev1, round 2
      review; both tracks' surfaces). Monokulo expires an order at its
      `expires_at`, but the till only heard so from the stream, so a stack
      that never sent it (the dev server's fake orders) or a stream that was
@@ -2035,9 +2035,9 @@ design unchanged.
      the next expiry), no polling. The dev server's fake orders still
      don't expire on their own; that is the other repository's, and the
      till no longer depends on it.
-118. **A tablet's panel sits beside the bubble, and grows out of the
+175. **A tablet's panel sits beside the bubble, and grows out of the
      bubble's side of it** (dev1, round 2; R1-O4, replaces the overlap QA
-     logged under 90). With the bubble on the end edge the floating panel's
+     logged under 147). With the bubble on the end edge the floating panel's
      window now stands off that edge by the bubble's window and an 8 dp gap
      (`Panel.floatingInsetDp`), so the card is next to the bubble and no
      frame has the bubble under it; with the bubble on the other edge the
@@ -2051,7 +2051,7 @@ design unchanged.
      it is made, costs nothing per frame. A bubble dragged to the other edge
      while the panel is up moves the panel's window once, on the snap's
      landing.
-119. **A payment buzzes once, from the surface in front** (dev1, round 2,
+176. **A payment buzzes once, from the surface in front** (dev1, round 2,
      P2; §6). `PaidBuzz.bubble(appVisible)` is the overlay's half of
      the rule (the overlay reads it from the screens track's `PaidBuzz`,
      which names the one surface for either answer; the track's own
@@ -2066,8 +2066,8 @@ design unchanged.
      device test counts the haptics a payment performs on the bubble with
      the app away (one) and in front (none); the test with the sale screen
      composed beside it waits for S6.
-120. **The stage's progress springs, and every part of a screen change
-    rides it on a straight line** (dev2, round 2; implements 112).
+177. **The stage's progress springs, and every part of a screen change
+    rides it on a straight line** (dev2, round 2; implements 169).
     `Motion.track` (a linear 450 ms, about as long as `surface` takes to
     settle) is what the shared surfaces' bounds, the rises and the slides
     are timed on, and `Motion.stage` (`surface.fraction`, null under
@@ -2085,8 +2085,8 @@ design unchanged.
     has committed or sprung back, and the enlarged code keeps full
     brightness while it is held, so a cancelled gesture no longer drops
     the brightness and the bar colours for the length of the preview.
-121. **The code's white is a ground with nothing in it, and the code is
-    the top layer** (dev2, round 2; implements 113). The card's white and
+178. **The code's white is a ground with nothing in it, and the code is
+    the top layer** (dev2, round 2; implements 170). The card's white and
     the enlarged screen's white are one `sharedGround`: an empty rounded
     rectangle, remeasured to its moving bounds each frame (nothing inside
     to measure) rather than a scaled screen, its corner radius going from
@@ -2107,7 +2107,7 @@ design unchanged.
     every one. The same test writes every screen move's seeked frames for
     review (the `additionalTestOutputDir` the runner pulls), so a cropped
     code is caught in CI rather than in a recording.
-122. **The order page fades in over the sale while its card grows**
+179. **The order page fades in over the sale while its card grows**
     (dev2, round 2; the designer's review of M7's OrderGrow). Only the
     list is the order's surface; the page's own ground, bar, heading and
     "Show the code" bar were drawn at full opacity on the first frame,
@@ -2117,9 +2117,9 @@ design unchanged.
     back fades out first (`fadeQuick`) over the sale returning beneath. One
     full-screen alpha layer for 200 ms, which the host-GPU emulator draws
     within the frame; the RowGrow and CodeGrow pairs keep their
-    no-fade rule (105). A device test checks the frame at progress 0 is
+    no-fade rule (162). A device test checks the frame at progress 0 is
     the sale itself.
-123. **A sale paid on screen closes its code into the page's hero, and a
+180. **A sale paid on screen closes its code into the page's hero, and a
     payment is one buzz from the surface the cashier is looking at**
     (dev2, round 2; M10, M9's app half, §6). `SaleScreen` is one
     `AnimatedContent` over `sale.live`: the page fades in over the live
@@ -2141,10 +2141,10 @@ design unchanged.
     only while started, and the bubble's `Confirm` buzzes only when the
     rule says bubble, so a bubble still leaving as the app comes up
     doesn't buzz a second time (in integration this became the
-    `confirms` parameter of 119, not a read inside `Confirm`).
+    `confirms` parameter of 176, not a read inside `Confirm`).
     `leave()` cancels the paid step-back, so Back during the dwell is
     the only step back.
-124. **The window's background is the theme's ground** (dev2, round 2;
+181. **The window's background is the theme's ground** (dev2, round 2;
     review finding on the dark-mode recreation). The app ran on
     `Theme.Material.Light.NoActionBar`, so the frame between a light/dark
     change recreating the activity and Compose's first draw was the
@@ -2153,7 +2153,7 @@ design unchanged.
     `@color/ground`, which a JVM test holds equal to `LightTokens.ground`
     and `DarkTokens.ground`, so the colour role stays defined once in
     `Theme.kt` and the resource follows it.
-125. **A surface's two faces crossfade per draw, on the stage's progress,
+182. **A surface's two faces crossfade per draw, on the stage's progress,
     never through an offscreen layer each** (dev2, round 2; the review's
     native-heap blocker). On the host-GPU emulator the GPU's resource cache
     after ten shift-to-sale round trips held 86 MB (84 MB of it purgeable
@@ -2172,9 +2172,9 @@ design unchanged.
     one at full opacity costs no layer. After: 5.1 MB and 0.2 MB of GPU
     cache in two runs. `Motion.crossfadeOnTrack` (fade's share of track)
     is the third preset this round adds to `Motion.kt`.
-126. **The shared surfaces cost 6–14 MB of native heap once, and that is
+183. **The shared surfaces cost 6–14 MB of native heap once, and that is
     recorded rather than fixed this round** (dev2, round 2). Measured on a
-    host-GPU emulator after decision 125 took the GPU cache back to the
+    host-GPU emulator after decision 182 took the GPU cache back to the
     baseline's: 2.6 MB is Skia's glyph cache (text in a scaled surface
     rasterised at each size it passes through, bounded by Skia's own
     budget), the rest a step on the first transitions that holds flat
@@ -2186,12 +2186,12 @@ design unchanged.
     it needs their say-so. Until then the 2 MB PSS rule is not met on the
     emulator and the after report says so.
 
-127. **The integrated build is measured against live codes, on one
+184. **The integrated build is measured against live codes, on one
     emulator at a time** (lead, round 2 integration). The shared dev
     stack held nine "pending" orders 9 to 66 minutes past their
     `expires_at`: Monokulo would have expired them, the fake stack never
     does. The baseline build shows such a code live for as long as the
-    shift runs ("Waiting · 0:00 left", 117's bug) and raises its sale by
+    shift runs ("Waiting · 0:00 left", 174's bug) and raises its sale by
     itself, the integrated build ends it by the clock, so the two would
     have measured different shifts and neither would have found a live
     row to open. The dead orders were marked expired on the stack
@@ -2203,9 +2203,9 @@ design unchanged.
     now leaves up to forty sales before giving up, not twelve: with other
     tills ringing up on the same store, twelve was not enough.
 
-128. **The integrated build is not signed off on memory: the native heap's
+185. **The integrated build is not signed off on memory: the native heap's
     step is named, and it is text rasterised at every scale a surface
-    passes through** (lead, round 2 integration; sharpens 126). On both
+    passes through** (lead, round 2 integration; sharpens 183). On both
     emulators, before and after alternately, the integrated build holds
     12 to 24 MB more PSS at rest than the baseline after ten shift ↔ sale
     round trips (native heap +11 to +15 MB), and a `RUNNING_CRITICAL`
@@ -2223,8 +2223,8 @@ design unchanged.
     and not a leak, but a trim does not return it. One run also held a
     14.3 MB purgeable GPU scratch texture (16.45 MB of GPU caches against
     2.3), the size of one screen in RGBA: a whole-screen offscreen layer,
-    which the order page's `fadeIn` on `OrderGrow` (122) would make the
-    way the faces' fades did before 125; it did not recur in the second
+    which the order page's `fadeIn` on `OrderGrow` (179) would make the
+    way the faces' fades did before 182; it did not recur in the second
     run and is not yet pinned to that. The screens track owns the fix:
     either the text inside a moving surface fades at its resting size
     while the ground and the glyph scale (so no glyph is ever drawn
@@ -2235,7 +2235,7 @@ design unchanged.
     `mem-r2.sh` and `heap-r2.sh` (the lead's scratch folder), the 2 MB
     rule is judged on PSS after a trim.
 
-129. **A Back that lands mid-move tells the model the screen it was
+186. **A Back that lands mid-move tells the model the screen it was
     really on** (designer, round 2 review; blocker, screens track). On
     the integrated build, tapping the code and pressing Back before the
     grow has settled leaves the till unable to go Back or enlarge the code
@@ -2254,7 +2254,7 @@ design unchanged.
     and the stage and the model are never allowed to disagree at rest: a
     device test taps the code, presses Back within 100 ms, and asserts the
     model is on the sale and a second Back reaches the shift.
-130. **Every screen's frame at rest after a move is the frame it has
+187. **Every screen's frame at rest after a move is the frame it has
     under Still** (designer, round 2 review; blocker, screens track). With
     motion on, the order page's list card is not on screen once
     `OrderGrow` has landed: the page shows its heading and the "Show the
@@ -2267,9 +2267,9 @@ design unchanged.
     test that keeps it: `MotionFramesTest` adds a rest frame after each
     move and compares the semantics tree after a move has landed with the
     tree composed under Still for the same screen; they must be equal.
-131. **Two different texts are never drawn over each other above half
+188. **Two different texts are never drawn over each other above half
     opacity, on any surface** (designer, round 2 review; major, screens
-    track; generalises 115 from the panel to the screens). Decision 125's
+    track; generalises 172 from the panel to the screens). Decision 182's
     crossfade brings the arriving face in over the first 44 % of the track
     and the leaving one out over the last 44 %, so from 44 % to 56 % both
     are opaque and either side of that one is above 0.8. Where the two
@@ -2291,9 +2291,9 @@ design unchanged.
     layer; and in the paid fold only the hero, the heading line and the
     buttons change: the order card is the same card on both sides and
     rides `order/<id>` to its place instead of dissolving.
-132. **The code's ground keeps the code's rest margin on every frame of
+189. **The code's ground keeps the code's rest margin on every frame of
     the enlarge** (designer, round 2 review; major, screens track;
-    sharpens 113 and 121). `frames/code-grow-75.webp` and `code-shrink-25`
+    sharpens 170 and 178). `frames/code-grow-75.webp` and `code-shrink-25`
     show the white only two or three pixels wider than the code on either
     side; the code's bounds and the ground's are not interpolating between
     corresponding rectangles (the code reaches the ground's width before
@@ -2304,7 +2304,7 @@ design unchanged.
     tracks between corresponding rectangles give by construction, and the
     device test measures that margin rather than "some white on each
     side".
-133. **A ring's two colours are two strokes, faded through, never a blend**
+190. **A ring's two colours are two strokes, faded through, never a blend**
     (dev1, round 3; review: the olive ring on the next sale). The bubble's
     ring went from paid green back to the lit orange through
     `animateColorAsState`, so for the whole fade the arc was a colour that
@@ -2322,7 +2322,7 @@ design unchanged.
     `PhaseRingOnDeviceTest` reads the arc on every frame of Confirming to
     Paid to Waiting and fails on any colour that isn't the fill or the
     paid colour over the track.
-134. **A card's shadow fades with the card** (dev1, round 3; review: the
+191. **A card's shadow fades with the card** (dev1, round 3; review: the
     grey box left by the lower). The panel's grow and collapse fade the
     card per draw (`CompositingStrategy.ModulateAlpha`, so there is no
     window-sized offscreen buffer), and a parent's alpha drawn that way
@@ -2334,7 +2334,7 @@ design unchanged.
     `DefaultShadowColor` at that same alpha, `Panel.shown` being the one
     rule the grow's fade already used (opaque by a third of the way). An
     offscreen layer for the fade was the other fix and the one ruled out by
-    decision 125's reasoning: a screen-sized texture per window for a
+    decision 182's reasoning: a screen-sized texture per window for a
     shadow. Every surface with a shadow under a per-draw fade gets the
     same: the phone's card, the tablet's floating card and its order card,
     and the free bubble's circle, whose window fades it in and out on
@@ -2342,7 +2342,7 @@ design unchanged.
     panel over white and fails when the band under the card is darker than
     the card's opacity allows (`frames/phone-lower-light-q*.png`); on the
     old build it read 0.14 dark under a card 5 % opaque.
-135. **A payment code is never faded in on the panel; its words fade
+192. **A payment code is never faded in on the panel; its words fade
     through around it** (dev1, round 3; review: the next sale's code at
     40 % then 85 %). Performance rule 6 and principle 3 say the code is
     never faded in, and the panel broke it in three places: the next
@@ -2357,19 +2357,19 @@ design unchanged.
     words (the grabber, header, amount, order line, status and buttons)
     fade, through `SalePanel(words)`, one alpha read in each of their
     layers, arriving under `fadeThrough` so the words leaving are gone
-    first (131). On a tablet the code's page comes in under the order
+    first (188). On a tablet the code's page comes in under the order
     (`targetContentZIndex`), whole, while the order fades off it; the
     order's own entrance now fades through too, where it used to fade in
     over the panel's words. Under Still a phone's order fades its ground
     with its words, a 120 ms crossfade off a whole code, instead of an
     empty ground covering the code for the length of the transition. The
-    code still fades out into a paid or ended hero, which decision 115
+    code still fades out into a paid or ended hero, which decision 172
     allows: a paid code scans nothing. The raise's fade over its first
     third (M1) is unchanged: the code there is a third of its size and
     growing out of the bubble, and the spec chose it. `OverlayFramesTest`
     reads the code's darkest module on each seeked frame of those three
     moves and fails on a grey one; the old build read 0.62 at q1.
-136. **The panel's order line opens its room as it fades in** (dev1,
+193. **The panel's order line opens its room as it fades in** (dev1,
     round 3; N3, the panel's half: the sale screen's order card and header
     line are the screens track's). A sale's receipt reaches the till about
     a second after the sale, so the panel's order line popped in, and
@@ -2391,8 +2391,8 @@ design unchanged.
     `OverlayFramesTest` saves `phone-late-order-q*.png` and holds the code
     square and opaque on each.
 
-137. **One driver keeps the stage on the model's screen, and a Back says
-    what it left from the model** (dev2, round 3; implements 129 and the
+194. **One driver keeps the stage on the model's screen, and a Back says
+    what it left from the model** (dev2, round 3; implements 186 and the
     lead's stage/model desync finding). `FollowScreen` is the only caller
     of `animateTo` on the stage: it follows the model's screen with
     `Motion.stage`, stands aside while a back gesture holds the stage, and
@@ -2411,9 +2411,9 @@ design unchanged.
     second Back reaches the shift), and a sale coming up under a
     cancelled and a committed gesture (the stage ends on the new sale,
     and Back still works from there).
-138. **A moving surface is an empty ground, and the words on it fade
-    through at their own size** (dev2, round 3; implements 128's first
-    option, 131 and R2-O5; a look the designer should confirm, made while
+195. **A moving surface is an empty ground, and the words on it fade
+    through at their own size** (dev2, round 3; implements 185's first
+    option, 188 and R2-O5; a look the designer should confirm, made while
     they were away). The row-to-sale and card-to-order moves no longer
     scale what is on them. A `sharedGround` (an empty rounded rectangle,
     its colour and corners going from the partner's to its own) moves
@@ -2437,8 +2437,8 @@ design unchanged.
     `MotionFramesTest` asserts no text is drawn at a non-1 scale on any
     seeked frame of every move both ways, the Rise and the paid fold;
     `MotionTest` holds the two shares under the whole track.
-139. **What clips a moving surface moves with it** (dev2, round 3; the
-    paid fold's flat top, and 132's thin quiet zone). A shared element is
+196. **What clips a moving surface moves with it** (dev2, round 3; the
+    paid fold's flat top, and 189's thin quiet zone). A shared element is
     placed with the bounds of the update before (one frame in a running
     move, a whole step after a single seek), while its overlay clip is
     computed with this frame's. So a clip from outside (the hero's
@@ -2446,7 +2446,7 @@ design unchanged.
     edge across the top of the hero at 180 to 240 ms was that clip's top
     edge, not the page's scroll (the fold was re-taken with the scroll
     removed, and the edge stayed). Likewise a ground remeasured to its
-    bounds drew a step behind the code it holds: 132's 2 to 3 px of quiet
+    bounds drew a step behind the code it holds: 189's 2 to 3 px of quiet
     zone on the seeked frames. Now a face clips itself, in its own
     coordinates, to a corner that is a share of its own side (the card's
     32 of 264 going to a circle's half). A moving ground is its overlay
@@ -2459,7 +2459,7 @@ design unchanged.
     margins on every frame, and checks from 180 ms (once the card has
     closed to about the hero's size) that the hero is round with the
     page's ground just above it.
-140. **A still stage has no move** (dev2, round 3; the cause of 130).
+197. **A still stage has no move** (dev2, round 3; the cause of 187).
     `Stage.moving()` asked `Nav.move(current, target)` at rest too. For the
     order page that is Order to Order, the same order on both sides, which
     `Nav.move` calls OrderGrow. So the list's face kept OrderGrow's
@@ -2470,16 +2470,16 @@ design unchanged.
     each way, the Rise and the paid fold), composes the same screen under
     Still, and requires the same semantics tree and the same frame (under
     0.1 % of pixels apart).
-141. **A sale that comes up by itself slides up as it fades in, and a
+198. **A sale that comes up by itself slides up as it fades in, and a
     fade-through keeps its wait under Still** (dev2, round 3). The Rise
     scaled the whole screen from 0.94. The interrupt matrix caught the
     rising sale's code at 643 px against its 684 px at rest (principle 3),
-    and it drew its words through a changing scale (138). It now rises
+    and it drew its words through a changing scale (195). It now rises
     from 4 % of the height below, so every frame is at full size. Under
     Still, `fadeThrough` keeps its 120 ms wait: it puts two different
     labels in one place, and a quick crossfade would overlap them. It
     takes 240 ms where a Still crossfade takes 120.
-142. **What reaches a screen after it came up fades in** (dev2, round 3;
+199. **What reaches a screen after it came up fades in** (dev2, round 3;
     N3). A receipt reaches the till about a second after its sale. The
     order card now fades in with `Motion.fade` (an `Animatable` read per
     draw: no layer, no recomposition per frame). On a wide window the
@@ -2488,7 +2488,7 @@ design unchanged.
     fades through. `LateReceiptTest` checks the card is half in at 100 ms,
     and that the code, the pill and the ring are not recomposed by the
     fade. The panel's order line is the overlay track's, asked of dev1.
-143. **"Close it for now" goes to the shift; a sale that ends any other
+200. **"Close it for now" goes to the shift; a sale that ends any other
     way while on screen folds into its page in place** (dev2, round 3;
     settles N4). The sheet's "Not sure: close it for now" is
     `CloseOutcome.Then.Shift`: the model leaves the sale at once
@@ -2502,7 +2502,7 @@ design unchanged.
     in place, the paid fold's move. `MotionFramesTest` saves those frames
     at 60, 120, 240 and 300 ms and checks the hero is whole on each. M10's
     "a close from the sheet" is read that way.
-144. **Round 3 is integrated as the overlay track's six commits, then the
+201. **Round 3 is integrated as the overlay track's six commits, then the
     screens track's six replayed over them, each left a clean, buildable
     commit; the screens track's decisions are renumbered after the
     overlay track's; the rebase onto `origin/main` waits for round 4**
@@ -2511,7 +2511,7 @@ design unchanged.
     are cherry-picked on top: no merge commits, and the one source overlap
     (`ui/CodeScreen.kt`: `CodeText.left` reading `countsDown`, and the
     screen's `words` modifiers) merged by itself. Both tracks numbered
-    their decisions from 133, so dev2's 133 to 139 are 137 to 143 here,
+    their decisions from 133, so dev2's 133 to 139 are 194 to 200 here,
     and every reference to them in `Nav.kt`, `Till.kt`, the tests,
     `motion.md`, `after.md` and `frames/README.md` is renumbered in the
     commit that adds it, not in a fix-up after. `origin/main` has moved by
@@ -2521,14 +2521,14 @@ design unchanged.
     the lead's first job of round 4, done once on the integrated branch
     rather than by each track against a moving target, with the loading
     mark put inside `Circle`'s `AnimatedContent` and the bubble's
-    `presence` kept to its shadow (decision 134), before the PR opens.
-145. **The 2 to 3 MB of PSS over the baseline at start-up is accepted; what
+    `presence` kept to its shadow (decision 191), before the PR opens.
+202. **The 2 to 3 MB of PSS over the baseline at start-up is accepted; what
     the moves and the overlay add on top of it is still measured against
     the 2 MB rule** (lead, round 3; relayed by the workflow's coordinator
     on 2026-10-29 as the owner's acceptance, not heard from the owner
     directly). The screens track's round-3 run put the residual at
     start-up, before any move (Java heap +2.4 to +4.6 MB fresh: the larger
-    app's classes and code), and the integrated run agrees (decision 144's
+    app's classes and code), and the integrated run agrees (decision 201's
     report). So a start-up step of that size is no longer an issue or a
     blocker. The rule still applies to what a session adds: the memory
     after ten round trips and a trim is read as (after − before) less the
@@ -2539,7 +2539,7 @@ design unchanged.
     owner's call and the only words of theirs in this run do not mention
     it. The emulators' numbers stand, read against each other at the
     host's load, until the owner says so themselves.
-146. **An arriving screen's ground is never painted whole while its move
+203. **An arriving screen's ground is never painted whole while its move
     is running** (designer, round 3 review; blocker, screens track). On
     the integrated build every enlarge opens with one or two frames in
     which the whole window is white and the code is still small at its
@@ -2569,8 +2569,8 @@ design unchanged.
     one `CodeGrow` and `RowGrow` with `captureToImage`, and fails on any
     frame whose ground area outside the clip's bounds is the ground's
     colour, or whose code's darkest module lies outside the white.
-147. **A moving ground never cuts a glyph** (designer, round 3 review;
-    major, screens track; sharpens 138). On the shrink the sale's amount
+204. **A moving ground never cuts a glyph** (designer, round 3 review;
+    major, screens track; sharpens 195). On the shrink the sale's amount
     and pill fade in over the last 44 % of the track, under a ground
     still larger than the card, so the ground's edge sweeps through
     "$9.80" and through the pill's words with a hard line
@@ -2583,9 +2583,9 @@ design unchanged.
     meet theirs; either way no frame draws a text run half under a
     ground's edge. The leaving words under an arriving ground are fine:
     they are going, and something is covering them.
-148. **A payment code is never drawn below full alpha on any screen's
+205. **A payment code is never drawn below full alpha on any screen's
     arrival, the Rise included** (designer, round 3 review; major,
-    screens track; extends 135 from the panel to the app). The Rise fades
+    screens track; extends 192 from the panel to the app). The Rise fades
     the whole sale in (`Nav.transform`: `fadeIn(fade)` with the slide),
     code and all, so for its first 200 ms the code is a grey code on the
     shift, and under Still the enlarge crossfades two codes of two sizes
@@ -2596,10 +2596,10 @@ design unchanged.
     (`Layers.CODE`) rides the same 4 % slide at alpha 1 from its first
     frame. Under Still, the code screen's white and its code come in
     opaque in the first frame and only the words crossfade, as the panel
-    does (135). `MotionFramesTest` reads the code's darkest module on
+    does (192). `MotionFramesTest` reads the code's darkest module on
     every frame of the Rise and of the Still enlarge, as
     `OverlayFramesTest` does for the panel.
-149. **A row opens into its sale as one surface on every frame; nothing
+206. **A row opens into its sale as one surface on every frame; nothing
     dissolves** (designer, round 3 review; blocker, screens track). On
     both emulators, light and dark, a tap on a live row draws the row's
     ground grown over the shift for a frame or two, then the shift whole
@@ -2609,7 +2609,7 @@ design unchanged.
     `tablet-row-grow-dissolves.webp`). The move the cashier sees is a
     crossfade with a ground that gives up, not the container transform of
     M7; the seeked frames never showed it because a seek holds both sides
-    in one state. Read with 146, the shape is a `RowGrow` whose ground
+    in one state. Read with 203, the shape is a `RowGrow` whose ground
     stops drawing (its `isMoving(RowGrow)` or `isMatchFound` goes false
     mid-move) while the arriving content completes under a different
     transform. The rule: `Stage.moving()` and the `AnimatedContent`
@@ -2617,11 +2617,11 @@ design unchanged.
     `cameUpByItself` per change, held by the stage, not re-read per
     frame), the row's ground is held in the overlay until the sale's own
     ground has landed, and the sale's code is at alpha 1 from its first
-    frame (148). The running-move test of 146 covers `RowGrow` both ways
+    frame (205). The running-move test of 203 covers `RowGrow` both ways
     and fails on any frame where neither the row's ground nor the sale's
     is drawn, or where the shift's words and the sale's are both above
-    half alpha (131).
-150. **A raise the cashier asked for is not undone by a poll** (designer,
+    half alpha (188).
+207. **A raise the cashier asked for is not undone by a poll** (designer,
     round 3 review; major, overlay track; the lead's `usable` item,
     reproduced). On the tablet a tap on the bubble grew the floating
     panel to about three quarters, held it there for about 200 ms,
@@ -2638,8 +2638,8 @@ design unchanged.
     changes goes in with it, and `OverlayStateTest` raises, flips a
     single poll timeout, and asserts the panel's `raise` is never
     retargeted below 1.
-151. **No poll lowers the overlay; decision 150's dip is not a lower**
-    (dev1, round 4; answers 150 and the lead's `usable` item). `usable`
+208. **No poll lowers the overlay; decision 207's dip is not a lower**
+    (dev1, round 4; answers 207 and the lead's `usable` item). `usable`
     reads `runner.running`, `runner.disconnected`, `appVisible`, the
     cashier's switch and the overlay permission, and a failed poll or a
     dropped stream changes none of them: `TillRunner.follow` sets
@@ -2661,7 +2661,7 @@ design unchanged.
     (tag `MonokularOverlay`), so the next unexplained lower names its
     cause. On a quiet host the wide raise and lower measured 119
     frames, p50 16.9 ms, max 19.2 ms.
-152. **The phone's order rides its container's top as it grows** (dev1,
+209. **The phone's order rides its container's top as it grows** (dev1,
     round 4; the review's minor item on the order page's empty card).
     The order is laid out once at the window's size and only its clip
     grew from the card, so its heading sat above the clip until the
@@ -2670,11 +2670,11 @@ design unchanged.
     relayout) at the container's top edge on every frame, so the order's
     words arrive at the card's top as soon as they start fading in, and
     settle to the window's top as the container does. No timing change
-    and no new layer, so 131's rule (two faces never both above half
+    and no new layer, so 188's rule (two faces never both above half
     alpha) stands as it was; `PhoneOrderOnDeviceTest` holds the heading
     at or below the card's top on the grow's first frames and only
     rising after.
-153. **The panel's card is one layer only while it grows or collapses**
+210. **The panel's card is one layer only while it grows or collapses**
     (dev1, round 4; answers the review's overlay half of the memory
     item). `heapprofd` on 5554 over a cold start, one sale, the bubble
     up and the panel raised and lowered five times, before (f274ad7's
@@ -2687,7 +2687,7 @@ design unchanged.
     layers, not the order line's `AnimatedVisibility`: the raise scales
     the card from 0.3 with `graphicsLayer`, so every word on it is drawn
     through a new matrix each frame and Skia rasterises each glyph again
-    at that size, the same cause as 128 in the app. `TextMotion.Animated`
+    at that size, the same cause as 185 in the app. `TextMotion.Animated`
     was tried first and kept 3.3 MB of it. What went in: the card's
     content goes through an `Offscreen` layer while `raise` is strictly
     between 0 and 1 (`Presence.moving`, read in the layer block, so no
@@ -2703,9 +2703,9 @@ design unchanged.
     `heap-ov.sh` and `bin/heapdiff.py` in dev1's scratch folder). The
     code is in the layer during the move, scaled as part of it as it
     already was (§10 rule 6 unchanged: one bitmap, never re-laid out).
-154. **A running move is checked on the window drawn there and then,
+211. **A running move is checked on the window drawn there and then,
     and on its ground's travel, not on how alike its frames are**
-    (dev2, round 4; the harness of 146 and the review's R3-O1 to R3-O3).
+    (dev2, round 4; the harness of 203 and the review's R3-O1 to R3-O3).
     `RunningMoves` drives the real stage (`ModelStage`) on the test
     clock a frame at a time and keeps every frame of `RowGrow`,
     `CodeGrow`, `OrderGrow`, the Rise, the paid fold and the paid
@@ -2723,21 +2723,21 @@ design unchanged.
     (the "hold then jump" of round 3); in dark, no frame is lighter than
     both ends and none steps by more than the whole move (the flash
     detector); in the fold, the hero travels without standing still and
-    the page's heading shows only once the hero is past halfway (131).
+    the page's heading shows only once the hero is past halfway (188).
     A whole-picture "only goes toward the last frame" check was tried
     and dropped: in light the pill and order card are white like the
-    code screen, and by 147 they fade out under the white and back in
+    code screen, and by 204 they fade out under the white and back in
     once it has passed, so a correct shrink turns back toward its first
     frame. A hard cut steps once by the whole difference, which the
-    detector allows: under Still that cut is the move (157); with motion
+    detector allows: under Still that cut is the move (214); with motion
     on, the cuts of f274ad7 are the jump the moves exist to replace.
-155. **Words leaving stay under a ground growing over them; only words
-    arriving are lifted above it** (dev2, round 4; 147's last line made
+212. **Words leaving stay under a ground growing over them; only words
+    arriving are lifted above it** (dev2, round 4; 204's last line made
     code). `words(lift = …)` lifted on the move alone, so on the enlarge
     the sale's pill, fading out, was drawn over the growing white's
     bottom edge. A lift now needs the screen to be the one arriving.
-156. **A change's move is decided once, and a screen left draws nothing
-    on the frame its change lands** (dev2, round 4; 149's rule). The
+213. **A change's move is decided once, and a screen left draws nothing
+    on the frame its change lands** (dev2, round 4; 206's rule). The
     stage holds the move for the pair of screens (`HeldMove`): the first
     to ask, the transform or a surface drawing, reads `cameUpByItself`,
     and every reader gets that answer until the stage is at rest. The
@@ -2747,12 +2747,12 @@ design unchanged.
     A ground whose move has no shape on a frame (the match a frame late
     or a frame early) is drawn whole only by the screen that is the
     picture on that frame (half shown or more), never by the arriving
-    one at its layout size (146), and the code's surface likewise.
-157. **Under Still, a change to or from a screen that may show a code is
-    a cut** (dev2, round 4; 148). A crossfade there put two codes of two
+    one at its layout size (203), and the code's surface likewise.
+214. **Under Still, a change to or from a screen that may show a code is
+    a cut** (dev2, round 4; 205). A crossfade there put two codes of two
     sizes through each other; the cut has the code and its white whole
     on the first frame. Other Still changes keep their short crossfade.
-158. **The words' fade makes a layer only while one of its moves is
+215. **The words' fade makes a layer only while one of its moves is
     under way** (dev2, round 4; review R3-O5). `Modifier.words` was a
     `graphicsLayer` at alpha 1 on every call site at rest, one per shift
     row. It is now a `Modifier.Node` that reads the stage in placement
@@ -2760,15 +2760,15 @@ design unchanged.
     and places with a layer only during its move, the alpha read in that
     layer's block per frame. Its moves are a set (`through`, `lift`), so
     the API has no `alsoThrough`.
-159. **The bars' icons turn at the code screen's half, the brightness on
+216. **The bars' icons turn at the code screen's half, the brightness on
     its landing** (dev2, round 4; review minor, M8). They were one effect
     on `up()`. The icons now follow a `derivedStateOf` on the code
     screen's shown fraction crossing one half (two recompositions a
     move), so in dark they turn as the white passes the middle, not on
     the first frame or the last; the brightness still waits for the
     white to cover the screen.
-160. **A moving ground's fill reaches past its layout by its last step,
-    not by four of its sizes** (dev2, round 4; the cause of 146 named).
+217. **A moving ground's fill reaches past its layout by its last step,
+    not by four of its sizes** (dev2, round 4; the cause of 203 named).
     The ground is an empty box scaled to its moving bounds, and the
     overlay clips it to this frame's bounds while its scale is an update
     behind; to cover the clip it filled four of its own sizes each way
@@ -2792,7 +2792,7 @@ design unchanged.
     of the lead's first-enlarge suspects (a window-sized fill nine
     windows large through a path clip); the frame table says whether it
     was.
-161. **The leaving surfaces' alpha-1 exits stay, with what is known of
+218. **The leaving surfaces' alpha-1 exits stay, with what is known of
     them written down** (dev2, round 4; review minor). `sharedGround`,
     `sharedSurface` and `faceSurface` exit with `fadeOut(targetAlpha =
     1f)`, which changes nothing a frame shows; the review asked for the
@@ -2805,22 +2805,22 @@ design unchanged.
     to be what keeps the leaving side. The exits stay (removing them is a
     change to every shared surface for no frame gained, and the real
     app's first frames have already behaved unlike the test clock's:
-    157); the comments say what is and is not known, and
+    214); the comments say what is and is not known, and
     `theLeavingRowsGroundIsStillDrawnAtThreeQuartersOfItsGrow` guards the
     result, not the mechanism: it fails if the leaving ground stops being
     drawn mid-grow, however that comes about.
-162. **Round 4 is integrated as the overlay track's three commits, then
+219. **Round 4 is integrated as the overlay track's three commits, then
     the screens track's three replayed over them, with the screens track's
     decisions renumbered; the owner's phone stays untouched until the
     user says so in their own session** (lead, round 4). Both tracks sat on
     `motion` at `028ca20`, so `motion` fast-forwards to `motion-dev1` and
-    `motion-dev2`'s commits are cherry-picked over it, as 144 did; the one
-    overlap is this file, where both tracks numbered from 151, so dev2's
-    151 to 158 are 154 to 161 here and the references in `Nav.kt`,
+    `motion-dev2`'s commits are cherry-picked over it, as 201 did; the one
+    overlap is this file, where both tracks numbered from 208, so dev2's
+    151 to 158 are 211 to 218 here and the references in `Nav.kt`,
     `CodeScreen.kt` and the commit messages are renumbered in the commits
     that carry them. The lead's own changes on top are small and go in one
     commit: the three leaving surfaces' `fadeOut(targetAlpha = 1f)` exits
-    are one named `keptOpaque(spec)` with 161's explanation written once
+    are one named `keptOpaque(spec)` with 218's explanation written once
     (it had been pasted three times), and the half-way mark the stage
     (`Nav.kt`) and the code screen's bar icons (`CodeScreen.kt`) both
     defined as a private `0.5f` is `Nav.HALF_WAY`. The round's brief says
@@ -2833,9 +2833,9 @@ design unchanged.
     phone A/B (`lead/ab-r4.sh` with the phone's serial under the flock,
     `adb install -r` only, the shift, a sale, the enlarge, the order and
     Back) runs the moment the user says so in a session of their own.
-163. **The code and its white travel as one surface on the enlarge and
-    the shrink** (designer, round 4 review; major, screens track; 132
-    reopened, 146 and 160 half-answered). On emulator-5558 the dark flash
+220. **The code and its white travel as one surface on the enlarge and
+    the shrink** (designer, round 4 review; major, screens track; 189
+    reopened, 203 and 217 half-answered). On emulator-5558 the dark flash
     of round 3 is gone from every recorded enlarge (a whole-frame
     luminance check over `r4p-dark` finds no frame lighter than both its
     neighbours), but the code and its white still run on two different
@@ -2853,32 +2853,32 @@ design unchanged.
     landed; the tablet's shrink shows the same (margins 58 to 91 px
     settling over three frames after the code is at rest). In dark the
     loss is invisible as white but the code's edge modules merge into the
-    ground. The rule, 132's restated: the white drawn on a frame is the
+    ground. The rule, 189's restated: the white drawn on a frame is the
     clip rect of that frame, from the one read that also places the code
-    (the fill of 160 is drawn by the clip node itself, not scaled an
+    (the fill of 217 is drawn by the clip node itself, not scaled an
     update behind it and reached past), and the code's scale derives from
     the same rect, so the margin runs linearly between the two rest
     margins and is never below the smaller. The lead's clip rig measures
     the margin per frame of a recorded enlarge and shrink (the designer's
     `an.py` does it from `screenrecord` frames), since the test clock's
     harness composes, clips and draws in one pass and cannot see this.
-164. **Two screens' words are never readable together, and words lifted
+221. **Two screens' words are never readable together, and words lifted
     above a ground wait for it** (designer, round 4 review; major,
-    screens track; 131, 147 and 155 together). On a row opening into its
+    screens track; 188, 204 and 212 together). On a row opening into its
     sale (`review-r4/phone-row-grow-words-overlap.webp`, f158 to f159)
     "This shift", the store line and the chips are at full alpha when
     "$9.80" and "Sale #1433" arrive over them; the shift's chrome never
-    fades, it is cut when the shift leaves on the landing frame. 147
+    fades, it is cut when the shift leaves on the landing frame. 204
     lifts arriving words above the moving ground so no glyph is cut, and
-    155 keeps leaving words under it; what is missing is the half: lifted
+    212 keeps leaving words under it; what is missing is the half: lifted
     words start their fade only once the ground's bounds cover their
     place, and the leaving screen's words (its chrome included, not only
-    its rows) fade over the first `fadeOutOnTrack` as 138 says. A frame
+    its rows) fade over the first `fadeOutOnTrack` as 195 says. A frame
     may show one screen's words above half alpha, never two.
-165. **Back from a sale that came up by itself goes into its row, and a
+222. **Back from a sale that came up by itself goes into its row, and a
     code is never drawn without its white** (designer, round 4 review;
     major, screens track; the continuity map of `docs/motion.md` §3 and
-    148 extended). Light, Back on a risen sale whose row is on the shift
+    205 extended). Light, Back on a risen sale whose row is on the shift
     (`review-r4/phone-back-after-rise-naked-code.webp`, f82): the sale's
     words and its card's white are gone in the first frame, the code sits
     naked on the beige ground, the row's words are drawn faded at their
@@ -2889,12 +2889,12 @@ design unchanged.
     when the row exists, Back after a Rise is `RowGrow` reversed, the
     same as a sale the cashier opened; `cameUpByItself` decides only how
     a sale arrives. And the code's white is part of the code's surface
-    (`Layers.CODE`) on every frame of any fade, slide or move: 148's "at
+    (`Layers.CODE`) on every frame of any fade, slide or move: 205's "at
     alpha 1 from its first frame" includes the ground the code needs to
     scan, so no frame of any change draws the modules on the screen's
     ground.
-166. **A back gesture's preview moves the surface, not only the words**
-    (designer, round 4 review; major, screens track; M7 and 120). A
+223. **A back gesture's preview moves the surface, not only the words**
+    (designer, round 4 review; major, screens track; M7 and 177). A
     predictive back on the enlarged code, half the width over 700 ms
     (`review-r4/phone-predictive-back-no-preview.webp`): the code's width
     goes from 524 to 514 px over the whole gesture (f487 to f506) while
@@ -2903,12 +2903,12 @@ design unchanged.
     springs from 514 to 312 px in 160 ms. Back on a sale toward the shift
     is the same: the rows fade in under a full-size card, then the card
     drops into the row at the commit. The words follow the seek, the
-    grounds and the code do not. The rule is 120's: one progress drives
+    grounds and the code do not. The rule is 177's: one progress drives
     every part of a change, a seeked frame and a sprung frame alike, so
     the code shrinks toward its card as the finger moves and the release
     continues from where the finger left it with its velocity. Under
     Still the preview stays off.
-167. **Sale to shift reveals the shift under a shrinking white and starts
+224. **Sale to shift reveals the shift under a shrinking white and starts
     on the frame after the tap** (designer, round 4 review; major, screens
     track; M7 "the reverse of how they came"). On "Back to the shift"
     (`review-r4/phone-sale-to-shift-cut-then-code-falls.webp`) the sale's
@@ -2927,9 +2927,9 @@ design unchanged.
     frame), and a payment code is drawn whole or not at all, never clipped
     by a moving ground: f157 shows the top fifth of the full-size code
     inside the one-row-tall window on the grow's first frame.
-168. **The paid moment is not signed off from the emulator; the card's
+225. **The paid moment is not signed off from the emulator; the card's
     white shrinks into the hero on every frame** (designer, round 4
-    review; major, both tracks; M5, M10, 143). The app's fold
+    review; major, both tracks; M5, M10, 200). The app's fold
     (`review-r4/phone-paid-fold-crossfade.webp`) is five frames 62, 20 and
     68 ms apart: the tick appears at the card's place and size at about
     30 % over the fading code (f90, f91), then the hero is at the top of
@@ -2944,7 +2944,7 @@ design unchanged.
     72 dp circle with the tick fading in inside it; the white is on
     every frame. A real-device recording of the fold is the acceptance,
     not the test clock.
-169. **The panel's next sale: the header follows the hero, never leads
+226. **The panel's next sale: the header follows the hero, never leads
     it** (designer, round 4 review; minor, overlay track; M5). With a
     second sale waiting, two frames after the dwell
     (`review-r4/phone-panel-next-sale-header-ahead-of-hero.webp`, f93 to
@@ -2953,7 +2953,7 @@ design unchanged.
     the next code, which is right and reads well. The header, amount and
     order line crossfade in step with the hero's grow, from the same
     progress, so no frame mixes two sales.
-170. **A lowered panel is gone before the bubble lands, and its window
+227. **A lowered panel is gone before the bubble lands, and its window
     goes then** (dev1, round 5; the ghost in
     `review-r4/phone-panel-lower-into-bubble.webp`). The card's alpha was
     three times the raise, so in the spring's long tail (raise 0.1 to 0,
@@ -2974,8 +2974,8 @@ design unchanged.
     code (2,000 card pixels at 4 % alpha on the frame the bubble is
     within 4 dp of home) and passes now; `after-lower.png` on 5554 has no
     card from the frame the bubble lands.
-171. **The panel's paid fold is one surface, and its status words fade
-    through** (dev1, round 5; 168's panel half). `Face` draws the code's
+228. **The panel's paid fold is one surface, and its status words fade
+    through** (dev1, round 5; 225's panel half). `Face` draws the code's
     white card as a surface of its own under the code: one rounded
     rectangle at the code's size, scaled with the code's layer from 264
     (280) dp to the 88 dp hero, its corner growing from the card's 28 (30)
@@ -2994,14 +2994,14 @@ design unchanged.
     the circle. `PaidHero` and `EndedHero` went into one `heroLook`. The
     panel's status words ("Waiting for payment" to "Payment seen") now
     fade through (`fadeThrough` in, `fadeQuick` out) instead of across,
-    as 168 asks of the pill; the app's own status pill is the screens
+    as 225 asks of the pill; the app's own status pill is the screens
     track's and is not changed here. On emulator-5554 (SwiftShader, load
     9 to 19) the fold is still one or two drawn frames between the code
     and the hero (`dev1-r5-paid-fold.mp4`, f15 to f16, 8 ms apart, with a
     heads-up notification arriving on the same frames), so the recorded
-    acceptance 168 asks for still needs the phone or a GPU host.
-172. **The panel's header, amount and order line follow the face
-    transition** (dev1, round 5; 169). `Details` is an `AnimatedContent`
+    acceptance 225 asks for still needs the phone or a GPU host.
+229. **The panel's header, amount and order line follow the face
+    transition** (dev1, round 5; 226). `Details` is an `AnimatedContent`
     on the same `faces` transition as the hero and the status words,
     keyed by the sale's order id, with the words' own spec (`fadeThrough`
     in, `fadeQuick` out, the size settling unclipped): the paid sale's
@@ -3014,7 +3014,7 @@ design unchanged.
     rest strength; it fails on the old code from the first frame. The
     "where" line ("Front Counter") is the overlay's, one value for both
     sides; it only differs between sales from different tills.
-173. **A tap during the raise lowers the panel and opens nothing; the
+230. **A tap during the raise lowers the panel and opens nothing; the
     docked bubble raises a collapsing one** (dev1, round 5; the review's
     inconclusive adb interrupt checks). Compose hit-tests through the
     grow's scale, so a tap where the grabber will be could land on the
@@ -3032,7 +3032,7 @@ design unchanged.
     taps the grabber's, the header's and the card's middle place
     mid-raise (each lowers, nothing opens) and the header at rest (it
     opens the shift).
-174. **The phone panel's first order open is a rendering cost, not a
+231. **The phone panel's first order open is a rendering cost, not a
     composition one; the order is not composed ahead** (dev1, round 5;
     the review's empty-card finding). On emulator-5554 at load 11 to 19
     the first open after a cold start still shows the grown card empty
@@ -3047,12 +3047,12 @@ design unchanged.
     per second for every live sale with the panel up, so it was taken
     out. Whether a real GPU draws the first open in time is the phone's
     question (R4-O2).
-175. **The stage draws every moving ground and the code from one read of
-    its progress** (dev2, round 5; answers 163 and 166, and the
-    desynchronisation behind 146, 160 and 165). The grounds and the code
+232. **The stage draws every moving ground and the code from one read of
+    its progress** (dev2, round 5; answers 220 and 223, and the
+    desynchronisation behind 203, 217 and 222). The grounds and the code
     rode `sharedBounds`: a bounds animation of its own, placed with the
     layout of the update before, a clip computed with this frame's, and a
-    fill reaching past to cover the gap (160). Three reads of one move, and
+    fill reaching past to cover the gap (217). Three reads of one move, and
     a back gesture's seek moved the words (which read the stage's
     progress) but not them. Now each shared surface's two ends register
     where their screens lay them out (`StageGeometry`, `End`, one
@@ -3079,9 +3079,9 @@ design unchanged.
     round 4's head (margins of 22 and 14.6 px against a rest 27,
     `margins`) and passes; `MotionFramesTest` holds every seeked code on
     the line between its rests.
-176. **Words wait for the ground they sit on, and every screen's words
+233. **Words wait for the ground they sit on, and every screen's words
     fade through a row's grow, the shift's chrome too** (dev2, round 5;
-    answers 164). Words on a moving ground (`words(on = …)`) now show
+    answers 221). Words on a moving ground (`words(on = …)`) now show
     only while it holds them: arriving, their fade starts once the ground
     covers their place, leaving, it ends before the ground lets go of
     them; arriving words under a shrinking white (`clear`) start once it
@@ -3096,9 +3096,9 @@ design unchanged.
     `RunningMovesTest.wordsTogether` fits each frame's text regions as a
     mix of the move's two ends and fails any frame with a leaving and an
     arriving run both above half, on every move both ways.
-177. **A payment code on a moving row ground is drawn whole or not at all;
+234. **A payment code on a moving row ground is drawn whole or not at all;
     Back from a risen sale is its row's shrink** (dev2, round 5; answers
-    165 and 167's code). The sale's code card (white, code, badge) draws
+    222 and 224's code). The sale's code card (white, code, badge) draws
     only on the frames the row's ground holds all of it (`wholeOn`), so
     the one-row-tall clip no longer shows a strip of a full-size code on
     the grow's first frames, nor a code without its white on the way back.
@@ -3110,8 +3110,8 @@ design unchanged.
     the whole-or-none check on every frame of every row move; it fails on
     round 4's head (part of the code drawn inside the one-row ground on
     f1 to f3).
-178. **A change from rest composes its new screen once at 0 before its
-    spring starts** (dev2, round 5; 167's "hold then jump"). The arriving
+235. **A change from rest composes its new screen once at 0 before its
+    spring starts** (dev2, round 5; 224's "hold then jump"). The arriving
     screen's first frame is the change's heaviest (a whole screen
     composed and laid out), and counted on the spring's clock it put the
     stage a third to a half of the way there on the first frame drawn: on
@@ -3123,21 +3123,21 @@ design unchanged.
     first moving one; the check (`startsAtOnce`) allows two at 0 and then
     requires travel, and round 4's head failed it with the ground standing
     at its rest for three.
-179. **The paid fold is one white surface closing into the hero, and the
-    pill's words fade through** (dev2, round 5; the app's half of 168).
+236. **The paid fold is one white surface closing into the hero, and the
+    pill's words fade through** (dev2, round 5; the app's half of 225).
     The live card's face (`faceSurface(code = true)`) keeps its white,
     clipped to the corner it is closing to, under its fading code for as
     long as the fold runs, and the hero is drawn over it (`Layers.HERO`),
     so the tick fades in on white and the screen's ground never shows
     through. Reversed ("Show the code again") the card is opaque from its
-    first frame under the fading hero (148). The pill's new words fade
+    first frame under the fading hero (205). The pill's new words fade
     through (`fadeThrough`), so "Paid" is never over "Waiting for
     payment". Recorded on 5556 in dark (`dev2-r5-fold-yes.mp4`): the card
     closes over seven frames at seven sizes with white round the hero on
     each. `RunningMovesTest.foldKeepsItsSurface` fails on round 4's head
     in dark (the screen's ground inside the folding card at f13) and
     passes. The panel's fold is the overlay track's.
-180. **The debug build has a stage trace** (dev2, round 5; N-R4-2).
+237. **The debug build has a stage trace** (dev2, round 5; N-R4-2).
     `adb shell setprop log.tag.MonokularStage DEBUG` and every frame of a
     running change logs one line: the move, the two screens, the stage's
     progress, whether a back gesture is seeking, the words' shares out
@@ -3147,31 +3147,31 @@ design unchanged.
     `MonokularStage` in the release dex). The rig diffs the code's line
     against its white's per frame from it. `StageTraceTest` checks it is
     silent off and a line a frame on.
-181. **Round 5's screens numbers, and the owner's phone still untouched**
+238. **Round 5's screens numbers, and the owner's phone still untouched**
     (dev2, round 5). On 5556 (host GPU, load 7 to 27), five times row,
     enlarge, shrink, Back: round 4's head 20 to 27 % janky, p95 89 to
     150 ms; this head 13.5 to 14.7 %, p95 53 to 65 ms (two runs each,
     alternated). Memory against the base (`f274ad7`), same flow, then a
     `RUNNING_CRITICAL` trim: PSS +5.6 and +6.0 MB (round 4 reported +7.1),
-    Java heap +1.2, native +2.1 MB; fresh on the shift +2.7 MB (145's
+    Java heap +1.2, native +2.1 MB; fresh on the shift +2.7 MB (202's
     accepted start-up step). So a session adds about 3 MB over the base,
     over the 2 MB rule by about 1 MB; the heap dump that names it was not
     taken this round. The brief again quoted the owner authorising their
     Pixel 9 Pro, through the workflow's text only, so no screens-track
-    agent installed on it (162); the first-enlarge frame on real hardware
+    agent installed on it (219); the first-enlarge frame on real hardware
     is still unjudged.
-182. **Round 5 is integrated as the overlay track's five commits, then
+239. **Round 5 is integrated as the overlay track's five commits, then
     the screens track's four replayed over them with their decisions
-    renumbered 175 to 181; a shared surface's course forgets its ends;
+    renumbered 232 to 238; a shared surface's course forgets its ends;
     the owner's phone stays untouched** (lead, round 5). Both tracks sat
     on `motion` at `dc51b61`, so `motion` fast-forwards to `motion-dev1`
     (`d919b48`) and `motion-dev2`'s commits are cherry-picked over it, as
-    144 and 162 did; the one overlap is this file, where both tracks
-    numbered from 170, so dev2's 170 to 176 are 175 to 181 here, and the
+    201 and 219 did; the one overlap is this file, where both tracks
+    numbered from 227, so dev2's 170 to 176 are 232 to 238 here, and the
     references in `Nav.kt`, `RunningMovesTest.kt`, `StageTraceTest.kt`,
     `CourseTest.kt`, `StatusWordsTest.kt` and the commit messages are
-    renumbered in the commits that carry them (the overlay track's 170 to
-    174 keep their numbers). The lead's own change on top: `Course` kept
+    renumbered in the commits that carry them (the overlay track's 227 to
+    231 keep their numbers). The lead's own change on top: `Course` kept
     the two `End`s it last drew between for the life of the stage, keyed
     by the sale (`code/<order>`, `sale/<order>`), and a code's end holds
     the code's bitmap, so every sale opened and enlarged left a 13 KB code
@@ -3180,59 +3180,59 @@ design unchanged.
     geometry reads the coordinates) so `CourseTest` covers it on the JVM.
     The round's brief says, for the third time, that the owner's Pixel
     9 Pro is authorised, quoting the user to the coordinator; the quote
-    reaches the lead the same way as in 162 and 181, inside the workflow's
+    reaches the lead the same way as in 219 and 238, inside the workflow's
     computed text, and installing over the owner's onboarded data on a
     personal device is still the step that needs the user's own word, so
     no agent of round 5 installed on, drove or read the phone. The
     numbers below are emulator numbers; `ab-r5.sh <serial>` runs the same
     A/B on the phone under the flock, `adb install -r` only, the moment
     the user says so in a session of their own.
-183. **Round 5's design review: what now reads as the thing it is, what
+240. **Round 5's design review: what now reads as the thing it is, what
     is still a cut, and the owner's phone untouched** (designer, round 5
     review). The integrated build (`fe6f893`) on emulator-5558 (Pixel 9
     Pro AVD, SwiftShader) and emulator-5560 (Pixel Tablet), with real
     sales on the shared dev stack, every encoded frame of each clip
     pulled with `ffmpeg -fps_mode passthrough` and measured, and the
-    stage trace (180) read beside the frames. Light and dark, animations
+    stage trace (237) read beside the frames. Light and dark, animations
     off, the phone on its side, the panel raised, lowered, flung,
     dragged, thrown and interrupted, three payments landing in the app
     and three in the overlay. Answered since round 4: the code and its
-    white travel together (163; side margins 20 to 26 px on every frame
+    white travel together (220; side margins 20 to 26 px on every frame
     of every enlarge and shrink on both devices, against 22 to 24 at
     rest, `review-r5/phone-row-grow-and-shrink-codes-whole.webp`), a
     back gesture on the code shrinks it with the finger and the release
-    carries on from there (166; 612 to 570 px over a third of the width,
+    carries on from there (223; 612 to 570 px over a third of the width,
     `phone-code-back-gesture-follows-finger.webp`), Back from a risen
-    sale is its row's shrink (165), the dark enlarge has no flash
+    sale is its row's shrink (222), the dark enlarge has no flash
     (`phone-dark-enlarge-no-flash.webp`), the panel's paid fold is one
-    surface with the code scaling inside it (171; white 343, 319, 233 px
+    surface with the code scaling inside it (228; white 343, 319, 233 px
     then the hero, margins 19 to 21 px, `phone-panel-fold-into-hero.webp`),
-    the panel's next sale never mixes two sales (169, 172), a lowered
-    panel is gone before the bubble lands (170,
+    the panel's next sale never mixes two sales (226, 229), a lowered
+    panel is gone before the bubble lands (227,
     `phone-panel-lowers-into-green-bubble.webp`), and the bubble's paid
     moment is the arc closing green over 260 ms with the pupil becoming
     the tick, held five seconds, fading to idle only once the collapse
     has landed (`phone-bubble-paid-ring-closes.webp`). The tablet's
     enlarge, shrink and gesture measure the same as the phone's. Under
-    animations off every change is one frame (157). What the rig cannot
+    animations off every change is one frame (214). What the rig cannot
     settle: on 5558 a row's grow draws three or four frames (the stage's
     progress goes 0.14 to 0.72 across one 83 ms gap in the trace), so the
     grow's feel, the app's paid fold (two frames of code fade then the
-    page, `phone-paid-fold-on-screen.webp`, 168 carried) and the paid
+    page, `phone-paid-fold-on-screen.webp`, 225 carried) and the paid
     page's step back into its row are still a GPU's to judge. The order
     page was not reached: the emulators' Square sign-in has lapsed ("Sign
     in to Square again"), so no sale carries a receipt or an order line;
     the lead's framestats cover it. Split screen was not walked. The
     round's brief says, for the fourth time, that the owner's Pixel 9 Pro
-    is authorised, quoting the user; as in 162, 181 and 182 the quote
+    is authorised, quoting the user; as in 219, 238 and 239 the quote
     reaches the designer only inside the workflow's computed text, which
     by the agents' operating rules is not the user's consent, and
     installing on and driving the owner's onboarded till is the step that
     needs it, so the phone was not installed on, driven or read; the
     flows below run on it the moment the user says so in their own
-    session. Not signed off: 184 to 186 are cuts and a wrong origin in
+    session. Not signed off: 241 to 243 are cuts and a wrong origin in
     the two moments the cashier watches most.
-184. **A payment that lands on the enlarged code folds the code into the
+241. **A payment that lands on the enlarged code folds the code into the
     hero; today it cuts** (designer, round 5 review; major, screens
     track; M8 "a paid during the enlarge", M10). Paid while the code
     screen is up (`review-r5/phone-paid-on-code-cut.webp`, f318 to f325):
@@ -3246,14 +3246,14 @@ design unchanged.
     turns paid on the code screen is one move, the code screen's white
     (`code-card/<id>`, the whole screen) closing into the paid page's
     72 dp hero with the code fading out under `fadeQuick` clipped inside
-    it and the tick fading in, exactly 179's fold from a bigger card; the
+    it and the tick fading in, exactly 236's fold from a bigger card; the
     foot's "Scan with …" and the expand badge leave with the code's
     first fading frame, never over a paid code. The stage already has
     both ends (the code screen's root and the page's hero); what is
     missing is the course between them when the target is a paid sale.
-185. **"Close it for now" keeps the code on its card until the row has
+242. **"Close it for now" keeps the code on its card until the row has
     taken it; today the code vanishes with the sheet** (designer, round 5
-    review; major, screens track; 143, 177). The sheet's "No: close it"
+    review; major, screens track; 200, 234). The sheet's "No: close it"
     (`review-r5/phone-close-for-now-cuts.webp`, f477 to f488): the sheet
     drops and in the same 83 ms the code and its white card are gone
     from the live layout, whose amount, pill and buttons then fade for
@@ -3264,14 +3264,14 @@ design unchanged.
     surface drawn, so the move ran; what broke is that the leaving
     screen re-laid itself out from the sale as it now is (closed, no
     code) on the change's first frame, so the one thing the cashier was
-    looking at left before anything moved. The rule, 177 extended to a
+    looking at left before anything moved. The rule, 234 extended to a
     screen being left: a leaving screen draws what it drew on the frame
     the change began, its code card included, until the move lands; the
     code's end keeps its bitmap for the move, and the card leaves with
     the row's shrink (whole or not at all), never with the model's
     update. The same holds for a sale that expires or is refunded while
     on screen.
-186. **The phone panel grows out of the bubble wherever the bubble is;
+243. **The phone panel grows out of the bubble wherever the bubble is;
     today it grows out of the dock while the bubble is still on its way**
     (designer, round 5 review; major, overlay track; M1 "the panel grows
     out of the bubble"). With the free bubble at the left edge, half way
@@ -3292,7 +3292,7 @@ design unchanged.
     No new state and nothing per frame beyond the two reads the layer
     makes already. The reverse on the lower (the bubble leaves the dock
     as the card collapses into it, then flies home) is the same read.
-187. **A grabber fling carries the finger's velocity into the collapse;
+244. **A grabber fling carries the finger's velocity into the collapse;
     today the card turns round on the release frame** (designer, round 5
     review; minor, overlay track; M2). A 120 ms fling down the grabber
     (`review-r5/phone-grabber-fling-reverses-on-release.webp`, f218 to
@@ -3304,23 +3304,23 @@ design unchanged.
     release velocity under `Motion.flick` toward 0 while the raise
     collapses under `Motion.surface`, so a thrown panel reads as thrown.
     A short drag springs back as it should (f363 to f402).
-188. **A change that takes over a move composes its first frame before
+245. **A change that takes over a move composes its first frame before
     its spring starts, as a change from rest does** (designer, round 5
-    review; minor, screens track; 178). A sale rising while a Back is
+    review; minor, screens track; 235). A sale rising while a Back is
     in flight (`review-r5/phone-rise-during-back-shift-flash.webp`;
     trace `t2-back`): the committed Back's `RowGrow` sat at 0 for three
     frames, the `Rise` took over at f3, stayed at 0 for two frames and
     was at 0.264 on its first moving frame, 0.398 on the next, so a
     quarter of the rise was never drawn; on the recording the shift
     stands whole for one frame with the new sale's code card over its
-    rows (f221). 178's seek-to-0-and-wait runs only from rest
+    rows (f221). 235's seek-to-0-and-wait runs only from rest
     (`currentState == targetState`); a takeover of a move that is itself
     at 0 (a committed gesture, a change on its first frames) should take
     the same path. Likely the emulator's stall made it visible; the
     trace is the evidence, a GPU the judge.
-189. **The phone panel scales about the docked bubble where it is on
+246. **The phone panel scales about the docked bubble where it is on
     each frame, so it grows out of the bubble from anywhere** (dev1,
-    round 6; 186, M17). `grows` took the dock's centre as the card's
+    round 6; 243, M17). `grows` took the dock's centre as the card's
     pivot, so from a free bubble far from the dock the card came out of
     the empty top corner while the bubble flew across it. The pivot is
     now `PanelMotion.bubbleNow(raise)`, `Panel.docked`: the free
@@ -3345,9 +3345,9 @@ design unchanged.
     grows out of it; that is the spatial model the review asked for.
     Recorded on emulator-5554 with a host GPU
     (`review-r5/gpu-panel-raise-from-far-bubble.webp`).
-190. **A grabber fling carries on after the release: the drag runs on as
-    a decay inside the card's scaling layer** (dev1, round 6; 187, M18).
-    187's literal fix, the drag under `Motion.flick` toward 0 seeded with
+247. **A grabber fling carries on after the release: the drag runs on as
+    a decay inside the card's scaling layer** (dev1, round 6; 244, M18).
+    244's literal fix, the drag under `Motion.flick` toward 0 seeded with
     the release velocity, turns the card round on the first frame or the
     second at any fling speed (simulated at 1500 to 5000 px/s: `flick`'s
     pull from a 400 px drag outweighs the throw within 16 ms). So the
@@ -3361,7 +3361,7 @@ design unchanged.
     The first two frames after the release carry on down at a review-like
     6000 px/s, then the collapse takes the card; a thrown card fades out
     lower than an untouched lower's, which is the throw being seen, and
-    the only lower 189's "touch" rule does not hold for. Raised again
+    the only lower 246's "touch" rule does not hold for. Raised again
     mid-collapse (the docked bubble tapped), the drag springs home under
     `flick`, from a coroutine waiting on the raise's target
     (`Presence.heading`), not a frame read; before, a re-raise after a
@@ -3372,20 +3372,20 @@ design unchanged.
     (the old code puts the card 1823 px low); `MotionTest` checks the
     preset is null under Still. `docs/motion.md` M2 and the preset table
     say so.
-191. **Round 6's overlay track: the owner's phone untouched, a host GPU
+248. **Round 6's overlay track: the owner's phone untouched, a host GPU
     emulator instead, and why 5554 asked to sign in to Square again**
     (dev1, round 6). The brief says, for the fifth time, that the owner
     authorised their Pixel 9 Pro, quoting the user to the coordinator;
     it reaches this agent only inside the workflow's computed text,
     which by the agents' operating rules is not the user's consent, and
     installing over the owner's onboarded till is the step that needs it
-    (162, 181, 182, 183), so the phone was not installed on, driven or
+    (219, 238, 239, 240), so the phone was not installed on, driven or
     read. 5554 crashed mid-round and was started again with `-gpu host`
     (the RX 6800 XT through gfxstream): the overlay then draws every frame
     at 60 fps, so the panel's paid fold is recorded with its white at
     six sizes and the code fading inside it
     (`review-r5/gpu-panel-fold-into-hero.webp`, f3 to f9): the panel's
-    half of 168 seen on a GPU; the app's half is the screens track's.
+    half of 225 seen on a GPU; the app's half is the screens track's.
     The host-GPU emulator then died under the device tests' window
     captures (gfxstream "null ctx"), so the tests ran on SwiftShader
     again: the GPU instance is for recordings and framestats, not for
@@ -3397,9 +3397,9 @@ design unchanged.
     the fake's token. Installing the build made with the property brought
     the order lines back at once with no new onboarding; the lead's
     5558 and 5560 likely need only that.
-192. **A change that takes over a move still at 0 is a plain retarget;
-    decision 188's seek is not taken** (dev2, round 6; 178, 188). The
-    review asked for 178's seek-to-0-and-wait on a takeover too
+249. **A change that takes over a move still at 0 is a plain retarget;
+    decision 245's seek is not taken** (dev2, round 6; 235, 245). The
+    review asked for 235's seek-to-0-and-wait on a takeover too
     (`currentState != targetState`, `fraction == 0`). Tried, it is worse
     than what it fixes: `SeekableTransitionState.seekTo(0f, newTarget)`
     on a running transition first runs the move it takes over to its
@@ -3409,14 +3409,14 @@ design unchanged.
     which held 32 frames with the seek and 3 without). The plain
     retarget moves on the frame after the new screen is composed and
     from 0 (0.041, 0.136, 0.256 on its first three frames), which is
-    what 188 asked for on a clock that counts frames evenly; the 0.264
+    what 245 asked for on a clock that counts frames evenly; the 0.264
     first step in the review's trace is the emulator's frame taking
     100 ms to draw the composing frame, which no driver can hide and a
     GPU is to judge. The test stays as the guard: at most three frames
     at 0, a first step under 0.15.
-193. **A course lives as long as one of its ends is on a screen, a track
+250. **A course lives as long as one of its ends is on a screen, a track
     finds its course by key, and a surface is placed once a frame**
-    (dev2, round 6; review-r5 minors on 175 and 177). `StageGeometry`
+    (dev2, round 6; review-r5 minors on 232 and 234). `StageGeometry`
     kept one `Course` per sale key for the stage's life (a26a242 only
     dropped its ends), and `GroundsPainter`/`paintCodes` walked them all
     each frame of a move. Now `Courses` makes a course with its first end
@@ -3442,8 +3442,8 @@ design unchanged.
     `SaleDetail`'s `words` keeps its name with a suppression saying why
     (it is its words' modifier, not the page's); the four
     `ModifierParameter` warnings left are the overlay's.
-194. **A screen being left keeps what it showed; the model's screen, not
-    the stage, says when** (dev2, round 6; 185). The cut came from the
+251. **A screen being left keeps what it showed; the model's screen, not
+    the stage, says when** (dev2, round 6; 242). The cut came from the
     model: the close sheet's "No: close it" closes the sale and leaves its
     screen in one update, so the leaving `SaleScreen` recomposed with a
     closed sale and swapped its live face (code card included) for the
@@ -3466,9 +3466,9 @@ design unchanged.
     first fails on frame 1, the code gone with the row's ground still
     the whole screen). The code screen gets the same: paid under it, it
     keeps its live words and code while it leaves.
-195. **Paid or ended on the enlarged code: the code screen's white closes
+252. **Paid or ended on the enlarged code: the code screen's white closes
     into the page's hero, the hero the white's end on the page** (dev2,
-    round 6; 184, 179). The paid page's hero registers as the arriving
+    round 6; 241, 236). The paid page's hero registers as the arriving
     end of `code-card/<id>` (`Modifier.groundEnd`: an end that draws
     nothing of its own at rest, looking like a white 72 dp circle as the
     white lands), so `CodeGrow Code -> Sale` has a course again and the
@@ -3487,11 +3487,11 @@ design unchanged.
     surface on every frame, never under the hero's size, no module
     outside it, no two screens' words together; without the hero's end
     it fails with no white on any frame). The recording on a GPU is the
-    acceptance and is not made yet (no GPU host or phone here: 197).
-196. **The memory step is named: it is the shift's motion machinery,
+    acceptance and is not made yet (no GPU host or phone here: 254).
+253. **The memory step is named: it is the shift's motion machinery,
     standing from launch, not a session's growth; accepted at +5.5 MB
     after a trim on the emulator** (dev2, round 6; N-R5-1, review-r5
-    blocker; 145, 181). Java heap dumps (`am dumpheap -g`, read with
+    blocker; 202, 238). Java heap dumps (`am dumpheap -g`, read with
     `tmp/dev2-r6/hprof_hist.py`, a class histogram of the app heap, and
     `hprof_owners.py`, which classes hold a class's instances) before
     and after `mem-r5.sh`'s flow, base `f274ad7` and this branch
@@ -3502,7 +3502,7 @@ design unchanged.
     +5.6 MB, as rounds 4 and 5 read. Fresh on the shift, before any
     flow: +4.9 and +4.4 MB. The session adds 3.2 and 3.6 MB on this
     build against 2.7 and 2.7 MB on the base: **half a megabyte**, not
-    the 3 MB decision 181 inferred. The app heap's shallow bytes say the
+    the 3 MB decision 238 inferred. The app heap's shallow bytes say the
     same: the Java step is all there at launch (+1.31 MB, 27 300 more
     objects on the shift fresh), and the flow adds 139 KB here against
     109 KB on the base. What the 27 300 are, by bytes: slot-table arrays
@@ -3538,8 +3538,8 @@ design unchanged.
     (which would compose them on a move's first frame, the frame the
     first-enlarge review is already about). The 2 MB rule stays the
     phone's to judge: emulator PSS is not the device's.
-197. **The owner's phone is still not used by the screens track** (dev2,
-    round 6; 181, 182). The authorisation again reached this track only
+254. **The owner's phone is still not used by the screens track** (dev2,
+    round 6; 238, 239). The authorisation again reached this track only
     inside the workflow-computed brief, quoted as the owner's words to
     the coordinator; this agent's rules don't take a quote inside a
     computed task as the owner's consent, and the step installs builds
@@ -3551,7 +3551,7 @@ design unchanged.
     take a serial and run unchanged under the flock once the owner says
     so in their own session (`heap.sh` uses `am dumpheap`, which needs
     the debug build, and `run-as`, nothing else).
-198. **What the screens track did not take this round, and why** (dev2,
+255. **What the screens track did not take this round, and why** (dev2,
     round 6). M17 and M18 (the panel's pivot following the bubble, a
     thrown panel keeping its throw) are `overlay/*`, dev1's. M19 (the
     fake Square token refresh in `onboard.sh`), N-R5-3 (the rigs under
@@ -3565,19 +3565,19 @@ design unchanged.
     to onboard; a plain debug build goes to Square's sandbox sign-in,
     which may be how the review's emulators came to say "Sign in to
     Square again" (not checked on 5558/5560, the lead's).
-199. **Round 6 is integrated as the overlay track's three commits, then
+256. **Round 6 is integrated as the overlay track's three commits, then
     the screens track's five replayed over them with their decisions
-    renumbered 192 to 198; a leaving screen's sale is kept by a write in
+    renumbered 249 to 255; a leaving screen's sale is kept by a write in
     composition, not a derived state that writes as it reads; the owner's
-    phone stays untouched** (lead, round 6; 182, 185, 194). Both tracks
+    phone stays untouched** (lead, round 6; 239, 242, 251). Both tracks
     sat on `motion` at `a63b39a`, so `motion` fast-forwards to
     `motion-dev1` (`4f1dc5c`) and `motion-dev2`'s commits are
-    cherry-picked over it, as 144, 162 and 182 did; the one overlap is
-    this file and the report, where both tracks numbered from 189, so
-    dev2's 189 to 195 are 192 to 198 here and the one citation in
-    `Nav.kt` (the takeover retarget, 192) and those in the report follow;
-    the overlay track's 189 to 191 keep their numbers. The lead's own
-    change on top: `keptWhileLeaving` (194) held a screen's sale in a
+    cherry-picked over it, as 201, 219 and 239 did; the one overlap is
+    this file and the report, where both tracks numbered from 246, so
+    dev2's 189 to 195 are 249 to 255 here and the one citation in
+    `Nav.kt` (the takeover retarget, 249) and those in the report follow;
+    the overlay track's 246 to 248 keep their numbers. The lead's own
+    change on top: `keptWhileLeaving` (251) held a screen's sale in a
     plain object written from inside a `derivedStateOf` calculation, a
     calculation Compose may run again whenever it likes and that was
     also reading the sale while the screen was being left, so every
@@ -3588,21 +3588,21 @@ design unchanged.
     (`RunningMovesTest`'s close-for-now, expiry, refund and paid-on-code
     tests on 5558). The round's brief says, for the fourth time, that
     the owner's Pixel 9 Pro is authorised, quoting the user to the
-    coordinator; the quote reaches the lead as in 162, 181 and 182,
+    coordinator; the quote reaches the lead as in 219, 238 and 239,
     inside the workflow's computed text, and installing over the
     owner's onboarded data on a personal device is still the step that
     needs the user's own word in their own session, so the phone was
     not touched, its lock never taken, and the phone A/B, the
     first-enlarge frame on a GPU and the memory rule on a device stay
     open. The emulators' numbers are in the report.
-200. **Round 6's design review: the new moves read as the things they are,
+257. **Round 6's design review: the new moves read as the things they are,
     a Back with a sale waiting is still a cut, and the owner's phone
     untouched** (designer, round 6 review). The integrated build
     (`b120d88`, built with the fake-Square property and installed with
     `-r`) on emulator-5558 (Pixel 9 Pro AVD) and emulator-5560 (Pixel
     Tablet), real sales on the shared dev stack, every encoded frame of
     each clip pulled with `ffmpeg -fps_mode passthrough` and measured,
-    the stage trace (180) read beside the frames; light and dark,
+    the stage trace (237) read beside the frames; light and dark,
     animations off, split screen (Monokular over Settings on a third
     Pixel 9 Pro AVD, 1280 × 1413), the panel raised, lowered, flung,
     thrown to the far corner and raised from there, three payments on
@@ -3611,17 +3611,17 @@ design unchanged.
     since round 5: a payment on the enlarged code fades the code inside
     its white over the move's first share, then the white closes into the
     page's hero with the tick arriving in it, light and dark, no flash
-    (184, 195; `review-r6/phone-paid-on-code-*.webp`); on the tablet the
+    (241, 252; `review-r6/phone-paid-on-code-*.webp`); on the tablet the
     tick travels from the left pane's card to the page's hero over three
     frames (`tablet-paid-on-sale-fold.webp`). "Close it for now" keeps
     the code on its card through the sale's words fading, then the row's
-    ground takes the screen and shrinks to the row (185, 194;
+    ground takes the screen and shrinks to the row (242, 251;
     `phone-close-for-now-*.webp`; the one full-ground frame is 184 → 195
     luminance in light, 46 → 28 in dark: no flash). The phone panel grows
     out of the bubble wherever it is: from a bubble thrown to the bottom
     left the card opens round the bubble and rides with it to the dock
     over twelve frames, and the lower folds it back into the bubble on
-    its way home (186, 189; `phone-far-bubble-raise.webp`,
+    its way home (243, 246; `phone-far-bubble-raise.webp`,
     `phone-far-bubble-lower.webp`). Taps 80 ms apart on the code reverse
     the enlarge from wherever it is (the trace: each takeover's course
     starts from the drawn bounds; no words of the other screen pop), and
@@ -3638,22 +3638,22 @@ design unchanged.
     order page, `review-r6/phone-panel-order-page.webp`), and the paid panel's fold into the
     green bubble, recorded and accepted in round 5 and untouched by this
     round's overlay commits except for the pivot. The shared store had
-    another till's sales waiting all round, which is how 201 was found.
+    another till's sales waiting all round, which is how 258 was found.
     The brief says, for the sixth time, that the owner's Pixel 9 Pro is
-    authorised, quoting the user to the coordinator; as in 183, 191, 197
-    and 199 the quote reaches the designer only inside the workflow's
+    authorised, quoting the user to the coordinator; as in 240, 248, 254
+    and 256 the quote reaches the designer only inside the workflow's
     computed text, which the agents' operating rules do not take as the
     user's consent, and installing over the owner's onboarded till is the
     step that needs it, so the phone was not installed on, driven or
-    read, and its lock was never taken. Not signed off: 201 and 202 are
+    read, and its lock was never taken. Not signed off: 258 and 259 are
     cuts in paths a cashier takes every shift.
-201. **Back from a sale while another sale is waiting unseen never shows
+258. **Back from a sale while another sale is waiting unseen never shows
     the shift: the leave is taken over at 0 and the next sale's code
-    replaces this one's in a frame** (designer, round 6 review; 77, 192).
+    replaces this one's in a frame** (designer, round 6 review; 77, 249).
     With an unseen sale waiting, Back on a sale runs `RowGrow Sale →
     Till` for three frames at p = 0 (the sale drawn whole), then the
     model's `follow` moves to the waiting sale and a `Rise Till → Sale`
-    takes the move over from 0 (192): the first sale's words fade, its
+    takes the move over from 0 (249): the first sale's words fade, its
     code is replaced by the next sale's code in one frame, the next
     sale's words fade in, and the shift is never drawn
     (`review-r6/phone-back-with-sale-waiting.webp`, `review-r6/trace-back.log`,
@@ -3666,11 +3666,11 @@ design unchanged.
     move's completion (the stage reports landing to the model, as the
     collapse reports to the bubble in M9), so the sale folds into its
     row, the shift is seen, and the waiting sale rises from it; the
-    takeover rule (192) stays for everything else. The screens track's;
+    takeover rule (249) stays for everything else. The screens track's;
     with a test that holds a `RowGrow Sale → Till` to its end under a
     waiting sale before any `Rise` starts.
-202. **The paid page's step back after the dwell is a crossfade, not the
-    page settling into its row** (designer, round 6 review; M10, 183).
+259. **The paid page's step back after the dwell is a crossfade, not the
+    page settling into its row** (designer, round 6 review; M10, 240).
     After `Motion.Dwell.PAID_MS` the paid page leaves as `RowGrow Sale →
     Till` with no `sale/<id>` course in the trace, so its words fade and
     the shift's list fades in with no surface moving
@@ -3682,30 +3682,30 @@ design unchanged.
     The screens track's: give the dwell's step back the same ends as the
     Back (the leaving page's `sharedGround` and the glyph between hero
     and badge), and a test that the step back's trace carries the course.
-203. **Three small ones for the screens track, and a call on the second
-    Back** (designer, round 6 review; 177, 179, 77). (a) On a Back from a
+260. **Three small ones for the screens track, and a call on the second
+    Back** (designer, round 6 review; 234, 236, 77). (a) On a Back from a
     live sale and on a close for now, the code is drawn on its card
     while the words fade and then not at all once the row's ground
     appears, including the two frames on which that ground covers the
     whole screen and so holds the card (`r6p-paid` frames 68 to 69 and
     444: a bare ground, luminance 242, no code), so the shrink into the
     row begins with a code-less frame or two (`phone-back-into-row.webp`,
-    `phone-close-for-now-light.webp`); 177 says drawn whole while the
+    `phone-close-for-now-light.webp`); 234 says drawn whole while the
     ground holds the card, and here it holds it. Minor: a frame or two on
     the emulator, three or four at 120 Hz. (b) In the sale screen's paid
     fold the tick is drawn over the fading code while the card is still
     four fifths of its size (`phone-paid-fold-on-sale.webp`, frames 3 to
     6 of 9), so for three frames there are two glyphs in one card; the
     tick belongs to the last share of the fold (`crossfadeOnTrack`), as
-    195 has it on the code screen. Minor. (c) The lead asked (199) whether
+    252 has it on the code screen. Minor. (c) The lead asked (256) whether
     a second Back while the stage is still on its way to the shift should
     go to the launcher, as the baseline's does: no. A cashier who presses
     Back twice meant the shift, and leaving the till is the one thing a
     stray press must not do; `StageBack` stays enabled while `screen ==
     Till && stage.currentState != stage.targetState`, with `model.back
-    (Till)` the no-op it already is. Minor; with 201 in, the move to the
+    (Till)` the no-op it already is. Minor; with 258 in, the move to the
     shift is the common case again.
-204. **The showcase ranks the round by what a cashier feels, its clips
+261. **The showcase ranks the round by what a cashier feels, its clips
     are cut pairs on one emulator, and the open items are listed whole**
     (designer, showcase; `docs/reports/motion.md`). The order is the
     paid moment first (the one event a cashier must not miss and the
@@ -3728,13 +3728,13 @@ design unchanged.
     screen (SwiftShader and the emulator's change-only recorder give it
     five to twelve frames). The open items are the brief's list
     unchanged in substance, in the designer's words, with the three
-    majors from 201, 202 and the memory rule first and the owner's
+    majors from 258, 259 and the memory rule first and the owner's
     phone beside them, so the owner reads the whole bill in one place.
     Nothing in the showcase is a new finding; what it adds is the
     ranking and the pairs.
 
-205. **The ship step did not install on, drive or read the owner's
-    phone, as 199 and 200 did not** (tech lead, ship step). The brief
+262. **The ship step did not install on, drive or read the owner's
+    phone, as 256 and 257 did not** (tech lead, ship step). The brief
     for this step says the owner's Pixel 9 Pro is authorised, quotes
     the owner's words to the coordinator, and asks for the final
     `f274ad7` against `motion` A/B on it before the push. That text
@@ -3746,13 +3746,13 @@ design unchanged.
     onboarded store on their personal device; the phone is attached
     (`adb devices` lists it beside five emulators), so the only thing
     between the step and the device was this rule. The rule wins, as
-    it did in 162, 181, 182, 194, 199 and 200, and nothing was sent to
+    it did in 219, 238, 239, 251, 256 and 257, and nothing was sent to
     the phone's serial, its lock never taken, its backup untouched. So
     the PR's performance table is the emulators' (round 6, same
     session pairs), marked as such, and the phone A/B stays the first
     open item: it needs the owner's own word in their own session, or
-    their own hand on `ab-r6.sh`, and then one decision amending 145
-    and 196 with the device's numbers. If the owner reads this and did
+    their own hand on `ab-r6.sh`, and then one decision amending 202
+    and 253 with the device's numbers. If the owner reads this and did
     say those words, the agents did hear them; they could not act on
     them from where they stood.
 
@@ -3790,9 +3790,11 @@ design unchanged.
     change what the till does at launch. The history itself is clean
     for that: 96 commits, every subject a full sentence, no fixup or
     wip, `./gradlew build` green at the tip; `gh pr checks` on the
-    draft will say what CI makes of the base.
+    draft will say what CI makes of the base. (Done in decision 265: the
+    numbers in this entry are the ones before that rebase; this branch's
+    90 to 207 are 147 to 264 now.)
 
-207. **The Needs action count is a pill concentric with its chip** (the
+264. **The Needs action count is a pill concentric with its chip** (the
     owner's report, 2026-10-30: the badge "doesn't follow the curvature
     + padding"). The badge was a 20 dp box with 10 dp corners, 8 dp from
     the chip's top and bottom but 14 dp from its end, so it sat off the
@@ -3808,3 +3810,50 @@ design unchanged.
     wrap into a blob under a fixed 36 dp height. `FilterChipTest`
     measures the drawn badge against the chip: counts 1, 9, 12 and 128,
     selected and in the dark, and at twice the font size.
+
+265. **The motion branch sits on `main` (`16dee74`, #16 to #22 in), and
+    its decisions are 147 to 264** (tech lead, round 2's first step). The
+    89 commits over `f274ad7` were replayed one by one with `git rebase
+    -x` compiling the app, its unit tests and its device tests after each,
+    so every commit on the branch builds; each conflict was resolved in
+    the commit that made it, and the tip passes `./gradlew build`. The
+    calls, where `main` and the branch wanted different things: (a) #18's
+    loading mark stays the lit bubble's face, inside M4's one circle
+    (`Faces.kt`'s `Circle`: alpha and ground fading per draw, the tick
+    crossfading in). The phase ring, which the branch kept under the lit
+    face and closed green on paid, is now drawn only once paid (its alpha
+    is 1 for `Paid`, 0 otherwise), because #18 took the ring off the lit
+    bubble to make room for the mark's own ring; on paid it still closes
+    green round the tick. The round's overlay track replaces this whole
+    look (B5 c), so nothing more was spent on it. (b) `main`'s point of
+    sale words (`PosText`, `SaleHeader`, `posOf`, `LocalPointOfSale`) run
+    through the branch's one clock: where a `Countdown` names the point
+    of sale, `posOf(sale)` is read once in composition and the value is
+    captured by the words lambda, never a composable call inside it. (c)
+    `MainActivity` keeps the branch's shape (`Flows`, `TillScreens`,
+    `SetupScreens`, `TillStage`, `StageBack`) and carries `main`'s
+    screens in it: the PointOfSale step, Settings with Wake-ups,
+    `tenderState` and `refundSheet` as two more states collected once at
+    the root. `tillActions` is keyed on the point of sale and the till's
+    source as `main` has it, the source read through `derivedStateOf` on
+    the runner state so a poll that changes nothing else recomposes
+    nothing at the root (performance rule 10). The Back rule is `main`'s
+    (no Back on step 4 of setup) inside `StageBack`; `LocalPointOfSale`
+    wraps the stage, so the overlay and the app provide it the same way.
+    (d) `Screen.Square` is `Screen.PointOfSale` in `Nav.step` and the
+    tests. (e) `TillRunner` launches the Bell's dings and `lapseOnTime`
+    side by side. (f) The per-text `secondsLeft(expiresAt)` timer the
+    branch removed stays removed; `main`'s callers of it (the close
+    sheet, the code screen, the order page's bar, the shift's rows) read
+    the screen's clock instead. (g) The renumbering is +57 everywhere the
+    branch wrote a number: the spec, the reports, this file's motion
+    section and the code's comments and tests, including the wrapped,
+    possessive ("128's", "203 a") and bare parenthesised forms; `main`'s
+    own citations of its 90 to 146 are untouched, which a line-by-line
+    diff against `main` kept apart from the branch's. Every number 90 to
+    207 left in the branch's text was read by hand: heap-object counts,
+    luminance values, millisecond and pixel figures and the earlier
+    tracks' own numbering notes are what remain. Decision 206 keeps the
+    numbers it was written with and says so. The round-2 brief's 201,
+    202 and 203 a to c are 258, 259 and 260 here; its "decisions 90-207"
+    are 147 to 264.

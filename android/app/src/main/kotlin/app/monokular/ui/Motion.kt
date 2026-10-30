@@ -51,13 +51,13 @@ class Motion private constructor(
 
     /**
      * What the finger threw, running on at its speed and slowing by itself while something else brings it home:
-     * the panel flung down its grabber keeps going down as it collapses into the bubble (decision 190). The
+     * the panel flung down its grabber keeps going down as it collapses into the bubble (decision 247). The
      * platform's plain friction, no tuning of its own; null under [Still], where nothing is carried past the release.
      */
     val thrown: DecayAnimationSpec<Float>? = if (still) null else exponentialDecay()
 
     /**
-     * The straight line every spatial part of a screen change follows (decision 112): the shared surfaces' bounds,
+     * The straight line every spatial part of a screen change follows (decision 169): the shared surfaces' bounds,
      * the rises and the slides, one [surface]'s length long, so the stage at progress p has every one of them p
      * of the way. The stage's progress itself moves on [surface] ([stage]), or under the finger while a back
      * gesture seeks it, so the physics is in one place and a scrub is a preview.

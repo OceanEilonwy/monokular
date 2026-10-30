@@ -50,8 +50,8 @@ import kotlin.test.assertTrue
  * Every screen [Move] seeked to a quarter, a half and three quarters, each
  * frame written out for review (`docs/reports/motion/frames/`), and checked
  * on every one: the code whole and on its white, no words drawn through a
- * scale (decision 128); and every move's landed frame checked against the
- * same screen composed under Still (decision 130).
+ * scale (decision 185); and every move's landed frame checked against the
+ * same screen composed under Still (decision 187).
  */
 class MotionFramesTest {
     @get:Rule
@@ -182,7 +182,7 @@ class MotionFramesTest {
     private fun codeDrawn(): Rect = tracks["code/a1"]?.firstNotNullOfOrNull { it.drawn() } ?: bounds("Payment code")
 
     /**
-     * A seek moves the code as it moves the words (decision 166): at p of the way, the code is p of the way along
+     * A seek moves the code as it moves the words (decision 223): at p of the way, the code is p of the way along
      * the straight line between its two rest places, to two pixels.
      */
     private fun assertOnTheLine(drawn: List<Pair<Float, Rect>>, from: Rect, to: Rect) {
@@ -193,7 +193,7 @@ class MotionFramesTest {
         assertTrue(off.isEmpty(), "the code is where the seek puts it, between $from and $to: $off")
     }
 
-    /** The white round the code on every frame is at least the smaller of its two rest margins (decision 132). */
+    /** The white round the code on every frame is at least the smaller of its two rest margins (decision 189). */
     private fun assertMargins(margins: List<Pair<Float, Int>>, least: Int) {
         assertTrue(least > 20, "the rest margins were measured: $least")
         val thin = margins.filter { it.second < least - 2 }
@@ -281,7 +281,7 @@ class MotionFramesTest {
 
     /**
      * A sale that ends while on screen (refunded from the close sheet, run out, or ended by its other till) folds the
-     * same way into its ended hero on the warn ground (N4). "Close it for now" leaves for the shift instead (decision 143).
+     * same way into its ended hero on the warn ground (N4). "Close it for now" leaves for the shift instead (decision 200).
      */
     @Test
     fun aSaleEndedOnScreenClosesItsCodeIntoTheEndedHero() {

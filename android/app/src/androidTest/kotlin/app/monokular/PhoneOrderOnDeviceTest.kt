@@ -31,7 +31,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * The phone panel's order growing out of its code card (M5, decision 116):
+ * The phone panel's order growing out of its code card (M5, decision 173):
  * the order is laid out once at the window's size and only its clip moves,
  * from the card's rounded bounds to the whole window, square at the end.
  */

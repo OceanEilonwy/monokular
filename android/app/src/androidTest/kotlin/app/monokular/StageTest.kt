@@ -120,7 +120,7 @@ class StageTest {
             repeat(3) { compose.mainClock.advanceTimeByFrame() }
         }
         seek(0.08f)
-        // Only the sale's ground moves toward the row; what is on it fades where it is, at its own size (decision 128).
+        // Only the sale's ground moves toward the row; what is on it fades where it is, at its own size (decision 185).
         assertEquals(codeWidth, code().fetchSemanticsNode().drawn().width, "the code is never drawn through a scale")
         assertEquals(codeSize, code().fetchSemanticsNode().size, "and keeps the size it was laid out at")
         seek(0.99f)

@@ -18,7 +18,7 @@ import org.junit.Test
 import kotlin.test.assertTrue
 
 /**
- * The debug build's stage trace (decision 180): off, a change logs
+ * The debug build's stage trace (decision 237): off, a change logs
  * nothing; switched on with the log tag's property, every frame of a
  * running change logs one line with the move, the progress and where each
  * moving surface was drawn.

@@ -79,7 +79,7 @@ data class WindowStep(val windows: Windows, val acts: List<WindowAct>, val close
 /**
  * The order the overlay's windows come and go in, so there is never a
  * frame with no bubble and never two bubbles in different places
- * (`docs/motion.md` M1, decision 100). On a phone the panel docks the
+ * (`docs/motion.md` M1, decision 157). On a phone the panel docks the
  * bubble: its window goes up first with the docked bubble where the free
  * one is, and the free one goes once the panel has drawn; lowered, the
  * panel collapses back into the docked bubble, which slides back to where
@@ -95,7 +95,7 @@ object Handoff {
      * screen, and drawing over other apps is allowed. A stream or poll
      * that fails leaves [RunnerState.running] and [RunnerState.disconnected]
      * as they were (only the store's 401 disconnects the till), so a slow
-     * connection never lowers a raised panel (decision 151).
+     * connection never lowers a raised panel (decision 208).
      */
     fun usable(runner: RunnerState, appVisible: Boolean, wanted: Boolean, allowed: Boolean): Boolean =
         wanted && runner.running && !runner.disconnected && !appVisible && allowed
@@ -212,7 +212,7 @@ object Edge {
     }
 }
 /**
- * Where a paid moment is (`docs/motion.md` M9, decision 101): [Held] for
+ * Where a paid moment is (`docs/motion.md` M9, decision 158): [Held] for
  * [app.monokular.ui.Motion.Dwell.PAID_MS] after a payment lands, the bubble
  * green and the panel showing it paid; then [Lowering] while the panel
  * collapses into the green bubble, which fades to lit or idle only once

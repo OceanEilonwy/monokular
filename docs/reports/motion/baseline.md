@@ -144,7 +144,7 @@ Short recordings of the baseline, 12 fps webp, in `baseline/`:
 the tablet's three; `phone-panel.webp` and `tablet-panel.webp` are stills of
 the panel up. On the tablet the free bubble is **behind** the floating panel
 (a sliver shows at the panel's right edge); the designer has it as a QA
-finding in decision 90.
+finding in decision 147.
 
 ## The UI code with a performance eye
 
@@ -189,12 +189,12 @@ What to fix as part of this work, most to least important:
 5. **Window churn**: `Overlay.show` adds and `removeViewImmediate`s the
    bubble and panel windows on every change, so each open composes the panel
    from nothing (the 85–110 ms frame above) and each lower tears it down
-   synchronously. Removal has to wait for the collapse anyway (decision 91);
+   synchronously. Removal has to wait for the collapse anyway (decision 148);
    `removeViewImmediate` stays only in `stop()`.
 6. **`BubbleFrame.snap`** (`Overlay.kt`): `ValueAnimator.ofInt` with a
    hand-made duration, an anonymous `AnimatorListenerAdapter`, and no
    velocity from the finger. Replaced by an `Animatable` + spring seeded with
-   the release velocity (decision 91).
+   the release velocity (decision 148).
 7. **The root recomposes on every runner update** (`MainActivity.setContent`
    collects seven flows and the whole `when` reads `runner`): with
    `AnimatedContent` at the root, every poll would hand the transition new
@@ -217,17 +217,17 @@ the glint loop allocates nothing per frame (inline `forEach`, no boxing).
 ## Architecture for motion
 
 The spec is `docs/motion.md` (the designer's: principles, the preset table,
-the spatial model, M1–M14). The technical calls are decisions 91–96 in
+the spatial model, M1–M14). The technical calls are decisions 148–96 in
 `docs/decisions/android.md`; in short:
 
-- **Presets** (91): `ui/Motion.kt` beside the theme tokens, one
+- **Presets** (148): `ui/Motion.kt` beside the theme tokens, one
   `@Immutable class Motion` with the spec's names (`surface`, `settle`,
   `flick`, `sweep`, `fade`, `fadeQuick`, `pulse`, `glints`, `Dwell.paid`),
   `Motion.Full` and `Motion.Still`, and `LocalMotion` provided by
   `MonokularTheme` from a `rememberReducedMotion()` that observes
   `ANIMATOR_DURATION_SCALE`. Call sites write `motion.surface`, never a
   number. Not Material 3's `MotionScheme`, not a `MotionDurationScale`.
-- **Overlay** (92): windows are created per open (the memory above says
+- **Overlay** (149): windows are created per open (the memory above says
   keeping the panel alive isn't worth it); all motion runs inside the
   window: the panel grows from the docked bubble and collapses back into
   it, one `Animatable` read in `graphicsLayer {}`, seeded with the
@@ -235,18 +235,18 @@ the spatial model, M1–M14). The technical calls are decisions 91–96 in
   (`removeView`; `removeViewImmediate` only in `stop()`). The bubble's
   edge snap is the one window-attribute animation, an `Animatable` spring
   with a `VelocityTracker`'s velocity; `ValueAnimator` goes.
-- **Screens** (93): `SharedTransitionLayout` + `AnimatedContent` keyed on
+- **Screens** (150): `SharedTransitionLayout` + `AnimatedContent` keyed on
   the screen, direction-aware; the code is a `sharedElement` with
   `ScaleToBounds` (one layer, never re-laid out), the white card and the
   sale's row `sharedBounds`; `PredictiveBackHandler` feeds a
   `SeekableTransitionState`. The experimental opt-in sits in one file;
   brightness is set once, not ramped by hand.
-- **One paid dwell** (94): 5 s for the bubble, chip, panel and sale
+- **One paid dwell** (151): 5 s for the bubble, chip, panel and sale
   screen; the bubble's fade follows the panel's collapse.
-- **Testing** (95): rules on the JVM with production values; frames in
+- **Testing** (152): rules on the JVM with production values; frames in
   `app/src/androidTest` Compose UI tests with `mainClock`, on the round's
   emulators; no Robolectric.
-- **Performance fixes with owners** (96): the list above, split by track.
+- **Performance fixes with owners** (153): the list above, split by track.
 - **No BOM bump**: compose-bom 2026.09.00 resolves to animation 1.12.1,
   foundation 1.12.1 (`animateItem`, `SeekableTransitionState`,
   `SharedTransitionScope`), material3 1.4.0 and activity-compose 1.13.0
