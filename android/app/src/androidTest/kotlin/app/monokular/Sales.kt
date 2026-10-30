@@ -3,12 +3,14 @@ package app.monokular
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import app.monokular.core.PointOfSale
 import app.monokular.core.SalePhase
 import app.monokular.receipt.PaymentCode
 import app.monokular.receipt.Receipt
 import app.monokular.sales.FoundSale
 import app.monokular.sales.TillSale
 import app.monokular.ui.LocalMotion
+import app.monokular.ui.LocalPointOfSale
 import app.monokular.ui.MonokularTheme
 import app.monokular.ui.Motion
 
@@ -40,7 +42,9 @@ fun testSale(
  */
 @Composable
 fun Till(motion: Motion = Motion.Full, dark: Boolean? = null, content: @Composable () -> Unit) = MonokularTheme(dark ?: isSystemInDarkTheme()) {
-    CompositionLocalProvider(LocalMotion provides motion, content = content)
+    // A till on Square, as the activity and the overlay provide it (the sample sales are Square's), so a sale of
+    // this till reads "Front · this till", not as one rung up at a point of sale the till has changed from.
+    CompositionLocalProvider(LocalMotion provides motion, LocalPointOfSale provides PointOfSale.Square, content = content)
 }
 
 /** The design's order: 15 items on 8 lines, so the sale's card shows three and "+5 more". */
