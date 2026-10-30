@@ -1052,6 +1052,44 @@ class RunningMovesTest {
         }
     }
 
+    /**
+     * The paid step-back from a sale opened from the first tray row with the list at its top (the designer's stepback,
+     * decision 300): the paid sale has moved from the tray to the top of Earlier, and holding its row where it was
+     * tapped scrolled the whole list about 400 px, the title, the chips and the tray's first waiting sale off the top.
+     * Now the list comes back where it was (its top), the tray's waiting sales in view, and the ground lands in the
+     * paid row under Earlier. A shift long enough to scroll, as the designer's (18 paid).
+     */
+    @Test fun thePaidStepBackFromTheFirstTrayRowKeepsTheListAtItsTop() {
+        val earlier = List(18) { testSale("p${it + 10}", SalePhase.Paid, paidAt = 900L - it) }
+        val waiting = listOf(moves.sales[0], moves.sales[2], testSale("c3", expiresAt = 1_600), testSale("c4", expiresAt = 1_600))
+        moves.shift = listOf(moves.sale) + waiting + earlier
+        moves.start(Screen.Till, dark = false)
+        compose.mainClock.autoAdvance = true
+        compose.onNodeWithText(ShiftList.row(moves.sale, PointOfSale.Square, 0).title).performClick()
+        compose.waitForIdle()
+        compose.mainClock.autoAdvance = false
+        val open = moves.run(Screen.Sale("a1"), groundKey = "sale/a1")
+        fun titleOf(f: RunningMoves.Frame) = f.words[Screen.Till]?.firstOrNull { it.first == "This shift" }?.second
+        val top = titleOf(open.first()) ?: error("no title on the shift before the tap")
+        val paid = moves.sale.copy(phase = SalePhase.Paid, paidAt = 1_100)
+        moves.runFor(FOLD_MS) {
+            moves.shown = paid
+            moves.shift = waiting + paid + earlier
+        }
+        compose.mainClock.advanceTimeBy(Motion.Dwell.PAID_MS - FOLD_MS)
+        val back = moves.run(Screen.Till, groundKey = "sale/a1")
+        val failures = landsIn(back, paid).toMutableList()
+        val title = titleOf(back.last())
+        if (title == null || abs(title.top - top.top) > 1f) failures += "the list comes back scrolled: the title at $title, at $top before the tap"
+        val first = rowOf(back.last(), waiting[0])
+        val row = rowOf(back.last(), paid)
+        val window = back.last().bitmap.height
+        if (first == null || first.top < 0f) failures += "the tray's first waiting sale is off the screen: $first"
+        if (row == null || row.bottom > window) failures += "the paid row is not on the screen: $row"
+        else if (first != null && row.top < first.bottom) failures += "the paid row at $row is above the tray's first row at $first"
+        report("paid-step-back-from-top", back, failures)
+    }
+
     /** Under Still the step-back is the Back's 120 ms crossfade: no surface moves. */
     @Test fun thePaidStepBackUnderStillIsACrossfade() {
         moves.shift = listOf(moves.sales[0], moves.sale.copy(phase = SalePhase.Paid, paidAt = 1_100), moves.sales[2])
