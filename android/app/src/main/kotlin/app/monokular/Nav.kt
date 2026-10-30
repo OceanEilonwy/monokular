@@ -356,14 +356,20 @@ internal class HeldMove(private val cameUpByItself: () -> Boolean, private val s
     var interrupted = false
         private set
 
-    /** The move from [from] to [to]; null at rest ([from] is [to]), which also forgets the last change. */
+    /**
+     * The move from [from] to [to]; null at rest ([from] is [to]), which also forgets the last change. A change is its
+     * target: the same target asked again with another [from] mid-change (the stage's current screen read on another
+     * frame) is the same change, its move and generation kept, so nothing it reads (the till's came-up-by-itself above
+     * all) can turn it into another half way; only a new target, a takeover, starts a new generation (decisions 245,
+     * 249, 284).
+     */
     fun during(from: Screen, to: Screen): Move? {
         if (from == to) {
             this.from = null
             this.to = null
             return null
         }
-        if (from != this.from || to != this.to) {
+        if (to != this.to || this.from == null) {
             interrupted = this.from != null
             generation++
             this.from = from
@@ -500,21 +506,24 @@ fun TillStage(
     val root = remember { StageRoot() }
     val held = remember(m) { HeldMove(cameUpByItself, m.still) }
     val geometry = remember(transition, held) { StageGeometry(transition, held, { state.fraction }, root, m.fadeOutOnTrack) }
-    // The frame being drawn while a change runs, so each surface is placed once a frame however many parts ask.
-    LaunchedEffect(transition, geometry) {
+    // One collector on whether a change runs (nothing recomposes for it; the flow runs off the frame). While one does,
+    // the frame being drawn, so each surface is placed once a frame however many parts ask. At rest, the held move is
+    // forgotten, so the next change between the same two screens is read afresh with no surface needing to draw at
+    // rest for it; only if the stage still rests when the collector gets there, so a rest reported late, after the
+    // next change has begun, never makes that change read its move again half way (decision 284).
+    LaunchedEffect(transition, geometry, held) {
         snapshotFlow { transition.currentState != transition.targetState }.collect { changing ->
-            if (!changing) return@collect
+            if (!changing) {
+                val at = transition.currentState
+                if (at == transition.targetState) held.during(at, at)
+                return@collect
+            }
             try {
                 while (transition.currentState != transition.targetState) withFrameNanos { geometry.frame = it }
             } finally {
                 geometry.frame = 0L
             }
         }
-    }
-    // At rest the held move is forgotten, so the next change between the same two screens is read afresh: no surface
-    // need draw at rest for it to be (nothing recomposes for this; the flow runs off the frame).
-    LaunchedEffect(transition, held) {
-        snapshotFlow { transition.currentState == transition.targetState }.collect { if (it) held.during(transition.currentState, transition.currentState) }
     }
     // The debug build's stage trace: compiled out of a release build (BuildConfig.DEBUG is a constant), and off
     // until switched on (decision 237).

@@ -4039,3 +4039,22 @@ design unchanged.
     `StageBackTest` presses the second Back half way through the shrink
     and counts `ModelStage`'s compositions over the move: one to four,
     not one a frame.
+284. **`TillStage` has one collector on whether a change runs, and a held
+    move is its target's until rest** (dev2, round 2, S7; 206, 245, 249;
+    the after report's `aSaleRisesDark` flake). The frame loop and the
+    forgetting at rest share one `snapshotFlow { currentState !=
+    targetState }` collector; at rest it forgets the held move only if
+    the stage still rests when the collector gets there, so a rest
+    reported late (after the next change began) cannot reset the move
+    the new change already holds. `HeldMove.during` starts a generation
+    only for a new target (a takeover) or from rest; the same target
+    read with another current screen mid-change is the same change, so
+    nothing read meanwhile (the till's came-up-by-itself above all) can
+    turn a rise into a grow half way. The device flake did not show on
+    5556: three slow-frame variants (a 120 ms test-clock frame mid-rise,
+    light and dark; a sales update turning came-up-by-itself off mid-rise
+    then a slow frame; a rise sent on the very frame a Back lands) pass
+    before the guard and after, so the guard stands on its reading of
+    the mechanism and on `NavTest`'s JVM test of `HeldMove`, which fails
+    before it (a second generation re-reading came-up-by-itself as a
+    grow) and passes after; the slow-frame tests stay as regressions.

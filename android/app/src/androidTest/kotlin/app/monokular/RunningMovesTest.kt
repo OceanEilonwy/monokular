@@ -716,6 +716,46 @@ class RunningMovesTest {
         assertTrue(rise.drop(1).dropLast(RunningMoves.SETTLE_FRAMES).any { f -> f.moves.any { it == Move.Rise } }, "it rises")
     }
 
+    /**
+     * A rise under a slow frame (the after report's aSaleRisesDark flake, docs/reports/motion.md): a 120 ms frame
+     * mid-rise, then the frames after it, all read as the rise that was asked; the held move starts no new generation
+     * for the change it is in (decision 206).
+     */
+    @Test fun aSaleRisesThroughASlowFrameLight() = slowRise(dark = false) { if (it == 4 || it == 9) compose.mainClock.advanceTimeBy(SLOW_FRAME_MS) }
+
+    @Test fun aSaleRisesThroughASlowFrameDark() = slowRise(dark = true) { if (it == 4 || it == 9) compose.mainClock.advanceTimeBy(SLOW_FRAME_MS) }
+
+    /** A sales update mid-rise that turns the model's came-up-by-itself off (another look, the same screen) leaves the rise a rise. */
+    @Test fun aSaleRisesThroughASalesUpdate() = slowRise(dark = false) {
+        if (it == 4) moves.model.go(Screen.Sale("a1"), byItself = false)
+        if (it == 5) compose.mainClock.advanceTimeBy(SLOW_FRAME_MS)
+    }
+
+    /**
+     * A rise sent on the very frame a Back lands (the shift's rest reported after the next change has begun), a sales
+     * update turning the model's came-up-by-itself off mid-rise, and a slow frame: still one rise, one generation.
+     */
+    @Test fun aSaleRisesFromTheFrameABackLands() {
+        moves.start(Screen.Sale("b2"), dark = false)
+        moves.model.go(Screen.Till)
+        var n = 0
+        while (!(moves.model.stage.currentState == Screen.Till && moves.model.stage.targetState == Screen.Till) && n++ < 90) compose.mainClock.advanceTimeByFrame()
+        val frames = moves.run(Screen.Sale("a1"), byItself = true, during = {
+            if (it == 2) moves.model.go(Screen.Sale("a1"), byItself = false)
+            if (it == 3) compose.mainClock.advanceTimeBy(SLOW_FRAME_MS)
+        })
+        val wrong = frames.filter { f -> f.moves.any { it != null && it != Move.Rise } }.map { f -> "f${f.index}: ${f.moves}" }
+        assertTrue(wrong.isEmpty(), "every frame of the rise reads it as the rise: $wrong")
+    }
+
+    private fun slowRise(dark: Boolean, during: (Int) -> Unit) {
+        moves.start(Screen.Till, dark)
+        val frames = moves.run(Screen.Sale("a1"), byItself = true, during = during)
+        val wrong = frames.filter { f -> f.moves.any { it != null && it != Move.Rise } }.map { f -> "f${f.index}: ${f.moves}" }
+        assertTrue(wrong.isEmpty(), "every frame of the rise reads it as the rise: $wrong")
+        assertTrue(moves.model.stage.currentState == Screen.Sale("a1") && moves.model.stage.targetState == Screen.Sale("a1"), "and it lands")
+    }
+
     private companion object {
         /** How close to rest the hero's spring is done: a pixel or two of tail. */
         const val NEAR = 4f
@@ -767,6 +807,9 @@ class RunningMovesTest {
 
         /** Above half shown: readable (decision 188). */
         const val HALF = 0.5f
+
+        /** A frame a loaded host can draw: six of the test clock's. */
+        const val SLOW_FRAME_MS = 120L
 
         /** Where the stage's spring is after one 16 ms frame from 0, with room: not a quarter of the way. */
         const val FIRST_STEP = 0.15f
