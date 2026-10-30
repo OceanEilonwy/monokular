@@ -3,7 +3,11 @@ package app.monokular
 import android.graphics.Bitmap
 import androidx.compose.ui.geometry.Rect
 import androidx.activity.ComponentActivity
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithText
+import app.monokular.core.PointOfSale
+import app.monokular.sales.TillSale
 import app.monokular.RunningMoves.Companion.flashes
 import app.monokular.RunningMoves.Companion.lum
 import app.monokular.RunningMoves.Companion.range
@@ -627,6 +631,90 @@ class RunningMovesTest {
     }
 
     private fun theme(dark: Boolean) = if (dark) "dark" else "light"
+
+    /** The row title of [sale] on the shift, where a frame's words are laid out. */
+    private fun rowOf(f: RunningMoves.Frame, sale: TillSale): Rect? {
+        val title = ShiftList.row(sale, PointOfSale.Square, 0).title
+        return f.words[Screen.Till]?.firstOrNull { it.first == title }?.second
+    }
+
+    /** The ground's last place on its way, as the move lands: inside [sale]'s row, a row's height, not the screen's. */
+    private fun landsIn(frames: List<RunningMoves.Frame>, sale: TillSale): List<String> {
+        val last = frames.lastOrNull { it.ground != null } ?: return listOf("the ground never moves")
+        val g = last.ground!!
+        val row = rowOf(frames.last(), sale) ?: return listOf("${sale.orderId} has no row on the shift at the end")
+        val out = mutableListOf<String>()
+        if (!g.contains(row.center)) out += "f${last.index}: the ground at $g is not in ${sale.orderId}'s row at $row"
+        if (g.height > last.bitmap.height / 6f) out += "f${last.index}: the ground at $g is still screen-sized, not a row"
+        return out
+    }
+
+    private fun noRise(frames: List<RunningMoves.Frame>): List<String> =
+        frames.filter { f -> f.moves.any { it == Move.Rise } }.map { "f${it.index}: a rise took the move over" }
+
+    /**
+     * Back on a sale with others waiting unseen (decision 266, §12.1): the stage lands on the shift, the ground in the
+     * left sale's row (the first in the tray), the shift drawn; nothing rises over it, before or after landing.
+     */
+    @Test fun backWithASaleWaitingLandsOnTheShiftLight() = backWithSaleWaiting(dark = false)
+
+    @Test fun backWithASaleWaitingLandsOnTheShiftDark() = backWithSaleWaiting(dark = true)
+
+    private fun backWithSaleWaiting(dark: Boolean) {
+        moves.shift = listOf(moves.sale, moves.sales[0], moves.sales[2])
+        moves.start(Screen.Sale("a1"), dark)
+        // z0 and b2 came while the cashier was on a1: the model has seen them, not the cashier.
+        moves.model.salesChanged(moves.shift)
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1", during = { if (it % 5 == 0) moves.model.salesChanged(moves.shift) })
+        moves.model.salesChanged(moves.shift)
+        repeat(2) { compose.mainClock.advanceTimeByFrame() }
+        val failures = landsIn(frames, moves.sale) + noRise(frames)
+        check("back-with-sale-waiting", dark, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures +
+            listOfNotNull(("the model ends on ${moves.model.screen.value}").takeIf { moves.model.screen.value != Screen.Till }))
+        // TalkBack: focus is on the row the cashier came from.
+        compose.onNodeWithText(ShiftList.row(moves.sale, PointOfSale.Square, 0).title).assertIsFocused()
+    }
+
+    /** Back on a sale the folded tray hides (the fourth live one): the tray opens as the change starts, the ground lands in its row. */
+    @Test fun backIntoAFoldedRowOpensTheTray() {
+        val c3 = testSale("c3", expiresAt = 1_600)
+        moves.shift = listOf(moves.sales[0], moves.sales[2], c3, moves.sale)
+        moves.start(Screen.Sale("a1"), dark = false)
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1")
+        val failures = landsIn(frames, moves.sale).toMutableList()
+        if (frames.last().words[Screen.Till].orEmpty().none { it.first == "Show fewer" }) failures += "the tray is not open at the end"
+        check("back-into-folded-row", dark = false, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures)
+    }
+
+    /**
+     * A sale arriving while Back is still landing goes into the tray under the moving card and does not take the move
+     * over; once the shift rests, the next new sale rises out of it as before (§12.6 item 4).
+     */
+    @Test fun aSaleArrivingMidBackWaitsInTheTrayAndTheNextRises() {
+        moves.shift = listOf(moves.sale, moves.sales[0])
+        moves.start(Screen.Sale("a1"), dark = false)
+        moves.model.salesChanged(moves.shift)
+        val n9 = testSale("n9", expiresAt = 1_600)
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1", during = {
+            if (it == 8) {
+                moves.shift = listOf(n9) + moves.shift
+                moves.model.salesChanged(moves.shift)
+            }
+        })
+        val failures = (landsIn(frames, moves.sale) + noRise(frames)).toMutableList()
+        if (moves.model.screen.value != Screen.Till) failures += "n9 came up over the Back: the model is on ${moves.model.screen.value}"
+        if (rowOf(frames.last(), n9) == null) failures += "n9 has no row in the tray"
+        moves.model.salesChanged(moves.shift)
+        if (moves.model.screen.value != Screen.Till) failures += "n9 came up after the Back landed"
+        check("sale-mid-back", dark = false, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures)
+        // The shift at rest: a new sale rises out of it.
+        val n10 = testSale("n10", expiresAt = 1_600)
+        moves.shift = listOf(n10) + moves.shift
+        moves.model.salesChanged(moves.shift)
+        assertTrue(moves.model.screen.value == Screen.Sale("n10") && moves.model.cameUpByItself, "a sale arriving on the resting shift rises: ${moves.model.screen.value}")
+        val rise = moves.run(Screen.Sale("n10"), byItself = true)
+        assertTrue(rise.drop(1).dropLast(RunningMoves.SETTLE_FRAMES).any { f -> f.moves.any { it == Move.Rise } }, "it rises")
+    }
 
     private companion object {
         /** How close to rest the hero's spring is done: a pixel or two of tail. */

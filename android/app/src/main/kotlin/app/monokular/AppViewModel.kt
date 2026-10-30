@@ -126,8 +126,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     /** The refund sheet over the sale on screen, at a point of sale the till can't refund through (decision 130). */
     val refundSheet = MutableStateFlow<RefundSheet?>(null)
 
-    /** The sales that were live at the last look, to tell a sale paid on screen. */
+    /** The sales that were live at the last look, to tell a sale paid on screen and a sale new since. */
     private var liveBefore = emptySet<String>()
+
+    /**
+     * The screen the stage has landed on and rests on, as the stage reports it ([landed]); null while a change runs.
+     * A new sale rises out of the shift only while the shift is at rest: one arriving under a Back still landing goes
+     * into the tray under the moving card (decision 266). The first screen is at rest before anything moves.
+     */
+    private var restingOn: Screen? = screenState.value
     private var stepBack: Job? = null
 
     /** A payment landed while the app is on screen: the app gives the one confirming buzz ([PaidBuzz]). */
@@ -177,9 +184,10 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The sales changed: bring up a new one, move off a code that's down, and step back from one paid on screen. */
     private fun follow(sales: List<TillSale>) {
-        val next = TillNav.follow(screenState.value, sales, left.value)
+        val next = TillNav.follow(screenState.value, sales, left.value, liveBefore, restingOn == Screen.Till)
         if (next != screenState.value) {
             cameUpByItself = true
+            restingOn = null
             screenState.value = next
         }
         if (TillNav.paymentLanded(sales, liveBefore) && PaidBuzz.by(graph.appVisible.value) == PaidBuzz.Surface.App) paidBuzz.tryEmit(Unit)
@@ -219,7 +227,8 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         val before = beforeSettings
         beforeSettings = null
         if (before == null || !stores.setupDone) return goHome()
-        go(TillNav.follow(before, graph.runner.state.value.till.sales, left.value))
+        // What arrived meanwhile waits in the tray: no sale comes up, only a code or order that's down gives way.
+        go(TillNav.follow(before, graph.runner.state.value.till.sales, left.value, liveBefore, restingOnShift = false))
     }
     val location: SquareLocation? get() = stores.location
     val cloverMerchant: CloverMerchant? get() = stores.cloverMerchant
@@ -274,7 +283,14 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
     fun go(screen: Screen) {
         problem.value = null
         cameUpByItself = false
+        // Going to the screen already up changes nothing the stage would land from.
+        if (screen != screenState.value) restingOn = null
         screenState.value = screen
+    }
+
+    /** The stage has landed on [screen] and rests there (`FollowScreen`'s report): a new sale may rise out of the shift now. */
+    fun landed(screen: Screen) {
+        if (screen == screenState.value) restingOn = screen
     }
 
     fun goHome() = go(home())
@@ -305,7 +321,7 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
         is Screen.Code -> Screen.Sale(screen.orderId)
         is Screen.Order -> Screen.Sale(screen.orderId)
         Screen.Settings -> beforeSettings?.takeIf { stores.setupDone }
-            ?.let { TillNav.follow(it, graph.runner.state.value.till.sales, left.value) } ?: home()
+            ?.let { TillNav.follow(it, graph.runner.state.value.till.sales, left.value, liveBefore, restingOnShift = false) } ?: home()
         else -> null
     }
 
@@ -736,18 +752,15 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /**
      * The cashier left a sale's full screen for the shift (it stays live, on
-     * the bubble and in the shift); another live sale they haven't left
-     * comes up in its place.
+     * the bubble and in the shift's tray), or a paid one stepped back itself:
+     * the one way Back and the dwell both go. It always lands on the shift;
+     * a sale waiting meanwhile is in the tray, not brought up (decision 266).
      */
     fun leave(orderId: String) {
         // Left by the cashier during a paid moment, the step back has nothing left to do.
         stepBack?.cancel()
         left.update { it + orderId }
-        val screen = screenState.value
-        if (screen.orderIdOrNull() == orderId) {
-            go(Screen.Till)
-            follow(graph.runner.state.value.till.sales)
-        }
+        if (screenState.value.orderIdOrNull() == orderId) go(Screen.Till)
     }
 
     /** Shows a sale full screen (from the shift, a notification or the bubble's panel): its code, or its page. */

@@ -189,16 +189,21 @@ object PaidBuzz {
 /** Which till screen the sales lead to, as they change (decision 70). */
 object TillNav {
     /**
-     * The screen after the sales changed on [screen]: the shift brings up
-     * the newest live sale the cashier hasn't [left], while a closed or
-     * ended one never comes up on its own (it waits in the shift, under
-     * Needs action); a sale on screen stays whatever it becomes, through
-     * Paid, its page following its standing; the enlarged code and the
-     * order page are for a live sale only, so they give way to the sale's
-     * page once it's paid or ends.
+     * The screen after the sales changed on [screen]: the shift, while the
+     * stage rests on it ([restingOnShift]), brings up a live sale that is
+     * new since the last look ([liveBefore]) and not [left]; a sale that
+     * came while the cashier was elsewhere (another sale, Settings, the
+     * enlarged code, the order page, a Back still landing) waits in the
+     * shift's tray and never comes up later, and a closed or ended one
+     * never comes up on its own (decision 266). A sale on screen stays
+     * whatever it becomes, through Paid, its page following its standing;
+     * the enlarged code and the order page are for a live sale only, so
+     * they give way to the sale's page once it's paid or ends.
      */
-    fun follow(screen: Screen, sales: List<TillSale>, left: Set<String>): Screen = when (screen) {
-        Screen.Till -> sales.firstOrNull { it.live && it.orderId !in left }?.let { Screen.Sale(it.orderId) } ?: screen
+    fun follow(screen: Screen, sales: List<TillSale>, left: Set<String>, liveBefore: Set<String>, restingOnShift: Boolean): Screen = when (screen) {
+        Screen.Till -> if (!restingOnShift) screen else {
+            sales.firstOrNull { it.live && it.orderId !in left && it.orderId !in liveBefore }?.let { Screen.Sale(it.orderId) } ?: screen
+        }
         is Screen.Code -> if (liveOrUnknown(sales, screen.orderId)) screen else Screen.Sale(screen.orderId)
         is Screen.Order -> if (liveOrUnknown(sales, screen.orderId)) screen else Screen.Sale(screen.orderId)
         else -> screen

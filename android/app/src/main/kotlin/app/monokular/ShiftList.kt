@@ -98,6 +98,12 @@ object ShiftList {
         return items
     }
 
+    /** Whether [orderId]'s row is one the folded tray hides under [filter]: a live sale after the first [FOLD_AFTER]. */
+    fun folds(sales: List<TillSale>, filter: ShiftFilter, orderId: String): Boolean {
+        if (filter != ShiftFilter.All) return false
+        return sales.filter { it.standing is Standing.Live }.indexOfFirst { it.orderId == orderId } >= FOLD_AFTER
+    }
+
     private fun section(sales: List<TillSale>, tray: Boolean): List<ShiftItem.Row> =
         sales.mapIndexed { i, sale -> ShiftItem.Row(sale, ends(i, sales.lastIndex), tray) }
 

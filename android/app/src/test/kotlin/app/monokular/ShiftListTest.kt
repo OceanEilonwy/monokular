@@ -7,6 +7,7 @@ import app.monokular.receipt.PaymentCode
 import app.monokular.receipt.Receipt
 import app.monokular.sales.FoundSale
 import app.monokular.sales.TillSale
+import app.monokular.sales.live
 import kotlinx.serialization.json.Json
 import java.time.Instant
 import java.time.ZoneId
@@ -339,16 +340,18 @@ class ShiftListTest {
     @Test
     fun `the till brings up a new live sale, keeps a sale on screen, and steps back from one paid on it`() {
         val waiting = sale("w")
-        assertEquals(Screen.Sale("w"), TillNav.follow(Screen.Till, listOf(waiting), emptySet()))
-        assertEquals(Screen.Till, TillNav.follow(Screen.Till, listOf(waiting), setOf("w")), "the cashier left it")
-        assertEquals(Screen.Sale("w2"), TillNav.follow(Screen.Till, listOf(sale("w2"), waiting), setOf("w")), "the newest they haven't left")
-        assertEquals(Screen.Sale("waiting"), TillNav.follow(Screen.Till, shift.reversed(), emptySet()), "past the paid and ended ones")
-        assertEquals(Screen.Till, TillNav.follow(Screen.Till, shift.drop(1), emptySet()), "closed and ended sales never come up on their own")
-        assertEquals(Screen.Sale("paid"), TillNav.follow(Screen.Sale("paid"), listOf(waiting) + shift, emptySet()), "a sale on screen stays")
-        assertEquals(Screen.Code("w"), TillNav.follow(Screen.Code("w"), listOf(waiting), emptySet()))
-        assertEquals(Screen.Sale("paid"), TillNav.follow(Screen.Code("paid"), shift, emptySet()), "the enlarged code gives way to the page")
-        assertEquals(Screen.Sale("expired"), TillNav.follow(Screen.Order("expired"), shift, emptySet()))
-        assertEquals(Screen.Settings, TillNav.follow(Screen.Settings, listOf(waiting), emptySet()))
+        fun onShift(sales: List<TillSale>, left: Set<String> = emptySet(), liveBefore: Set<String> = emptySet()) =
+            TillNav.follow(Screen.Till, sales, left, liveBefore, restingOnShift = true)
+        assertEquals(Screen.Sale("w"), onShift(listOf(waiting)))
+        assertEquals(Screen.Till, onShift(listOf(waiting), left = setOf("w")), "the cashier left it")
+        assertEquals(Screen.Sale("w2"), onShift(listOf(sale("w2"), waiting), left = setOf("w")), "the newest they haven't left")
+        assertEquals(Screen.Sale("waiting"), onShift(shift.reversed()), "past the paid and ended ones")
+        assertEquals(Screen.Till, onShift(shift.drop(1)), "closed and ended sales never come up on their own")
+        assertEquals(Screen.Sale("paid"), TillNav.follow(Screen.Sale("paid"), listOf(waiting) + shift, emptySet(), emptySet(), true), "a sale on screen stays")
+        assertEquals(Screen.Code("w"), TillNav.follow(Screen.Code("w"), listOf(waiting), emptySet(), emptySet(), true))
+        assertEquals(Screen.Sale("paid"), TillNav.follow(Screen.Code("paid"), shift, emptySet(), emptySet(), false), "the enlarged code gives way to the page")
+        assertEquals(Screen.Sale("expired"), TillNav.follow(Screen.Order("expired"), shift, emptySet(), emptySet(), false))
+        assertEquals(Screen.Settings, TillNav.follow(Screen.Settings, listOf(waiting), emptySet(), emptySet(), true))
         val paid = waiting.copy(phase = SalePhase.Paid)
         assertEquals("w", TillNav.paidOnScreen(Screen.Sale("w"), listOf(paid), liveBefore = setOf("w")))
         assertNull(TillNav.paidOnScreen(Screen.Sale("w"), listOf(paid), liveBefore = emptySet()), "opened from the shift once paid: it stays")
@@ -501,5 +504,35 @@ class ShiftListTest {
         assertEquals("Show 1 more waiting sale", ShiftList.foldSaid(ShiftItem.Fold(1, open = false)))
         assertEquals("Show 18 more waiting sales", ShiftList.foldSaid(ShiftItem.Fold(18, open = false)))
         assertEquals("Show fewer", ShiftList.foldSaid(ShiftItem.Fold(18, open = true)))
+    }
+
+    /** Decision 266: Back always lands on the shift; only a sale that arrives while the shift rests on screen rises. */
+    @Test
+    fun aSaleRisesOnlyIfItArrivesWhileTheShiftRests() {
+        val old = sale("old")
+        val new = sale("new")
+        assertEquals(Screen.Sale("new"), TillNav.follow(Screen.Till, listOf(new, old), emptySet(), liveBefore = setOf("old"), restingOnShift = true), "new since the last look, on the resting shift")
+        assertEquals(Screen.Till, TillNav.follow(Screen.Till, listOf(new, old), emptySet(), liveBefore = setOf("new", "old"), restingOnShift = true), "seen at the last look (it came while the cashier was elsewhere): it waits in the tray")
+        assertEquals(Screen.Till, TillNav.follow(Screen.Till, listOf(new, old), emptySet(), liveBefore = setOf("old"), restingOnShift = false), "arriving under a Back still landing: into the tray, not over the move")
+        assertEquals(Screen.Till, TillNav.follow(Screen.Till, listOf(new, old), setOf("new"), liveBefore = setOf("old"), restingOnShift = true), "a sale the cashier left never rises")
+    }
+
+    /** What the model does with a sale that arrives on another screen: at the next look it is known, so it never rises later. */
+    @Test
+    fun aSaleThatArrivedElsewhereNeverRisesLater() {
+        val a = sale("a")
+        val b = sale("b")
+        var liveBefore = emptySet<String>()
+        fun look(screen: Screen, sales: List<TillSale>, resting: Boolean): Screen =
+            TillNav.follow(screen, sales, setOf("a"), liveBefore, resting).also { liveBefore = sales.filter { it.live }.map { it.orderId }.toSet() }
+        for (elsewhere in listOf(Screen.Sale("a"), Screen.Settings, Screen.Code("a"), Screen.Order("a"))) {
+            liveBefore = setOf("a")
+            assertEquals(elsewhere, look(elsewhere, listOf(b, a), resting = true), "on $elsewhere b doesn't come up")
+            // Back on the shift, at rest, with another update: b was seen, so it stays in the tray.
+            assertEquals(Screen.Till, look(Screen.Till, listOf(b, a), resting = true), "after $elsewhere")
+        }
+        liveBefore = setOf("a")
+        assertEquals(Screen.Till, look(Screen.Till, listOf(b, a), resting = false), "mid-Back")
+        assertEquals(Screen.Till, look(Screen.Till, listOf(b, a), resting = true), "and not on landing either")
     }
 }
