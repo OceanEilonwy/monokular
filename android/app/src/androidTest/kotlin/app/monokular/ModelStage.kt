@@ -3,6 +3,8 @@ package app.monokular
 import androidx.compose.animation.core.SeekableTransitionState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
@@ -73,8 +75,10 @@ fun ModelStage(model: TestModel, content: @Composable (Screen) -> Unit) {
     val state = remember { SeekableTransitionState(model.screen.value).also { model.stage = it } }
     val scrub = remember { BackScrub() }
     FollowScreen(state, scrub, model.screen, onLanded = model::landed)
+    // As the activity's: on the shift, Back is the stage's only while it is still arriving there (decision 260 c).
+    val arriving by remember { derivedStateOf { state.currentState != state.targetState } }
     StageBack(
-        enabled = model.screen.value != Screen.Till, state = state, scrub = scrub,
+        enabled = model.screen.value != Screen.Till || arriving, state = state, scrub = scrub,
         current = { model.screen.value }, target = { model.backTarget() }, onCommit = model::back,
     )
     TillStage(state, cameUpByItself = { model.cameUpByItself }, scrub, content)
