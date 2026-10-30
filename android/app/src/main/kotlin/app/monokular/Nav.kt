@@ -1085,10 +1085,7 @@ class GroundTrack(val key: String) {
  * surface is drawn on a frame of a running move; the app's is the plain
  * constructor.
  */
-val LocalGroundTracks = staticCompositionLocalOf<(key: String) -> GroundTrack> { PlainGroundTracks }
-
-/** The app's own maker of tracks: what [LocalGroundTracks] is unless a device test provides one. */
-private val PlainGroundTracks: (key: String) -> GroundTrack = { GroundTrack(it) }
+val LocalGroundTracks = staticCompositionLocalOf<(key: String) -> GroundTrack> { { GroundTrack(it) } }
 
 /** [key]'s track, for the surface and the words on it. */
 @Composable
@@ -1587,16 +1584,15 @@ private class WholeNode(geometry: StageGeometry, end: End, var stage: Stage, var
  * arriving end ([Modifier.wholeOn] is the card's). The glyph is not drawn
  * while the code is flying to it, so there is one code on screen, never a
  * code and its glyph; it is drawn again as the change lands, where the
- * code has come down to its size. Only under a device test's own
- * [LocalGroundTracks] is a track made for it, the shift's view of the
- * code's way home for the test to read; the app's rows make none.
+ * code has come down to its size. [key]'s track is the shift's view of the
+ * code's way home, for a device test.
  */
 @Composable
 fun Modifier.codeHome(key: String): Modifier {
     val stage = LocalStage.current ?: return this
     if (motion.still) return this
-    val make = LocalGroundTracks.current
-    if (make !== PlainGroundTracks) remember(key, make) { make(key) }.bind(stage, Move.RowGrow)
+    val track = rememberGroundTrack(key)
+    track.bind(stage, Move.RowGrow)
     return this.then(HomeElement(stage, key))
 }
 
