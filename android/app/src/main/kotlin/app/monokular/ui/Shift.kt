@@ -271,7 +271,8 @@ private fun SectionHeader(text: String, top: Dp, modifier: Modifier) = Text(
 @Composable
 private fun FoldRow(fold: ShiftItem.Fold, modifier: Modifier, words: Modifier, onToggle: () -> Unit) {
     val m = motion
-    val fade = m.fade.fraction
+    val through = m.fadeThrough.fraction
+    val quick = m.fadeQuick.fraction
     val turn by animateFloatAsState(if (fold.open) 180f else 0f, m.settle.spec(FoldTurnThreshold), label = "fold chevron")
     Row(
         modifier.height(48.dp)
@@ -286,7 +287,9 @@ private fun FoldRow(fold: ShiftItem.Fold, modifier: Modifier, words: Modifier, o
         horizontalArrangement = Arrangement.Center,
     ) {
         Row(words, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            AnimatedContent(targetState = ShiftList.foldLabel(fold), transitionSpec = { (fadeIn(fade) togetherWith fadeOut(fade)).using(null) }, label = "fold label") { label ->
+            // Two different words, so through, not across: the old out quickly, the new in once it has gone (decision
+            // 188; the canvas's "crossfades", decision 291).
+            AnimatedContent(targetState = ShiftList.foldLabel(fold), transitionSpec = { (fadeIn(through) togetherWith fadeOut(quick)).using(null) }, label = "fold label") { label ->
                 Text(label, fontSize = 15.sp, fontWeight = FontWeight.SemiBold, color = mk.ink, maxLines = 1)
             }
             Icon(MkIcons.Fold, contentDescription = null, tint = mk.ink, modifier = Modifier.size(16.dp).graphicsLayer { rotationZ = turn })
