@@ -66,4 +66,32 @@ class NavTest {
         assertFalse(Nav.isBack(Screen.Sale("a"), Screen.Order("a")))
         assertFalse(Nav.isBack(Screen.Welcome, Screen.Scan))
     }
+
+    /**
+     * The held move is the change's, decided once (decision 206) and kept until rest whatever is read meanwhile
+     * (decision 284): a rise stays a rise when the till's came-up-by-itself turns off mid-change, and when the stage's
+     * current screen is read differently on a later frame under the same target; a new target is a takeover.
+     */
+    @Test
+    fun aHeldMoveIsKeptForItsChangeAndOnlyANewTargetStartsAnother() {
+        var byItself = true
+        val held = HeldMove({ byItself }, still = false)
+        assertEquals(Move.Rise, held.during(Screen.Till, Screen.Sale("a")))
+        val first = held.generation
+        byItself = false
+        assertEquals(Move.Rise, held.during(Screen.Till, Screen.Sale("a")), "the same change asked again")
+        assertEquals(Move.Rise, held.during(Screen.Sale("b"), Screen.Sale("a")), "the same target read from another current screen: the same change")
+        assertEquals(first, held.generation, "one generation for the change")
+        assertFalse(held.interrupted)
+        // A new target mid-change takes it over (decision 245, 249): a new generation, read afresh.
+        assertEquals(Move.RowGrow, held.during(Screen.Sale("a"), Screen.Till))
+        assertEquals(first + 1, held.generation)
+        assertTrue(held.interrupted)
+        // At rest it is forgotten: the next change between the same two screens is read afresh.
+        assertEquals(null, held.during(Screen.Till, Screen.Till))
+        byItself = true
+        assertEquals(Move.Rise, held.during(Screen.Till, Screen.Sale("a")))
+        assertEquals(first + 2, held.generation)
+        assertFalse(held.interrupted, "from rest, not a takeover")
+    }
 }
