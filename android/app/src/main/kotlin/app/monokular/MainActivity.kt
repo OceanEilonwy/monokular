@@ -55,7 +55,9 @@ import app.monokular.ui.PosState
 import app.monokular.ui.CodeScreen
 import app.monokular.ui.OrderPage
 import app.monokular.ui.SaleScreen
+import app.monokular.ui.ShiftPlace
 import app.monokular.ui.ShiftScreen
+import app.monokular.ui.rememberShiftPlace
 import app.monokular.ui.TillActions
 import app.monokular.ui.TillStatus
 import app.monokular.ui.WakeUpsState
@@ -121,10 +123,13 @@ class MainActivity : ComponentActivity() {
                     enabled = (screen != Screen.Welcome && screen != Screen.Till && !stepFour) || (screen == Screen.Till && arriving),
                     state = stage, scrub = scrub, current = { model.screen.value }, target = model::backTarget, onCommit = model::back,
                 )
+                // Where the shift's list was when a row was tapped: the shift is not composed while a sale is up, so a
+                // Back finds it here (decision 296).
+                val shiftPlace = rememberShiftPlace()
                 CompositionLocalProvider(LocalPointOfSale provides pos) {
                     TillStage(stage, cameUpByItself = { model.cameUpByItself }, scrub) { s ->
                         when (s) {
-                            Screen.Till, is Screen.Sale, is Screen.Code, is Screen.Order -> TillScreens(s, flows, actions)
+                            Screen.Till, is Screen.Sale, is Screen.Code, is Screen.Order -> TillScreens(s, flows, actions, shiftPlace)
                             else -> SetupScreens(s, flows, tick)
                         }
                     }
@@ -163,7 +168,7 @@ class MainActivity : ComponentActivity() {
      * runner, so a poll that changes nothing it shows recomposes nothing.
      */
     @Composable
-    private fun TillScreens(s: Screen, flows: Flows, actions: TillActions) {
+    private fun TillScreens(s: Screen, flows: Flows, actions: TillActions, shiftPlace: ShiftPlace) {
         val id = s.orderIdOrNull()
         val runner = flows.runner
         val shown by remember(id) { derivedStateOf { id?.let { id -> runner.value.till.sales.firstOrNull { it.orderId == id } } } }
@@ -174,7 +179,7 @@ class MainActivity : ComponentActivity() {
         when {
             // A sale not in the list (yet: the till is still loading its shift) shows the shift until it is;
             // a disconnected till shows why, whatever was on screen.
-            sale == null || disconnected -> Shift(flows, actions)
+            sale == null || disconnected -> Shift(flows, actions, shiftPlace)
             s is Screen.Code -> CodeScreen(sale, onBack = { model.back(s) })
             s is Screen.Order -> OrderPage(sale, "Back to the sale", onBack = { model.back(s) }, onShowCode = { model.back(s) })
             else -> Sale(sale, flows, actions)
@@ -182,12 +187,12 @@ class MainActivity : ComponentActivity() {
     }
 
     @Composable
-    private fun Shift(flows: Flows, actions: TillActions) {
+    private fun Shift(flows: Flows, actions: TillActions, place: ShiftPlace) {
         val runner = flows.runner
         val store = flows.store
         val status by remember { derivedStateOf { tillStatus(runner.value, store.value) } }
         val sales by remember { derivedStateOf { runner.value.till.sales } }
-        ShiftScreen(status, sales, actions)
+        ShiftScreen(status, sales, actions, place = place)
     }
 
     @Composable

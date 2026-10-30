@@ -36,6 +36,7 @@ import app.monokular.ui.OrderPage
 import app.monokular.ui.SaleScreen
 import app.monokular.ui.LocalScreenReader
 import app.monokular.ui.ShiftScreen
+import app.monokular.ui.rememberShiftPlace
 import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
@@ -84,6 +85,8 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
                 ) {
                 // The activity's window is the theme's ground (decision 181); a test's is white.
                 Box(Modifier.fillMaxSize().background(mk.ground)) {
+                // As the activity's: kept over the stage, where the shift's list was when a row was tapped.
+                val place = rememberShiftPlace()
                 ModelStage(model) { s ->
                     val stage = LocalStage.current
                     if (stage != null) SideEffect { stages[s] = stage }
@@ -94,7 +97,7 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
                         is Screen.Code -> CodeScreen(sale, onBack = {})
                         is Screen.Order -> OrderPage(sale, "Back to the sale", onBack = {}, onShowCode = {})
                         is Screen.Sale -> SaleScreen(sale, "Front", refunding = false, refundProblem = null, refundSheet = null, actions = noActions, now = now)
-                        else -> ShiftScreen(status, shift, noActions, now)
+                        else -> ShiftScreen(status, shift, noActions, now, place)
                     }
                     }
                 }
@@ -132,6 +135,8 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         val leavingCodes: List<Rect>,
         /** The stage's progress toward its target. */
         val p: Float,
+        /** Where the moving ground is going on this frame (its course's arriving end, as laid out), null when it is not moving. */
+        val groundEnd: Rect? = null,
     )
 
     /** The model sent to [to] (as the till does, or the cashier), and every frame until the stage has landed and settled. */
@@ -186,6 +191,7 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         val texts = compose.onAllNodes(mine and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text), useUnmergedTree = true).fetchSemanticsNodes()
             .map { (it.config.getOrNull(SemanticsProperties.Text)?.joinToString().orEmpty()) to it.drawn().half() }
         val ground = groundKey?.let { k -> tracks[k]?.firstNotNullOfOrNull { it.drawn() } }?.half()
+        val groundEnd = groundKey?.let { k -> tracks[k]?.firstNotNullOfOrNull { it.end() } }?.half()
         val code = tracks["code/${sale.orderId}"]?.firstNotNullOfOrNull { it.drawn() }?.half()
         val words = stages.keys.associateWith { s ->
             compose.onAllNodes(hasAnyAncestor(hasTestTag(tag(s))) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text), useUnmergedTree = true).fetchSemanticsNodes()
@@ -197,7 +203,7 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         val heading = drawnOf(mine and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading) and SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).firstOrNull()
         // A moving code is drawn where its track says, not where either screen laid it out.
         val drawn = if (code != null) listOf(code) else codes
-        return Frame(index, bitmap, moves, drawn, texts, ground, hero, heading, stages.mapValues { it.value.shown() }, lightBars, code, words, leavingCodes, model.stage.fraction)
+        return Frame(index, bitmap, moves, drawn, texts, ground, hero, heading, stages.mapValues { it.value.shown() }, lightBars, code, words, leavingCodes, model.stage.fraction, groundEnd)
     }
 
     private fun tag(s: Screen) = "screen:$s"
@@ -282,3 +288,6 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
 
 /** Where [GroundTrack]'s surface is drawn on this frame of its move, in the stage's overlay; null at rest or with an end missing. */
 internal fun GroundTrack.drawn(): Rect? = if (locate()) Rect(left, top, right, bottom) else null
+
+/** Where [GroundTrack]'s surface is going on this frame of its move (its arriving end), in the stage's overlay; null as [drawn]. */
+internal fun GroundTrack.end(): Rect? = if (locate()) located.let { Rect(it.el, it.et, it.er, it.eb) } else null

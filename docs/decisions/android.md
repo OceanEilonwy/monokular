@@ -4362,3 +4362,47 @@ design unchanged.
     unchanged. `TrayTest.aFilterChosenAfterAKeptFoldStillMovesItsRows`
     reads Paid's first row over the change: before, at its end on the
     first frame (1936 to 805 px in one step); after, between the two.
+296. **A Back from a row tapped far down the tray comes back scrolled where
+    the cashier left, and a code with no row to go to fades with its card,
+    never left whole** (dev2, round 2 fix round 1; the designer's backfold
+    and backfold2; 260 a, 289). With 21 sales waiting (the canvas's Main),
+    the tray opened, scrolled to its end and its last row tapped, a Back
+    opened the tray as 289 intends but on a list at its top: the stage
+    composes only the screens it shows, so the shift is composed afresh by
+    the Back and its list state (and the fold, and the filter, decision
+    269's "until the shift is left") went with it while the sale was up.
+    The row was not laid out, the ground had no end, and `wholeOn` drew a
+    code with no course whole over the rows until the change landed, then
+    cut it (about 300 ms). Two changes. (1) `ShiftPlace`, kept by the
+    activity over the stage (`rememberSaveable`, so a rotation keeps it),
+    is written by the row's tap (the sale and its offset from the list's
+    top) and read once by the composition a Back starts: when the Back is
+    from that sale, a `SideEffect` of that composition asks the list for
+    the row's index at minus that offset (`requestScrollToItem`, as
+    `keepFoldInPlace` does), so the first measure lays the row out where
+    it was tapped and the ground has its end on the change's first frame.
+    Kept by the sale and an offset, not a raw index, so a sale come or
+    paid meanwhile still finds the row; the list clamps at its ends. A
+    Back from a sale not left from its row (one that rose by itself) asks
+    nothing and forgets any older place. The row's index counts the list's
+    four items above the rows (and "Not watching" when it shows),
+    `rowIndex`, checked by the test. (2) The guard: `wholeOn` places its
+    code with a layer while its move runs (as `words` does, nothing at
+    rest, no recomposition), and a leaving code whose ground has no course
+    fades out on the stage's own progress, gone as the arriving screen's
+    words begin (`1 − crossfadeOnTrack`). The review asked for it to go
+    with the leaving words, by `fadeOutOnTrack`; tried first, it left two
+    frames of 99% bare ground between the sale's words going and the
+    shift's coming (`backWithNoRowToLandInNeverDrawsTheBareGround`, which
+    the whole code had been hiding), the very frame 260 a removed. So the
+    card is the last of the sale to go, handing over to the shift's words
+    with no bare frame and no cut. `RunningMovesTest.backIntoARowScrolledFarDownTheTrayLandsInIt`
+    (light, dark) taps the last of 21 tray rows after scrolling to the end,
+    then Back: the ground has its end from the first moving frame, on
+    screen, the same end to half a pixel on every frame, landing in the
+    row, and no frame shows the code's pixels (a quarter of its contrast
+    against the shift at rest, the shift's words left out) where the
+    ground does not hold its card. Before: no ground on any frame and the
+    whole code on every frame to landing, light and dark; after, none. The
+    full `connectedDebugAndroidTest` on 5556: 219 tests, 0 failures. The no-row test now
+    also fails a code still drawn past `1 − crossfadeOnTrack`.
