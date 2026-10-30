@@ -48,6 +48,7 @@ import app.monokular.ui.SettingsActions
 import app.monokular.ui.SettingsScreen
 import app.monokular.ui.SettingsState
 import app.monokular.ui.LocalPointOfSale
+import app.monokular.ui.LocalReceiptFolds
 import app.monokular.ui.PointOfSaleScreen
 import app.monokular.ui.PosSetup
 import app.monokular.ui.PosSetupActions
@@ -126,7 +127,7 @@ class MainActivity : ComponentActivity() {
                 // Where the shift's list was when a row was tapped: the shift is not composed while a sale is up, so a
                 // Back finds it here (decision 296).
                 val shiftPlace = rememberShiftPlace()
-                CompositionLocalProvider(LocalPointOfSale provides pos) {
+                CompositionLocalProvider(LocalPointOfSale provides pos, LocalReceiptFolds provides model.receiptFolds) {
                     TillStage(stage, cameUpByItself = { model.cameUpByItself }, scrub) { s ->
                         when (s) {
                             Screen.Till, is Screen.Sale, is Screen.Code, is Screen.Order -> TillScreens(s, flows, actions, shiftPlace)

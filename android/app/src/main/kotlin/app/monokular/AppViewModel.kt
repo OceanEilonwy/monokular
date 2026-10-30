@@ -26,6 +26,7 @@ import app.monokular.sales.TillSale
 import app.monokular.sales.standing
 import app.monokular.sales.live
 import app.monokular.ui.CloverTender
+import app.monokular.ui.ReceiptFolds
 import app.monokular.ui.RefundSheet
 import kotlinx.coroutines.CancellationException
 import app.monokular.ui.Motion
@@ -125,6 +126,9 @@ class AppViewModel(app: Application) : AndroidViewModel(app) {
 
     /** The refund sheet over the sale on screen, at a point of sale the till can't refund through (decision 130). */
     val refundSheet = MutableStateFlow<RefundSheet?>(null)
+
+    /** The sale pages' order card folds, kept while a sale's order or code is over its page and through a turn. */
+    val receiptFolds = ReceiptFolds()
 
     /** The sales that were live at the last look, to tell a sale paid on screen and a sale new since. */
     private var liveBefore = emptySet<String>()

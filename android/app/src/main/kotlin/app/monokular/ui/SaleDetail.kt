@@ -18,7 +18,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -80,7 +79,7 @@ fun SaleDetail(
     val pos = header.pos
     val page = SalePage.of(sale, pos, now = System.currentTimeMillis() / 1000, elsewhere = header.elsewhere)
     // Folded unless the page has room for its order card open.
-    val room = remember(sale.orderId) { ReceiptRoom() }
+    val room = rememberReceiptRoom(sale.orderId, live = false)
     // The time before the place, so a narrow bar's ellipsis takes "this till" first, not the time.
     val subtitle = sale.createdAt.takeIf { it > 0 }?.let { SaleText.time(it) + " · " }.orEmpty() + header.place
     // Its ground is the screen's (SaleScreen), so the live sale it turns from fades over one ground.
