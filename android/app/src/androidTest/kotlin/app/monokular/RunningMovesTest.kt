@@ -20,6 +20,7 @@ import app.monokular.RunningMoves.Companion.range
 import app.monokular.core.SalePhase
 import app.monokular.ui.Motion
 import app.monokular.ui.codeGround
+import app.monokular.ui.homeKey
 import org.junit.Rule
 import org.junit.Test
 import kotlin.math.abs
@@ -47,9 +48,10 @@ class RunningMovesTest {
 
     @Test fun aRowGrowsIntoItsSaleDark() = rowGrow(dark = true)
 
-    @Test fun aSaleShrinksIntoItsRowLight() = rowShrink(dark = false)
+    /** Back from a live sale (board 6): its page fades in place and only its code moves, into the row's code glyph. */
+    @Test fun aLiveSaleSendsItsCodeHomeLight() = rowShrink(dark = false)
 
-    @Test fun aSaleShrinksIntoItsRowDark() = rowShrink(dark = true)
+    @Test fun aLiveSaleSendsItsCodeHomeDark() = rowShrink(dark = true)
 
     @Test fun theCodeGrowsLight() = codeGrow(dark = false)
 
@@ -87,11 +89,6 @@ class RunningMovesTest {
 
     @Test fun closeForNowLeavesWithItsCodeDark() = leavesWithItsCode("close-for-now", dark = true) { it.copy(closedAt = 1_100) }
 
-    /** Back from a live sale (260 a): the code is drawn whole on its card on every frame the row's ground holds it. */
-    @Test fun backFromALiveSaleLeavesWithItsCodeLight() = leavesWithItsCode("back-live", dark = false) { it }
-
-    @Test fun backFromALiveSaleLeavesWithItsCodeDark() = leavesWithItsCode("back-live", dark = true) { it }
-
     @Test fun aSaleExpiringAsItIsLeftLeavesWithItsCode() = leavesWithItsCode("expired-left", dark = false) { it.copy(phase = SalePhase.Expired, endedAt = 1_100) }
 
     @Test fun aSaleRefundedAsItIsLeftLeavesWithItsCode() = leavesWithItsCode("refunded-left", dark = true) { it.copy(refundedAt = 1_100, closedAt = 1_100) }
@@ -106,11 +103,16 @@ class RunningMovesTest {
      * A sale that stops being live in the update that leaves its screen (closed from the sheet, expired, refunded)
      * leaves as an untouched one does (decision 242): the change's first frame is the frame before it, the leaving
      * screen keeps its code card on the live layout, and on every frame the row's ground still holds the card's place
-     * the code is drawn there, whole; then the row's shrink takes it.
+     * the code is drawn there, whole; then the row's shrink takes it. The row shows the sale as it now is, with no code
+     * glyph, so the code has no way home and the page shrinks into the row's card (board 6 is for live sales only).
      */
     private fun leavesWithItsCode(name: String, dark: Boolean, change: (app.monokular.sales.TillSale) -> app.monokular.sales.TillSale) {
         moves.start(Screen.Sale("a1"), dark)
-        val frames = moves.run(Screen.Till, groundKey = "sale/a1", change = { moves.shown = change(moves.sale) })
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1", change = {
+            val now = change(moves.sale)
+            moves.shown = now
+            moves.shift = moves.shift.map { if (it.orderId == now.orderId) now else it }
+        })
         val failures = mutableListOf<String>()
         val card = frames.first().leavingCodes.firstOrNull { it.width > 20f }
         if (card == null) {
@@ -199,8 +201,143 @@ class RunningMovesTest {
 
     private fun rowShrink(dark: Boolean) {
         moves.start(Screen.Sale("a1"), dark)
-        // The shift's other rows stand still under the shrinking ground, opaque: a card going over them, not a fade.
-        check("row-shrink", dark, moves.run(Screen.Till, groundKey = "sale/a1"), Move.RowGrow, glyphs = false, grows = true)
+        // The moving surface read is the code's card on its way home; the sale's own ground has none (fliesHome).
+        val frames = moves.run(Screen.Till, groundKey = homeKey("a1"))
+        check(
+            "code-home", dark, frames, Move.RowGrow, glyphs = false, grows = true,
+            bars = fliesHome(frames) + landsHome(frames, moves.sale) + codeOffItsCard(frames) + bareGround(frames),
+        )
+    }
+
+    /**
+     * A live sale left by Back (board 6): only its code moves. On every moving frame the sale's ground has no course (it
+     * fades where it is); the code is drawn, square, centred in its card with the card's own quiet zone, its modules and
+     * white there while the card is big enough to read; the row's code glyph is not drawn while the code is on its way
+     * to it (once the page's ground has faded from over it); and once the change has landed the glyph is drawn.
+     */
+    private fun fliesHome(frames: List<RunningMoves.Frame>): List<String> {
+        val out = mutableListOf<String>()
+        val moving = frames.drop(1).filter { f -> f.p > 0f && f.p < 1f && f.moves.any { it == Move.RowGrow } }
+        if (moving.size < 3) return listOf("the code flies home on ${moving.size} frames")
+        val faded = Motion.Full.crossfadeOnTrack + SHARE_SLACK
+        for (f in moving) {
+            f.saleGround?.let { out += "f${f.index}: the sale's ground moves, at $it, where it should fade in place" }
+            val g = f.ground
+            if (g == null) {
+                out += "f${f.index}: the code has no way home (p ${"%.2f".format(f.p)})"
+                continue
+            }
+            val c = f.leavingCodes.maxByOrNull { it.width }
+            if (c == null) {
+                out += "f${f.index}: no code is drawn on its way home"
+                continue
+            }
+            if (abs(c.width - c.height) > SQUARE_SLACK) out += "f${f.index}: the code at $c is not square"
+            val quiet = g.width * QUIET * QUIET_KEPT - 1f
+            if (c.left - g.left < quiet || c.top - g.top < quiet || g.right - c.right < quiet || g.bottom - c.bottom < quiet) {
+                out += "f${f.index}: the code at $c has lost its quiet zone in its card at $g"
+            }
+            if (g.width >= READABLE) {
+                val (ink, white) = inkAndWhite(f.bitmap, c)
+                if (ink < CODE_SHARE || white < CODE_SHARE) out += "f${f.index}: the card at $g shows no code (p ${"%.2f".format(f.p)})"
+            }
+            val e = f.groundEnd ?: continue
+            if (f.p > faded && !g.overlaps(e.inflate(EDGE)) && ink(f.bitmap, e)) out += "f${f.index}: the row's code glyph at $e is drawn while the code is on its way to it, at $g"
+        }
+        val e = moving.last().groundEnd
+        if (e == null) out += "the code's way home has no end on its last moving frame"
+        else if (!ink(frames.last().bitmap, e)) out += "the row's code glyph at $e is not drawn once the code has landed"
+        return out
+    }
+
+    /** The code's last place on its way home, as the move lands: in [sale]'s row's code glyph, at about its size. */
+    private fun landsHome(frames: List<RunningMoves.Frame>, sale: TillSale): List<String> {
+        val last = frames.lastOrNull { it.ground != null && it.groundEnd != null } ?: return listOf("the code never flies home")
+        val g = last.ground!!
+        val e = last.groundEnd!!
+        val row = rowOf(frames.last(), sale) ?: return listOf("${sale.orderId} has no row on the shift at the end")
+        val out = mutableListOf<String>()
+        if (!e.inflate(2f).contains(g.center)) out += "f${last.index}: the code at $g is not in its glyph at $e"
+        if (g.width > e.width * 1.5f) out += "f${last.index}: the code at $g is still larger than its glyph at $e"
+        if (abs(e.center.y - row.center.y) > ROW_BAND || e.left < row.left) out += "the glyph at $e is not in ${sale.orderId}'s row at $row"
+        return out
+    }
+
+    /**
+     * A back gesture holds the code part way home, as far along as the finger (decision 169), with the sale's ground
+     * fading in place; cancelled, the code is back on its card on the sale; and the Back that follows flies it home.
+     */
+    @Test fun aBackGestureSeeksTheCodeHomeAndACancelPutsItBack() {
+        moves.start(Screen.Sale("a1"), dark = false)
+        val rest = moves.now(Screen.Sale("a1")).codes.firstOrNull { it.width > 20f } ?: error("no code on the sale")
+        val back = compose.activity.onBackPressedDispatcher
+        compose.runOnUiThread { back.dispatchOnBackStarted(BackEventCompat(10f, 1000f, 0f, BackEventCompat.EDGE_LEFT)) }
+        repeat(4) { compose.mainClock.advanceTimeByFrame() }
+        compose.runOnUiThread { back.dispatchOnBackProgressed(BackEventCompat(10f, 1000f, 0.5f, BackEventCompat.EDGE_LEFT)) }
+        repeat(4) { compose.mainClock.advanceTimeByFrame() }
+        val held = moves.now(Screen.Till, groundKey = homeKey("a1"))
+        val failures = mutableListOf<String>()
+        val g = held.ground
+        val e = held.groundEnd
+        if (g == null || e == null) {
+            failures += "the gesture holds no code on its way home (p ${held.p})"
+        } else {
+            val card = rest.width / (1f - 2f * QUIET)
+            val want = card + (e.width - card) * held.p
+            if (held.p <= 0f || abs(g.width - want) > 3f) failures += "the code's card at $g is not where the gesture's ${held.p} puts it (${"%.1f".format(want)} wide)"
+            if (held.saleGround != null) failures += "the sale's ground moves under the gesture, at ${held.saleGround}"
+            val c = held.leavingCodes.maxByOrNull { it.width }
+            if (c == null || !g.inflate(1f).contains(c.center) || c.width > g.width) failures += "the code at $c is not on its card at $g"
+        }
+        compose.runOnUiThread { back.dispatchOnBackCancelled() }
+        compose.mainClock.advanceTimeBy(1_500)
+        val after = moves.now(Screen.Sale("a1")).codes.firstOrNull { it.width > 20f }
+        if (after == null || abs(after.left - rest.left) > 1f || abs(after.top - rest.top) > 1f || abs(after.width - rest.width) > 1f) failures += "cancelled, the code is at $after, not back at $rest"
+        if (moves.model.stage.currentState != Screen.Sale("a1")) failures += "cancelled, the stage is on ${moves.model.stage.currentState}"
+        val frames = moves.run(Screen.Till, groundKey = homeKey("a1"))
+        failures += fliesHome(frames) + landsHome(frames, moves.sale)
+        report("code-home-gesture", frames, failures)
+    }
+
+    /**
+     * A Back that takes over the row's grow mid-move shrinks the ground back into the row's card from where it got to,
+     * as before: the page was never whole, so no code flies (a change from rest is decided once, at 0).
+     */
+    @Test fun aBackTakingOverTheGrowShrinksIntoTheRowsCard() {
+        moves.start(Screen.Till, dark = false)
+        moves.model.go(Screen.Sale("a1"))
+        repeat(GROW_FRAMES) { compose.mainClock.advanceTimeByFrame() }
+        val frames = moves.run(Screen.Till, groundKey = "sale/a1")
+        val failures = landsIn(frames, moves.sale).toMutableList()
+        val moving = frames.drop(1).filter { it.p > 0f && it.p < 1f }
+        if (moving.isEmpty()) failures += "the Back never moves"
+        for (f in moving) if (f.ground == null) failures += "f${f.index}: the sale's ground has no shape mid-move (p ${"%.2f".format(f.p)})"
+        report("back-over-grow", frames, failures)
+    }
+
+    /**
+     * The glyph going while the code flies to it (its sale paid as the row comes in: the row now has a chevron): the
+     * code stays where it got to and fades, gone as the shift's words come in, never jumping back to its card or hanging
+     * whole over the shift until the change lands (the guard of decision 296); no frame is bare.
+     */
+    @Test fun aCodeWhoseGlyphGoesMidFlightFadesWhereItGot() {
+        moves.start(Screen.Sale("a1"), dark = false)
+        val paid = moves.sale.copy(phase = SalePhase.Paid, paidAt = 1_100)
+        val frames = moves.run(Screen.Till, groundKey = homeKey("a1"), during = {
+            if (it == LOSE_AT) moves.shift = moves.shift.map { s -> if (s.orderId == paid.orderId) paid else s }
+        })
+        val failures = bareGround(frames).toMutableList()
+        val gone = 1f - Motion.Full.crossfadeOnTrack + SHARE_SLACK
+        var width = Float.MAX_VALUE
+        for (f in frames.drop(LOSE_AT + 2).dropLast(RunningMoves.SETTLE_FRAMES)) {
+            if (f.p >= 1f) continue
+            val c = f.leavingCodes.maxByOrNull { it.width } ?: continue
+            if (c.width > width + 1f) failures += "f${f.index}: the code at $c grows back after its glyph went"
+            width = min(width, c.width)
+            val (ink, white) = inkAndWhite(f.bitmap, c)
+            if (f.p > gone && ink > CODE_SHARE && white > CODE_SHARE) failures += "f${f.index}: the code at $c is still drawn at p ${"%.2f".format(f.p)}"
+        }
+        report("code-home-glyph-gone", frames, failures)
     }
 
     private fun codeGrow(dark: Boolean) {
@@ -240,12 +377,13 @@ class RunningMovesTest {
 
     /**
      * Back from a sale that came up by itself, with its row on the shift (decision 222): the row it came from takes it
-     * back, the same move as a sale the cashier opened, the code whole on its white or not drawn at all on every frame.
+     * back, the same move as a sale the cashier opened: its code flies home to the row's glyph (board 6).
      */
     private fun backAfterRise(dark: Boolean) {
         moves.start(Screen.Till, dark)
         moves.run(Screen.Sale("a1"), byItself = true)
-        check("back-after-rise", dark, moves.run(Screen.Till, groundKey = "sale/a1"), Move.RowGrow, glyphs = false, grows = true)
+        val frames = moves.run(Screen.Till, groundKey = homeKey("a1"))
+        check("back-after-rise", dark, frames, Move.RowGrow, glyphs = false, grows = true, bars = fliesHome(frames) + landsHome(frames, moves.sale))
     }
 
     /**
@@ -665,7 +803,7 @@ class RunningMovesTest {
         frames.filter { f -> f.moves.any { it == Move.Rise } }.map { "f${it.index}: a rise took the move over" }
 
     /**
-     * Back on a sale with others waiting unseen (decision 266, §12.1): the stage lands on the shift, the ground in the
+     * Back on a sale with others waiting unseen (decision 266, §12.1): the stage lands on the shift, the code in the
      * left sale's row (the first in the tray), the shift drawn; nothing rises over it, before or after landing.
      */
     @Test fun backWithASaleWaitingLandsOnTheShiftLight() = backWithSaleWaiting(dark = false)
@@ -678,10 +816,10 @@ class RunningMovesTest {
         moves.start(Screen.Sale("a1"), dark)
         // z0 and b2 came while the cashier was on a1: the model has seen them, not the cashier.
         moves.model.salesChanged(moves.shift)
-        val frames = moves.run(Screen.Till, groundKey = "sale/a1", during = { if (it % 5 == 0) moves.model.salesChanged(moves.shift) })
+        val frames = moves.run(Screen.Till, groundKey = homeKey("a1"), during = { if (it % 5 == 0) moves.model.salesChanged(moves.shift) })
         moves.model.salesChanged(moves.shift)
         repeat(2) { compose.mainClock.advanceTimeByFrame() }
-        val failures = landsIn(frames, moves.sale) + noRise(frames)
+        val failures = landsHome(frames, moves.sale) + noRise(frames)
         check("back-with-sale-waiting", dark, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures +
             listOfNotNull(("the model ends on ${moves.model.screen.value}").takeIf { moves.model.screen.value != Screen.Till }))
         // TalkBack: focus is on the row the cashier came from.
@@ -698,9 +836,9 @@ class RunningMovesTest {
 
     /**
      * Back on a sale the folded tray hides (the fourth live one, 260 a): the tray is open on the change's first frame,
-     * so the row the ground shrinks into is there from the start; on no frame does the bare ground cover the window
-     * (the lead's recordings: three frames of nothing but the ground before the sale was redrawn); the code is on its
-     * card wherever the ground holds it; and the ground lands in its row.
+     * so the row the code flies to is there from the start; on no frame does the bare ground cover the window (the
+     * lead's recordings: three frames of nothing but the ground before the sale was redrawn); the code is on its card
+     * on every frame of its way home; and it lands in its row's glyph.
      */
     @Test fun backIntoAFoldedRowOpensTheTrayLight() = backIntoFoldedRow(dark = false)
 
@@ -710,31 +848,23 @@ class RunningMovesTest {
         val c3 = testSale("c3", expiresAt = 1_600)
         moves.shift = listOf(moves.sales[0], moves.sales[2], c3, moves.sale)
         moves.start(Screen.Sale("a1"), dark)
-        val frames = moves.run(Screen.Till, groundKey = "sale/a1")
-        val failures = landsIn(frames, moves.sale).toMutableList()
+        val frames = moves.run(Screen.Till, groundKey = homeKey("a1"))
+        val failures = landsHome(frames, moves.sale).toMutableList()
         val title = ShiftList.row(moves.sale, PointOfSale.Square, 0).title
         val first = frames.drop(1).firstOrNull { f -> f.words[Screen.Till].orEmpty().isNotEmpty() }
         if (first == null) failures += "the shift is never composed"
         else if (first.words[Screen.Till].orEmpty().none { it.first == title }) failures += "f${first.index}: the shift's first frame has no row for a1 (the tray still folded)"
         if (frames.last().words[Screen.Till].orEmpty().none { it.first == "Show fewer" }) failures += "the tray is not open at the end"
         failures += bareGround(frames)
-        val card = frames.first().leavingCodes.firstOrNull { it.width > 20f }
-        if (card != null) for (f in frames.drop(1).dropLast(RunningMoves.SETTLE_FRAMES)) {
-            if (f.p >= 1f) continue
-            val g = f.ground ?: continue
-            val holds = g.left <= card.left + 1f && g.top <= card.top + 1f && g.right >= card.right - 1f && g.bottom >= card.bottom - 1f
-            val (ink, white) = inkAndWhite(f.bitmap, card)
-            if (holds && (ink < CODE_SHARE || white < CODE_SHARE)) failures += "f${f.index}: the row's ground at $g holds the card at $card, but no code is drawn there"
-        }
+        failures += fliesHome(frames)
         check("back-into-folded-row", dark, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures)
     }
 
     /**
      * Back on a sale that rose by itself, its row two under the fold (the oldest of five waiting; the designer's back5
      * and back6, 260 a): no row was tapped, so no place is asked for, and the tray opens in place with the row low on
-     * the screen. The ground leaves the card early as it shrinks down to it, and the code went with it: about two frames
-     * of nothing but the ground before the shift's words came in. Now no frame is bare and, until the words begin, the
-     * code is on its card on every frame, never off it: carried whole inside it, by the least move (decision 299).
+     * the screen. A shrinking ground let go of the card early there (decision 299); now the code flies down to the
+     * row's glyph on its own (board 6): no frame is bare, and the code is on its card on every frame, never off it.
      */
     @Test fun backAfterASelfRiseIntoARowUnderTheFoldIsNeverBareLight() = backAfterSelfRiseUnderTheFold(dark = false)
 
@@ -745,40 +875,12 @@ class RunningMovesTest {
         moves.start(Screen.Till, dark)
         moves.run(Screen.Sale("a1"), byItself = true)
         repeat(4) { compose.mainClock.advanceTimeByFrame() }
-        val frames = moves.run(Screen.Till, groundKey = "sale/a1")
-        val failures = landsIn(frames, moves.sale).toMutableList()
+        val frames = moves.run(Screen.Till, groundKey = homeKey("a1"))
+        val failures = landsHome(frames, moves.sale).toMutableList()
         failures += bareGround(frames)
-        val card = frames.first().leavingCodes.firstOrNull { it.width > 20f }
-        if (card == null) failures += "the sale has no code before the Back"
-        else {
-            val words = 1f - Motion.Full.crossfadeOnTrack
-            var letGo = false
-            for (f in frames.drop(1).dropLast(RunningMoves.SETTLE_FRAMES)) {
-                // Until the shift's words begin, the code is all there is of either screen: it is on its card on every frame.
-                if (f.p >= words) break
-                val g = f.ground ?: continue
-                if (!(g.left <= card.left + 1f && g.top <= card.top + 1f && g.right >= card.right - 1f && g.bottom >= card.bottom - 1f)) letGo = true
-                val on = carried(card, g)
-                if (on == null) {
-                    failures += "f${f.index}: the code is dropped before the shift's words begin (p ${"%.2f".format(f.p)}, ground $g, card $card)"
-                    continue
-                }
-                val (ink, white) = inkAndWhite(f.bitmap, on.deflate(2f))
-                if (ink < CODE_SHARE || white < CODE_SHARE) failures += "f${f.index}: the ground at $g holds the card at $on, but no code is drawn there (p ${"%.2f".format(f.p)})"
-            }
-            // The case this is about: the ground lets go of the card where it was laid out before the words begin.
-            if (!letGo) failures += "the ground holds the card until the shift's words begin: not the designer's back5"
-        }
+        failures += fliesHome(frames)
         failures += codeOffItsCard(frames)
         report("back-self-rise-under-fold-${theme(dark)}", frames, failures)
-    }
-
-    /** [card] moved the least way into [g], as the leaving card carries its code (decision 299); null if it can't fit. */
-    private fun carried(card: Rect, g: Rect): Rect? {
-        if (card.width > g.width + 1f || card.height > g.height + 1f) return null
-        val dx = if (card.left < g.left) g.left - card.left else if (card.right > g.right) g.right - card.right else 0f
-        val dy = if (card.top < g.top) g.top - card.top else if (card.bottom > g.bottom) g.bottom - card.bottom else 0f
-        return card.translate(dx, dy)
     }
 
     /**
@@ -798,9 +900,8 @@ class RunningMovesTest {
     /**
      * Back from a sale tapped far down an open tray (the canvas's Main: 21 waiting, the last row tapped after scrolling
      * to the end; the lead's backfold, decision 296): the shift comes back scrolled where the cashier left it, so the
-     * row is laid out, on screen, from the change's first frame and the ground lands in it; and on no frame is the
-     * code drawn where the shrinking ground does not hold its card (backfold: the code over the rows for 300 ms, then
-     * cut).
+     * row is laid out, on screen, from the change's first frame and the code flies into its glyph (board 6); and on no
+     * frame is the code drawn off its card (backfold: the code over the rows for 300 ms, then cut).
      */
     @Test fun backIntoARowScrolledFarDownTheTrayLandsInItLight() = backIntoScrolledRow(dark = false)
 
@@ -836,8 +937,8 @@ class RunningMovesTest {
             compose.runOnUiThread { back.dispatchOnBackCancelled() }
             compose.mainClock.advanceTimeBy(1_500)
         }
-        val frames = moves.run(Screen.Till, groundKey = "sale/a1")
-        val failures = landsIn(frames, moves.sale).toMutableList()
+        val frames = moves.run(Screen.Till, groundKey = homeKey("a1"))
+        val failures = landsHome(frames, moves.sale).toMutableList()
         val moving = frames.drop(1).filter { it.moves.any { m -> m == Move.RowGrow } && it.p < 1f }
         if (moving.isEmpty()) failures += "the Back never moves by RowGrow"
         val firstMoving = moving.firstOrNull()
@@ -848,15 +949,16 @@ class RunningMovesTest {
         if (end == null) {
             failures += "the ground has no end on the Back's last moving frame"
         } else {
-            if (end.top < 0f || end.bottom > window.height) failures += "the ground lands at $end, off the ${window.height} px screen"
-            if (row != null && !end.contains(row.center)) failures += "the ground lands at $end, not in a1's row at $row"
-            // Every frame goes toward the same end, to half a pixel: the row does not move under the ground.
+            if (end.top < 0f || end.bottom > window.height) failures += "the code lands at $end, off the ${window.height} px screen"
+            if (row != null && abs(end.center.y - row.center.y) > ROW_BAND) failures += "the code lands at $end, not in a1's row at $row"
+            // Every frame goes toward the same end, to half a pixel: the row does not move under the code.
             for (f in moving) {
                 val e = f.groundEnd ?: continue
                 val off = maxOf(abs(e.left - end.left), abs(e.top - end.top), abs(e.right - end.right), abs(e.bottom - end.bottom))
-                if (off > HALF_PIXEL) failures += "f${f.index}: the ground goes to $e, not $end where it lands"
+                if (off > HALF_PIXEL) failures += "f${f.index}: the code goes to $e, not $end where it lands"
             }
         }
+        failures += fliesHome(frames)
         failures += codeOffItsCard(frames)
         report("back-scrolled-row-${theme(dark)}${if (peekFirst) "-peeked" else ""}", frames, failures)
     }
@@ -941,7 +1043,7 @@ class RunningMovesTest {
     }
 
     /**
-     * A sale arriving while Back is still landing goes into the tray under the moving card and does not take the move
+     * A sale arriving while Back is still landing goes into the tray under the moving code and does not take the move
      * over; once the shift rests, the next new sale rises out of it as before (§12.6 item 4).
      */
     @Test fun aSaleArrivingMidBackWaitsInTheTrayAndTheNextRises() {
@@ -949,13 +1051,13 @@ class RunningMovesTest {
         moves.start(Screen.Sale("a1"), dark = false)
         moves.model.salesChanged(moves.shift)
         val n9 = testSale("n9", expiresAt = 1_600)
-        val frames = moves.run(Screen.Till, groundKey = "sale/a1", during = {
+        val frames = moves.run(Screen.Till, groundKey = homeKey("a1"), during = {
             if (it == 8) {
                 moves.shift = listOf(n9) + moves.shift
                 moves.model.salesChanged(moves.shift)
             }
         })
-        val failures = (landsIn(frames, moves.sale) + noRise(frames)).toMutableList()
+        val failures = (landsHome(frames, moves.sale) + noRise(frames)).toMutableList()
         if (moves.model.screen.value != Screen.Till) failures += "n9 came up over the Back: the model is on ${moves.model.screen.value}"
         if (rowOf(frames.last(), n9) == null) failures += "n9 has no row in the tray"
         moves.model.salesChanged(moves.shift)
@@ -1197,7 +1299,7 @@ class RunningMovesTest {
         moves.start(Screen.Sale("a1"), dark = false)
         Recompositions().use { counts ->
             var composed = 0
-            val frames = moves.run(Screen.Till, groundKey = "sale/a1", during = {
+            val frames = moves.run(Screen.Till, groundKey = homeKey("a1"), during = {
                 if (it == PRIMED + 2) {
                     composed = counts.count("app.monokular.ui.SaleRow")
                     counts.reset()
@@ -1305,5 +1407,26 @@ class RunningMovesTest {
 
         /** Where the stage's spring is after one 16 ms frame from 0, with room: not a quarter of the way. */
         const val FIRST_STEP = 0.15f
+
+        /** The code card's quiet zone, a share of its side: 18 dp of 264. */
+        const val QUIET = 18f / 264f
+
+        /** How much of it a flying code keeps at least, with a half-size frame's rounding. */
+        const val QUIET_KEPT = 0.8f
+
+        /** A code within this of square, in half-size pixels: the rounding of its two sides. */
+        const val SQUARE_SLACK = 1.5f
+
+        /** A card at least this wide (half-size pixels) is read for its modules and white: a module still a pixel or more. */
+        const val READABLE = 60f
+
+        /** How far a row's code glyph's middle may be from its title's, up or down: within the row, a row is 64 dp. */
+        const val ROW_BAND = 40f
+
+        /** Frames a row's grow runs before a Back takes it over: about a quarter of the way. */
+        const val GROW_FRAMES = 6
+
+        /** The frame on which the code's glyph goes in [aCodeWhoseGlyphGoesMidFlightFadesWhereItGot]: a third of the way or so. */
+        const val LOSE_AT = 8
     }
 }

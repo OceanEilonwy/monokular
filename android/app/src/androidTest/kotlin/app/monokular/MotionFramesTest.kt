@@ -35,6 +35,7 @@ import app.monokular.ui.Motion
 import app.monokular.ui.OrderPage
 import app.monokular.ui.SaleScreen
 import app.monokular.ui.ShiftScreen
+import app.monokular.ui.homeKey
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import org.junit.Rule
@@ -223,6 +224,35 @@ class MotionFramesTest {
 
     @Test
     fun aSaleShrinksIntoItsRow() = seek(stage(Screen.Sale("a1")), Screen.Till, "row-shrink")
+
+    /**
+     * Seeked, a live sale's code is where the stage's progress puts it on its way home (board 6): one square code,
+     * centred in its card with the card's own share of quiet zone, the card on the straight line from its place on the
+     * sale to the row's code glyph; the sale's ground has no course of its own (it fades where it is).
+     */
+    @Test
+    fun theCodeGoingHomeIsOneSquareCodeOnItsLineToTheRowsGlyph() {
+        val state = stage(Screen.Sale("a1"))
+        val rest = bounds("Payment code for")
+        val drawn = mutableListOf<Pair<Float, Rect>>()
+        var from: Rect? = null
+        var to: Rect? = null
+        seek(state, Screen.Till, "code-home") { p, _ ->
+            val home = tracks[homeKey("a1")]?.firstOrNull { it.locate() } ?: error("at $p the code has no way home")
+            val c = home.located
+            val start = Rect(c.sl, c.st, c.sr, c.sb)
+            from = start
+            to = Rect(c.el, c.et, c.er, c.eb)
+            val card = Rect(c.left, c.top, c.right, c.bottom)
+            val code = bounds("Payment code for")
+            assertTrue(abs(code.width - code.height) <= 1f, "at $p the code is square: $code")
+            assertTrue(abs(code.center.x - card.center.x) <= 1f && abs(code.center.y - card.center.y) <= 1f, "at $p the code is centred in its card at $card: $code")
+            assertTrue(abs(code.width / card.width - rest.width / start.width) <= 0.01f, "at $p the code keeps its card's share of quiet zone: $code in $card")
+            assertTrue(tracks["sale/a1"].orEmpty().none { it.drawn() != null }, "at $p the sale's ground has no course: it fades in place")
+            drawn += p to card
+        }
+        assertOnTheLine(drawn, from!!, to!!)
+    }
 
     @Test
     fun aSaleThatCameUpByItselfRises() {
