@@ -122,7 +122,6 @@ import app.monokular.ShiftItem
 import app.monokular.PosText
 import app.monokular.ShiftList
 import app.monokular.StateIcon
-import app.monokular.codeHome
 import app.monokular.rememberGroundTrack
 import app.monokular.sales.TillSale
 import app.monokular.sales.live
@@ -839,8 +838,7 @@ private fun SaleRow(sale: TillSale, now: LongState, modifier: Modifier, onOpen: 
             Text(row.sub, fontSize = 13.sp, color = toneColor(row.tone), maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
         if (row.opens == RowOpens.Code) {
-            // Where the sale's code lands on a Back, hidden while it flies here (board 6).
-            Icon(MkIcons.Code, contentDescription = null, tint = mk.muted, modifier = Modifier.size(22.dp).codeHome(homeKey(sale.orderId)))
+            Icon(MkIcons.Code, contentDescription = null, tint = mk.muted, modifier = Modifier.size(22.dp))
         } else {
             Icon(MkIcons.Chevron, contentDescription = null, tint = mk.muted, modifier = Modifier.size(16.dp))
         }

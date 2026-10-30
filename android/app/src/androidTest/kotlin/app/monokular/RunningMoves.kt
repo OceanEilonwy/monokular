@@ -137,8 +137,6 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         val p: Float,
         /** Where the moving ground is going on this frame (its course's arriving end, as laid out), null when it is not moving. */
         val groundEnd: Rect? = null,
-        /** Where the sale's own ground (its row's grow) is drawn on this frame, whatever [ground] is read: null when it has no course. */
-        val saleGround: Rect? = null,
     )
 
     /** The model sent to [to] (as the till does, or the cashier), and every frame until the stage has landed and settled. */
@@ -158,9 +156,6 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         }
         return frames
     }
-
-    /** The frame as it is now, arriving on [arriving] (a back gesture holding the stage part way): [ground] is [groundKey]'s. */
-    fun now(arriving: Screen, groundKey: String? = null): Frame = capture(-1, arriving, groundKey)
 
     /** Every frame until the clock has moved [ms] on, with nothing sent: a change the screen makes in itself (the paid fold). */
     fun runFor(ms: Long, change: () -> Unit): List<Frame> {
@@ -198,7 +193,6 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         val ground = groundKey?.let { k -> tracks[k]?.firstNotNullOfOrNull { it.drawn() } }?.half()
         val groundEnd = groundKey?.let { k -> tracks[k]?.firstNotNullOfOrNull { it.end() } }?.half()
         val code = tracks["code/${sale.orderId}"]?.firstNotNullOfOrNull { it.drawn() }?.half()
-        val saleGround = tracks["sale/${sale.orderId}"]?.firstNotNullOfOrNull { it.drawn() }?.half()
         val words = stages.keys.associateWith { s ->
             compose.onAllNodes(hasAnyAncestor(hasTestTag(tag(s))) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Text), useUnmergedTree = true).fetchSemanticsNodes()
                 .map { (it.config.getOrNull(SemanticsProperties.Text)?.joinToString().orEmpty()) to it.drawn().half() }
@@ -209,7 +203,7 @@ class RunningMoves(private val compose: AndroidComposeTestRule<*, ComponentActiv
         val heading = drawnOf(mine and SemanticsMatcher.keyIsDefined(SemanticsProperties.Heading) and SemanticsMatcher.keyIsDefined(SemanticsProperties.LiveRegion)).firstOrNull()
         // A moving code is drawn where its track says, not where either screen laid it out.
         val drawn = if (code != null) listOf(code) else codes
-        return Frame(index, bitmap, moves, drawn, texts, ground, hero, heading, stages.mapValues { it.value.shown() }, lightBars, code, words, leavingCodes, model.stage.fraction, groundEnd, saleGround)
+        return Frame(index, bitmap, moves, drawn, texts, ground, hero, heading, stages.mapValues { it.value.shown() }, lightBars, code, words, leavingCodes, model.stage.fraction, groundEnd)
     }
 
     private fun tag(s: Screen) = "screen:$s"

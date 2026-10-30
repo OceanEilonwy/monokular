@@ -220,8 +220,7 @@ fun SaleScreen(
     // since only it knows its own corners; the sale's words fade in over it at their own size.
     Box(Modifier.fillMaxSize()) {
         val ground = rememberGroundTrack("sale/${sale.orderId}")
-        // A live sale left by Back stays where it is, fading, while its code flies home to its row (board 6).
-        Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, GroundLook(mk.ground, 0.dp), ground, fadesIn = Move.Rise, home = homeKey(sale.orderId)))
+        Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, GroundLook(mk.ground, 0.dp), ground, fadesIn = Move.Rise))
         // Paid or ended on screen, the live sale turns into its page in place (M10): the code card closes into the
         // page's hero circle, and the live sale's words fade out before the page's fade in, never two receipts at once
         // (decision 188); the way back the same reversed ("Show the code again"). Per draw, never an offscreen layer.
@@ -455,9 +454,9 @@ private fun Code(sale: TillSale, side: Dp, card: GroundTrack, ground: GroundTrac
     val veil by animateFloatAsState(if (sale.phase == SalePhase.Paid) 1f - SpentCode else 0f, motion.fade.fraction, label = "spent code")
     Box(
         // Opening from its row or shrinking back into it, the code and its white are drawn whole or not at all: only on
-        // the frames the row's ground holds all of the card (decision 234); on a Back to a row showing its code glyph, the
-        // card alone flies there, shrinking into it (board 6). Paid or ended, the card closes into the page's hero (M10).
-        Modifier.wholeOn(ground, Move.RowGrow, homeKey(sale.orderId))
+        // the frames the row's ground holds all of the card (decision 234). Paid or ended, the card closes into the page's
+        // hero (M10).
+        Modifier.wholeOn(ground, Move.RowGrow)
             .faceSurface(heroKey(sale.orderId), CodeCorner, other = Circle, code = true, bottom = if (footed) 0.dp else CodeCorner)
             .clip(if (footed) CodeTopShape else CodeShape)
             .then(if (footed) Modifier.drawBehind { drawRect(Fixed.White, Offset(0f, size.height - CodeCorner.toPx()), Size(size.width, CodeCorner.toPx())) } else Modifier)
@@ -637,9 +636,6 @@ fun heroKey(orderId: String) = "hero/$orderId"
 
 /** The key of a sale's state glyph between its page's hero and its shift row's badge. */
 fun badgeKey(orderId: String) = "badge/$orderId"
-
-/** The key of a live sale's code's way home on a Back: its card on the sale, the code glyph on its row. */
-fun homeKey(orderId: String) = "home/$orderId"
 
 /** A page's hero: the state's glyph at the top of a sale's page. */
 val HeroSize = 72.dp

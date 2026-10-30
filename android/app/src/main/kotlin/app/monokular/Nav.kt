@@ -85,7 +85,6 @@ import androidx.compose.ui.graphics.asAndroidPath
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.unit.Dp
@@ -508,7 +507,7 @@ fun TillStage(
     val transition = rememberTransition(state, label = "screen")
     val root = remember { StageRoot() }
     val held = remember(m) { HeldMove(cameUpByItself, m.still) }
-    val geometry = remember(transition, held) { StageGeometry(transition, held, { state.fraction }, root, m.fadeOutOnTrack, m.crossfadeOnTrack) }
+    val geometry = remember(transition, held) { StageGeometry(transition, held, { state.fraction }, root, m.fadeOutOnTrack) }
     // One collector on whether a change runs (nothing recomposes for it; the flow runs off the frame). While one does,
     // the frame being drawn, so each surface is placed once a frame however many parts ask. At rest, the held move is
     // forgotten, so the next change between the same two screens is read afresh with no surface needing to draw at
@@ -572,7 +571,6 @@ internal class StageGeometry(
     private val progress: () -> Float,
     private val root: StageRoot,
     private val fadeOut: Float,
-    private val crossfade: Float,
 ) {
     private val courses = Courses()
 
@@ -631,37 +629,6 @@ internal class StageGeometry(
         }
     }
 
-    /**
-     * [key]'s code flying home on this change, null if it doesn't: a Back from a live sale, from rest (a Back that takes
-     * over a grow shrinks into the row as before), with its row's code glyph laid out. Then only the code moves, on the
-     * straight line from its card to the glyph at the stage's progress, and the sale's ground and words fade in place
-     * (the designer's board 6). Decided once a change, on the first frame both ends are laid out (at 0, where the two
-     * ways look the same), so nothing turns from one into the other half way; a glyph that goes after that (its sale
-     * paid as the row came in) leaves the code to fade where it got to ([Modifier.wholeOn]). Sales that are not live
-     * have no code card, so no way home: they keep the row's grow reversed. Read in draw or layout.
-     */
-    fun homing(key: String): Course? {
-        val c = courses.find(key) ?: return null
-        val from = transition.currentState
-        val to = transition.targetState
-        if (held.during(from, to) != Move.RowGrow) return null
-        if (c.decided != held.generation) {
-            val back = !held.interrupted && from is Screen.Sale && to == Screen.Till
-            when {
-                !back -> c.flies = false
-                locate(c, Move.RowGrow) -> c.flies = true
-                // Not laid out yet on a frame still at 0: asked again on the next.
-                progress() <= 0f -> return null
-                else -> c.flies = false
-            }
-            c.decided = held.generation
-        }
-        return if (c.flies) c else null
-    }
-
-    /** A live sale's ground while its code flies home: fading out in place, over the move's first [Motion.crossfadeOnTrack]. */
-    fun homeFade(): Float = Nav.through(progress(), isArriving = false, leaving = crossfade, arriving = 1f)
-
     internal fun size(): Int = courses.size()
 
     internal fun at(i: Int): Course = courses.at(i)
@@ -679,9 +646,6 @@ internal class StageGeometry(
         val from = transition.currentState
         val to = transition.targetState
         if (held.during(from, to) != during) return course.lost()
-        // A live sale's ground whose code is flying home has no course: it fades where it is ([homing]).
-        val home = course.endOn(from)?.home
-        if (home != null && homing(home) != null) return course.lost()
         // Placed already on this frame (an end node, the words on it, the stage's painter all ask): the same place.
         val p = progress()
         if (course.placedOn(frame, held.generation, p)) return true
@@ -743,9 +707,6 @@ internal class End(val key: String, val screen: Screen, val during: Move) {
 
     /** A code's white: the ground key it fades out inside when it has no partner ([StageGeometry.paintCodes]). */
     var white: String? = null
-
-    /** A live sale's ground: the key of its code's way home, which on a Back takes the move from it ([StageGeometry.homing]). */
-    var home: String? = null
 }
 
 /**
@@ -802,10 +763,6 @@ internal class Course(val key: String) {
 
     /** The change this course was last drawn in, -1 if it was not drawn on the last frame of one. */
     val drawnIn: Long get() = if (valid) generation else -1L
-
-    /** A code's way home: the change whether it [flies] was decided for, -1 before any ([StageGeometry.homing]). */
-    var decided = -1L
-    var flies = false
 
     fun add(end: End) {
         ends += end
@@ -876,16 +833,6 @@ internal class Course(val key: String) {
         right = lerp(sr, er, p)
         bottom = lerp(sb, eb, p)
     }
-
-    /**
-     * The one scale that fits a [w] by [h] box inside the surface on this frame, the same both ways, so a square code
-     * is never squashed whatever the two ends' shapes; with [fitLeft] and [fitTop], where it is then drawn, centred.
-     */
-    fun fit(w: Float, h: Float): Float = min((right - left) / w, (bottom - top) / h)
-
-    fun fitLeft(w: Float, scale: Float): Float = left + (right - left - w * scale) / 2f
-
-    fun fitTop(h: Float, scale: Float): Float = top + (bottom - top - h * scale) / 2f
 
     /** Whether the surface on this frame holds the box [l]..[b] (in the overlay), to half a pixel. */
     fun holds(l: Float, t: Float, r: Float, b: Float): Boolean =
@@ -1058,18 +1005,16 @@ class GroundLook(val color: Color, val top: Dp, val bottom: Dp = top)
  * ([words]), the code is its own surface over it ([sharedCode]), so nothing
  * on a ground is drawn through a changing scale (decision 185). With no
  * partner (a sale whose row is off the shift), a ground fades with its
- * screen; one whose code flies [home] (a live sale's, on a Back) fades in
- * place ([StageGeometry.homing]). [track] is the screen's view of it, for
- * the words on it.
+ * screen. [track] is the screen's view of it, for the words on it.
  */
 @Composable
-fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, track: GroundTrack? = null, fadesIn: Move? = null, home: String? = null): Modifier {
+fun Modifier.sharedGround(key: String, during: Move, own: GroundLook, track: GroundTrack? = null, fadesIn: Move? = null): Modifier {
     val stage = LocalStage.current
     val painter = remember { GroundPainter() }
     if (stage == null || motion.still) return drawBehind { with(painter) { paint(own.color, own.top.toPx(), own.bottom.toPx()) } }
     val ground = track ?: remember(key) { GroundTrack(key) }
     ground.bind(stage, during)
-    return this.then(GroundElement(stage, ground, own, fadesIn, paints = true, home = home))
+    return this.then(GroundElement(stage, ground, own, fadesIn, paints = true))
 }
 
 /**
@@ -1083,23 +1028,16 @@ fun Modifier.groundEnd(track: GroundTrack, during: Move, look: GroundLook): Modi
     val stage = LocalStage.current ?: return this
     if (motion.still) return this
     track.bind(stage, during)
-    return this.then(GroundElement(stage, track, look, fadesIn = null, paints = false, home = null))
+    return this.then(GroundElement(stage, track, look, fadesIn = null, paints = false))
 }
 
-private class GroundElement(val stage: Stage, val track: GroundTrack, val own: GroundLook, val fadesIn: Move?, val paints: Boolean, val home: String?) :
+private class GroundElement(val stage: Stage, val track: GroundTrack, val own: GroundLook, val fadesIn: Move?, val paints: Boolean) :
     ModifierNodeElement<GroundNode>() {
-    override fun create() = GroundNode(
-        stage.geometry, End(track.key, stage.screen, track.during).also {
-            it.look = own
-            it.home = home
-        },
-        stage, track, own, fadesIn, paints,
-    )
+    override fun create() = GroundNode(stage.geometry, End(track.key, stage.screen, track.during).also { it.look = own }, stage, track, own, fadesIn, paints)
 
     override fun update(node: GroundNode) {
         node.rebind(stage.geometry, track.key, stage.screen, track.during)
         node.end.look = own
-        node.end.home = home
         node.stage = stage
         node.track = track
         node.own = own
@@ -1115,11 +1053,10 @@ private class GroundElement(val stage: Stage, val track: GroundTrack, val own: G
         properties["own"] = own
         properties["fadesIn"] = fadesIn
         properties["paints"] = paints
-        properties["home"] = home
     }
 
     override fun equals(other: Any?): Boolean = other is GroundElement && other.stage === stage && other.track === track &&
-        other.own === own && other.fadesIn == fadesIn && other.paints == paints && other.home == home
+        other.own === own && other.fadesIn == fadesIn && other.paints == paints
 
     override fun hashCode(): Int = System.identityHashCode(track) * 31 + System.identityHashCode(own)
 }
@@ -1150,13 +1087,8 @@ private class GroundNode(
             // Moving: the stage draws the one ground where its line puts it on this frame, over both screens; neither
             // end draws itself (decision 232).
             track.locate() -> Unit
-            // No partner (a sale whose row is off the shift): it fades with its screen, the one under it showing through;
-            // a live sale's whose code is flying home, in place over the move's first fade share, as its words go.
-            else -> {
-                val home = end.home
-                val seen = if (home != null && geometry.homing(home) != null) geometry.homeFade() else stage.shown()
-                with(painter) { paint(own.color.copy(alpha = own.color.alpha * seen), own.top.toPx(), own.bottom.toPx()) }
-            }
+            // No partner (a sale whose row is off the shift): it fades with its screen, the one under it showing through.
+            else -> with(painter) { paint(own.color.copy(alpha = own.color.alpha * stage.shown()), own.top.toPx(), own.bottom.toPx()) }
         }
         drawContent()
     }
@@ -1385,27 +1317,20 @@ private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Ali
  * frame of bare ground between the two screens (decision 296). A ground
  * that would let go of it before those words begin (shrinking into a row
  * low on the screen) carries it instead, whole and inside it, for as long
- * as it fits (decision 299). On a Back from a live sale whose row shows its
- * code glyph, the card is [home]'s leaving end and flies there instead,
- * the one part of the sale that moves ([StageGeometry.homing]).
+ * as it fits (decision 299).
  */
 @Composable
-fun Modifier.wholeOn(ground: GroundTrack, during: Move, home: String): Modifier {
+fun Modifier.wholeOn(ground: GroundTrack, during: Move): Modifier {
     val stage = LocalStage.current ?: return this
     val m = motion
     if (m.still) return this
-    val geometry = stage.geometry
-    // Flying home, over every clip (the sale's scroll would cut it on its way to a row under the bar or the buttons).
-    val lifted = with(stage.shared) { renderInSharedTransitionScopeOverlay(Layers.CODE) { geometry.homing(home) != null } }
-    return lifted.then(WholeElement(stage, ground, during, 1f - m.crossfadeOnTrack, home))
+    return this.then(WholeElement(stage, ground, during, 1f - m.crossfadeOnTrack))
 }
 
-private class WholeElement(val stage: Stage, val ground: GroundTrack, val during: Move, val leaving: Float, val home: String) :
-    ModifierNodeElement<WholeNode>() {
-    override fun create() = WholeNode(stage.geometry, End(home, stage.screen, during), stage, ground, during, leaving)
+private class WholeElement(val stage: Stage, val ground: GroundTrack, val during: Move, val leaving: Float) : ModifierNodeElement<WholeNode>() {
+    override fun create() = WholeNode(stage, ground, during, leaving)
 
     override fun update(node: WholeNode) {
-        node.rebind(stage.geometry, home, stage.screen, during)
         node.stage = stage
         node.ground = ground
         node.during = during
@@ -1417,11 +1342,10 @@ private class WholeElement(val stage: Stage, val ground: GroundTrack, val during
         name = "wholeOn"
         properties["ground"] = ground.key
         properties["during"] = during
-        properties["home"] = home
     }
 
-    override fun equals(other: Any?): Boolean = other is WholeElement && other.stage === stage && other.ground === ground &&
-        other.during == during && other.leaving == leaving && other.home == home
+    override fun equals(other: Any?): Boolean =
+        other is WholeElement && other.stage === stage && other.ground === ground && other.during == during && other.leaving == leaving
 
     override fun hashCode(): Int = System.identityHashCode(ground) * 31 + during.hashCode()
 }
@@ -1430,44 +1354,17 @@ private class WholeElement(val stage: Stage, val ground: GroundTrack, val during
  * [Modifier.wholeOn]'s node: drawn or not per frame by where its ground is, and placed with a layer only while its
  * move is under way (the stage's states are read in placement, so it places again as a move starts and lands, nothing
  * per frame), whose alpha, read per frame, fades a code with no ground to go with, and whose translation keeps a
- * code inside a ground that would let go of it early. It is the card's end of its way home too, and the layer is
- * what flies it there, scaled as one.
+ * code inside a ground that would let go of it early.
  */
-private class WholeNode(geometry: StageGeometry, end: End, var stage: Stage, var ground: GroundTrack, var during: Move, var leaving: Float) :
-    EndNode(geometry, end), LayoutModifierNode, DrawModifierNode {
+private class WholeNode(var stage: Stage, var ground: GroundTrack, var during: Move, var leaving: Float) :
+    Modifier.Node(), LayoutModifierNode, LayoutAwareModifierNode, DrawModifierNode {
+    private var placed: LayoutCoordinates? = null
+
     /** Where [carry] last put the code: how far it is moved inside its ground on this frame, in whole pixels. */
     private var dx = 0f
     private var dy = 0f
 
     private val layer: GraphicsLayerScope.() -> Unit = {
-        val home = geometry.homing(end.key)
-        if (home != null) fly(home) else stay()
-        compositingStrategy = CompositingStrategy.ModulateAlpha
-    }
-
-    /**
-     * Flying home: the card, its quiet zone and corners with it, scaled as one square layer to the code's course on this
-     * frame, so the code is never cut, squashed or redrawn module by module (principle 3), and whole to the glyph. If
-     * the glyph has gone since (its sale paid as the row came in) it stays where it got to and fades, as a card with no
-     * row to go to does (decision 296).
-     */
-    private fun GraphicsLayerScope.fly(home: Course) {
-        val mine = placed ?: return
-        val located = geometry.locate(home, during)
-        alpha = if (located) 1f else stage.throughDuring(during, leaving = leaving, arriving = 1f)
-        val w = mine.size.width.toFloat()
-        val h = mine.size.height.toFloat()
-        if (w <= 0f || h <= 0f) return
-        val at = stage.inOverlay(mine)
-        val s = home.fit(w, h)
-        scaleX = s
-        scaleY = s
-        transformOrigin = TransformOrigin(0f, 0f)
-        translationX = home.fitLeft(w, s) - at.x
-        translationY = home.fitTop(h, s) - at.y
-    }
-
-    private fun GraphicsLayerScope.stay() {
         val located = ground.locate()
         alpha = if (stage.arriving() || located) 1f else stage.throughDuring(during, leaving = leaving, arriving = 1f)
         if (located && carry()) {
@@ -1477,6 +1374,7 @@ private class WholeNode(geometry: StageGeometry, end: End, var stage: Stage, var
             translationX = 0f
             translationY = 0f
         }
+        compositingStrategy = CompositingStrategy.ModulateAlpha
     }
 
     /**
@@ -1510,6 +1408,10 @@ private class WholeNode(geometry: StageGeometry, end: End, var stage: Stage, var
         else -> 0f
     }
 
+    override fun onPlaced(coordinates: LayoutCoordinates) {
+        placed = coordinates
+    }
+
     override fun MeasureScope.measure(measurable: Measurable, constraints: Constraints): MeasureResult {
         val placeable = measurable.measure(constraints)
         return layout(placeable.width, placeable.height) {
@@ -1524,47 +1426,6 @@ private class WholeNode(geometry: StageGeometry, end: End, var stage: Stage, var
         val x = if (carry()) dx else 0f
         val y = dy
         if (ground.located.holds(at.x + x, at.y + y, at.x + x + size.width, at.y + y + size.height)) drawContent()
-    }
-}
-
-/**
- * Where a live sale's code lands on a Back: its row's code glyph, [key]'s
- * arriving end ([Modifier.wholeOn] is the card's). The glyph is not drawn
- * while the code is flying to it, so there is one code on screen, never a
- * code and its glyph; it is drawn again as the change lands, where the
- * code has come down to its size. [key]'s track is the shift's view of the
- * code's way home, for a device test.
- */
-@Composable
-fun Modifier.codeHome(key: String): Modifier {
-    val stage = LocalStage.current ?: return this
-    if (motion.still) return this
-    val track = rememberGroundTrack(key)
-    track.bind(stage, Move.RowGrow)
-    return this.then(HomeElement(stage, key))
-}
-
-private class HomeElement(val stage: Stage, val key: String) : ModifierNodeElement<HomeNode>() {
-    override fun create() = HomeNode(stage.geometry, End(key, stage.screen, Move.RowGrow))
-
-    override fun update(node: HomeNode) {
-        node.rebind(stage.geometry, key, stage.screen, Move.RowGrow)
-        node.invalidateDraw()
-    }
-
-    override fun InspectorInfo.inspectableProperties() {
-        name = "codeHome"
-        properties["key"] = key
-    }
-
-    override fun equals(other: Any?): Boolean = other is HomeElement && other.stage === stage && other.key == key
-
-    override fun hashCode(): Int = key.hashCode()
-}
-
-private class HomeNode(geometry: StageGeometry, end: End) : EndNode(geometry, end), DrawModifierNode {
-    override fun ContentDrawScope.draw() {
-        if (geometry.homing(end.key) == null) drawContent()
     }
 }
 
