@@ -4241,3 +4241,25 @@ design unchanged.
     tablet's one "Close it for now" frame (lead's `closenow` f30) is not
     the fold (a closed sale is not live, so it never folds) and is not
     reproduced here; it is left for the lead's phone reading.
+290. **The sale screen's leaving code fades on the paid fold's own
+    progress, gone by its first `fadeOutOnTrack`** (dev2, round 2
+    review; 260 b, 252, 286). Decision 286 gated the arriving tick to
+    the fold's last `crossfadeOnTrack`, but the leaving code still faded
+    on `seen`, a `fadeQuick` tween with a clock of its own: on the test
+    clock the modules were still drawn at 0.39 and 0.52 closed, and on
+    the lead's device recording (stepback f6, 58% closed) they were at
+    about 0.2 under the tick at 0.4. While the fold runs, `faceSurface`
+    now draws the leaving code at `Nav.through(1 − shown, leaving =
+    fadeOutOnTrack)`, as the code screen's hero does (252): gone by 27%
+    closed, so with the tick from 55% the two glyphs are never in the
+    card together whatever the frame pacing, and both read the one
+    spring. (The review wrote `through(shown, …)`; `shown` falls from 1
+    as the face leaves, so the progress toward the page is `1 − shown`.)
+    `seen` stays for every case but the fold (the code arriving on "Show
+    the code again", the hero leaving). `RunningMovesTest`'s
+    `thePaidFoldDrawsTheTickOnlyInItsLastShare`, light and dark, now
+    reads the code's modules inside the card by their pattern (a line
+    crossing eight or more dark-light edges; the hero's ground and its
+    tick cross at most four) and fails any frame with modules past 0.32
+    closed or modules under the tick: before the change f7 and f8 failed
+    in both themes, after it none.

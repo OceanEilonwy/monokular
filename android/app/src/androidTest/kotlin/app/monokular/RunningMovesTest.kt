@@ -896,7 +896,8 @@ class RunningMovesTest {
     /**
      * The sale screen's paid fold draws one glyph in the card at a time (260 b, decision 252): the tick is not drawn
      * while the card is closing over its first share, only over the fold's last [Motion.crossfadeOnTrack], as the code
-     * screen's hero comes in; at rest, the tick and no code.
+     * screen's hero comes in; the code is gone by the fold's first [Motion.fadeOutOnTrack], and no module of it is ever
+     * under the tick; at rest, the tick and no code.
      */
     @Test fun thePaidFoldDrawsTheTickOnlyInItsLastShareLight() = tickInLastShare(dark = false)
 
@@ -909,16 +910,56 @@ class RunningMovesTest {
         val rest = frames.last().hero ?: error("no hero at rest")
         val failures = mutableListOf<String>()
         val early = 1f - Motion.Full.crossfadeOnTrack - SHARE_SLACK
+        val gone = Motion.Full.fadeOutOnTrack + SHARE_SLACK
         for (f in frames.drop(1)) {
             val h = f.hero ?: continue
             // How far the card has closed toward the hero, by its width: the fold's own progress.
             val closed = ((card.width - h.width) / (card.width - rest.width)).coerceIn(0f, 1f)
-            if (closed < early && tickShare(f.bitmap, h) > TICK_SHARE) failures += "f${f.index}: the tick is drawn with the card ${"%.2f".format(closed)} closed (its last share starts at ${"%.2f".format(1f - Motion.Full.crossfadeOnTrack)})"
+            val tick = tickShare(f.bitmap, h) > TICK_SHARE
+            if (closed < early && tick) failures += "f${f.index}: the tick is drawn with the card ${"%.2f".format(closed)} closed (its last share starts at ${"%.2f".format(1f - Motion.Full.crossfadeOnTrack)})"
+            // One glyph at a time: wherever the tick is drawn, no module of the code is, however faint (the lead's
+            // stepback f6: modules at 0.2 under the tick at 0.4).
+            val modules = moduleShare(f.bitmap, h)
+            if (tick && modules > NEAR_SHARE) failures += "f${f.index}: the tick is drawn over the code's modules (${"%.3f".format(modules)} of the card, ${"%.2f".format(closed)} closed)"
+            // And the code goes on the fold's own progress, by its first share closed, not on a clock of its own that a
+            // slow frame or a late start can leave behind the card (decision 290).
+            if (closed > gone && modules > NEAR_SHARE) failures += "f${f.index}: the code's modules are still drawn with the card ${"%.2f".format(closed)} closed (gone by ${"%.2f".format(Motion.Full.fadeOutOnTrack)})"
         }
         val last = frames.last()
         if (tickShare(last.bitmap, rest) <= TICK_SHARE) failures += "at rest the hero shows no tick"
         if (last.codes.any { it.width > 20f }) failures += "at rest a code is still laid out"
         report("tick-last-share-${theme(dark)}", frames, failures)
+    }
+
+    /**
+     * How much of the middle of [r] in [b] (a square inside the hero's circle) shows a code's modules at any alpha:
+     * the share of its lines that cross from dark to light and back [MODULE_EDGES] times or more, a step of
+     * [MODULE_STEP] or more apart. A code is a pattern along every line; the hero's ground coming in is one tone, and
+     * its tick crosses a line twice.
+     */
+    private fun moduleShare(b: Bitmap, r: Rect): Float {
+        val half = r.width * INSIDE_CIRCLE
+        val xs = (r.center.x - half).toInt().coerceAtLeast(0) until (r.center.x + half).toInt().coerceAtMost(b.width)
+        val ys = (r.center.y - half).toInt().coerceAtLeast(0) until (r.center.y + half).toInt().coerceAtMost(b.height)
+        var lines = 0
+        var patterned = 0
+        for (y in ys) {
+            var light = 0f
+            var dark = 255f
+            for (x in xs) lum(b.getPixel(x, y)).let { light = maxOf(light, it); dark = min(dark, it) }
+            lines++
+            if (light - dark < MODULE_STEP) continue
+            val mid = (light + dark) / 2f
+            var edges = 0
+            var was: Boolean? = null
+            for (x in xs) {
+                val isDark = lum(b.getPixel(x, y)) < mid
+                if (was != null && isDark != was) edges++
+                was = isDark
+            }
+            if (edges >= MODULE_EDGES) patterned++
+        }
+        return if (lines == 0) 0f else patterned.toFloat() / lines
     }
 
     /** How much of [r] in [b] is the paid tick's green (a code is only ink and white; the hero's ground is a pale green). */
@@ -966,6 +1007,15 @@ class RunningMovesTest {
     private companion object {
         /** How close to rest the hero's spring is done: a pixel or two of tail. */
         const val NEAR = 4f
+
+        /** Half the side of the square read inside a circle, as a share of its width (under 1/(2√2)). */
+        const val INSIDE_CIRCLE = 0.33f
+
+        /** A module faded to a tenth over the white is this much darker than the white between modules. */
+        const val MODULE_STEP = 12f
+
+        /** A line through a code's middle crosses more modules than this; through the hero and its tick, at most four. */
+        const val MODULE_EDGES = 8
 
         /** A window that is more than this share bare ground is drawing nothing on it. */
         const val BARE_SHARE = 0.98f
