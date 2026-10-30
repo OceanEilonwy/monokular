@@ -8,6 +8,7 @@ import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.animateColor
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Transition
 import androidx.compose.animation.core.updateTransition
@@ -448,7 +449,7 @@ private fun Circle(look: BubbleLook, pulse: Boolean, phase: SalePhase, panelUp: 
     val rim = t.animateColor({ m.spread[3].spec() }, label = "rim") { lensOf(it)[3] }
     val lens = remember(core, inner, middle, rim) { Rings(core, inner, middle, rim) }
     // The arc's ink follows a night-mode switch over the fade, as the track under it does.
-    val arcInk = t.animateColor({ m.fade.spec() }, label = "arc ink") { inks.ink }
+    val arcInk = animateColorAsState(inks.ink, m.fade.spec(), label = "arc ink")
     val arcAlpha = t.animateFloat({ m.fade.fraction }, label = "arc") { if (it == BubbleLook.Lit && m.chase != null) 1f else 0f }
     // The tick is drawn in along its path and leaves by fading whole: its trim only grows, rewound once it is invisible.
     val tick = t.animateFloat({ (if (targetState == BubbleLook.Paid) m.tick else m.untick).fraction }, label = "tick") {
