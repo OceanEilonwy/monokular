@@ -19,6 +19,7 @@ import org.junit.Test
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.min
+import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
@@ -857,6 +858,31 @@ class RunningMovesTest {
             }
         }
         return if (n == 0) 0f else green.toFloat() / n
+    }
+
+    /**
+     * Nothing of the shift recomposes once a frame while a Back with sales waiting runs, or while the paid step-back
+     * does (performance rule 10): the rows, the tray's header and its fold compose as the shift comes in, and the shift
+     * itself once more as the stage lands (where focus goes), never per frame of the move.
+     */
+    @Test fun aBackIntoTheTrayRecomposesNothingPerFrame() {
+        moves.shift = listOf(moves.sale, moves.sales[0], moves.sales[2], testSale("c3", expiresAt = 1_600))
+        moves.start(Screen.Sale("a1"), dark = false)
+        Recompositions().use { counts ->
+            var composed = 0
+            val frames = moves.run(Screen.Till, groundKey = "sale/a1", during = {
+                if (it == PRIMED + 2) {
+                    composed = counts.count("app.monokular.ui.SaleRow")
+                    counts.reset()
+                }
+            })
+            val moving = frames.count { it.ground != null }
+            assertTrue(composed > 0, "the tracer sees the rows compose as the shift comes in")
+            for (name in listOf("SaleRow", "TrayHeader", "FoldRow", "RowBadge")) {
+                assertEquals(0, counts.count("app.monokular.ui.$name"), "$name recomposed over the $moving frames of the move")
+            }
+            assertTrue(counts.count("app.monokular.ui.ShiftScreen") <= 1, "the shift recomposed ${counts.count("app.monokular.ui.ShiftScreen")} times over $moving frames")
+        }
     }
 
     private companion object {
