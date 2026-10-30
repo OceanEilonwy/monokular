@@ -40,6 +40,7 @@ import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
@@ -314,6 +315,17 @@ class Stage internal constructor(
     /** Whether this screen is the one the stage is going to. */
     fun arriving(): Boolean = transition.targetState == screen
 
+    /**
+     * The sale a change to this screen is leaving (a Back, or a paid page stepping back, onto the shift), null at
+     * rest or from anything else. Read in composition, so it recomposes its reader twice a change, as the change
+     * starts and as it lands, never a frame.
+     */
+    val leavingSale: String?
+        get() = if (transition.targetState == screen) (transition.currentState as? Screen.Sale)?.orderId else null
+
+    /** Whether the stage rests on this screen: the change onto it has landed. */
+    fun landed(): Boolean = transition.currentState == screen && transition.targetState == screen
+
     /** The stage's own progress toward the screen it is going to: the one number every part of a move reads. */
     internal fun toward(): Float = progress()
 
@@ -384,8 +396,15 @@ class BackScrub {
  * (decision 186): at rest the stage and the model always agree.
  */
 @Composable
-fun FollowScreen(state: SeekableTransitionState<Screen>, scrub: BackScrub, screen: State<Screen>) {
+fun FollowScreen(state: SeekableTransitionState<Screen>, scrub: BackScrub, screen: State<Screen>, onLanded: (Screen) -> Unit = {}) {
     val m = motion
+    // The one landing report (decision 269): the stage at rest on the model's screen, once per landing, so the model
+    // knows a sale arriving now finds the shift at rest (it rises) and one arriving before found a move (it waits in
+    // the tray). Read off the frame, as the stage's state changes; nothing recomposes for it.
+    val landed by rememberUpdatedState(onLanded)
+    LaunchedEffect(state) {
+        snapshotFlow { state.currentState.takeIf { it == state.targetState && it == screen.value } }.collect { at -> at?.let { landed(it) } }
+    }
     LaunchedEffect(state, scrub, m) {
         snapshotFlow { if (scrub.active) null else screen.value }.collectLatest { s ->
             if (s == null || (state.currentState == s && state.targetState == s)) return@collectLatest

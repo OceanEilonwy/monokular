@@ -4002,3 +4002,28 @@ design unchanged.
     (`requestScrollToItem`) to keep the fold row where it was on screen,
     counting the kept rows above it at one row's height each, since the
     item the list anchored on is one of the rows going.
+282. **Back lands on the shift: the follow narrows to a sale new since
+    the last look on a resting shift, the stage reports its rest, and
+    the row came back to takes focus** (dev2, round 2, S3; 266, 269,
+    `docs/motion.md` §12.1, §13.4). `TillNav.follow(Till, …)` takes the
+    last look's live ids and whether the stage rests on the shift, and
+    brings up only a live sale in neither the look nor `left`; `leave`
+    makes no follow, `closeSettings` and `backTarget` call `follow` with
+    `restingOnShift = false`, so a code or order page whose sale is down
+    still gives way to its page while nothing rises. The model's
+    `restingOn` starts as the first screen (at rest before anything
+    moves, so a till opened on its shift with a live sale still brings
+    it up as before), is cleared by a `go` to another screen (a `go` to
+    the screen already up changes nothing the stage would land from, so
+    "Open the shift" on the shift cannot leave it unset with no landing
+    to set it again) and by a rise, and is set by `landed`, which
+    `FollowScreen` calls from one `snapshotFlow` (the stage at rest on
+    the model's screen, emitted once a landing). The shift reads
+    `Stage.leavingSale` in composition (twice a change) to open the
+    fold when the sale being left is a live one past the third, as the
+    change starts, and to hand focus to that row once the stage lands;
+    a clickable row takes no focus in touch mode, so that one row gets
+    `focusProperties { canFocus = true }` while it is the row came back
+    to (the shift screen's life), the only way a `requestFocus` lands.
+    `TestModel` mirrors `follow`, `landed` and `left` so
+    `RunningMovesTest` drives the same rules on the stage.

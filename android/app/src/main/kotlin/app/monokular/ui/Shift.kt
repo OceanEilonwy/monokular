@@ -40,7 +40,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.LongState
+import androidx.compose.runtime.MutableState
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -51,6 +54,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
@@ -75,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import app.monokular.Ground
 import app.monokular.GroundLook
 import app.monokular.Layers
+import app.monokular.LocalStage
 import app.monokular.Move
 import app.monokular.RowEnds
 import app.monokular.RowOpens
@@ -89,6 +96,7 @@ import app.monokular.sales.live
 import app.monokular.sharedGround
 import app.monokular.sharedSurface
 import app.monokular.words
+import kotlinx.coroutines.flow.first
 
 /**
  * The shift (the design's ShiftList; decisions 60, 64, 72): what this
@@ -105,6 +113,18 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
     val items = remember(sales, filter, folded) { ShiftList.sections(sales, filter, folded) }
     val trayFolds = remember(items) { items.any { it is ShiftItem.Fold } }
     val list = rememberLazyListState()
+    // Back from a sale (or a paid one stepping back): the sale the stage is leaving, read once as the change starts
+    // and once as it lands, never a frame. Its row must be there for the ground to shrink into, so a row the fold
+    // would hide opens the tray as the change starts (the rows past the third fade in under the arriving card), and it
+    // stays open until Show fewer or the shift is left (decision 269). Once landed, focus goes to that row.
+    val stage = LocalStage.current
+    val cameFrom = stage?.leavingSale
+    val focusOn = remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(cameFrom) {
+        if (cameFrom == null) return@LaunchedEffect
+        focusOn.value = cameFrom
+        if (folded && ShiftList.folds(sales, filter, cameFrom)) folded = false
+    }
     val arrive = motion.fade.fraction
     val leave = motion.fadeQuick.fraction
     val placement = motion.settle.spec(IntOffset.VisibilityThreshold)
@@ -166,7 +186,7 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
                             is ShiftItem.Row -> {
                                 // Opened by its id alone, so a row whose corners change keeps the one it had and skips.
                                 val id = item.sale.orderId
-                                SaleItem(item, trayFolds, now, moves) { actions.onOpen(id) }
+                                SaleItem(item, trayFolds, now, moves, focusOn) { actions.onOpen(id) }
                             }
                         }
                     }
@@ -183,8 +203,19 @@ fun ShiftScreen(status: TillStatus, sales: List<TillSale>, actions: TillActions,
  * In the tray the card sits in its slice of the amber, 4 dp in, so it is concentric with the tray's corners.
  */
 @Composable
-private fun SaleItem(item: ShiftItem.Row, trayFolds: Boolean, now: LongState, moves: Modifier, onOpen: () -> Unit) {
+private fun SaleItem(item: ShiftItem.Row, trayFolds: Boolean, now: LongState, moves: Modifier, focusOn: MutableState<String?>, onOpen: () -> Unit) {
     val sale = item.sale
+    // Only the row the cashier came back to reads where focus goes, and asks for it once the stage has landed. A row
+    // that can be clicked takes no focus in touch mode, so this one row may, for as long as it is the one came back to.
+    val focused by remember(sale.orderId) { derivedStateOf { focusOn.value == sale.orderId } }
+    val focus = if (focused) remember { FocusRequester() } else null
+    if (focus != null) {
+        val stage = LocalStage.current
+        LaunchedEffect(focus) {
+            if (stage != null) snapshotFlow { stage.landed() }.first { it }
+            focus.requestFocus()
+        }
+    }
     val ends = item.ends
     val shape = rowShape(ends)
     val top = ends == RowEnds.First || ends == RowEnds.Only
@@ -197,7 +228,7 @@ private fun SaleItem(item: ShiftItem.Row, trayFolds: Boolean, now: LongState, mo
             Box(Modifier.matchParentSize().sharedGround("sale/${sale.orderId}", Move.RowGrow, rowLook(ends, mk.card), ground))
             Column(Modifier.fillMaxWidth().words(over = Move.RowGrow, on = ground).clip(shape)) {
                 if (ends == RowEnds.Middle || ends == RowEnds.Last) Box(Modifier.padding(start = 64.dp).fillMaxWidth().height(1.dp).background(mk.divider))
-                SaleRow(sale, now, onOpen)
+                SaleRow(sale, now, if (focus != null) Modifier.focusRequester(focus).focusProperties { canFocus = true } else Modifier, onOpen)
             }
         }
     }
@@ -462,13 +493,13 @@ private fun badgeGround(icon: StateIcon): Ground = when (icon) {
 
 /** One sale: its state's icon, "Sale #m2Qe · $8.40", how it stands, and where a tap goes. */
 @Composable
-private fun SaleRow(sale: TillSale, now: LongState, onOpen: () -> Unit) {
+private fun SaleRow(sale: TillSale, now: LongState, modifier: Modifier, onOpen: () -> Unit) {
     // Only a live row reads the clock, and only its own second: the shift above it doesn't tick.
     val seconds by remember(sale) { derivedStateOf { if (sale.live) secondsLeft(sale.expiresAt, now.longValue) else 0L } }
     val pos = posOf(sale)
     val row = remember(sale, pos, seconds) { ShiftList.row(sale, pos, seconds) }
     Row(
-        Modifier.fillMaxWidth().heightIn(min = 64.dp)
+        modifier.fillMaxWidth().heightIn(min = 64.dp)
             .clickable(onClickLabel = if (row.opens == RowOpens.Code) "Show the code" else "Open the details", role = Role.Button, onClick = onOpen)
             .padding(start = 16.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
