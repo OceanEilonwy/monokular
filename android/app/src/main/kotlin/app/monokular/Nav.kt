@@ -1317,24 +1317,30 @@ private val ScaledToWidth = ResizeMode.scaleToBounds(ContentScale.FillWidth, Ali
  * frame of bare ground between the two screens (decision 296). A ground
  * that would let go of it before those words begin (shrinking into a row
  * low on the screen) carries it instead, whole and inside it, for as long
- * as it fits (decision 299).
+ * as it fits (decision 299), fading out as the card does with no ground.
+ * Leaving on a ground that holds it, it dims with the screen's words, gone
+ * by the same [Motion.fadeOutOnTrack], so a Back (and a back gesture's
+ * scrub) never leaves a bright code over a page that has faded round it
+ * (decision 313).
  */
 @Composable
 fun Modifier.wholeOn(ground: GroundTrack, during: Move): Modifier {
     val stage = LocalStage.current ?: return this
     val m = motion
     if (m.still) return this
-    return this.then(WholeElement(stage, ground, during, 1f - m.crossfadeOnTrack))
+    return this.then(WholeElement(stage, ground, during, 1f - m.crossfadeOnTrack, m.fadeOutOnTrack))
 }
 
-private class WholeElement(val stage: Stage, val ground: GroundTrack, val during: Move, val leaving: Float) : ModifierNodeElement<WholeNode>() {
-    override fun create() = WholeNode(stage, ground, during, leaving)
+private class WholeElement(val stage: Stage, val ground: GroundTrack, val during: Move, val leaving: Float, val dims: Float) :
+    ModifierNodeElement<WholeNode>() {
+    override fun create() = WholeNode(stage, ground, during, leaving, dims)
 
     override fun update(node: WholeNode) {
         node.stage = stage
         node.ground = ground
         node.during = during
         node.leaving = leaving
+        node.dims = dims
         node.invalidateDraw()
     }
 
@@ -1345,7 +1351,7 @@ private class WholeElement(val stage: Stage, val ground: GroundTrack, val during
     }
 
     override fun equals(other: Any?): Boolean =
-        other is WholeElement && other.stage === stage && other.ground === ground && other.during == during && other.leaving == leaving
+        other is WholeElement && other.stage === stage && other.ground === ground && other.during == during && other.leaving == leaving && other.dims == dims
 
     override fun hashCode(): Int = System.identityHashCode(ground) * 31 + during.hashCode()
 }
@@ -1356,7 +1362,7 @@ private class WholeElement(val stage: Stage, val ground: GroundTrack, val during
  * per frame), whose alpha, read per frame, fades a code with no ground to go with, and whose translation keeps a
  * code inside a ground that would let go of it early.
  */
-private class WholeNode(var stage: Stage, var ground: GroundTrack, var during: Move, var leaving: Float) :
+private class WholeNode(var stage: Stage, var ground: GroundTrack, var during: Move, var leaving: Float, var dims: Float) :
     Modifier.Node(), LayoutModifierNode, LayoutAwareModifierNode, DrawModifierNode {
     private var placed: LayoutCoordinates? = null
 
@@ -1366,8 +1372,15 @@ private class WholeNode(var stage: Stage, var ground: GroundTrack, var during: M
 
     private val layer: GraphicsLayerScope.() -> Unit = {
         val located = ground.locate()
-        alpha = if (stage.arriving() || located) 1f else stage.throughDuring(during, leaving = leaving, arriving = 1f)
-        if (located && carry()) {
+        val carried = located && carry()
+        // Arriving it is whole from its first frame (§10 rule 6); leaving on its ground it dims as the words do, except
+        // carried, where it is all there is until the arriving words begin, so it fades out to them (299).
+        alpha = when {
+            stage.arriving() -> 1f
+            located && !carried -> stage.throughDuring(during, leaving = dims, arriving = 1f)
+            else -> stage.throughDuring(during, leaving = leaving, arriving = 1f)
+        }
+        if (carried) {
             translationX = dx
             translationY = dy
         } else {
