@@ -4615,3 +4615,40 @@ names the environment. Refines 95, 96 and 132.
      checked against the monokulo it ships with. The Bell's own shapes are
      held here by `BellApiTest` and `BellWakeUpsTest`, written from
      monokulo's `docs/bell.md` as that change has it.
+309. **An order card opened by a tap scrolls itself into view** (the
+     owner's device testing, 2026-10-31). `OrderCard` holds a
+     `BringIntoViewRequester`; while a tap-opened card's fold runs, each
+     frame of `shown` asks for the card in view (`collectLatest`, so the
+     scrollable's one animation follows the growing card), and once more
+     after the last frame. A card that opens by itself had the room for
+     its lines and asks nothing, nor does one come back to open, so a page
+     returned to from its code or order never jumps. It works on every
+     page with the card: the live sale, the detail pages and the panel.
+310. **The panel's order card is the sale screen's, under the code.** The
+     panel's own order line (a bag, "15 items", the first few, above the
+     code) read as a second receipt design and put what was bought above
+     the code, against the sale screen. The panel now shows `OrderCard`
+     after the code and its status, before the buttons; in a phone on its
+     side it goes under the amount, beside the code. It folds by the same
+     `ReceiptRoom` rule against the panel's own scrolling column, with a
+     `ReceiptFolds` of the panel's for as long as it is up; it still fades
+     in late (N3) and fades through with the header and amount when the
+     panel moves on to another sale (decision 226). `OrderLine` is gone.
+311. **The panel's code has the sale screen's enlarge badge, and a tap on
+     it goes full screen**, as the sale's code does. The badge sits on the
+     code's layer, so it folds into the hero and fades with the code; the
+     "Full screen" button stays.
+312. **A swiped row's danger ground reaches a corner under the card.** The
+     strip was clipped at the card's edge, so the card's rounded right
+     corners showed the tray's amber behind them as yellow wedges. The
+     strip now starts a `RowCorner` further left, under the card, which
+     covers it everywhere but those corners.
+313. **A code leaving on its row's ground dims with the words** (answers
+     234 for the way back). `wholeOn` kept a leaving code at alpha 1 while
+     its ground held it, so on a Back, and through a back gesture's scrub,
+     a bright white code sat over a page whose words and status foot had
+     faded round it. Leaving on a located ground it now fades over
+     `Motion.fadeOutOnTrack`, the words' own share, and the draw rule
+     (whole or not at all) is unchanged; arriving it is still whole from
+     its first frame (§10 rule 6), and the no-ground fade (296) and the
+     carry (299) are as they were.
