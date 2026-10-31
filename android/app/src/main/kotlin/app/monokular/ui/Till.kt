@@ -8,6 +8,8 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -46,7 +48,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -107,6 +111,8 @@ import androidx.compose.ui.unit.constrainHeight
 import androidx.compose.ui.unit.constrainWidth
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.takeWhile
 
 /**
  * The till's point of sale, for every word on its screens that names it
@@ -606,11 +612,25 @@ fun OrderCard(receipt: Receipt, pos: PointOfSale?, room: ReceiptRoom, onOpen: ((
     // From the fold the sale's page last had, so a page come back to (from its order, its code, a turn) opens as it was.
     val shown = remember(room) { Animatable(if (unfolded) 1f else 0f) }
     LaunchedEffect(shown, unfolded, m) { shown.animateTo(if (unfolded) 1f else 0f, m.settle.fraction) }
+    // Opened by the cashier's tap, the card follows its own growth into view, so its lines never open below the page's
+    // edge; a card that opens by itself had the room for them, and one come back to open stays where the page puts it.
+    // Read only in the effect's flow, never in composition, so a fold's frames still recompose nothing.
+    val into = remember { BringIntoViewRequester() }
+    val opening = remember(room) { mutableStateOf(false) }
+    LaunchedEffect(opening, into) {
+        snapshotFlow { opening.value }.collectLatest { asked ->
+            if (!asked) return@collectLatest
+            snapshotFlow { shown.value }.takeWhile { it < 1f }.collectLatest { into.bringIntoView() }
+            withFrameNanos {}
+            into.bringIntoView()
+            opening.value = false
+        }
+    }
     val window = LocalConfiguration.current.screenHeightDp
-    val fold = ReceiptFold(unfolded, shown, onToggle = { tapped.value = !unfolded }) { now, whole -> room.judge(now, whole, window) }
+    val fold = ReceiptFold(unfolded, shown, onToggle = { opening.value = !unfolded; tapped.value = !unfolded }) { now, whole -> room.judge(now, whole, window) }
     // On the sale, the card's ground grows into the order page's list (M7) while its three lines fade out and the
     // page's whole list fades in, each at its own size (decisions 185, 188).
-    Box(Modifier.fillMaxWidth()) {
+    Box(Modifier.fillMaxWidth().bringIntoViewRequester(into)) {
         if (shared != null) {
             val ground = rememberGroundTrack(shared)
             Box(Modifier.matchParentSize().sharedGround(shared, Move.OrderGrow, GroundLook(mk.card, CardCorner), ground))
