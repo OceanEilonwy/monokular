@@ -129,14 +129,18 @@ import app.monokular.ui.CodeText
 import app.monokular.ui.confirm
 import app.monokular.ui.Fixed
 import app.monokular.ui.LensLook
+import app.monokular.ui.LocalReceiptFolds
 import app.monokular.ui.posOf
 import app.monokular.ui.MkIcons
 import app.monokular.ui.Motion
+import app.monokular.ui.OrderCard
 import app.monokular.ui.OrderContent
 import app.monokular.ui.OutlineButton
 import app.monokular.ui.PhaseRing
 import app.monokular.ui.PrimaryButton
 import app.monokular.ui.QrCode
+import app.monokular.ui.ReceiptFolds
+import app.monokular.ui.rememberReceiptRoom
 import app.monokular.ui.display
 import app.monokular.ui.mark
 import app.monokular.ui.mk
@@ -532,7 +536,11 @@ fun SalePanel(
     words: State<Float> = Arrived,
 ) {
     // No Surface gives the overlay's window a text colour: the panel sets its own.
-    CompositionLocalProvider(LocalContentColor provides mk.ink) { PanelCard(sale, where, wide, sideBySide, actions, raise, words) }
+    // The panel's own order card folds, as the till's screens keep theirs: one room per sale for as long as the panel is up.
+    val folds = remember { ReceiptFolds() }
+    CompositionLocalProvider(LocalContentColor provides mk.ink, LocalReceiptFolds provides folds) {
+        PanelCard(sale, where, wide, sideBySide, actions, raise, words)
+    }
 }
 
 /** Words that are simply there. */
@@ -561,6 +569,8 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
     // One transition for everything the face changes (M5): the fold, the words and the buttons start on one frame,
     // and each side keeps the sale it showed, so the code's words never say "Paid" on their way out.
     val faces = updateTransition(FaceShown(Panel.face(sale), sale), label = "face")
+    // Folded unless the panel has room for its order card open, as the sale screen's (its room is the panel's column).
+    val room = rememberReceiptRoom(faces.targetState.sale.orderId, live = true)
     Column(
         Modifier.then(if (wide) Modifier.width(360.dp) else Modifier.fillMaxWidth())
             .onSizeChanged { height = it.height.toFloat() }
@@ -579,7 +589,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
             .flatWhile(raise)
             .testTag(CARD_TAG)
             .semantics { paneTitle = "Monokular payment code" }
-            .verticalScroll(rememberScrollState())
+            .then(room.window).verticalScroll(rememberScrollState()).then(room.content)
             .padding(start = 20.dp, end = 20.dp, bottom = 18.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
@@ -611,7 +621,8 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
                     grabber()
                     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Details(faces, where, actions, wordsLayer, spacing = 10.dp, oneLine = true)
+                        Details(faces, where, actions, wordsLayer, spacing = 10.dp)
+                        PanelOrder(faces, actions, wordsLayer)
                         Buttons(faces, actions, wordsLayer)
                     }
                 }
@@ -620,7 +631,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.spacedBy(14.dp),
                 ) {
-                    Face(faces, wide, now, wordsLayer)
+                    Face(faces, wide, now, wordsLayer, actions.onFullScreen)
                 }
             }
         } else {
@@ -631,7 +642,9 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Details(faces, where, actions, wordsLayer, spacing = 14.dp)
-                Face(faces, wide, now, wordsLayer)
+                // The code, then what was bought, as on the sale screen: the order card under the code, never above it.
+                Face(faces, wide, now, wordsLayer, actions.onFullScreen)
+                PanelOrder(faces, actions, wordsLayer)
                 Buttons(faces, actions, wordsLayer)
             }
         }
@@ -639,7 +652,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
 }
 
 /**
- * The header, the amount and what was bought, for the sale [faces] shows.
+ * The header and the amount, for the sale [faces] shows.
  * When the panel moves on to another sale (the next one waiting, after a
  * paid dwell), they fade through on the same transition as the hero growing
  * into its code and the status words (decision 226): the old sale's go under
@@ -650,7 +663,7 @@ private fun PanelCard(sale: TillSale, where: String, wide: Boolean, sideBySide: 
 // [words] is not this part's modifier but its words' (the parts that fade through a change take it), so it is not named or placed as one.
 @Suppress("ModifierParameter")
 @Composable
-private fun Details(faces: Transition<FaceShown>, where: String, actions: PanelActions, words: Modifier, spacing: Dp, oneLine: Boolean = false) {
+private fun Details(faces: Transition<FaceShown>, where: String, actions: PanelActions, words: Modifier, spacing: Dp) {
     val m = motion
     faces.AnimatedContent(
         Modifier.fillMaxWidth(),
@@ -664,48 +677,66 @@ private fun Details(faces: Transition<FaceShown>, where: String, actions: PanelA
         val sale = side.sale
         Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(spacing)) {
             Header(sale, where, actions.onOpenShift, words)
-            Column(Modifier.fillMaxWidth()) {
-                Column(words.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Text(SaleText.amount(sale), style = display(44, -0.8))
-                    Text(
-                        SaleText.xmr(sale), fontSize = 15.sp, color = mk.muted,
-                        modifier = Modifier.clip(RoundedCornerShape(8.dp))
-                            .clickable(onClickLabel = "Copy the XMR amount") { actions.onCopyXmr(sale) }
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
-                    )
-                }
-                LateOrderLine(sale, actions, words, spacing, oneLine)
+            Column(words.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(SaleText.amount(sale), style = display(44, -0.8))
+                Text(
+                    SaleText.xmr(sale), fontSize = 15.sp, color = mk.muted,
+                    modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                        .clickable(onClickLabel = "Copy the XMR amount") { actions.onCopyXmr(sale) }
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                )
             }
         }
     }
 }
 
 /**
- * The order line, which comes about a second after its sale (the receipt
- * reaches the till after the POS's sale; N3): it opens its room under the
- * amount and fades in, rather than pushing the code down a line's height in
- * one frame under a camera that may be on it. The room settles
- * (`motion.settle`, a layout per frame of the card's few rows; the code is
- * placed, never measured again) and the words fade (`motion.fade`); the
- * spacing above it is inside the room, so nothing steps. A panel that comes
- * up with its receipt shows the line at once.
+ * What was bought, under the code: the sale screen's own order card (its
+ * summary row folds the lines open, "+3 more" opens the whole order). When
+ * the panel moves on to another sale it fades through on [faces] with the
+ * header and amount (decision 226), so no frame reads two sales.
  */
 // [words] is not this part's modifier but its words' (the parts that fade through a change take it), so it is not named or placed as one.
 @Suppress("ModifierParameter")
 @Composable
-private fun LateOrderLine(sale: TillSale, actions: PanelActions, words: Modifier, spacing: Dp, oneLine: Boolean) {
+private fun PanelOrder(faces: Transition<FaceShown>, actions: PanelActions, words: Modifier) {
+    val m = motion
+    faces.AnimatedContent(
+        Modifier.fillMaxWidth(),
+        transitionSpec = {
+            fadeIn(m.fadeThrough.fraction) togetherWith fadeOut(m.fadeQuick.fraction) using
+                SizeTransform(clip = false) { _, _ -> m.settle.spec(IntSize.VisibilityThreshold) }
+        },
+        contentAlignment = Alignment.TopCenter,
+        contentKey = { it.sale.orderId },
+    ) { side -> LateOrderCard(side.sale, actions, words) }
+}
+
+/**
+ * The order card, which comes about a second after its sale (the receipt
+ * reaches the till after the POS's sale; N3): it opens its room under the
+ * code and fades in, rather than popping in one frame. The room settles
+ * (`motion.settle`) and the words fade (`motion.fade`); the code above it is
+ * placed, never measured again. A panel that comes up with its receipt shows
+ * the card at once.
+ */
+// [words] is not this part's modifier but its words' (the parts that fade through a change take it), so it is not named or placed as one.
+@Suppress("ModifierParameter")
+@Composable
+private fun LateOrderCard(sale: TillSale, actions: PanelActions, words: Modifier) {
     val m = motion
     val receipt = sale.receipt?.takeIf { it.lineItems.isNotEmpty() }
-    // The last receipt shown, kept while its line closes.
+    // The last receipt shown, kept while its card closes.
     var last by remember { mutableStateOf(receipt) }
     if (receipt != null) last = receipt
+    val room = rememberReceiptRoom(sale.orderId, live = true)
     AnimatedVisibility(
         receipt != null,
         enter = fadeIn(m.fade.fraction) + expandVertically(m.settle.spec(IntSize.VisibilityThreshold), Alignment.Top),
         exit = fadeOut(m.fadeQuick.fraction) + shrinkVertically(m.settle.spec(IntSize.VisibilityThreshold), Alignment.Top),
     ) {
         val shown = last ?: return@AnimatedVisibility
-        OrderLine(SaleText.items(shown), SaleText.firstItems(shown), oneLine, actions.onOrder, words.padding(top = spacing))
+        Box(words.fillMaxWidth()) { OrderCard(shown, posOf(sale), room, onOpen = actions.onOrder) }
     }
 }
 
@@ -730,7 +761,7 @@ private data class FaceShown(val face: PanelFace, val sale: TillSale)
 // [words] is not this part's modifier but its words' (the parts that fade through a change take it), so it is not named or placed as one.
 @Suppress("ModifierParameter")
 @Composable
-private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, words: Modifier) {
+private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, words: Modifier, onEnlarge: (TillSale) -> Unit) {
     val m = motion
     val shown = faces.targetState
     val sale = shown.sale
@@ -783,10 +814,29 @@ private fun Face(faces: Transition<FaceShown>, wide: Boolean, now: LongState, wo
                 // corner is left outside the circle; growing back it is whole (§10 rule 6) and covers the surface.
                 .clipToFold(codeCorner, fold, folding = { faces.targetState.face != PanelFace.Code })
                 .testTag(CODE_TAG)
-                .then(if (live) Modifier else Modifier.clearAndSetSemantics {}),
+                .then(
+                    if (live) {
+                        Modifier.clip(RoundedCornerShape(codeCorner))
+                            .clickable(onClickLabel = "Enlarge the payment code", role = Role.Button) { onEnlarge(sale) }
+                    } else {
+                        Modifier.clearAndSetSemantics {}
+                    },
+                ),
             padding = 16.dp,
             radius = codeCorner,
         )
+        // The sale screen's enlarge badge in the code's corner, on the code's layer, so it folds and fades with it.
+        Box(
+            Modifier.size(codeSize).then(scaled).graphicsLayer {
+                alpha = if (faces.targetState.face == PanelFace.Code) 1f else codeAlpha.value
+            },
+            contentAlignment = Alignment.BottomEnd,
+        ) {
+            Box(
+                Modifier.padding(10.dp).size(32.dp).clip(CircleShape).background(Fixed.Ink),
+                contentAlignment = Alignment.Center,
+            ) { Icon(MkIcons.Expand, contentDescription = null, tint = Fixed.White, modifier = Modifier.size(16.dp)) }
+        }
         if (hero != null) {
             Icon(
                 hero.icon, contentDescription = null, tint = hero.tint,
@@ -952,34 +1002,6 @@ private fun Header(sale: TillSale, where: String, onOpenShift: () -> Unit, modif
         Spacer(Modifier.width(4.dp))
         Icon(MkIcons.Chevron, contentDescription = null, tint = mk.link, modifier = Modifier.size(14.dp))
     }
-}
-
-/** "15 items" over the first few (or beside them, [oneLine]), on a card: opens the whole order. */
-@Composable
-private fun OrderLine(count: String, first: String, oneLine: Boolean, onOrder: () -> Unit, modifier: Modifier) = Row(
-    modifier.fillMaxWidth().heightIn(min = 48.dp).clip(RoundedCornerShape(14.dp)).background(mk.card)
-        .clickable(onClickLabel = "See the whole order", onClick = onOrder)
-        .padding(horizontal = 12.dp, vertical = 10.dp),
-    verticalAlignment = Alignment.CenterVertically,
-    horizontalArrangement = Arrangement.spacedBy(8.dp),
-) {
-    Icon(MkIcons.Bag, contentDescription = null, tint = mk.muted, modifier = Modifier.size(18.dp))
-    val countText = @Composable { Text(count, fontSize = 14.sp, fontWeight = FontWeight.Bold, softWrap = false) }
-    val firstText = @Composable { Text(first, fontSize = 13.sp, color = mk.muted, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-    if (oneLine) {
-        // "15 items · Flat white, Oat latte, +3 more", the first items giving way first.
-        Row(Modifier.weight(1f), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            countText()
-            Text("·", fontSize = 13.sp, color = mk.muted)
-            firstText()
-        }
-    } else {
-        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(1.dp)) {
-            countText()
-            firstText()
-        }
-    }
-    Icon(MkIcons.Chevron, contentDescription = null, tint = mk.muted, modifier = Modifier.size(16.dp))
 }
 
 /**
