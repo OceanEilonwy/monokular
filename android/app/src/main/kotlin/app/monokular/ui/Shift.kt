@@ -444,7 +444,9 @@ private class Placed {
 
 /**
  * What a swiped row uncovers: the X's danger ground in the row's [shape], its X at the right, drawn only in the strip
- * the card has moved off ([pull], read per draw), so nothing is drawn at rest and nothing shows round the card.
+ * the card has moved off ([pull], read per draw), so nothing is drawn at rest and nothing shows round the card. The strip
+ * reaches a row corner further in, under the card, so the card's own rounded corners show the danger ground behind them,
+ * not the tray's amber.
  */
 @Composable
 private fun BoxScope.SwipeBacking(pull: FloatState, shape: Shape) {
@@ -455,7 +457,7 @@ private fun BoxScope.SwipeBacking(pull: FloatState, shape: Shape) {
             onDrawWithContent {
                 val shown = -pull.floatValue.dp.toPx()
                 if (shown <= 0f) return@onDrawWithContent
-                clipRect(left = size.width - shown) {
+                clipRect(left = (size.width - shown - RowCorner.toPx()).coerceAtLeast(0f)) {
                     drawOutline(outline, ground)
                     this@onDrawWithContent.drawContent()
                 }
