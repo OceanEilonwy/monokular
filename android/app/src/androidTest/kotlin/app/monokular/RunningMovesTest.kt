@@ -23,6 +23,7 @@ import app.monokular.ui.codeGround
 import org.junit.Rule
 import org.junit.Test
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlin.math.hypot
 import kotlin.math.min
 import kotlin.test.assertEquals
@@ -87,7 +88,7 @@ class RunningMovesTest {
 
     @Test fun closeForNowLeavesWithItsCodeDark() = leavesWithItsCode("close-for-now", dark = true) { it.copy(closedAt = 1_100) }
 
-    /** Back from a live sale (260 a): the code is drawn whole on its card on every frame the row's ground holds it. */
+    /** Back from a live sale (260 a): on every frame the row's ground holds its card, the code dims as the words do (313). */
     @Test fun backFromALiveSaleLeavesWithItsCodeLight() = leavesWithItsCode("back-live", dark = false) { it }
 
     @Test fun backFromALiveSaleLeavesWithItsCodeDark() = leavesWithItsCode("back-live", dark = true) { it }
@@ -106,7 +107,7 @@ class RunningMovesTest {
      * A sale that stops being live in the update that leaves its screen (closed from the sheet, expired, refunded)
      * leaves as an untouched one does (decision 242): the change's first frame is the frame before it, the leaving
      * screen keeps its code card on the live layout, and on every frame the row's ground still holds the card's place
-     * the code is drawn there, whole; then the row's shrink takes it.
+     * the code is drawn there, dimming with the screen's words (decision 313); then the row's shrink takes it.
      */
     private fun leavesWithItsCode(name: String, dark: Boolean, change: (app.monokular.sales.TillSale) -> app.monokular.sales.TillSale) {
         moves.start(Screen.Sale("a1"), dark)
@@ -127,8 +128,8 @@ class RunningMovesTest {
                 if (f.leavingCodes.none { it.width > 20f }) failures += "f${f.index}: the leaving sale's code card is gone before the move landed (p ${f.p})"
                 val g = f.ground ?: continue
                 val holds = g.left <= card.left + 1f && g.top <= card.top + 1f && g.right >= card.right - 1f && g.bottom >= card.bottom - 1f
-                val (ink, white) = inkAndWhite(f.bitmap, card)
-                if (holds && (ink < CODE_SHARE || white < CODE_SHARE)) failures += "f${f.index}: the row's ground at $g holds the card at $card, but no code is drawn there"
+                val (ink, _) = inkAndWhite(f.bitmap, card)
+                if (holds) dimsWithTheWords(f, frames, card, g)?.let { failures += it }
                 // On a phone the card's foot is under the code: its white never shows on a frame the code is not drawn (on the
                 // dark theme's ground, where it would be seen).
                 if (dark && ink < CODE_SHARE && inkAndWhite(f.bitmap, foot).second > FOOT_SHARE) failures += "f${f.index}: the card's foot at $foot is drawn with no code above it (p ${f.p})"
@@ -471,7 +472,7 @@ class RunningMovesTest {
      * How much of [rest]'s picture in [region] shows in [f]: [f] fitted by least squares as a mix of the move's two
      * ends there ([rest] and [other], whose own likeness to each other is so taken out), [rest]'s weight.
      */
-    private fun shows(f: Bitmap, rest: Bitmap, other: Bitmap, region: Rect): Float {
+    private fun shows(f: Bitmap, rest: Bitmap, other: Bitmap, region: Rect, dx: Float = 0f, dy: Float = 0f): Float {
         val a = ArrayList<Float>()
         val b = ArrayList<Float>()
         val y = ArrayList<Float>()
@@ -479,7 +480,9 @@ class RunningMovesTest {
             for (px in region.left.toInt().coerceAtLeast(0) until region.right.toInt().coerceAtMost(f.width)) {
                 a += lum(rest.getPixel(px, py))
                 b += lum(other.getPixel(px, py))
-                y += lum(f.getPixel(px, py))
+                val fx = (px + dx.roundToInt()).coerceIn(0, f.width - 1)
+                val fy = (py + dy.roundToInt()).coerceIn(0, f.height - 1)
+                y += lum(f.getPixel(fx, fy))
             }
         }
         if (a.size < 8) return 0f
@@ -728,8 +731,8 @@ class RunningMovesTest {
             if (f.p >= 1f) continue
             val g = f.ground ?: continue
             val holds = g.left <= card.left + 1f && g.top <= card.top + 1f && g.right >= card.right - 1f && g.bottom >= card.bottom - 1f
-            val (ink, white) = inkAndWhite(f.bitmap, card)
-            if (holds && (ink < CODE_SHARE || white < CODE_SHARE)) failures += "f${f.index}: the row's ground at $g holds the card at $card, but no code is drawn there"
+            // The row is low on the screen, so its ground lets go of the card early: carried, it fades out to the shift's words.
+            if (holds) dimsWithTheWords(f, frames, card, g, share = 1f - Motion.Full.crossfadeOnTrack)?.let { failures += it }
         }
         check("back-into-folded-row", dark, frames, Move.RowGrow, glyphs = false, grows = true, bars = failures)
     }
@@ -739,7 +742,8 @@ class RunningMovesTest {
      * and back6, 260 a): no row was tapped, so no place is asked for, and the tray opens in place with the row low on
      * the screen. The ground leaves the card early as it shrinks down to it, and the code went with it: about two frames
      * of nothing but the ground before the shift's words came in. Now no frame is bare and, until the words begin, the
-     * code is on its card on every frame, never off it: carried whole inside it, by the least move (decision 299).
+     * code is on its card on every frame, never off it: carried inside it, by the least move (decision 299), fading out
+     * to the words as it goes (313).
      */
     @Test fun backAfterASelfRiseIntoARowUnderTheFoldIsNeverBareLight() = backAfterSelfRiseUnderTheFold(dark = false)
 
@@ -768,14 +772,43 @@ class RunningMovesTest {
                     failures += "f${f.index}: the code is dropped before the shift's words begin (p ${"%.2f".format(f.p)}, ground $g, card $card)"
                     continue
                 }
-                val (ink, white) = inkAndWhite(f.bitmap, on.deflate(2f))
-                if (ink < CODE_SHARE || white < CODE_SHARE) failures += "f${f.index}: the ground at $g holds the card at $on, but no code is drawn there (p ${"%.2f".format(f.p)})"
+                val expected = Nav.through(f.p, isArriving = false, leaving = words, arriving = 1f)
+                val shown = shows(f.bitmap, frames.first().bitmap, frames.last().bitmap, card.deflate(2f), on.left - card.left, on.top - card.top)
+                if (abs(shown - expected) > DIM_SLACK) {
+                    failures += "f${f.index}: the carried code at $on shows ${"%.2f".format(shown)}, not ${"%.2f".format(expected)} (p ${"%.2f".format(f.p)})"
+                }
             }
             // The case this is about: the ground lets go of the card where it was laid out before the words begin.
             if (!letGo) failures += "the ground holds the card until the shift's words begin: not the designer's back5"
         }
         failures += codeOffItsCard(frames)
         report("back-self-rise-under-fold-${theme(dark)}", frames, failures)
+    }
+
+    /**
+     * A leaving code on a ground [g] that holds its [card] dims with the screen's words (decision 313): on [f] it shows
+     * as much as they do, within [DIM_SLACK] (its picture fitted against the move's two ends, as a word's is), and from
+     * the words being gone on, no code is drawn there. Null when it does. A card its ground lets go of before the
+     * arriving words begin is carried, and fades out to them instead ([share], 299).
+     */
+    private fun dimsWithTheWords(
+        f: RunningMoves.Frame,
+        frames: List<RunningMoves.Frame>,
+        card: Rect,
+        g: Rect,
+        share: Float = Motion.Full.fadeOutOnTrack,
+    ): String? {
+        val expected = Nav.through(f.p, isArriving = false, leaving = share, arriving = 1f)
+        if (expected <= 0f) {
+            val (ink, white) = inkAndWhite(f.bitmap, card)
+            return if (ink >= CODE_SHARE && white >= CODE_SHARE) "f${f.index}: the row's ground at $g holds the card at $card, and its code is still drawn after the words have gone (p ${"%.2f".format(f.p)})" else null
+        }
+        val shown = shows(f.bitmap, frames.first().bitmap, frames.last().bitmap, card)
+        return if (abs(shown - expected) > DIM_SLACK) {
+            "f${f.index}: the code on its card at $card shows ${"%.2f".format(shown)}, but the words ${"%.2f".format(expected)} (p ${"%.2f".format(f.p)})"
+        } else {
+            null
+        }
     }
 
     /** [card] moved the least way into [g], as the leaving card carries its code (decision 299); null if it can't fit. */
@@ -1280,6 +1313,9 @@ class RunningMovesTest {
 
         /** More of the card than this showing the code is the code drawn: a row's glyphs passing are far less. */
         const val CODE_OFF_SHARE = 0.05f
+
+        /** How far a leaving code's share may be from the words' on a frame (decision 313): pixels, not alpha, are read. */
+        const val DIM_SLACK = 0.2f
 
         /** A region with this much of both modules and white has a code in it. */
         const val CODE_SHARE = 0.05f
